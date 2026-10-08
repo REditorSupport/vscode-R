@@ -23,21 +23,6 @@ async function waitForDiscoveryRemoval(filePath: string): Promise<void> {
     assert.fail(`Timed out waiting for discovery file removal: ${filePath}`);
 }
 
-async function waitForDiscoveryPid(filePath: string, expectedPid: number): Promise<void> {
-    const deadline = Date.now() + 1000;
-    while (Date.now() < deadline) {
-        if (await fs.pathExists(filePath)) {
-            const discovery: unknown = await fs.readJson(filePath);
-            if (typeof discovery === 'object' && discovery !== null &&
-                'terminalPid' in discovery && discovery.terminalPid === expectedPid) {
-                return;
-            }
-        }
-        await new Promise(resolve => setTimeout(resolve, 10));
-    }
-    assert.fail(`Timed out waiting for terminal PID ${expectedPid} in discovery file: ${filePath}`);
-}
-
 suite('R Terminal', () => {
     let sandbox: sinon.SinonSandbox;
 
@@ -706,6 +691,13 @@ suite('R Terminal', () => {
     });
 
     test('createRTerm records process IDs for all managed terminals when they resolve out of order', async () => {
+        function deferred<T>() {
+            let resolve!: (value: T) => void;
+            let reject!: (error: unknown) => void;
+            const promise = new Promise<T>((res, rej) => { resolve = res; reject = rej; });
+            return { promise, resolve, reject };
+        }
+
         let resolveFirst!: (pid: number | undefined) => void;
         let resolveSecond!: (pid: number | undefined) => void;
         const firstProcessId = new Promise<number | undefined>(resolve => { resolveFirst = resolve; });
@@ -718,6 +710,23 @@ suite('R Terminal', () => {
             name: 'R Interactive', processId: secondProcessId,
             show: () => undefined, dispose: () => undefined,
         } as unknown as vscode.Terminal;
+        const firstWrite = deferred<{ terminal: vscode.Terminal; filePath: string; pid: number | undefined }>();
+        const secondWrite = deferred<{ terminal: vscode.Terminal; filePath: string; pid: number | undefined }>();
+        const updateDiscoveryFile = session.updateTerminalSessionDiscoveryFile;
+        const pendingWrites: Promise<void>[] = [];
+        sandbox.stub(session, 'updateTerminalSessionDiscoveryFile').callsFake((terminal, filePath, endpoint, pid) => {
+            const writing = updateDiscoveryFile(terminal, filePath, endpoint, pid).then(() => {
+                const write = { terminal, filePath, pid };
+                if (terminal === firstTerminal) { firstWrite.resolve(write); }
+                if (terminal === secondTerminal) { secondWrite.resolve(write); }
+            }, error => {
+                if (terminal === firstTerminal) { firstWrite.reject(error); }
+                if (terminal === secondTerminal) { secondWrite.reject(error); }
+                throw error;
+            });
+            pendingWrites.push(writing);
+            return writing;
+        });
         const configStub = {
             get: (key: string) => key === 'sessionWatcher' ? true : undefined,
         };
@@ -742,12 +751,27 @@ suite('R Terminal', () => {
             }
             firstDiscoveryFile = firstPath;
             secondDiscoveryFile = secondPath;
+            assert.notStrictEqual(firstDiscoveryFile, secondDiscoveryFile);
 
             resolveSecond(45249);
-            await waitForDiscoveryPid(secondDiscoveryFile, 45249);
+            const secondWriteResult = await secondWrite.promise;
+            assert.strictEqual(secondWriteResult.terminal, secondTerminal);
+            assert.strictEqual(secondWriteResult.filePath, secondDiscoveryFile);
+            assert.strictEqual(secondWriteResult.pid, 45249);
             resolveFirst(45247);
-            await waitForDiscoveryPid(firstDiscoveryFile, 45247);
+            const firstWriteResult = await firstWrite.promise;
+            assert.strictEqual(firstWriteResult.terminal, firstTerminal);
+            assert.strictEqual(firstWriteResult.filePath, firstDiscoveryFile);
+            assert.strictEqual(firstWriteResult.pid, 45247);
+
+            const firstDiscovery: unknown = await fs.readJson(firstDiscoveryFile);
+            const secondDiscovery: unknown = await fs.readJson(secondDiscoveryFile);
+            assert.strictEqual(typeof firstDiscovery, 'object');
+            assert.strictEqual(typeof secondDiscovery, 'object');
+            assert.strictEqual((firstDiscovery as { terminalPid?: number }).terminalPid, 45247);
+            assert.strictEqual((secondDiscovery as { terminalPid?: number }).terminalPid, 45249);
         } finally {
+            await Promise.allSettled(pendingWrites);
             if (firstDiscoveryFile) {
                 await fs.remove(firstDiscoveryFile);
             }

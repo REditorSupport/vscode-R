@@ -7,8 +7,6 @@
 connect(
   endpoint = NULL,
   use_rstudioapi = TRUE,
-  use_httpgd = NULL,
-  use_jgd = NULL,
   plot_backend = c("auto", "jgd", "httpgd", "standard", "native")
 )
 }
@@ -18,15 +16,8 @@ If NULL, uses SESS_ENDPOINT, then SESS_DISCOVERY_FILE.}
 
 \item{use_rstudioapi}{Logical. Enable rstudioapi emulation. Defaults to TRUE.}
 
-\item{use_httpgd}{Deprecated. Logical. Use httpgd for plotting if available.
-NULL means unspecified; legacy calls default to TRUE. Use \code{plot_backend} instead.}
-
-\item{use_jgd}{Deprecated. Logical. Use jgd for plotting if available.
-NULL means unspecified; legacy calls default to FALSE. Use \code{plot_backend} instead.}
-
-\item{plot_backend}{Plot backend: \code{auto}, \code{jgd}, \code{httpgd},
-\code{standard}, or \code{native}. NULL also selects \code{auto}. Deprecated
-flags select the backend only when this argument is omitted.}
+\item{plot_backend}{Plot backend: \code{auto}, \code{jgd}, \code{httpgd}, \code{standard}, or
+\code{native}. NULL also selects \code{auto}.}
 }
 \description{
 Connect to the VS Code IPC server

@@ -69,7 +69,7 @@ local({
     installer$sess_install(pkg_path, library, repo,
                            interactive = identical(Sys.getenv("VSCODE_R_SESS_INTERACTIVE"), "1"))
     # Ordinary terminals must see the bundled source through their search path.
-    # Interactive uses its isolated library and the shared native API verifier.
+    # Interactive uses its isolated library and the shared API/source verifier.
     if (!private_library && !identical(sess_installed_source_revision(), expected_revision)) {
         stop("sess installation did not make the bundled source available in .libPaths(). Check the installation log.")
     }

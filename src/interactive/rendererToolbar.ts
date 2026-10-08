@@ -8,6 +8,7 @@ const paths = {
     reset: 'M3 6a5 5 0 1 1 0 5M3 2v4h4',
     filter: 'M2 3h12L9 8v5l-2 1V8Z',
     table: 'M2 2h12v12H2ZM2 6h12M6 2v12',
+    list: 'M2 3h1M6 3h8M2 8h1M6 8h8M2 13h1M6 13h8',
     text: 'M2 3h12M2 6h9M2 9h12M2 12h9',
     open: 'M9 2h5v5M14 2 7 9M6 3H2v11h11v-4',
     save: 'M8 2v8M4 6l4 4 4-4M2 10v4h12v-4',

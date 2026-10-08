@@ -8,7 +8,7 @@ From the repository root, install the [Interactive test dependencies](../../../C
 R_LIBS=/path/to/test-library pnpm run test:interactive:examples
 ```
 
-`VSCR_EXAMPLE_OUTPUT` selects the result directory (otherwise a new temporary directory is printed). Use a fresh directory for each run. Set `VSCR_TEST_PROVIDER=arf` and optionally `ARF_PATH` for arf, or `VSCR_TEST_STATIC=1` for standard graphics. JGD runs need `jgd` and `systemfonts`; the standard backend uses `svglite`, falling back to PNG.
+`VSCR_EXAMPLE_OUTPUT` selects the result directory (otherwise a new temporary directory is printed). Use a fresh directory for each run. Set `ARF_PATH` to select arf, or `VSCR_TEST_STATIC=1` for standard graphics. JGD runs need `jgd` and `systemfonts`; the standard backend uses `svglite`, falling back to PNG.
 
 `public-more.json` adds fourteen cases sourced from the public R manuals: PCA, matrix-valued grouped summaries, k-means, ARIMA with missing observations, nonlinear regression, Holt-Winters forecasting, STL decomposition, rotated/reflected rasters, marginal histograms, filled contours, grid pages, lattice panels, and text progress output. Source URLs and adaptations are recorded in each fixture. These require only R's standard/recommended packages plus the selected graphics backend. Run them with `VSCR_EXAMPLE_SUITE=public-more`.
 
@@ -18,13 +18,13 @@ R_LIBS=/path/to/test-library pnpm run test:interactive:examples
 R_LIBS=/path/to/test-library VSCR_EXAMPLE_SUITE=research pnpm run test:interactive:examples
 ```
 
-The same provider/backend variables apply to all suites. When testing in parallel, compile once first and invoke `node src/test/examples/run.cjs` directly; do not rebuild assets while another test is using them. Cases share a disposable R session, as in a continuing analysis. Their files stay in its temporary working directory and are removed afterward. The recorded timings include polling and a 350 ms output-settle delay; they are not execution benchmarks.
+The same executable/backend variables apply to all suites. When testing in parallel, compile once first and invoke `node src/test/examples/run.cjs` directly; do not rebuild assets while another test is using them. Cases share a disposable R session, as in a continuing analysis. Their files stay in its temporary working directory and are removed afterward. The recorded timings include polling and a 350 ms output-settle delay; they are not execution benchmarks.
 
 Each case writes `code.R`, `events.json`, and `outputs.json`, plus every retained plot page (`interactive-01.svg`, etc.), the final `interactive.svg`/PNG, and ordinary-R reference PNGs. Local asset reads support dense plots larger than the agent's small-asset RPC limit. Artifacts are saved before output assertions so failed cases remain inspectable. `results.json` records timing, output types, conditions, and exported widget locations. Compare corresponding plot pages; rendering libraries and antialiasing can differ, so this is a visual comparison, not a pixel-equality assertion. Font/layout references use the default JGD resolution of 96 DPI; the standard SVG backend uses point units.
 
 For widgets, serve the exported bundle with `AssetStore` and embed it in an iframe with `sandbox="allow-scripts allow-forms allow-downloads"`, matching the Interactive renderer. Verify DT search/sort/paging and Plotly hover/zoom/reset in a browser. An execution success alone does not verify browser interaction.
 
-The separate `interactiveLibraries.test.ts` suite requires `renv`. It installs tiny local fixture packages only in temporary libraries and tests ordinary startup paths, default installation, renv isolation, snapshot, and offline restore with both session providers. CI installs renv before this suite.
+The separate `interactiveLibraries.test.ts` suite requires `renv`. It installs tiny local fixture packages only in temporary libraries and tests ordinary startup paths, default installation, renv isolation, snapshot, and offline restore with managed arf. CI installs renv before this suite.
 
 ## Editor runtime lifecycle
 
@@ -37,7 +37,7 @@ R_LIBS=/path/to/test-library pnpm exec node src/test/examples/runtime-lifecycle.
   /path/to/older/VSCode /path/to/newer/VSCode
 ```
 
-The second case exercises reconnecting and launching across versions; it does not run the editor's updater or prove that every platform's update mechanism preserves running agents. On macOS, use the app's `Contents/MacOS/Code` executable. The fixture needs the normal Interactive R dependencies and the R Syntax extension in `.vscode-test/extensions`.
+The second case exercises reconnecting and launching across versions; it does not run the editor's updater or prove that every platform's update mechanism preserves running agents. On macOS, use the app's `Contents/MacOS/Code` executable. The fixture needs an installed arf executable, the normal Interactive R dependencies and the R Syntax extension in `.vscode-test/extensions`.
 
 ## Large-table allocation checks
 

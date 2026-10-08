@@ -43,7 +43,7 @@ suite('Sess installation with real R tasks', () => {
         const pkg = path.join(extensionRoot, 'dist', 'resources', 'sess');
         await fs.ensureDir(path.join(pkg, 'R'));
         await fs.writeFile(path.join(pkg, 'DESCRIPTION'), description(bundledRevision));
-        const exports = ['connect', 'notify_client', 'register_hooks', 'request_client'];
+        const exports = ['connect', 'notify_client', 'request_client'];
         await fs.writeFile(path.join(pkg, 'NAMESPACE'), exports.map(name => `export(${name})`).join('\n'));
         await fs.writeFile(path.join(pkg, 'R', 'fixture.R'), exports.map(name => `${name} <- function(...) NULL`).join('\n'));
         for (const project of [projectA, projectB]) {

@@ -4,12 +4,12 @@
 \alias{interactive_start}
 \title{Connect an existing R frontend to a persistent Interactive agent}
 \usage{
-interactive_start(config, mirror = TRUE)
+interactive_start(config, managed = FALSE)
 }
 \arguments{
 \item{config}{Path to the private JSON bootstrap configuration created by the agent.}
 
-\item{mirror}{Whether to also write console output to the original frontend.}
+\item{managed}{Whether the agent owns the arf process and its output pipes.}
 }
 \description{
 Connect an existing R frontend to a persistent Interactive agent

@@ -6,7 +6,7 @@ export type SessionSupervisor = { kind: 'detached'; notice?: string }
 /** Resolve before installing a runtime or stopping R for restart. Never start a supervisor here. */
 export function prepareSupervisor(requested: string, directory: string,
     platform = process.platform, pathValue = process.env.PATH): SessionSupervisor {
-    if (platform === 'win32') { throw new Error('Persistent Interactive native console support currently requires Linux or macOS'); }
+    if (platform === 'win32') { throw new Error('Persistent Interactive sessions currently require Linux or macOS'); }
     if (requested === 'detached' || (requested === 'auto' && platform !== 'linux')) { return { kind: 'detached' }; }
     if (!['auto', 'tmux', 'systemd'].includes(requested)) {
         throw new Error(`Unknown session supervisor “${requested}”. Set r.interactive.supervision to auto, tmux, systemd, or detached.`);

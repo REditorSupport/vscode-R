@@ -21,12 +21,12 @@ suite('Session package completion', () => {
     type ServiceInternals = {
         startLanguageService(): Promise<void>;
         createClient(key: string, selector: vscode.DocumentFilter[], cwd: string,
-            workspaceFolder: vscode.WorkspaceFolder | undefined, outputChannel: vscode.OutputChannel,
+            workspaceFolder: vscode.WorkspaceFolder | undefined, outputChannel: vscode.LogOutputChannel,
             resource?: vscode.Uri, sessionScope?: string): Promise<LanguageClient>;
         registerClient(key: string, client: { sendRequest: sinon.SinonStub; stop: sinon.SinonStub }, scope: string): Promise<void>;
         clients: Map<string, { sendRequest: sinon.SinonStub; stop: sinon.SinonStub }>;
         clientScopes: Map<string, string>;
-        outputChannel: vscode.OutputChannel;
+        outputChannel: vscode.LogOutputChannel;
     };
     function client(key: string, scope: string): sinon.SinonStub {
         const sendRequest = sandbox.stub().resolves(true);

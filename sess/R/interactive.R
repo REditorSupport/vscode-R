@@ -1,11 +1,12 @@
-# Native console events use one ordered channel, independent of the editor socket.
+# Rich events use pure R IPC; small stdout markers preserve console ordering.
 .interactive_event <- function(type, data = list()) {
+  if (!identical(.sess_env$interactive_pid, Sys.getpid())) return(invisible(NULL))
   id <- .sess_env$interactive_id
   event <- c(list(type = type, executionId = if (is.null(id)) "" else id), data)
   json <- as.character(jsonlite::toJSON(
     event, auto_unbox = TRUE, null = "null", na = "null", digits = NA
   ))
-  # Bound the encoded bytes before writing to the 4 MiB native IPC channel.
+  # Bound encoded events before writing to the agent transport.
   # Agent-side display limits run only after parsing and cannot protect it from
   # oversized HTML, wide tables, or strings enlarged by JSON escaping.
   if (nchar(json, type = "bytes") > 2 * 1024 * 1024) {
@@ -14,7 +15,32 @@
       message = "Rich output exceeds 2 MiB; display a smaller preview or save it to a file."
     ), auto_unbox = TRUE))
   }
-  .Call("sess_bridge_send", json, PACKAGE = "sess")
+  if (isTRUE(.sess_env$interactive_managed)) {
+    .sess_env$interactive_event_counter <- .sess_env$interactive_event_counter + 1L
+    event_id <- .sess_env$interactive_event_counter
+    rpc_send("interactive_event", list(eventId = event_id,
+                                       event = jsonlite::fromJSON(json, simplifyVector = FALSE)))
+    reference <- jsonlite::toJSON(list(type = "event", eventId = event_id), auto_unbox = TRUE)
+    encoded <- jsonlite::base64_enc(charToRaw(reference))
+    marker <- paste0("\036", .sess_env$interactive_token, ":", encoded, "\037")
+    # A stderr fence ensures the agent drains both pipes before finishing a cell.
+    if (type == "finished") {
+      fence <- paste0("\036", .sess_env$interactive_token, ":",
+                      jsonlite::base64_enc(charToRaw('{"type":"flush"}')), "\037")
+      .interactive_write(.sess_env$interactive_stderr, fence)
+    }
+    .interactive_write(.sess_env$interactive_stdout, marker)
+  } else {
+    rpc_send("interactive_event", jsonlite::fromJSON(json, simplifyVector = FALSE))
+  }
+  invisible(NULL)
+}
+
+.interactive_write <- function(connection, text) {
+  remaining <- processx::conn_write(connection, charToRaw(enc2utf8(text)))
+  while (is.raw(remaining) && length(remaining)) {
+    remaining <- processx::conn_write(connection, remaining)
+  }
   invisible(NULL)
 }
 
@@ -63,9 +89,9 @@
 #' Connect an existing R frontend to a persistent Interactive agent
 #'
 #' @param config Path to the private JSON bootstrap configuration created by the agent.
-#' @param mirror Whether to also write console output to the original frontend.
+#' @param managed Whether the agent owns the arf process and its output pipes.
 #' @keywords internal
-interactive_start <- function(config, mirror = TRUE) {
+interactive_start <- function(config, managed = FALSE) {
   if (isTRUE(.sess_env$interactive_connected)) {
     stop("This R process already belongs to an Interactive agent")
   }
@@ -76,14 +102,20 @@ interactive_start <- function(config, mirror = TRUE) {
   Sys.setenv(JGD_SOCKET = cfg$jgd, SESS_ENDPOINT = cfg$sess)
   connect(endpoint = cfg$sess, plot_backend = if (isTRUE(cfg$useJgd)) "jgd" else "standard")
   if (is.null(.sess_env$con)) stop("Could not connect to the session agent")
-  .Call("sess_bridge_start", cfg$console, cfg$token, mirror, PACKAGE = "sess")
+  .sess_env$interactive_pid <- Sys.getpid()
+  .sess_env$interactive_managed <- managed
+  .sess_env$interactive_event_counter <- 0L
+  if (managed) {
+    # Write protocol frames directly, independent of sinks and frontend styling.
+    # These wrappers do not own stdout/stderr; never explicitly close them.
+    .sess_env$interactive_stdout <- processx::conn_create_fd(1L, close = FALSE)
+    .sess_env$interactive_stderr <- processx::conn_create_fd(2L, close = FALSE)
+  }
   .sess_env$interactive_connected <- TRUE
   .sess_env$interactive_id <- NULL
   .sess_env$interactive_plot_groups <- integer()
-  .sess_env$interactive_queue <- list()
   .sess_env$interactive_seen <- new.env(parent = emptyenv())
   .sess_env$interactive_stop <- FALSE
-  .sess_env$interactive_worker <- !mirror
   .sess_env$interactive_static <- !isTRUE(cfg$useJgd)
   .sess_env$interactive_last_plot <- NULL
   .sess_env$interactive_plot_page <- 0L
@@ -134,7 +166,7 @@ interactive_start <- function(config, mirror = TRUE) {
       }
     }))
   }
-  if (mirror) {
+  if (!managed) {
     .sess_env$interactive_skip_task <- TRUE
     .sess_env$interactive_task <- addTaskCallback(function(expr, value, ok, visible) {
       if (isTRUE(.sess_env$interactive_skip_task)) {
@@ -151,31 +183,7 @@ interactive_start <- function(config, mirror = TRUE) {
   .interactive_event("ready", list(pid = Sys.getpid(), version = R.version.string,
                                    rPath = file.path(R.home("bin"), "R"),
                                    libraryPaths = as.list(.libPaths()),
-                                   sessionId = .session_id(), nativeConsole = TRUE))
-  invisible(NULL)
-}
-
-#' Run the managed Interactive worker
-#'
-#' @param config Path to the agent's private bootstrap configuration.
-#' @keywords internal
-run_worker <- function(config) {
-  interactive_start(config, mirror = FALSE)
-  on.exit(.Call("sess_bridge_stop", PACKAGE = "sess"), add = TRUE)
-  while (!isTRUE(.sess_env$interactive_stop)) {
-    tryCatch({
-      later::run_now(0.05)
-      # Service native R input handlers too (notably idle JGD resize requests).
-      # later's callback loop alone does not dispatch these socket handlers.
-      Sys.sleep(0.001)
-      queue <- .sess_env$interactive_queue
-      if (length(queue)) {
-        request <- queue[[1L]]
-        .sess_env$interactive_queue <- queue[-1L]
-        interactive_execute(request$id, request$code, request$source)
-      }
-    }, interrupt = function(e) NULL)
-  }
+                                   sessionId = .session_id(), nativeConsole = FALSE))
   invisible(NULL)
 }
 
@@ -198,17 +206,13 @@ interactive_execute <- function(id, code, source = NULL) {
   assign(id, TRUE, envir = .sess_env$interactive_seen)
   .sess_env$interactive_id <- id
   .sess_env$interactive_plot_groups <- integer()
-  .Call("sess_bridge_context", id, PACKAGE = "sess")
   on.exit({
     # Live full-table viewers must discard cached filter/sort indices after code
     # may have edited their data by reference (including failed executions).
     .sess_env$dataview_revision <- (.sess_env$dataview_revision %||% 0) + 1
     .sess_env$interactive_id <- NULL
     .interactive_plot_context()
-    .Call("sess_bridge_context", "", PACKAGE = "sess")
   }, add = TRUE)
-  .interactive_event("started")
-  .interactive_plot_context()
   state <- "success"
   trace_state <- new.env(parent = emptyenv())
   trace_state$depth <- 0L
@@ -247,6 +251,10 @@ interactive_execute <- function(id, code, source = NULL) {
   }
   on_error <- function(cnd) diagnostic(cnd, "error")
   evaluate <- function() {
+    # The agent can interrupt as soon as started arrives. Install the condition
+    # handlers before publishing it or doing any interruptible setup work.
+    .interactive_event("started")
+    .interactive_plot_context()
     trace_state$depth <- sys.nframe()
     filename <- if (is.null(source$uri)) "<R Interactive>" else source$uri
     text <- strsplit(code, "\n", fixed = TRUE)[[1L]]
@@ -393,6 +401,17 @@ interactive_execute <- function(id, code, source = NULL) {
                                     printed))
     return(TRUE)
   }
+  if (is.list(value) && !is.object(value)) {
+    view_id <- dataview_new_id()
+    # Nested panels reuse the root's owner; separate cell results must stay independent.
+    root <- listview_state(value, "List", paste0("interactive:", view_id))
+    dataview_set_state(view_id, root)
+    preview <- get_workspace_children(view_id = view_id)
+    .interactive_event("display", c(list(kind = "list", viewId = view_id,
+                                         navigation = listview_navigation(listview_location(root))),
+                                    preview, .interactive_table_text(value)))
+    return(TRUE)
+  }
   if (inherits(value, "htmlwidget") && requireNamespace("htmlwidgets", quietly = TRUE)) {
     directory <- tempfile("widget-")
     dir.create(directory)
@@ -432,7 +451,7 @@ display <- function(x, mime = NULL) {
 
 #' Disconnect the persistent Interactive bridge without terminating R
 #'
-#' Restores the original frontend console callbacks and sess runtime hooks.
+#' Restores sess runtime hooks without changing the frontend console callbacks.
 #' @export
 interactive_stop <- function() {
   .sess_env$interactive_stop <- TRUE
@@ -440,9 +459,10 @@ interactive_stop <- function() {
     removeTaskCallback(.sess_env$interactive_task)
     .sess_env$interactive_task <- NULL
   }
-  .Call("sess_bridge_stop", PACKAGE = "sess")
   .transport_disconnect(silent = TRUE)
   .sess_env$interactive_connected <- FALSE
+  .sess_env$interactive_stdout <- NULL
+  .sess_env$interactive_stderr <- NULL
   .sess_env$interactive_id <- NULL
   invisible(NULL)
 }

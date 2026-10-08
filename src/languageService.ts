@@ -6,7 +6,7 @@ import * as net from 'net';
 import { URL } from 'url';
 import * as fs from 'fs';
 import { LanguageClient, LanguageClientOptions, StreamInfo, DocumentFilter, ErrorAction, CloseAction, RevealOutputChannelOn } from 'vscode-languageclient/node';
-import { Disposable, workspace, Uri, TextDocument, WorkspaceConfiguration, OutputChannel, window, WorkspaceFolder } from 'vscode';
+import { Disposable, workspace, Uri, TextDocument, WorkspaceConfiguration, LogOutputChannel, window, WorkspaceFolder } from 'vscode';
 import { config, DisposableProcess, getRLibPaths, getRpath, promptToInstallRPackage, spawn, substituteVariables } from './util';
 import { extensionContext } from './extension';
 import { CommonOptions } from 'child_process';
@@ -27,7 +27,7 @@ export class LanguageService implements Disposable {
     private readonly clients: Map<string, LanguageClient> = new Map();
     private readonly initSet: Set<string> = new Set();
     private readonly config: WorkspaceConfiguration;
-    private readonly outputChannel: OutputChannel;
+    private readonly outputChannel: LogOutputChannel;
     private readonly sessionSignatures = new SessionSignatureHelpProvider();
     private readonly clientUpdates = new Map<string, Promise<void>>();
     private readonly listeners: Disposable[] = [];
@@ -36,7 +36,7 @@ export class LanguageService implements Disposable {
     private readonly sessionStates: Map<string, { state: SessionState; stateKey: string; sessionId: string }> = new Map();
 
     constructor() {
-        this.outputChannel = window.createOutputChannel('R Language Server');
+        this.outputChannel = window.createOutputChannel('R Language Server', { log: true });
         this.config = workspace.getConfiguration('r');
         void this.startLanguageService();
     }
@@ -139,7 +139,7 @@ export class LanguageService implements Disposable {
     }
 
     private async createClient(key: string, selector: DocumentFilter[],
-        cwd: string, workspaceFolder: WorkspaceFolder | undefined, outputChannel: OutputChannel,
+        cwd: string, workspaceFolder: WorkspaceFolder | undefined, outputChannel: LogOutputChannel,
         resource?: Uri, sessionScope: string = 'global', target?: Session): Promise<LanguageClient> {
 
         let client: LanguageClient;

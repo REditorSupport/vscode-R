@@ -3,13 +3,8 @@
 #' @param endpoint Character. Local named pipe / Unix domain socket endpoint.
 #'   If NULL, uses SESS_ENDPOINT, then SESS_DISCOVERY_FILE.
 #' @param use_rstudioapi Logical. Enable rstudioapi emulation. Defaults to TRUE.
-#' @param use_httpgd Deprecated. Logical. Use httpgd for plotting if available.
-#'   NULL means unspecified; legacy calls default to TRUE. Use `plot_backend` instead.
-#' @param use_jgd Deprecated. Logical. Use jgd for plotting if available.
-#'   NULL means unspecified; legacy calls default to FALSE. Use `plot_backend` instead.
 #' @param plot_backend Plot backend: `auto`, `jgd`, `httpgd`, `standard`, or
-#'   `native`. NULL also selects `auto`. Deprecated flags select the backend
-#'   only when this argument is omitted.
+#'   `native`. NULL also selects `auto`.
 #' @details When SESS_DISCOVERY_FILE describes the connected endpoint, an
 #'   unexpected disconnect waits for a replacement endpoint in that file and
 #'   reconnects with the same runtime options and session identity. The optional
@@ -18,17 +13,9 @@
 #'   string clears it, and an omitted field leaves it unchanged. Set
 #'   `options(sess.quiet = TRUE)` to suppress the successful connection message.
 #' @export
-connect <- function(endpoint = NULL, use_rstudioapi = TRUE, use_httpgd = NULL,
-                    use_jgd = NULL,
+connect <- function(endpoint = NULL, use_rstudioapi = TRUE,
                     plot_backend = c("auto", "jgd", "httpgd", "standard", "native")) {
-  has_httpgd <- !is.null(use_httpgd)
-  has_jgd <- !is.null(use_jgd)
-  .warn_deprecated_plot_args(has_httpgd, has_jgd)
-  plot_backend <- if (missing(plot_backend) && (has_httpgd || has_jgd)) {
-    .legacy_plot_backend(use_httpgd, use_jgd)
-  } else {
-    .resolve_plot_backend(plot_backend)
-  }
+  plot_backend <- .resolve_plot_backend(plot_backend)
   # Invalidate poll callbacks and restore a previous runtime before reconnecting.
   .transport_disconnect(silent = TRUE)
   .sess_env$con <- NULL
@@ -350,6 +337,8 @@ connect <- function(endpoint = NULL, use_rstudioapi = TRUE, use_httpgd = NULL,
 #' Runs as a recurring later callback; dispatches NDJSON messages from vscode.
 #' @keywords internal
 poll_connection <- function(generation = .sess_env$transport_generation) {
+  if (isTRUE(.sess_env$interactive_connected) &&
+        !identical(.sess_env$interactive_pid, Sys.getpid())) return()
   con <- .sess_env$con
   if (is.null(con) || !identical(generation, .sess_env$transport_generation)) return()
 
@@ -439,14 +428,8 @@ dispatch_message <- function(line) {
   } else if (has_method && has_id) {
     # Request from vscode → R must reply
     handlers <- list(
-      "interactive_execute" = function(p) {
-        if (!isTRUE(.sess_env$interactive_worker)) stop("Not a managed worker")
-        .sess_env$interactive_queue <- c(.sess_env$interactive_queue, list(p))
-        TRUE
-      },
       "interactive_stop" = function(p) {
-        if (!isTRUE(.sess_env$interactive_worker)) interactive_stop()
-        .sess_env$interactive_stop <- TRUE
+        interactive_stop()
         TRUE
       },
       "workspace" = function(p) get_workspace_data(),

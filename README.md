@@ -16,7 +16,8 @@ The R and R Markdown syntaxes are located in a sibling package [vscode-R-syntax]
 
 v3.0.0 is a major release with faster, more reliable R session communication,
 powered by the [`sess`](./sess/README.md) package. The extension includes `sess`
-and prompts to install or update it when needed. See the [changelog](./CHANGELOG.md)
+and prompts to install or update the bundled copy when needed. Missing Imports
+are installed from the configured R repository. See the [changelog](./CHANGELOG.md)
 for other changes and upgrade notes.
 
 ## Quickstart
@@ -34,6 +35,8 @@ for other changes and upgrade notes.
     ```sh
     code --install-extension REditorSupport.r
     ```
+
+    To receive daily development updates, choose **Switch to Pre-Release Version** on the R extension's page in VS Code. New pre-releases are published to the VS Code Marketplace and Open VSX Registry when `main` changes and verification passes. Choose **Switch to Release Version** to return to stable releases. When reporting problems, include the extension version and reproduction steps.
 
     Alternatively, you can test the latest development version by installing from GitHub:
 
@@ -137,4 +140,4 @@ Call `View(x)` to open a table. The viewer loads rows on demand and applies colu
 
 ## Persistent R Interactive
 
-This experimental feature provides native VS Code Interactive windows with independent plain-R or arf sessions, including adoption of existing arf sessions over Remote SSH. See the [setup and usage guide](https://github.com/REditorSupport/vscode-R/wiki/R-Interactive) for session switching, persistence, rich outputs, and platform requirements.
+This experimental feature provides native VS Code Interactive windows with independent arf sessions, including adoption of existing arf sessions over Remote SSH. vscode-R installs the bundled pure-R `sess` snapshot; missing Imports come from the configured R repository. Managed sessions retain streaming output, interruption, rich tables, HTML, and plots; notebook console input and debugger prompts are currently unavailable. See the [setup and usage guide](https://github.com/REditorSupport/vscode-R/wiki/R-Interactive) for session switching, persistence, rich outputs, and platform requirements.

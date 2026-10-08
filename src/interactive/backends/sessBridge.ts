@@ -2,39 +2,35 @@ import * as fs from 'fs';
 import * as net from 'net';
 import * as path from 'path';
 import { randomUUID } from 'crypto';
-import { StringDecoder } from 'string_decoder';
 import { JsonLines } from '../framing';
 import { object } from '../protocol';
 import { BackendEvent, ClientReply } from '../backend';
 
 interface Pending { resolve(value: unknown): void; reject(error: Error): void; timer: NodeJS.Timeout }
 
-/** sess's two transports are private to the backend. */
+/** Pure R sess transport for inspection, editor requests, and adopted events. */
 export class SessBridge {
     private sess?: net.Socket;
-    private console?: net.Socket;
     private sockets = new Set<net.Socket>();
     private servers: net.Server[] = [];
     private pending = new Map<number, Pending>();
     private requests = new Map<string, { socket: net.Socket; id: unknown; timer: NodeJS.Timeout }>();
     private counter = 0;
-    private decoders = new Map<string, StringDecoder>();
     private closed = false;
     constructor(private directory: string, private token: string,
         private emit: (event: BackendEvent) => void,
-        private native: (message: Record<string, unknown>) => void,
+        private interactiveEvent: (message: Record<string, unknown>) => void,
         private notification: (method: string, params: Record<string, unknown>) => void) { }
 
     async start(): Promise<void> {
         await this.listen('sess.sock', socket => this.connectSess(socket));
-        await this.listen('console.sock', socket => this.connectConsole(socket));
     }
     private async listen(name: string, connect: (socket: net.Socket) => void): Promise<void> {
         if (this.closed) { throw new Error('Bridge disposed during startup'); }
         const endpoint = path.join(this.directory, name);
         const server = net.createServer(socket => {
             this.sockets.add(socket);
-            const timer = setTimeout(() => { if (socket !== this.sess && socket !== this.console) { socket.destroy(); } }, 5000);
+            const timer = setTimeout(() => { if (socket !== this.sess) { socket.destroy(); } }, 5000);
             socket.on('close', () => { this.sockets.delete(socket); clearTimeout(timer); });
             socket.on('error', () => socket.destroy());
             connect(socket);
@@ -69,6 +65,8 @@ export class SessBridge {
                 clearTimeout(pending.timer); this.pending.delete(message.id);
                 if (message.error) { pending.reject(new Error(JSON.stringify(message.error))); }
                 else { pending.resolve(message.result); }
+            } else if (message.method === 'interactive_event' && message.id === undefined) {
+                this.interactiveEvent(object(message.params));
             } else if (typeof message.method === 'string' && message.method && message.id !== undefined) {
                 const id = randomUUID();
                 const timer = setTimeout(() => {
@@ -109,36 +107,6 @@ export class SessBridge {
         this.send(request.socket, { jsonrpc: '2.0', id: request.id,
             ...(reply.error ? { error: { code: -32000, message: reply.error } } : { result: reply.result ?? null }) });
     }
-    private connectConsole(socket: net.Socket): void {
-        let authenticated = false;
-        this.parse(socket, message => {
-            if (!authenticated) {
-                if (message.type !== 'hello' || message.token !== this.token || this.console) { socket.destroy(); return; }
-                authenticated = true; this.console = socket; return;
-            }
-            if (this.console !== socket) { return; }
-            if (message.type === 'stream') {
-                const executionId = typeof message.executionId === 'string' && message.executionId ? message.executionId : undefined;
-                const key = `${executionId ?? 'external'}:${typeof message.channel === 'string' ? message.channel : 'stdout'}`;
-                let decoder = this.decoders.get(key);
-                if (!decoder) { decoder = new StringDecoder('utf8'); this.decoders.set(key, decoder); }
-                message = { ...message, text: typeof message.bytes === 'string'
-                    ? decoder.write(Buffer.from(message.bytes, 'base64')) : typeof message.text === 'string' ? message.text : '' };
-            } else if (message.type === 'finished') {
-                for (const channel of ['stdout', 'stderr']) { this.decoders.delete(`${String(message.executionId)}:${channel}`); }
-            }
-            this.native(message);
-        });
-        socket.on('close', () => {
-            if (this.console !== socket) { return; }
-            this.console = undefined;
-            if (!this.closed) { this.emit({ type: 'unavailable', message: 'R console transport disconnected' }); }
-        });
-    }
-    input(value: string): void {
-        if (!this.console || this.console.destroyed) { throw new Error('R console is disconnected'); }
-        this.console.write(value + '\n');
-    }
     private rejectPending(): void {
         for (const pending of this.pending.values()) { clearTimeout(pending.timer); pending.reject(new Error('R disconnected')); }
         this.pending.clear();
@@ -147,7 +115,7 @@ export class SessBridge {
         if (this.closed) { return; }
         this.closed = true; this.rejectPending();
         for (const request of this.requests.values()) { clearTimeout(request.timer); }
-        this.requests.clear(); this.decoders.clear();
+        this.requests.clear();
         for (const socket of this.sockets) { socket.destroy(); }
         for (const server of this.servers) { server.close(); }
     }

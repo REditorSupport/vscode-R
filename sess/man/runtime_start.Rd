@@ -4,8 +4,10 @@
 \alias{runtime_start}
 \title{Start the VS Code runtime integration (internal)}
 \usage{
-runtime_start(use_rstudioapi = TRUE,
-  plot_backend = c("auto", "jgd", "httpgd", "standard", "native"))
+runtime_start(
+  use_rstudioapi = TRUE,
+  plot_backend = c("auto", "jgd", "httpgd", "standard", "native")
+)
 }
 \description{
 Start the VS Code runtime integration (internal)

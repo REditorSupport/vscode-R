@@ -62,7 +62,7 @@ function treeTooltip(item: vscode.TreeItem): string {
             const id = randomUUID();
             const config: AgentConfig = { id, generation: randomUUID(), label: `Editor test ${i}`,
                 directory: root, storage: path.join(root, id), library: path.join(root, 'library'),
-                rPath: 'R', resources: path.join(process.cwd(), 'R'), provider: 'r', supervision: 'detached',
+                rPath: 'R', resources: path.join(process.cwd(), 'R'), provider: 'arf', arfPath: process.env.ARF_PATH ?? 'arf', supervision: 'detached',
                 plotBackend: 'auto', historyLimit: 50, maxOutputBytes: 1048576, maxJournalBytes: 16777216 };
             const agent = new SessionAgent(config);
             agents.push(agent); manifests.push(await agent.start());
@@ -112,7 +112,7 @@ function treeTooltip(item: vscode.TreeItem): string {
         // the agent file directly. Both must invoke the configured executable.
         assert.ok(invocations.some(argument => argument !== '-p'), 'The configured Node must launch the session');
     }
-    test('missing arf offers R and setup, with no failed session or runtime installation', async () => {
+    test('missing arf offers setup, with no failed session or runtime installation', async () => {
         const config = vscode.workspace.getConfiguration('r');
         const previous = config.inspect<string>('interactive.arfPath')?.globalValue;
         const missing = path.join(root, 'missing-arf');
@@ -126,12 +126,9 @@ function treeTooltip(item: vscode.TreeItem): string {
         try {
             await vscode.commands.executeCommand('r.interactive.new');
             const choices = picker.firstCall.args[0] as (vscode.QuickPickItem & { value: string })[];
-            assert.deepStrictEqual(choices.map(item => item.value), ['r', 'configure']);
-            assert.strictEqual(choices[0].label, 'R');
-            assert.strictEqual(choices[0].description, undefined);
-            assert.ok(choices[0].detail && fs.existsSync(choices[0].detail));
-            assert.ok(choices[1].detail?.includes(missing));
-            picker.resolves(choices[1]);
+            assert.deepStrictEqual(choices.map(item => item.value), ['configure']);
+            assert.ok(choices[0].detail?.includes(missing));
+            picker.resolves(choices[0]);
             await vscode.commands.executeCommand('r.interactive.new');
             sinon.assert.calledOnce(commands.withArgs('workbench.action.openSettings', 'r.interactive.arfPath'));
             sinon.assert.notCalled(input); sinon.assert.notCalled(errors);
@@ -156,11 +153,11 @@ function treeTooltip(item: vscode.TreeItem): string {
         try {
             await vscode.commands.executeCommand('r.interactive.new');
             const choices = picker.firstCall.args[0] as (vscode.QuickPickItem & { value: string })[];
-            assert.deepStrictEqual(choices.map(item => item.value), ['r', 'arf']);
-            assert.deepStrictEqual(choices.map(item => item.label), ['R', 'arf']);
+            assert.deepStrictEqual(choices.map(item => item.value), ['arf']);
+            assert.deepStrictEqual(choices.map(item => item.label), ['arf']);
             assert.ok(choices.every(item => item.description === undefined));
-            assert.strictEqual(choices[1].detail, executable);
-            picker.resolves(choices[1]);
+            assert.strictEqual(choices[0].detail, executable);
+            picker.resolves(choices[0]);
             await vscode.commands.executeCommand('r.interactive.new');
             sinon.assert.calledOnce(warning); sinon.assert.notCalled(errors);
             assert.match(warning.firstCall.args[0], /Cannot start Headless arf/);
@@ -174,7 +171,7 @@ function treeTooltip(item: vscode.TreeItem): string {
     test('a removed VS Code runtime is reported before installing a runtime or creating a session', async () => {
         const executable = sinon.stub(process, 'execPath').value(path.join(root, 'removed-host-runtime'));
         const entries = fs.readdirSync(root);
-        const picker = sinon.stub(vscode.window, 'showQuickPick').resolves({ label: 'R', value: 'r' } as vscode.QuickPickItem);
+        const picker = sinon.stub(vscode.window, 'showQuickPick').resolves({ label: 'arf', value: 'arf' } as vscode.QuickPickItem);
         const input = sinon.stub(vscode.window, 'showInputBox').resolves('Missing Node');
         const errors = sinon.stub(vscode.window, 'showErrorMessage').resolves(undefined);
         try {
@@ -191,7 +188,7 @@ function treeTooltip(item: vscode.TreeItem): string {
         const settings = vscode.workspace.getConfiguration('r');
         const previous = settings.inspect<string>('interactive.nodePath')?.globalValue;
         const entries = fs.readdirSync(root);
-        const picker = sinon.stub(vscode.window, 'showQuickPick').resolves({ label: 'R', value: 'r' } as vscode.QuickPickItem);
+        const picker = sinon.stub(vscode.window, 'showQuickPick').resolves({ label: 'arf', value: 'arf' } as vscode.QuickPickItem);
         const input = sinon.stub(vscode.window, 'showInputBox').resolves('Missing Node override');
         const errors = sinon.stub(vscode.window, 'showErrorMessage').resolves(undefined);
         try {
@@ -209,7 +206,7 @@ function treeTooltip(item: vscode.TreeItem): string {
         const config = vscode.workspace.getConfiguration('r');
         const previous = config.inspect<string>('interactive.supervision')?.globalValue;
         const entries = fs.readdirSync(root);
-        const picker = sinon.stub(vscode.window, 'showQuickPick').resolves({ label: 'R', value: 'r' } as vscode.QuickPickItem);
+        const picker = sinon.stub(vscode.window, 'showQuickPick').resolves({ label: 'arf', value: 'arf' } as vscode.QuickPickItem);
         const previousPath = process.env.PATH;
         // Resolve R normally, then simulate tmux disappearing before launch.
         const input = sinon.stub(vscode.window, 'showInputBox').callsFake(() => {
@@ -385,17 +382,18 @@ function treeTooltip(item: vscode.TreeItem): string {
     test('refreshes a controller opened during startup when R becomes ready', async () => {
         const id = randomUUID();
         const ready = path.join(root, 'release-startup');
-        const profile = path.join(root, 'startup.R');
-        fs.writeFileSync(profile, `local({ deadline <- Sys.time() + 20; while (!file.exists(${JSON.stringify(ready)}) && Sys.time() < deadline) Sys.sleep(0.02) })\n`);
+        const arf = resolveExecutable(process.env.ARF_PATH ?? 'arf', root); assert.ok(arf);
+        const delayedArf = path.join(root, 'delayed-arf');
+        fs.writeFileSync(delayedArf, `#!/bin/sh\nwhile [ ! -f ${shellQuote(ready)} ]; do sleep 0.02; done\nexec ${shellQuote(arf)} "$@"\n`, { mode: 0o700 });
         const config = JSON.parse(fs.readFileSync(path.join(root, manifests[0].id, 'config.json'), 'utf8')) as AgentConfig;
-        const agent = new SessionAgent({ ...config, id, generation: randomUUID(), label: 'Delayed startup', storage: path.join(root, id) });
-        const previous = process.env.R_PROFILE_USER;
+        const agent = new SessionAgent({ ...config, id, generation: randomUUID(), label: 'Delayed startup', storage: path.join(root, id), arfPath: delayedArf });
         const created = sinon.spy(vscode.notebooks, 'createNotebookController');
+        const starting = agent.start();
         let affinity: sinon.SinonSpy | undefined;
         try {
-            process.env.R_PROFILE_USER = profile;
-            const manifest = await agent.start();
-            process.env.R_PROFILE_USER = previous;
+            const manifestFile = path.join(root, id, 'manifest.json');
+            await until(() => fs.existsSync(manifestFile));
+            const manifest = JSON.parse(fs.readFileSync(manifestFile, 'utf8')) as SessionManifest;
             await vscode.commands.executeCommand('r.interactive.open', manifest);
             const native = created.returnValues.find(value => value.notebookType === 'interactive');
             assert.ok(native);
@@ -403,6 +401,7 @@ function treeTooltip(item: vscode.TreeItem): string {
             await new Promise<void>(resolve => setImmediate(resolve));
             affinity = sinon.spy(native, 'updateNotebookAffinity');
             fs.writeFileSync(ready, 'ready');
+            await starting;
             await until(() => native.label.endsWith(' · idle') && !!affinity?.called);
             assert.match(native.description ?? '', /^R \d.*PID \d/);
             // Selection must still execute in this same session after the refresh.
@@ -412,9 +411,8 @@ function treeTooltip(item: vscode.TreeItem): string {
             await until(() => notebook.getCells().some(cell => cell.executionSummary?.success === true));
             await vscode.commands.executeCommand('r.interactive.detach', notebook.uri);
         } finally {
-            if (previous === undefined) { delete process.env.R_PROFILE_USER; }
-            else { process.env.R_PROFILE_USER = previous; }
             fs.writeFileSync(ready, 'ready');
+            await starting.catch(() => undefined);
             affinity?.restore(); created.restore();
             const notebook = vscode.workspace.notebookDocuments.find(doc => doc.metadata.rSessionId === id);
             if (notebook) {
@@ -659,16 +657,21 @@ function treeTooltip(item: vscode.TreeItem): string {
         }
     });
     test('keeps blank Interactive prompts free of diagnostics while still linting nonempty input', async () => {
-        const document = vscode.workspace.textDocuments.find(doc => doc.uri.scheme === 'vscode-interactive-input' && doc.languageId === 'r');
-        assert.ok(document);
+        await vscode.commands.executeCommand('r.interactive.open', manifests[0]);
+        const notebook = vscode.workspace.notebookDocuments.find(doc => doc.metadata.rSessionId === manifests[0].id);
+        assert.ok(notebook);
+        const result = await vscode.commands.executeCommand<{ inputUri: vscode.Uri }>('interactive.open', { preserveFocus: true }, notebook.uri);
+        const document = await vscode.workspace.openTextDocument(result.inputUri);
         const previous = document.getText();
         const replace = async (text: string): Promise<void> => {
             const edit = new vscode.WorkspaceEdit(); edit.replace(document.uri, new vscode.Range(0, 0, document.lineCount, 0), text);
             await vscode.workspace.applyEdit(edit);
         };
         try {
-            await replace('input_value <- 1\n\n');
-            await until(() => vscode.languages.getDiagnostics(document.uri).some(item => item.message.includes('trailing blank lines')));
+            // Expression diagnostics also work with lintr versions that filter
+            // file-level whitespace lints for synthetic document paths.
+            await replace('input_value<-2\n');
+            await until(() => vscode.languages.getDiagnostics(document.uri).some(item => item.message.includes('spaces around')));
             await replace(' \n\t\n');
             await until(() => vscode.languages.getDiagnostics(document.uri).length === 0);
             // Let the server publish its whitespace diagnostics after the immediate clear.
@@ -982,15 +985,19 @@ cat("\n")`;
     });
 
     test('Run Selection can create a persistent Interactive session and ordinary R exit leaves a restored notice', async () => {
+        const settings = vscode.workspace.getConfiguration('r');
+        const previousNode = settings.inspect<string>('interactive.nodePath')?.globalValue;
         await vscode.commands.executeCommand('r.interactive.useTerminal');
         const terminals = sinon.stub(vscode.window, 'terminals').value([]);
         const picker = sinon.stub(vscode.window, 'showQuickPick').callsFake((_items, options) => Promise.resolve(
-            options?.title === 'Run R code' ? { label: 'New R Interactive window', create: true } : { label: 'R', value: 'r' }
+            options?.title === 'Run R code' ? { label: 'New R Interactive window', create: true } : { label: 'arf', value: 'arf' }
         ) as ReturnType<typeof vscode.window.showQuickPick>);
         const input = sinon.stub(vscode.window, 'showInputBox').resolves('Created by Run Selection');
         let client: AgentClient | undefined;
         let notebook: vscode.NotebookDocument | undefined;
         try {
+            // Exercise successful agent creation with the default VS Code runtime.
+            await settings.update('interactive.nodePath', '', vscode.ConfigurationTarget.Global);
             await vscode.commands.executeCommand('r.runSelection', 'created_target_value <- 123');
             notebook = vscode.workspace.notebookDocuments.find(doc => doc.metadata.rSessionId && !manifests.some(item => item.id === doc.metadata.rSessionId));
             assert.ok(notebook);
@@ -1014,6 +1021,7 @@ cat("\n")`;
                 'Notice body must keep breakable spaces so it wraps in narrow windows');
         } finally {
             terminals.restore(); picker.restore(); input.restore();
+            await settings.update('interactive.nodePath', previousNode, vscode.ConfigurationTarget.Global);
             if (notebook) { await vscode.commands.executeCommand('r.interactive.detach', notebook.uri); }
             if (client) {
                 await client.request('claim', { force: true });
@@ -1047,7 +1055,7 @@ cat("\n")`;
         await vscode.workspace.applyEdit(draft);
         const before = new Set(vscode.workspace.notebookDocuments.map(doc => doc.uri.toString()));
         const inputsBefore = new Set(vscode.workspace.textDocuments.map(doc => doc.uri.toString()));
-        const picker = sinon.stub(vscode.window, 'showQuickPick').resolves({ label: 'R', value: 'r' } as vscode.QuickPickItem);
+        const picker = sinon.stub(vscode.window, 'showQuickPick').resolves({ label: 'arf', value: 'arf' } as vscode.QuickPickItem);
         const name = sinon.stub(vscode.window, 'showInputBox').resolves('New session focus');
         const execute = vscode.commands.executeCommand.bind(vscode.commands);
         const commands = sinon.stub(vscode.commands, 'executeCommand').callThrough();
@@ -1067,7 +1075,7 @@ cat("\n")`;
         let notebook: vscode.NotebookDocument | undefined;
         let client: AgentClient | undefined;
         try {
-            await settings.update('interactive.arfPath', path.join(root, 'missing-arf'), vscode.ConfigurationTarget.Global);
+            await settings.update('interactive.arfPath', process.env.ARF_PATH ?? 'arf', vscode.ConfigurationTarget.Global);
             await settings.update('interactive.nodePath', `"\${userHome}/${path.relative(os.homedir(), override.executable)}"`, vscode.ConfigurationTarget.Global);
             await vscode.commands.executeCommand('r.interactive.new');
             notebook = vscode.workspace.notebookDocuments.find(doc => !before.has(doc.uri.toString()) && doc.metadata.rSessionId);
@@ -1183,6 +1191,51 @@ cat("\n")`;
             sinon.assert.notCalled(errors);
         } finally { errors.restore(); saved.restore(); format.restore(); }
     });
+    test('unclassed list cells route browsing to their owner and save text preferences', async () => {
+        await vscode.commands.executeCommand('r.interactive.open', manifests[0]);
+        const notebook = vscode.workspace.notebookDocuments.find(doc => doc.metadata.rSessionId === manifests[0].id); assert.ok(notebook);
+        const index = notebook.cellCount;
+        await vscode.commands.executeCommand('r.runSelection', 'list(nested=list(value=1:2), table=data.frame(value=1:2))');
+        await until(() => notebook.cellCount > index && notebook.cellAt(index).executionSummary?.success === true);
+        const custom = notebook.cellAt(index).outputs.flatMap(output => output.items).find(item => item.mime === DISPLAY_MIME); assert.ok(custom);
+        const list = JSON.parse(Buffer.from(custom.data).toString()) as Record<string, unknown>;
+        assert.strictEqual(list.kind, 'list'); assert.strictEqual((list.children as unknown[]).length, 2);
+        const plain = notebook.cellAt(index).outputs.flatMap(output => output.items).find(item => item.mime === 'text/plain'); assert.ok(plain);
+        assert.strictEqual(Buffer.from(plain.data).toString(), list.printedText);
+        const context = bundleContext();
+        const manager = context.subscriptions.find(item => typeof (item as InteractiveManager).open === 'function') as unknown as {
+            messages: vscode.NotebookRendererMessaging;
+            rendererMessage(editor: vscode.NotebookEditor, message: Record<string, unknown>): Promise<void>;
+        };
+        const editor = vscode.window.visibleNotebookEditors.find(editor => editor.notebook === notebook); assert.ok(editor);
+        const replies = sinon.spy(manager.messages, 'postMessage');
+        const panels = sinon.spy(vscode.window, 'createWebviewPanel');
+        const saved = sinon.stub(vscode.window, 'showSaveDialog').resolves(vscode.Uri.file(path.join(root, 'list.rnb')));
+        const format = sinon.stub(vscode.window, 'showQuickPick').resolves({label:'Notebook',format:'rnb'} as vscode.QuickPickItem);
+        const message = {displayId:list.displayId,generation:list.generation,outputId:'list-test'};
+        try {
+            await vscode.commands.executeCommand('r.interactive.open', manifests[1]);
+            await manager.rendererMessage(editor, {...message,action:'listPage',path:[1],start:1,requestId:1});
+            const page = replies.lastCall.args[0] as {result:{children:{label:string}[]}};
+            assert.strictEqual(page.result.children[0].label, '$ value');
+            await manager.rendererMessage(editor, {...message,action:'listItem',path:[],index:2,requestId:2});
+            await until(() => panels.calledOnce); assert.strictEqual(panels.firstCall.args[1], 'List$table');
+            await manager.rendererMessage(editor, {...message,action:'list',path:[]});
+            assert.strictEqual(panels.callCount, 2);
+            assert.strictEqual(notebook.cellCount, index+1, 'Browsing must not run another cell');
+            await manager.rendererMessage(editor, {...message,action:'listView',mode:'text'});
+            await vscode.commands.executeCommand('r.interactive.export', notebook.uri);
+            const report = new InteractiveSerializer().deserializeNotebook(fs.readFileSync(path.join(root,'list.rnb')));
+            const item = report.cells.at(-1)?.outputs?.flatMap(output=>output.items).find(item=>item.mime===DISPLAY_MIME); assert.ok(item);
+            const exported = JSON.parse(Buffer.from(item.data).toString()) as Record<string,unknown>;
+            assert.strictEqual(exported.listView,'text'); assert.strictEqual(exported.connected,false);
+            assert.strictEqual(exported.printedText,list.printedText);
+        } finally {
+            replies.restore();
+            panels.returnValues.forEach(panel => { panel.dispose(); }); panels.restore(); saved.restore(); format.restore();
+        }
+    });
+
     test('Interactive list viewers open nested tables in their original session', async () => {
         await vscode.commands.executeCommand('r.interactive.open', manifests[0]);
         const original = vscode.window.createWebviewPanel;
@@ -1195,7 +1248,7 @@ cat("\n")`;
             return panel;
         });
         try {
-            await vscode.commands.executeCommand('r.runSelection', 'rebase_view <- list(table=data.frame(value=1:2)); View(rebase_view)');
+            await vscode.commands.executeCommand('r.runSelection', 'rebase_view <- structure(list(table=data.frame(value=1:2)), class="test_list"); View(rebase_view)');
             await until(() => panels.length === 1 && receivers[0].calledOnce);
             assert.strictEqual(panels[0].title, 'rebase_view');
             await vscode.commands.executeCommand('r.interactive.open', manifests[1]);
@@ -1616,6 +1669,9 @@ par(mfrow=c(1,1))`);
         });
         const confirmation = sinon.stub(vscode.window, 'showWarningMessage').resolves('Restart Session' as unknown as vscode.MessageItem);
         const errors = sinon.stub(vscode.window, 'showErrorMessage').resolves(undefined);
+        // R shutdown can also emit Language Server notifications; assert only
+        // the errors reported by the Interactive manager.
+        const interactiveErrors = errors.withArgs(sinon.match(/^R Interactive:/));
         const kernels = sinon.spy(vscode.notebooks, 'createNotebookController');
         let client: AgentClient | undefined;
         let executable: sinon.SinonStub | undefined;
@@ -1650,7 +1706,7 @@ par(mfrow=c(1,1))`);
                 assert.strictEqual(notebook.cellCount, oldCount);
                 assert.ok(restartController.label.endsWith(' · idle'), 'An undismissed setup warning must not keep R in Restarting');
                 assert.ok(original.rPid); process.kill(original.rPid, 0);
-                sinon.assert.notCalled(errors);
+                sinon.assert.notCalled(interactiveErrors);
             } finally {
                 fs.writeFileSync(launchFile, savedLaunch);
                 await vscode.workspace.getConfiguration('r').update('interactive.arfPath', arfSetting, vscode.ConfigurationTarget.Global);
@@ -1659,8 +1715,8 @@ par(mfrow=c(1,1))`);
             // A missing Node runtime must be detected before stopping the current R.
             executable = sinon.stub(process, 'execPath').value(path.join(root, 'removed-host-runtime'));
             await vscode.commands.executeCommand('r.interactive.restart', notebook.uri);
-            sinon.assert.calledOnce(errors);
-            assert.match(errors.firstCall.args[0], /Reload VS Code/);
+            sinon.assert.calledOnce(interactiveErrors);
+            assert.match(interactiveErrors.firstCall.args[0], /Reload VS Code/);
             assert.strictEqual(notebook.cellCount, oldCount);
             assert.strictEqual(notebook.metadata.rGeneration, original.generation);
             assert.ok(restartController.label.endsWith(' · idle'));
@@ -1670,8 +1726,8 @@ par(mfrow=c(1,1))`);
             // An explicit missing override must also leave the current R process alone.
             await vscode.workspace.getConfiguration('r').update('interactive.nodePath', path.join(root, 'missing-restart-node'), vscode.ConfigurationTarget.Global);
             await vscode.commands.executeCommand('r.interactive.restart', notebook.uri);
-            sinon.assert.calledOnce(errors);
-            assert.match(errors.firstCall.args[0], /r\.interactive\.nodePath/);
+            sinon.assert.calledOnce(interactiveErrors);
+            assert.match(interactiveErrors.firstCall.args[0], /r\.interactive\.nodePath/);
             assert.strictEqual(notebook.cellCount, oldCount);
             assert.strictEqual(notebook.metadata.rGeneration, original.generation);
             assert.ok(restartController.label.endsWith(' · idle'));
@@ -1686,8 +1742,8 @@ par(mfrow=c(1,1))`);
                 process.env.PATH = root;
                 await vscode.commands.executeCommand('r.interactive.restart', notebook.uri);
             } finally { process.env.PATH = previousPath; }
-            sinon.assert.calledOnce(errors);
-            assert.match(errors.firstCall.args[0], /Cannot find an executable tmux.*r\.interactive\.supervision/);
+            sinon.assert.calledOnce(interactiveErrors);
+            assert.match(interactiveErrors.firstCall.args[0], /Cannot find an executable tmux.*r\.interactive\.supervision/);
             assert.strictEqual(notebook.cellCount, oldCount);
             assert.strictEqual(notebook.metadata.rGeneration, original.generation);
             assert.strictEqual(fs.readFileSync(launchFile, 'utf8'), savedLaunch);
@@ -1701,8 +1757,8 @@ par(mfrow=c(1,1))`);
                 process.env.PATH = `${supervisorBin}${path.delimiter}${previousPath ?? ''}`;
                 await vscode.commands.executeCommand('r.interactive.restart', notebook.uri);
             } finally { process.env.PATH = previousPath; }
-            sinon.assert.calledOnce(errors);
-            assert.match(errors.firstCall.args[0], /Could not start the tmux.*test tmux launch failure/s);
+            sinon.assert.calledOnce(interactiveErrors);
+            assert.match(interactiveErrors.firstCall.args[0], /Could not start the tmux.*test tmux launch failure/s);
             assert.ok(notebook.getCells().some(cell => cell.metadata.rNoticeKind === 'restartFailed'));
             assert.strictEqual(oldCell.document.uri.toString(), oldUri);
             assert.strictEqual(draft.getText(), 'unsent_draft <- 99');
@@ -1718,7 +1774,7 @@ par(mfrow=c(1,1))`);
                 vscode.commands.executeCommand('r.interactive.restart', notebook.uri),
             ]);
             sinon.assert.calledOnce(confirmation);
-            sinon.assert.notCalled(errors); sinon.assert.notCalled(kernels);
+            sinon.assert.notCalled(interactiveErrors); sinon.assert.notCalled(kernels);
             assertNodeLaunched(override.log);
             assert.ok(sawRestarting);
             assert.strictEqual(vscode.workspace.notebookDocuments.length, windowCount);
@@ -1802,7 +1858,7 @@ par(mfrow=c(1,1))`);
             assert.strictEqual(draft.getText(), 'unsent_draft <- 99');
             await vscode.commands.executeCommand('r.interactive.clear', notebook.uri);
             assert.ok(!notebook.getCells().some(cell => cell.metadata.rExecutionId === oldId));
-            sinon.assert.notCalled(errors);
+            sinon.assert.notCalled(interactiveErrors);
         } finally {
             confirmation.restore(); errors.restore(); kernels.restore(); change.dispose();
             executable?.restore();
@@ -1838,7 +1894,7 @@ par(mfrow=c(1,1))`);
             const id = randomUUID();
             const config: AgentConfig = { id, generation: randomUUID(), label: `Bulk test ${bulk.length}`,
                 directory: root, storage: path.join(root, id), library: path.join(root, 'library'),
-                rPath: 'R', resources: path.join(process.cwd(), 'R'), provider: 'r', supervision: 'detached',
+                rPath: 'R', resources: path.join(process.cwd(), 'R'), provider: 'arf', arfPath: process.env.ARF_PATH ?? 'arf', supervision: 'detached',
                 plotBackend: 'auto', historyLimit: 50, maxOutputBytes: 1048576, maxJournalBytes: 16777216 };
             const agent = new SessionAgent(config); agents.push(agent);
             const manifest = await agent.start(); bulk.push(manifest);
@@ -1951,7 +2007,7 @@ par(mfrow=c(1,1))`);
             for (let i = 0; i < 2; i++) {
                 const id = randomUUID();
                 const agent = new SessionAgent({ id, generation: randomUUID(), label: `URI reuse ${i}`, directory: root, storage: path.join(root, id),
-                    rPath: 'R', library: path.join(root, 'library'), resources: path.join(process.cwd(), 'R'), provider: 'r', supervision: 'test',
+                    rPath: 'R', library: path.join(root, 'library'), resources: path.join(process.cwd(), 'R'), provider: 'arf', arfPath: process.env.ARF_PATH ?? 'arf', supervision: 'test',
                     plotBackend: 'standard', historyLimit: 50, maxOutputBytes: 1048576, maxJournalBytes: 16777216 });
                 const manifest = await agent.start(); temporary.push({ agent, manifest });
                 await manager.open(manifest);

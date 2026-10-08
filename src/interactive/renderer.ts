@@ -1,6 +1,7 @@
 /// <reference lib="dom" />
 
 import { createInlineTable, InlineTable, InlineTableState, inlineTableStyle } from './inlineTable';
+import { createListViewer, ListViewer, ListViewNavigation, ListViewPage, ListViewReply, listViewerStyle } from '../listViewer';
 import { toolbarButton as button, toolbarStyle } from './rendererToolbar';
 
 interface OutputItem { id: string; json(): Record<string, unknown> }
@@ -12,7 +13,7 @@ interface RendererContext {
 export function activate(context: RendererContext): { renderOutputItem(item: OutputItem, element: HTMLElement): void; disposeOutputItem(id?: string): void } {
     interface OutputState {
         element: HTMLElement; data: Record<string, unknown>;
-        table?: InlineTable;
+        table?: InlineTable; list?: ListViewer;
         saveRequest?: number; saveButton?: HTMLButtonElement; savePlot?(format: string): void; updatePlotPaging?(): void;
         dispose?(): void;
     }
@@ -20,8 +21,8 @@ export function activate(context: RendererContext): { renderOutputItem(item: Out
     const tables = new Map<string, InlineTableState>();
     // Output IDs change on replaceOutput. Keep local choices until the host has
     // persisted them, and while browsing a saved notebook without a live host.
-    const choices = new Map<string, { tableView?: string; selectedPlot?: string }>();
-    const remember = (key: string, value: { tableView?: string; selectedPlot?: string }): void => {
+    const choices = new Map<string, { tableView?: string; listView?: string; selectedPlot?: string }>();
+    const remember = (key: string, value: { tableView?: string; listView?: string; selectedPlot?: string }): void => {
         choices.delete(key); choices.set(key, value);
         while (choices.size > 1000) { choices.delete(choices.keys().next().value as string); }
     };
@@ -38,6 +39,8 @@ export function activate(context: RendererContext): { renderOutputItem(item: Out
         const status = output.element.querySelector('[data-status]');
         if (message.action === 'page') {
             output.table?.reply(message);
+        } else if (['listPage', 'listNavigate', 'listItem'].includes(String(message.action))) {
+            output.list?.reply({ ...message.result as ListViewReply, requestId: Number(message.requestId), error: typeof message.error === 'string' ? message.error : undefined });
         } else if (message.action === 'saveAs') {
             if (message.requestId !== output.saveRequest || output.saveRequest === undefined) { return; }
             output.saveRequest = undefined;
@@ -63,7 +66,14 @@ export function activate(context: RendererContext): { renderOutputItem(item: Out
             element.classList.add('r-interactive-output');
             element.style.cssText = 'color:var(--vscode-editor-foreground);font-family:var(--vscode-font-family)';
             const style = document.createElement('style');
-            style.textContent = toolbarStyle + inlineTableStyle;
+            style.textContent = toolbarStyle + inlineTableStyle + listViewerStyle + `
+.r-interactive-output .r-list-viewer .arrow{display:inline-block;width:8px;height:8px;margin:4px}
+.r-interactive-output .r-list-viewer .codicon-chevron-right{display:inline-block;width:6px;height:6px;border-top:1px solid currentColor;border-right:1px solid currentColor;transform:rotate(45deg);margin:4px}
+.r-interactive-output .r-list-viewer details[open] > summary > .arrow{transform:rotate(135deg)}
+.r-interactive-output .r-list-viewer .codicon-open-preview::before{content:'↗'}
+.r-interactive-output .r-list-viewer .str{overflow-wrap:anywhere;min-width:0}
+.r-interactive-output .r-list-viewer .label{min-width:64px}
+`;
             element.append(style);
             const state: OutputState = { element, data: { ...data } }; outputs.set(item.id, state);
             const toolbar = document.createElement('div'); toolbar.className = 'r-interactive-toolbar';
@@ -104,6 +114,45 @@ export function activate(context: RendererContext): { renderOutputItem(item: Out
                 }, 'Text');
                 toolbar.prepend(open, toggle); showView();
                 state.dispose = () => { state.table?.dispose(); open.onclick = null; toggle.onclick = null; };
+            } else if (data.kind === 'list') {
+                const tree = document.createElement('div'); tree.className = 'r-list-viewer'; tree.dataset.list = '';
+                tree.style.cssText = 'display:flex;flex-direction:column;max-height:460px;overflow:hidden';
+                const navigation = document.createElement('div'); navigation.className = 'navigation';
+                const back = button('Back', 'previous', () => undefined); back.classList.add('back');
+                const breadcrumbs = document.createElement('nav'); breadcrumbs.className = 'breadcrumbs';
+                breadcrumbs.setAttribute('aria-label', 'Object path'); navigation.append(back, breadcrumbs);
+                const navigationStatus = document.createElement('div'); navigationStatus.className = 'navigation-status';
+                navigationStatus.setAttribute('role', 'status');
+                const list = document.createElement('div'); list.className = 'list';
+                const reset = button('Reset list view', 'reset', () => undefined, 'Reset');
+                reset.title = 'Return to the initial list, collapse expanded rows, and clear navigation history';
+                tree.append(navigation, navigationStatus, list); element.append(tree);
+                const initial = data.navigation as ListViewNavigation ?? { title: 'List', path: [], breadcrumbs: [{ label: 'List', path: [] }] };
+                state.list = createListViewer({ root: tree, list, back, reset, breadcrumbs, navigationStatus }, initial, message => {
+                    const id = ++requestId;
+                    const action = message.message === 'listview/page' ? 'listPage' : message.message === 'listview/navigate' ? 'listNavigate' : 'listItem';
+                    send(item, data, action, { path: message.path, index: message.index, start: message.start, requestId: id }); return id;
+                }, Array.isArray(data.children) ? data as unknown as ListViewPage : undefined, live);
+                const printed = document.createElement('pre'); printed.dataset.printed = '';
+                printed.style.cssText = 'white-space:pre;overflow:auto;max-height:460px;font-family:var(--vscode-editor-font-family,monospace);font-size:var(--vscode-editor-font-size,12px)';
+                printed.textContent = typeof data.printedText === 'string' ? data.printedText : ''; element.append(printed);
+                const open = button('Open list viewer', 'list', () => send(item, data, 'list', { path: state.list?.navigation().path }), 'List viewer');
+                open.disabled = !live;
+                const hasText = typeof data.printedText === 'string';
+                let text = hasText && (choice?.listView ?? data.listView) === 'text';
+                const showView = (): void => {
+                    tree.hidden = text; printed.hidden = !text;
+                    toggle.replaceChildren(...Array.from(button('', text ? 'list' : 'text', () => undefined, text ? 'List' : 'Text').childNodes));
+                    toggle.title = text ? 'Show list preview' : 'Show R printed output'; toggle.setAttribute('aria-label', toggle.title);
+                    toggle.disabled = !hasText;
+                    if (!hasText) { toggle.title = data.printError ? `R printout unavailable: ${typeof data.printError === 'string' ? data.printError : JSON.stringify(data.printError)}` : 'Printed output unavailable'; }
+                };
+                const toggle = button('Show R printed output', 'text', () => {
+                    text = !text; remember(choiceKey, { listView: text ? 'text' : 'list' });
+                    send(item, data, 'listView', { mode: text ? 'text' : 'list' }); showView();
+                }, 'Text');
+                toolbar.append(open, toggle, reset); status.textContent = connectionHint(data); showView();
+                state.dispose = () => { state.list?.dispose(); open.onclick = null; toggle.onclick = null; };
             } else if (data.kind === 'plot') {
                 const pages = (Array.isArray(data.pages) && data.pages.length ? data.pages : [data]) as Record<string, unknown>[];
                 const selected = choice?.selectedPlot ?? data.selectedPlot;
@@ -195,7 +244,7 @@ export function activate(context: RendererContext): { renderOutputItem(item: Out
             toolbar.append(status);
             if (!toolbar.parentElement) { element.append(toolbar); }
 
-            if (data.kind !== 'table') {
+            if (!['table', 'list'].includes(String(data.kind))) {
                 status.textContent = [status.textContent, connectionHint(data)].filter(Boolean).join(' · ');
                 if (!connected && data.kind !== 'plot') { toolbar.querySelectorAll('button').forEach(control => { control.disabled = true; }); }
             }
