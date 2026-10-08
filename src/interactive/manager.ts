@@ -830,6 +830,8 @@ export class InteractiveManager implements vscode.Disposable, vscode.TreeDataPro
         view.executions.clear();
         for (const cell of view.notebook.getCells()) { session.unbindSessionDocument(cell.document.uri); }
         view.client.manifest = snapshot.manifest;
+        view.target.pid = String(snapshot.manifest.rPid ?? ''); view.target.rVer = snapshot.manifest.rVersion ?? '';
+        view.target.processExited = snapshot.manifest.status === 'exited';
         view.target.rPath = snapshot.manifest.rPath; view.target.libraryPaths = snapshot.manifest.libraryPaths;
         view.base = snapshot.manifest.assetBase ? (await vscode.env.asExternalUri(vscode.Uri.parse(snapshot.manifest.assetBase))).toString(true) : '';
         view.model.restore(snapshot);

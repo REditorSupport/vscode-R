@@ -252,16 +252,59 @@ suite('Viewer session ownership', () => {
         } finally { session.unregisterSessionTransport(owner); }
     });
 
+    test('viewers share polling and release it when the last viewer closes', async () => {
+        const clock = sandbox.useFakeTimers();
+        const kill = sandbox.stub(process, 'kill').returns(true);
+        const request = sandbox.stub().resolves({});
+        const first = session.registerSessionTransport('shared-polling-first', os.hostname(), '/tmp', request);
+        const second = session.registerSessionTransport('shared-polling-second', os.hostname(), '/tmp', request);
+        first.pid = '2147483645'; first.rVer = '4.6.1';
+        second.pid = '2147483646'; second.rVer = '4.6.2';
+        try {
+            await session.showDataView('list', 'json', 'list', '', 'Two', undefined, undefined, first.sessionId);
+            await session.showDataView('table', 'json', 'table', '', 'Two', undefined, undefined, first.sessionId);
+            await session.showDataView('list', 'json', 'other', '', 'Two', undefined, undefined, second.sessionId);
+            assert.strictEqual(clock.countTimers(), 1);
+            clock.tick(1000);
+            sinon.assert.calledTwice(kill);
+            sinon.assert.calledWithExactly(kill, Number(first.pid), 0);
+            sinon.assert.calledWithExactly(kill, Number(second.pid), 0);
+
+            session.unregisterSessionTransport(first);
+            kill.resetHistory();
+            clock.tick(1000);
+            assert.strictEqual(kill.callCount, 2, 'transport detachment must keep monitoring the source');
+            panels[0].panel.dispose();
+            panels[1].panel.dispose();
+            kill.resetHistory();
+            clock.tick(1000);
+            sinon.assert.calledOnceWithExactly(kill, Number(second.pid), 0);
+            panels[2].panel.dispose();
+            assert.strictEqual(clock.countTimers(), 0);
+        } finally {
+            session.unregisterSessionTransport(first);
+            session.unregisterSessionTransport(second);
+        }
+    });
+
     test('viewer info uses confirmed Interactive exit even when the source host cannot be probed', async () => {
         const owner = session.registerSessionTransport('exited-viewer', 'foreign-host', '/tmp', sandbox.stub().resolves({}));
         owner.pid = '12103'; owner.rVer = '4.6.2';
         try {
             await session.showDataView('list', 'json', 'list', '', 'Two', 'exited-list', undefined, owner.sessionId);
+            await session.showDataView('table', 'json', 'table', '', 'Two', 'exited-table', undefined, owner.sessionId);
+            const disposed = panels[0];
+            disposed.panel.dispose();
+            const disposedReplyCount = disposed.replies.length;
             owner.processExited = true;
+            assert.deepStrictEqual(panels[1].replies.at(-1), {
+                message: 'viewer-session/update', text: 'R: (not attached)',
+            }, 'confirmed exit should update viewers immediately, without polling or a ready message');
+            assert.strictEqual(disposed.replies.length, disposedReplyCount);
             // Exited state events can clear the process metadata.
             owner.pid = ''; owner.rVer = '';
-            await panels[0].receive({ message: 'viewer-session/ready' });
-            assert.strictEqual(panels[0].replies.at(-1)?.text, 'R: (not attached)');
+            await panels[1].receive({ message: 'viewer-session/ready' });
+            assert.strictEqual(panels[1].replies.at(-1)?.text, 'R: (not attached)');
         } finally { session.unregisterSessionTransport(owner); }
     });
 

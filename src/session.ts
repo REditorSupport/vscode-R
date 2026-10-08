@@ -13,6 +13,7 @@ import { config, readContent, setContext, UriIcon } from './util';
 import * as rTerminal from './rTerminal';
 import { getProcessAncestors } from './processTree';
 import { TerminalSessionRegistry } from './terminalSessionRegistry';
+import { SessionProcessMonitor } from './sessionProcessMonitor';
 import { purgeAddinPickerItems, RSEditOperation, RSRange } from './rstudioapi';
 
 import { extensionContext, rWorkspace, globalRHelp, globalPlotManager, sessionStatusBarItem, enableSessionWatcher } from './extension';
@@ -58,7 +59,12 @@ interface IpcSocket extends net.Socket {
 }
 
 export class Session {
-    public processExited = false;
+    private exited = false;
+    public get processExited(): boolean { return this.exited; }
+    public set processExited(value: boolean) {
+        this.exited = value;
+        if (value) { sessionProcessMonitor.markExited(this); }
+    }
     public label?: string;
     public workspaceUnavailable?: string;
     public execute?: (code: string) => Promise<void>;
@@ -107,6 +113,7 @@ export let workspaceFile: string;
 const SESS_PROTOCOL_VERSION = 2;
 
 const sessions = new Map<string, Session>();
+const sessionProcessMonitor = new SessionProcessMonitor<Session>(isLocalHost);
 // Only the newest handshake for a stable ID may commit after terminal discovery.
 const pendingSessionAttachments = new Map<string, IpcSocket>();
 const terminalRegistry = new TerminalSessionRegistry<Session, vscode.Terminal>(
@@ -1232,49 +1239,32 @@ export async function showDataView(
 
 function getViewerSessionHtml(sessionId: string | null): string {
     const owner = sessions.get(sessionId ?? '');
-    if (!owner || (!owner.processExited && (!owner.pid || !owner.rVer))) { return ''; }
-    const info = escapeHtml(owner.processExited ? 'R: (not attached)' : formatSessionLabel(owner.rVer, owner.pid));
+    if (!owner) { return ''; }
+    const exited = sessionProcessMonitor.hasExited(owner);
+    if (!exited && (!owner.pid || !owner.rVer)) { return ''; }
+    const info = escapeHtml(exited ? 'R: (not attached)' : formatSessionLabel(owner.rVer, owner.pid));
     return `<span class="viewer-session" role="img" tabindex="0" aria-label="${info}" aria-describedby="viewer-session-tooltip"><span class="codicon codicon-info" aria-hidden="true"></span><span id="viewer-session-tooltip" class="viewer-session-tooltip" role="tooltip">${info}</span></span>`;
 }
 
 function attachViewerSessionBridge(panel: vscode.WebviewPanel, sessionId: string | null): void {
     const owner = sessions.get(sessionId ?? '');
-    if (!owner || (!owner.processExited && (!owner.pid || !owner.rVer))) { return; }
+    if (!owner || (!sessionProcessMonitor.hasExited(owner) && (!owner.pid || !owner.rVer))) { return; }
     // Keep the original process identity after detaching, reconnecting or restarting.
     const sourcePid = owner.pid;
     const attachedLabel = formatSessionLabel(owner.rVer, sourcePid);
-    let exited = owner.processExited;
-    let lastLabel = exited ? 'R: (not attached)' : attachedLabel;
-    let timer: NodeJS.Timeout | undefined;
     const refresh = (force = false) => {
-        if (!exited) {
-            exited = owner.processExited;
-            const numericPid = Number(sourcePid);
-            // R and the extension run on the same host in Remote workspaces too.
-            // Never check a foreign host's PID against this machine's processes.
-            if (!exited && isLocalHost(owner.host) && Number.isSafeInteger(numericPid) && numericPid > 0) {
-                try { process.kill(numericPid, 0); }
-                catch (error) {
-                    // Permission failures and unknown errors do not prove process exit.
-                    exited = (error as NodeJS.ErrnoException).code === 'ESRCH';
-                }
-            }
-        }
-        const text = exited ? 'R: (not attached)' : attachedLabel;
+        const text = source.exited ? 'R: (not attached)' : attachedLabel;
         if (force || text !== lastLabel) {
             lastLabel = text;
             void panel.webview.postMessage({ message: 'viewer-session/update', text });
         }
-        if (exited) { clearInterval(timer); }
     };
+    const source = sessionProcessMonitor.observe(owner, refresh);
+    let lastLabel = source.exited ? 'R: (not attached)' : attachedLabel;
     const received = panel.webview.onDidReceiveMessage((message: { message?: string }) => {
         if (message?.message === 'viewer-session/ready') { refresh(true); }
     });
-    if (!exited) {
-        timer = setInterval(refresh, 1000);
-        timer.unref();
-    }
-    panel.onDidDispose(() => { clearInterval(timer); received?.dispose(); });
+    panel.onDidDispose(() => { source.dispose(); received?.dispose(); });
 }
 
 export async function getTableHtml(
