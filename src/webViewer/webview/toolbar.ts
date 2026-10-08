@@ -5,6 +5,7 @@ export function initializeWidgetToolbar(vscode: VsCode): void {
     if (!toolbar) { return; }
     const back = document.getElementById('widget-back') as HTMLButtonElement;
     const forward = document.getElementById('widget-forward') as HTMLButtonElement;
+    const remove = document.getElementById('widget-remove') as HTMLButtonElement;
     const frame = document.getElementById('widget-frame') as HTMLIFrameElement;
     if (frame.dataset.widgetDocument) {
         const html = frame.dataset.widgetDocument;
@@ -25,13 +26,19 @@ export function initializeWidgetToolbar(vscode: VsCode): void {
         if (host.searchParams.has('vscode-coi')) { bootstrap.searchParams.set('vscode-coi', host.searchParams.get('vscode-coi')!); }
         frame.src = bootstrap.toString();
     }
+    const lockControls = () => { back.disabled = true; forward.disabled = true; remove.disabled = true; };
     const navigate = (direction: 'back' | 'forward') => {
         if ((direction === 'back' ? back : forward).disabled) { return; }
-        back.disabled = true; forward.disabled = true;
+        lockControls();
         vscode.postMessage({ message: 'widget/navigate', direction, generation: Number(toolbar.dataset.generation) });
     };
     back.onclick = () => navigate('back');
     forward.onclick = () => navigate('forward');
+    remove.onclick = () => {
+        if (remove.disabled) { return; }
+        lockControls();
+        vscode.postMessage({ message: 'widget/remove', generation: Number(toolbar.dataset.generation) });
+    };
     const keydown = (event: KeyboardEvent) => {
         if (event.altKey && (event.key === 'ArrowLeft' || event.key === 'ArrowRight')) {
             event.preventDefault();

@@ -10,7 +10,7 @@ import { mockExtensionContext } from '../common/mockvscode';
 import { waitForValue } from '../common/sessionConnections';
 
 suite('HTML widget browser rendering', () => {
-    test('loads relative dependencies, navigates, and restores a closed Viewer with the real toolbar', async () => {
+    test('loads relative dependencies, navigates, removes an output, and restores with the real toolbar', async () => {
         const sandbox = sinon.createSandbox();
         const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'vscode-r-widget-browser-'));
         const panels: vscode.WebviewPanel[] = [];
@@ -59,6 +59,8 @@ suite('HTML widget browser rendering', () => {
                     window.addEventListener('message', event => {
                         if (event.data?.message === 'widget-test/navigate') {
                             document.getElementById('widget-' + event.data.direction).click();
+                        } else if (event.data?.message === 'widget-test/remove') {
+                            document.getElementById('widget-remove').click();
                         } else if (event.data?.message === 'widget-test/inspect') {
                             const toolbar = document.getElementById('widget-toolbar');
                             const frame = document.getElementById('widget-frame');
@@ -88,13 +90,19 @@ suite('HTML widget browser rendering', () => {
             await panel.webview.postMessage({ message: 'widget-test/navigate', direction: 'forward' });
             await loaded('second', secondCount);
             assert.strictEqual(panel.title, 'HTML Viewer');
+            await installControls('second');
+            const removeCount = count('first');
+            await panel.webview.postMessage({ message: 'widget-test/remove' });
+            await loaded('first', removeCount);
+            assert.ok(panel.webview.html.includes('1 / 1'));
+            assert.ok(fs.existsSync(second), 'Removing history must preserve the original HTML file');
             panel.dispose();
-            const restoreCount = count('second');
+            const restoreCount = count('first');
             await restoreHtmlViewer(source.sessionId);
-            await loaded('second', restoreCount);
+            await loaded('first', restoreCount);
             assert.strictEqual(panels.length, 2);
             assert.strictEqual(panels[1].title, 'HTML Viewer');
-            assert.ok(panels[1].webview.html.includes('2 / 2'));
+            assert.ok(panels[1].webview.html.includes('1 / 1'));
         } finally {
             panels.forEach(panel => { panel.dispose(); });
             await shutdownHtmlWidgetViewers();

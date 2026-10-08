@@ -36,7 +36,7 @@ function escapeHtml(text: string): string {
 async function renderWidget(entry: WidgetViewer): Promise<void> {
     const generation = ++entry.revision;
     const item = entry.state.history[entry.state.index];
-    const dir = path.dirname(item.file);
+    const dir = item ? path.dirname(item.file) : path.join(extensionContext.extensionPath, 'dist/webviews/webview');
     const { panel } = entry;
     const resourceRoots = [
         Uri.file(dir),
@@ -46,7 +46,7 @@ async function renderWidget(entry: WidgetViewer): Promise<void> {
     const toolbar = entry.session ? {
         index: entry.state.index, count: entry.state.history.length, generation, sessionHtml: entry.session.getHtml(),
     } : undefined;
-    const html = await getWebviewHtml(panel.webview, item.file, item.title, dir, toolbar);
+    const html = await getWebviewHtml(panel.webview, item?.file, item?.title ?? htmlViewerTitle, dir, toolbar);
     if (!entry.disposed && entry.revision === generation) {
         panel.title = htmlViewerTitle;
         panel.webview.options = { ...panel.webview.options, localResourceRoots: resourceRoots };
@@ -187,6 +187,14 @@ class HtmlWidgetViewerManager {
                 const pending = this.save(entry);
                 await renderWidget(entry);
                 await pending;
+            } else if (msg.message === 'widget/remove' && session && !entry.disposed &&
+                msg.generation === entry.revision && entry.state.index >= 0 && entry.state.index < entry.state.history.length) {
+                entry.state.history.splice(entry.state.index, 1);
+                // Prefer the previous output; deleting the first selects the next.
+                entry.state.index = entry.state.history.length ? Math.max(0, entry.state.index - 1) : -1;
+                const pending = this.save(entry);
+                await renderWidget(entry);
+                await pending;
             }
         });
         return entry;
@@ -208,7 +216,7 @@ class HtmlWidgetViewerManager {
 }
 
 export async function getWebviewHtml(
-    webview: Webview, file: string, title: string, dir: string, toolbar?: WidgetToolbar,
+    webview: Webview, file: string | undefined, title: string, dir: string, toolbar?: WidgetToolbar,
 ): Promise<string> {
     // Resolve webview URIs before awaiting I/O; the panel may close while loading.
     const baseUri = String(webview.asWebviewUri(Uri.file(dir)));
@@ -216,12 +224,14 @@ export async function getWebviewHtml(
     const styleUri = webview.asWebviewUri(Uri.file(path.join(extensionContext.extensionPath, 'dist/webviews/webview/style.css')));
     const widgetScript = webview.asWebviewUri(Uri.file(path.join(extensionContext.extensionPath, 'dist/webviews/webview/widget.js')));
     const codicons = webview.asWebviewUri(Uri.file(path.join(extensionContext.extensionPath, 'dist/resources/codicon.css')));
-    let source: string;
-    try {
-        source = (await readContent(file, 'utf8') || '').toString();
-    } catch (error) {
-        if (!toolbar) { throw error; }
-        source = `<p role="alert">This HTML widget could not be loaded. Its original file may no longer be available.</p><pre>${escapeHtml(file)}</pre>`;
+    let source = '<p>No HTML outputs in this session. New HTML output will appear here.</p>';
+    if (file !== undefined) {
+        try {
+            source = (await readContent(file, 'utf8') || '').toString();
+        } catch (error) {
+            if (!toolbar) { throw error; }
+            source = `<p role="alert">This HTML widget could not be loaded. Its original file may no longer be available.</p><pre>${escapeHtml(file)}</pre>`;
+        }
     }
 
     // define the content security policy for the webview
@@ -257,9 +267,10 @@ export async function getWebviewHtml(
         </head>
         <body class="widget-viewer">
             <div id="widget-toolbar" role="toolbar" aria-label="HTML widget navigation" data-generation="${toolbar.generation}">
-                <button id="widget-back" type="button" title="Back (Alt+Left)" aria-label="Previous HTML widget" ${toolbar.index === 0 ? 'disabled' : ''}><span class="codicon codicon-arrow-left" aria-hidden="true"></span></button>
+                <button id="widget-back" type="button" title="Back (Alt+Left)" aria-label="Previous HTML widget" ${toolbar.index <= 0 ? 'disabled' : ''}><span class="codicon codicon-arrow-left" aria-hidden="true"></span></button>
                 <button id="widget-forward" type="button" title="Forward (Alt+Right)" aria-label="Next HTML widget" ${toolbar.index === toolbar.count - 1 ? 'disabled' : ''}><span class="codicon codicon-arrow-right" aria-hidden="true"></span></button>
                 <span id="widget-position" role="status">${toolbar.index + 1} / ${toolbar.count}</span>
+                <button id="widget-remove" type="button" title="Remove current HTML output from history" aria-label="Remove current HTML output from history" ${toolbar.count === 0 ? 'disabled' : ''}><span class="codicon codicon-error" aria-hidden="true"></span></button>
                 <span id="widget-session-info">${toolbar.sessionHtml}</span>
             </div>
             <iframe id="widget-frame" title="${escapeHtml(title)}" sandbox="allow-scripts allow-same-origin allow-forms allow-downloads" data-widget-document="${escapeHtml(widget)}"></iframe>

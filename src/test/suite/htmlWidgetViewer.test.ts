@@ -100,7 +100,14 @@ suite('Session-aware HTML widget Viewer', () => {
         });
     }
 
-    function disabled(panel: vscode.WebviewPanel, button: 'back' | 'forward'): boolean {
+    async function remove(panel: vscode.WebviewPanel, generation?: number): Promise<void> {
+        await receivers.get(panel)!({
+            message: 'widget/remove',
+            generation: generation ?? Number(/data-generation="(\d+)"/.exec(panel.webview.html)?.[1]),
+        });
+    }
+
+    function disabled(panel: vscode.WebviewPanel, button: 'back' | 'forward' | 'remove'): boolean {
         return new RegExp(`<button id="widget-${button}"[^>]*\\bdisabled`).test(panel.webview.html);
     }
 
@@ -218,6 +225,106 @@ suite('Session-aware HTML widget Viewer', () => {
         assert.ok(panels[0].webview.html.includes('3 / 3'));
         await navigate(panels[0], 'back');
         assert.strictEqual(outputTitle(panels[0]), 'B');
+        await navigate(panels[0], 'back');
+        assert.strictEqual(outputTitle(panels[0]), 'A');
+    });
+
+    test('removing a middle output preserves other sessions and remaining Back/Forward history', async () => {
+        const source = owner('html-remove-middle');
+        const other = owner('html-remove-other');
+        await show('/tmp/a.html', source, 'A');
+        await show('/tmp/b.html', source, 'B');
+        await show('/tmp/c.html', source, 'C');
+        await show('/tmp/other.html', other, 'Other');
+        const otherHtml = panels[1].webview.html;
+        await navigate(panels[0], 'back');
+        await remove(panels[0]);
+        assert.strictEqual(outputTitle(panels[0]), 'A');
+        assert.ok(panels[0].webview.html.includes('1 / 2'));
+        assert.ok(disabled(panels[0], 'back') && !disabled(panels[0], 'forward'));
+        assert.ok(panels[0].webview.html.includes('codicon-error'));
+        await navigate(panels[0], 'forward');
+        assert.strictEqual(outputTitle(panels[0]), 'C');
+        assert.strictEqual(panels[1].webview.html, otherHtml);
+        const stored = savedState.get(widgetHistoryKey) as WidgetHistory[];
+        assert.deepStrictEqual(stored.find(record => record.source.sessionId === source.sessionId)?.history.map(item => item.title), ['A', 'C']);
+    });
+
+    test('removing the first and last outputs selects the remaining neighbor', async () => {
+        const source = owner('html-remove-boundaries');
+        await show('/tmp/a.html', source, 'A');
+        await show('/tmp/b.html', source, 'B');
+        await show('/tmp/c.html', source, 'C');
+        await navigate(panels[0], 'back');
+        await navigate(panels[0], 'back');
+        await remove(panels[0]);
+        assert.strictEqual(outputTitle(panels[0]), 'B');
+        assert.ok(panels[0].webview.html.includes('1 / 2'));
+        await navigate(panels[0], 'forward');
+        await remove(panels[0]);
+        assert.strictEqual(outputTitle(panels[0]), 'B');
+        assert.ok(panels[0].webview.html.includes('1 / 1'));
+        assert.ok(disabled(panels[0], 'back') && disabled(panels[0], 'forward'));
+    });
+
+    test('removing the last entry clears persisted history and keeps an empty Viewer ready for new output', async () => {
+        const source = owner('html-remove-empty');
+        await show('/tmp/a.html', source, 'A');
+        await remove(panels[0]);
+        assert.strictEqual(panels[0].title, 'HTML Viewer');
+        assert.ok(widgetDocument(panels[0]).includes('No HTML outputs in this session'));
+        assert.ok(panels[0].webview.html.includes('0 / 0'));
+        assert.ok((['back', 'forward', 'remove'] as const).every(button => disabled(panels[0], button)));
+        assert.deepStrictEqual(savedState.get(widgetHistoryKey), []);
+        assert.strictEqual(read.callCount, 1, 'Empty history must not reload the deleted file');
+        await remove(panels[0]);
+        await navigate(panels[0], 'back');
+        await navigate(panels[0], 'forward');
+        assert.strictEqual(read.callCount, 1);
+        await show('/tmp/b.html', source, 'B');
+        assert.strictEqual(panels.length, 1);
+        assert.strictEqual(outputTitle(panels[0]), 'B');
+        assert.ok(panels[0].webview.html.includes('1 / 1'));
+        assert.ok(!disabled(panels[0], 'remove'));
+    });
+
+    test('removed entries stay removed after closing, extension-host recreation, and restoration', async () => {
+        const source = owner('html-remove-reload');
+        await show('/tmp/a.html', source, 'A');
+        await show('/tmp/b.html', source, 'B');
+        await remove(panels[0]);
+        panels[0].dispose();
+        await shutdownHtmlWidgetViewers();
+        initializeHtmlWidgetViewers(extensionContext);
+        await restoreHtmlViewer(source.sessionId);
+        assert.strictEqual(outputTitle(panels[1]), 'A');
+        assert.ok(panels[1].webview.html.includes('1 / 1'));
+        await remove(panels[1]);
+        panels[1].dispose();
+        await shutdownHtmlWidgetViewers();
+        initializeHtmlWidgetViewers(extensionContext);
+        const information = sandbox.stub(vscode.window, 'showInformationMessage');
+        await restoreHtmlViewer(source.sessionId);
+        assert.strictEqual(panels.length, 2, 'Deleted history must not reopen a Viewer');
+        sinon.assert.calledOnce(information);
+    });
+
+    test('late removal renders and stale remove messages cannot replace or delete newer output', async () => {
+        const source = owner('html-remove-stale');
+        await show('/tmp/a.html', source, 'A');
+        await show('/tmp/b.html', source, 'B');
+        const generation = Number(/data-generation="(\d+)"/.exec(panels[0].webview.html)?.[1]);
+        const slow = deferred<string>();
+        read.onCall(2).returns(slow.promise);
+        const pending = remove(panels[0]);
+        await show('/tmp/c.html', source, 'C');
+        const latest = panels[0].webview.html;
+        slow.resolve('<div>A</div>');
+        await pending;
+        await remove(panels[0], generation);
+        assert.strictEqual(panels[0].webview.html, latest);
+        assert.strictEqual(outputTitle(panels[0]), 'C');
+        assert.ok(panels[0].webview.html.includes('2 / 2'));
         await navigate(panels[0], 'back');
         assert.strictEqual(outputTitle(panels[0]), 'A');
     });
