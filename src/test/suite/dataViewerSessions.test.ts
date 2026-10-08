@@ -1,4 +1,5 @@
 import * as assert from 'assert';
+import fs from 'fs-extra';
 import * as net from 'net';
 import * as os from 'os';
 import * as path from 'path';
@@ -7,7 +8,7 @@ import * as vscode from 'vscode';
 import * as extension from '../../extension';
 import * as session from '../../session';
 import * as util from '../../util';
-import { restoreHtmlViewer, shutdownHtmlWidgetViewers } from '../../webViewer';
+import { initializeHtmlWidgetViewers, restoreHtmlViewer, shutdownHtmlWidgetViewers } from '../../webViewer';
 import { mockExtensionContext } from '../common/mockvscode';
 
 interface Request {
@@ -47,6 +48,10 @@ suite('Viewer session ownership', () => {
         sandbox = sinon.createSandbox();
         const root = path.join(__dirname, '..', '..', '..');
         mockExtensionContext(root, sandbox);
+        initializeHtmlWidgetViewers(extension.extensionContext, {
+            resolveSession: source => session.getViewerSessionContext(source.sessionId, source)!,
+            getActiveSessionId: () => session.activeSession?.sessionId,
+        });
         sandbox.stub(extension, 'enableSessionWatcher').value(true);
         sandbox.stub(util, 'config').returns({
             get: (_key: string, defaultValue: unknown) => defaultValue,
@@ -146,7 +151,8 @@ suite('Viewer session ownership', () => {
     }
 
     test('HTML widget notifications use their source session while another session is active', async () => {
-        sandbox.stub(util, 'readContent').callsFake(file => Promise.resolve(`<div>${String(file)}</div>`));
+        const read: sinon.SinonStub = sandbox.stub(fs, 'readFile');
+        read.callsFake(file => Promise.resolve(`<div>${String(file)}</div>`));
         const first = await attach('html-source', '12101', '4.6.1');
         const second = await attach('html-active', '12102', '4.6.2');
         assert.strictEqual(session.activeSession?.sessionId, second.id);
@@ -172,7 +178,8 @@ suite('Viewer session ownership', () => {
     }
 
     test('page_viewer and browser HTML share widget history, source ownership, and restoration', async () => {
-        sandbox.stub(util, 'readContent').callsFake(file => Promise.resolve(`<div>${String(file)}</div>`));
+        const read: sinon.SinonStub = sandbox.stub(fs, 'readFile');
+        read.callsFake(file => Promise.resolve(`<div>${String(file)}</div>`));
         const source = await attach('html-mixed-source', '12101', '4.6.1');
         const other = await attach('html-mixed-active', '12102', '4.6.2');
         notify(source, 'webview', { url: '/tmp/widget.html', title: 'Widget' });
@@ -217,7 +224,8 @@ suite('Viewer session ownership', () => {
     });
 
     test('server URLs from every HTML route use Simple Browser and stay outside widget history', async () => {
-        sandbox.stub(util, 'readContent').resolves('<div>Widget</div>');
+        const read: sinon.SinonStub = sandbox.stub(fs, 'readFile');
+        read.resolves('<div>Widget</div>');
         const source = await attach('html-server-source', '12101', '4.6.1');
         notify(source, 'webview', { url: '/tmp/widget.html' });
         await waitFor(() => panels.length === 1 && panels[0].panel.webview.html.includes('1 / 1'));
@@ -243,7 +251,8 @@ suite('Viewer session ownership', () => {
             get: (key: string, fallback: unknown) => key === 'session.viewers.viewColumn'
                 ? { viewer: 'Two', pageViewer: 'Disable', browser: 'Disable' } : fallback,
         });
-        sandbox.stub(util, 'readContent').resolves('<div>Widget</div>');
+        const read: sinon.SinonStub = sandbox.stub(fs, 'readFile');
+        read.resolves('<div>Widget</div>');
         const external = sandbox.stub(vscode.env, 'openExternal').resolves(true);
         const source = await attach('html-disabled-routes', '12101', '4.6.1');
         notify(source, 'webview', { url: '/tmp/widget.html' });

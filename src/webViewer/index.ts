@@ -1,12 +1,15 @@
 'use strict';
 
 import * as path from 'path';
-import { ExtensionContext, Uri, ViewColumn, Webview, WebviewPanel, window, env, commands } from 'vscode';
-import { config, readContent, UriIcon } from '../util';
-import { extensionContext } from '../extension';
-import { ViewerSessionContext, viewerSessionStyle } from '../viewerSession';
-import { activeSession, getViewerSessionContext } from '../session';
+import { readFile } from 'fs-extra';
+import { ExtensionContext, Uri, ViewColumn, Webview, WebviewPanel, window, env, commands, workspace } from 'vscode';
+import { ViewerSessionContext, ViewerSessionSource, viewerSessionStyle } from '../viewerSession';
 import { WidgetHistory, WidgetHistoryStore, widgetHistoryLimit } from './history';
+
+export interface HtmlViewerSessionAccess {
+    resolveSession(source: ViewerSessionSource): ViewerSessionContext;
+    getActiveSessionId(): string | undefined;
+}
 
 interface WidgetViewer {
     panel: WebviewPanel;
@@ -34,14 +37,15 @@ function escapeHtml(text: string): string {
 }
 
 async function renderWidget(entry: WidgetViewer): Promise<void> {
+    const { extensionPath } = getManager().context;
     const generation = ++entry.revision;
     const item = entry.state.history[entry.state.index];
-    const dir = item ? path.dirname(item.file) : path.join(extensionContext.extensionPath, 'dist/webviews/webview');
+    const dir = item ? path.dirname(item.file) : path.join(extensionPath, 'dist/webviews/webview');
     const { panel } = entry;
     const resourceRoots = [
         Uri.file(dir),
-        Uri.file(path.join(extensionContext.extensionPath, 'dist/webviews/webview')),
-        Uri.file(path.join(extensionContext.extensionPath, 'dist/resources')),
+        Uri.file(path.join(extensionPath, 'dist/webviews/webview')),
+        Uri.file(path.join(extensionPath, 'dist/resources')),
     ];
     const toolbar = entry.session ? {
         index: entry.state.index, count: entry.state.history.length, generation, sessionHtml: entry.session.getHtml(),
@@ -56,16 +60,18 @@ async function renderWidget(entry: WidgetViewer): Promise<void> {
 }
 
 /** Initialize retained history once per extension host, including closed Viewer tabs. */
-export function initializeHtmlWidgetViewers(context: ExtensionContext): HtmlWidgetViewerManager {
+export function initializeHtmlWidgetViewers(
+    context: ExtensionContext, sessions: HtmlViewerSessionAccess,
+): HtmlWidgetViewerManager {
     manager?.dispose();
-    manager = new HtmlWidgetViewerManager(context);
+    manager = new HtmlWidgetViewerManager(context, sessions);
     context.subscriptions.push(manager);
     return manager;
 }
 
 function getManager(): HtmlWidgetViewerManager {
-    if (!manager || manager.disposed || manager.context !== extensionContext) {
-        return initializeHtmlWidgetViewers(extensionContext);
+    if (!manager || manager.disposed) {
+        throw new Error('HTML Viewer has not been initialized.');
     }
     return manager;
 }
@@ -94,9 +100,8 @@ class HtmlWidgetViewerManager {
     readonly viewers = new Map<string, WidgetViewer>();
     disposed = false;
 
-    constructor(readonly context: ExtensionContext) {
-        this.histories = new WidgetHistoryStore(context.workspaceState,
-            source => getViewerSessionContext(source.sessionId, source)!);
+    constructor(readonly context: ExtensionContext, private readonly sessions: HtmlViewerSessionAccess) {
+        this.histories = new WidgetHistoryStore(context.workspaceState, source => sessions.resolveSession(source));
     }
 
     async show(file: string, title: string, viewer: string | boolean, session?: ViewerSessionContext): Promise<void> {
@@ -113,14 +118,15 @@ class HtmlWidgetViewerManager {
     async restore(sessionId?: string): Promise<void> {
         // Polling can discover an exit while the session picker is open.
         const available = [...this.histories.entries.values()].filter(record => {
-            if (getViewerSessionContext(record.source.sessionId, record.source)!.hasExited) {
+            if (this.sessions.resolveSession(record.source).hasExited) {
                 this.histories.forget(record.source.sessionId);
                 return false;
             }
             return record.history.length > 0;
         });
+        const activeSessionId = sessionId ? undefined : this.sessions.getActiveSessionId();
         let record = sessionId ? this.histories.entries.get(sessionId) :
-            available.find(item => item.source.sessionId === activeSession?.sessionId);
+            available.find(item => item.source.sessionId === activeSessionId);
         if (!record && !sessionId) {
             if (available.length === 1) { record = available[0]; }
             else if (available.length > 1) {
@@ -138,14 +144,14 @@ class HtmlWidgetViewerManager {
             void window.showInformationMessage('No retained HTML Viewer history is available for this session.');
             return;
         }
-        const session = getViewerSessionContext(record.source.sessionId, record.source)!;
+        const session = this.sessions.resolveSession(record.source);
         if (session.hasExited) {
             this.histories.forget(session.sessionId);
             void window.showInformationMessage('This R session has exited; its HTML Viewer history is no longer available.');
             return;
         }
         const viewer = record.viewColumn ? ViewColumn[record.viewColumn] :
-            config().get<Record<string, string>>('session.viewers.viewColumn')?.viewer ?? 'Two';
+            workspace.getConfiguration('r').get<Record<string, string>>('session.viewers.viewColumn')?.viewer ?? 'Two';
         // Explicit restoration opens a Viewer even if automatic viewing is disabled.
         const entry = this.open(viewer, session, record);
         const pending = this.save(entry);
@@ -172,7 +178,11 @@ class HtmlWidgetViewerManager {
             if (sessionId && this.viewers.get(sessionId) === entry) { this.viewers.delete(sessionId); }
         });
         panel.onDidChangeViewState(() => { if (!entry.disposed) { void this.save(entry); } });
-        panel.iconPath = new UriIcon('globe');
+        const iconPath = this.context.asAbsolutePath('images/icons');
+        panel.iconPath = {
+            dark: Uri.file(path.join(iconPath, 'dark', 'globe.svg')),
+            light: Uri.file(path.join(iconPath, 'light', 'globe.svg')),
+        };
         session?.attach(panel);
         panel.webview.onDidReceiveMessage(async (msg: {
             message: string; href?: string; direction?: string; generation?: number;
@@ -223,16 +233,17 @@ class HtmlWidgetViewerManager {
 export async function getWebviewHtml(
     webview: Webview, file: string | undefined, title: string, dir: string, toolbar?: WidgetToolbar,
 ): Promise<string> {
+    const { extensionPath } = getManager().context;
     // Resolve webview URIs before awaiting I/O; the panel may close while loading.
     const baseUri = String(webview.asWebviewUri(Uri.file(dir)));
-    const scriptUri = webview.asWebviewUri(Uri.file(path.join(extensionContext.extensionPath, 'dist/webviews/webview/index.js')));
-    const styleUri = webview.asWebviewUri(Uri.file(path.join(extensionContext.extensionPath, 'dist/webviews/webview/style.css')));
-    const widgetScript = webview.asWebviewUri(Uri.file(path.join(extensionContext.extensionPath, 'dist/webviews/webview/widget.js')));
-    const codicons = webview.asWebviewUri(Uri.file(path.join(extensionContext.extensionPath, 'dist/resources/codicon.css')));
+    const scriptUri = webview.asWebviewUri(Uri.file(path.join(extensionPath, 'dist/webviews/webview/index.js')));
+    const styleUri = webview.asWebviewUri(Uri.file(path.join(extensionPath, 'dist/webviews/webview/style.css')));
+    const widgetScript = webview.asWebviewUri(Uri.file(path.join(extensionPath, 'dist/webviews/webview/widget.js')));
+    const codicons = webview.asWebviewUri(Uri.file(path.join(extensionPath, 'dist/resources/codicon.css')));
     let source = '<p>No HTML outputs in this session. New HTML output will appear here.</p>';
     if (file !== undefined) {
         try {
-            source = (await readContent(file, 'utf8') || '').toString();
+            source = await readFile(file, 'utf8');
         } catch (error) {
             if (!toolbar) { throw error; }
             source = `<p role="alert">This HTML widget could not be loaded. Its original file may no longer be available.</p><pre>${escapeHtml(file)}</pre>`;

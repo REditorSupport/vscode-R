@@ -5,7 +5,8 @@ import * as path from 'path';
 import * as sinon from 'sinon';
 import * as vscode from 'vscode';
 import * as session from '../../session';
-import { restoreHtmlViewer, showWebView, shutdownHtmlWidgetViewers } from '../../webViewer';
+import { initializeHtmlWidgetViewers, restoreHtmlViewer, showWebView, shutdownHtmlWidgetViewers } from '../../webViewer';
+import { extensionContext } from '../../extension';
 import { mockExtensionContext } from '../common/mockvscode';
 import { waitForValue } from '../common/sessionConnections';
 
@@ -20,6 +21,10 @@ suite('HTML widget browser rendering', () => {
         source.pid = '12103'; source.rVer = '4.6.1';
         try {
             mockExtensionContext(path.resolve(__dirname, '../../..'), sandbox);
+            initializeHtmlWidgetViewers(extensionContext, {
+                resolveSession: source => session.getViewerSessionContext(source.sessionId, source)!,
+                getActiveSessionId: () => session.activeSession?.sessionId,
+            });
             const createPanel = vscode.window.createWebviewPanel.bind(vscode.window);
             sandbox.stub(vscode.window, 'createWebviewPanel').callsFake((...args) => {
                 const panel = createPanel(...args); panels.push(panel); return panel;
@@ -84,6 +89,10 @@ suite('HTML widget browser rendering', () => {
         source.pid = '12102'; source.rVer = '4.6.1';
         try {
             mockExtensionContext(path.resolve(__dirname, '../../..'), sandbox);
+            initializeHtmlWidgetViewers(extensionContext, {
+                resolveSession: source => session.getViewerSessionContext(source.sessionId, source)!,
+                getActiveSessionId: () => session.activeSession?.sessionId,
+            });
             const createPanel = vscode.window.createWebviewPanel.bind(vscode.window);
             sandbox.stub(vscode.window, 'createWebviewPanel').callsFake((...args) => {
                 const panel = createPanel(...args); panels.push(panel); return panel;
@@ -155,6 +164,10 @@ suite('HTML widget browser rendering', () => {
         source.pid = '12101'; source.rVer = '4.6.1';
         try {
             mockExtensionContext(path.resolve(__dirname, '../../..'), sandbox);
+            initializeHtmlWidgetViewers(extensionContext, {
+                resolveSession: source => session.getViewerSessionContext(source.sessionId, source)!,
+                getActiveSessionId: () => session.activeSession?.sessionId,
+            });
             const createPanel = vscode.window.createWebviewPanel.bind(vscode.window);
             sandbox.stub(vscode.window, 'createWebviewPanel').callsFake((...args) => {
                 const panel = createPanel(...args); panels.push(panel); return panel;

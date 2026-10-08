@@ -67,7 +67,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
 
     // assign extension context to global variable
     extensionContext = context;
-    initializeHtmlWidgetViewers(context);
+    initializeHtmlWidgetViewers(context, {
+        resolveSession: source => session.getViewerSessionContext(source.sessionId, source)!,
+        getActiveSessionId: () => session.activeSession?.sessionId,
+    });
 
     // assign session watcher setting to global variable
     enableSessionWatcher = util.config().get<boolean>('sessionWatcher') ?? false;

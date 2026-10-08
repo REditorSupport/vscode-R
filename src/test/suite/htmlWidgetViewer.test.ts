@@ -1,10 +1,10 @@
 import * as assert from 'assert';
+import fs from 'fs-extra';
 import * as path from 'path';
 import * as sinon from 'sinon';
 import * as vscode from 'vscode';
 import * as session from '../../session';
-import * as util from '../../util';
-import { initializeHtmlWidgetViewers, restoreHtmlViewer, showWebView, shutdownHtmlWidgetViewers } from '../../webViewer';
+import { HtmlViewerSessionAccess, initializeHtmlWidgetViewers, restoreHtmlViewer, showWebView, shutdownHtmlWidgetViewers } from '../../webViewer';
 import { extensionContext } from '../../extension';
 import { widgetHistoryKey, WidgetHistory } from '../../webViewer/history';
 import { mockExtensionContext } from '../common/mockvscode';
@@ -17,6 +17,10 @@ suite('Session-aware HTML widget Viewer', () => {
     const panels: vscode.WebviewPanel[] = [];
     const receivers = new Map<vscode.WebviewPanel, (message: unknown) => Promise<void>>();
     const savedState = new Map<string, unknown>();
+    const viewerSessions: HtmlViewerSessionAccess = {
+        resolveSession: source => session.getViewerSessionContext(source.sessionId, source)!,
+        getActiveSessionId: () => session.activeSession?.sessionId,
+    };
 
     setup(() => {
         sandbox = sinon.createSandbox();
@@ -27,7 +31,9 @@ suite('Session-aware HTML widget Viewer', () => {
             savedState.set(key, JSON.parse(JSON.stringify(value)));
             return Promise.resolve();
         });
-        read = sandbox.stub(util, 'readContent').callsFake(file => Promise.resolve(
+        initializeHtmlWidgetViewers(extensionContext, viewerSessions);
+        read = sandbox.stub(fs, 'readFile');
+        read.callsFake(file => Promise.resolve(
             `<div>${String(file)}</div><script src="lib/widget.js"></script>`));
         sandbox.stub(vscode.window, 'createWebviewPanel').callsFake((_type, title, _column, options) => {
             const disposed = new vscode.EventEmitter<void>();
@@ -110,6 +116,37 @@ suite('Session-aware HTML widget Viewer', () => {
     function disabled(panel: vscode.WebviewPanel, button: 'back' | 'forward' | 'remove'): boolean {
         return new RegExp(`<button id="widget-${button}"[^>]*\\bdisabled`).test(panel.webview.html);
     }
+
+    test('uses the initialized extension context for both globe icon themes', async () => {
+        const context = {
+            ...extensionContext,
+            asAbsolutePath: (relative: string) => path.join('/viewer-extension', relative),
+        };
+        initializeHtmlWidgetViewers(context, viewerSessions);
+        await show('/tmp/icon.html', owner('html-icon'));
+        assert.deepStrictEqual(panels[0].iconPath, {
+            dark: vscode.Uri.file(path.join('/viewer-extension', 'images/icons/dark/globe.svg')),
+            light: vscode.Uri.file(path.join('/viewer-extension', 'images/icons/light/globe.svg')),
+        });
+    });
+
+    test('restoration reads the configured editor group and defaults to Two when none is set', async () => {
+        const source = owner('html-restore-view-column');
+        const configuration = sandbox.stub(vscode.workspace, 'getConfiguration');
+        await show('/tmp/view-column.html', source);
+        for (const viewer of [undefined, 'Three']) {
+            await shutdownHtmlWidgetViewers();
+            const records = savedState.get(widgetHistoryKey) as WidgetHistory[];
+            delete records[0].viewColumn;
+            configuration.withArgs('r').returns({
+                get: (key: string) => key === 'session.viewers.viewColumn' && viewer ? { viewer } : undefined,
+            } as vscode.WorkspaceConfiguration);
+            initializeHtmlWidgetViewers(extensionContext, viewerSessions);
+            await restoreHtmlViewer(source.sessionId);
+            const options = (vscode.window.createWebviewPanel as sinon.SinonStub).lastCall.args[2] as { viewColumn: vscode.ViewColumn };
+            assert.strictEqual(options.viewColumn, viewer ? vscode.ViewColumn.Three : vscode.ViewColumn.Two);
+        }
+    });
 
     test('reuses one panel per session and updates widget dependencies without moving its editor group', async () => {
         const first = owner('html-first');
@@ -320,14 +357,14 @@ suite('Session-aware HTML widget Viewer', () => {
         await remove(panels[0]);
         panels[0].dispose();
         await shutdownHtmlWidgetViewers();
-        initializeHtmlWidgetViewers(extensionContext);
+        initializeHtmlWidgetViewers(extensionContext, viewerSessions);
         await restoreHtmlViewer(source.sessionId);
         assert.strictEqual(outputTitle(panels[1]), 'A');
         assert.ok(panels[1].webview.html.includes('1 / 1'));
         await remove(panels[1]);
         panels[1].dispose();
         await shutdownHtmlWidgetViewers();
-        initializeHtmlWidgetViewers(extensionContext);
+        initializeHtmlWidgetViewers(extensionContext, viewerSessions);
         const information = sandbox.stub(vscode.window, 'showInformationMessage');
         await restoreHtmlViewer(source.sessionId);
         assert.strictEqual(panels.length, 2, 'Deleted history must not reopen a Viewer');
@@ -433,7 +470,7 @@ suite('Session-aware HTML widget Viewer', () => {
         await navigate(panels[0], 'back');
         await shutdownHtmlWidgetViewers();
         session.unregisterSessionTransport(source);
-        initializeHtmlWidgetViewers(extensionContext);
+        initializeHtmlWidgetViewers(extensionContext, viewerSessions);
         const reconnected = owner(source.sessionId);
         reconnected.pid = source.pid;
         await restoreHtmlViewer(source.sessionId);
@@ -459,6 +496,30 @@ suite('Session-aware HTML widget Viewer', () => {
         assert.strictEqual(outputTitle(panels[1]), 'Detached widget');
         assert.ok(panels[1].webview.html.includes(`R 4.6.1: ${source.pid}`));
         assert.ok(!panels[1].webview.html.includes(`R 4.6.1: ${other.pid}`));
+    });
+
+    test('restoration follows the injected active session and resolves the saved process', async () => {
+        const first = owner('html-injected-first');
+        const second = owner('html-injected-second');
+        await show('/tmp/first.html', first, 'First');
+        await show('/tmp/second.html', second, 'Second');
+        panels.forEach(panel => { panel.dispose(); });
+        const active = sandbox.stub(viewerSessions, 'getActiveSessionId').returns(first.sessionId);
+        const resolve = sandbox.spy(viewerSessions, 'resolveSession');
+        const pick = sandbox.stub(vscode.window, 'showQuickPick');
+        sandbox.stub(session, 'activeSession').value(undefined);
+
+        await restoreHtmlViewer();
+        assert.strictEqual(outputTitle(panels[2]), 'First');
+        assert.strictEqual(resolve.lastCall.args[0].sessionId, first.sessionId);
+        assert.strictEqual(resolve.lastCall.args[0].pid, first.pid);
+
+        active.returns(second.sessionId);
+        await restoreHtmlViewer();
+        assert.strictEqual(outputTitle(panels[3]), 'Second');
+        assert.strictEqual(resolve.lastCall.args[0].sessionId, second.sessionId);
+        assert.strictEqual(resolve.lastCall.args[0].pid, second.pid);
+        sinon.assert.notCalled(pick);
     });
 
     test('command chooses among retained sessions when none is active', async () => {
