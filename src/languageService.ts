@@ -23,6 +23,15 @@ interface SessionWorkspaceData {
     loaded_namespaces: string[];
 }
 
+interface ClientSessionSync {
+    state: SessionState;
+    stateKey: string;
+    syncedStateKey?: string;
+    replay: number;
+    syncedReplay?: number;
+    pending?: Promise<void>;
+}
+
 export class LanguageService implements Disposable {
     private readonly clients: Map<string, LanguageClient> = new Map();
     private readonly initSet: Set<string> = new Set();
@@ -34,6 +43,7 @@ export class LanguageService implements Disposable {
     private disposed = false;
     private readonly clientScopes: Map<string, string> = new Map();
     private readonly sessionStates: Map<string, { state: SessionState; stateKey: string; sessionId: string }> = new Map();
+    private readonly clientSessionSync = new WeakMap<LanguageClient, ClientSessionSync>();
 
     constructor() {
         this.outputChannel = window.createOutputChannel('R Language Server', { log: true });
@@ -60,14 +70,11 @@ export class LanguageService implements Disposable {
     private syncSessionScope(scope: string, data: SessionWorkspaceData | undefined, sessionId: string): void {
         const current = this.sessionStates.get(scope);
         if (!data) {
-            if (!current || (sessionId && current.sessionId !== sessionId)) {
+            if (current && sessionId && current.sessionId !== sessionId) {
                 return;
             }
             this.sessionStates.delete(scope);
-            this.applySessionStateToScope(scope, {
-                attachedPackages: [],
-                loadedNamespaces: [],
-            });
+            this.applySessionStateToScope(scope);
             return;
         }
 
@@ -75,30 +82,80 @@ export class LanguageService implements Disposable {
             attachedPackages: data.search
                 .filter(value => value.startsWith('package:'))
                 .map(value => value.substring(8)),
-            loadedNamespaces: data.loaded_namespaces,
+            loadedNamespaces: [...data.loaded_namespaces],
         };
         const stateKey = this.getSessionStateKey(state);
-        if (current?.stateKey === stateKey && current.sessionId === sessionId) {
-            return;
+        if (current?.stateKey !== stateKey || current.sessionId !== sessionId) {
+            this.sessionStates.set(scope, { state, stateKey, sessionId });
         }
-
-        this.sessionStates.set(scope, { state, stateKey, sessionId });
-        this.applySessionStateToScope(scope, state);
+        // An unchanged refresh can retry delivery to a client that failed.
+        this.applySessionStateToScope(scope);
     }
 
-    private applySessionStateToScope(scope: string, state: SessionState): void {
-        for (const [key, client] of this.clients) {
+    private applySessionStateToScope(scope: string): void {
+        for (const key of this.clients.keys()) {
             if (this.clientScopes.get(key) === scope) {
-                void this.applySessionState(client, state);
+                void this.syncClientSessionState(key);
             }
         }
     }
 
-    private async applySessionState(client: LanguageClient, state: SessionState): Promise<void> {
-        try {
-            await client.sendRequest('r/syncSessionState', state);
-        } catch {
-            // Keep language-service features available if session synchronization fails.
+    private syncClientSessionState(key: string, force = false): Promise<void> {
+        const client = this.clients.get(key);
+        const scope = this.clientScopes.get(key);
+        if (!client || scope === undefined || this.disposed) {
+            return Promise.resolve();
+        }
+        let sync = this.clientSessionSync.get(client);
+        const state = this.sessionStates.get(scope)?.state
+            // Retain a disconnect clear on the client until it is acknowledged.
+            ?? (sync ? { attachedPackages: [], loadedNamespaces: [] } : undefined);
+        if (!state) { return Promise.resolve(); }
+        const stateKey = this.getSessionStateKey(state);
+        if (!sync) {
+            sync = { state, stateKey, replay: 0 };
+            this.clientSessionSync.set(client, sync);
+        } else {
+            sync.state = state;
+            sync.stateKey = stateKey;
+        }
+        if (force) { sync.replay++; }
+        // Check in-flight work before acknowledged state: A -> B -> A must
+        // restore A after B completes, even if A was previously acknowledged.
+        if (sync.pending) { return sync.pending; }
+        if (sync.syncedStateKey === stateKey && sync.syncedReplay === sync.replay) {
+            return Promise.resolve();
+        }
+        const current = sync;
+        const pending: Promise<void> = this.deliverSessionState(key, client, current).then(failed => {
+            if (current.pending === pending) { current.pending = undefined; }
+            // A refresh can arrive after the delivery loop finishes but before
+            // this promise settles. Reconcile it without retrying a failure loop.
+            if (!this.disposed && this.clients.get(key) === client
+                && (current.syncedStateKey !== current.stateKey || current.syncedReplay !== current.replay)
+                && (!failed || failed.stateKey !== current.stateKey || failed.replay !== current.replay)) {
+                return this.syncClientSessionState(key);
+            }
+        });
+        current.pending = pending;
+        return pending;
+    }
+
+    private async deliverSessionState(key: string, client: LanguageClient, sync: ClientSessionSync):
+        Promise<{ stateKey: string; replay: number } | undefined> {
+        while (!this.disposed && this.clients.get(key) === client) {
+            if (sync.syncedStateKey === sync.stateKey && sync.syncedReplay === sync.replay) { return; }
+            const { state, stateKey, replay } = sync;
+            try {
+                await client.sendRequest('r/syncSessionState', state);
+                sync.syncedStateKey = stateKey;
+                sync.syncedReplay = replay;
+            } catch {
+                // A failed response may still have changed the server. Reconcile
+                // newer state, but leave an unchanged failure for the next event.
+                sync.syncedStateKey = undefined;
+                if (sync.stateKey === stateKey && sync.replay === replay) { return { stateKey, replay }; }
+            }
         }
     }
 
@@ -248,12 +305,13 @@ export class LanguageService implements Disposable {
                     didChangeWorkspaceFolders: async (event, next) => {
                         await next(event);
                         if (sessionScope === 'global') {
-                            const sessionState = this.sessionStates.get(sessionScope)?.state;
-                            if (sessionState) {
-                                await this.applySessionState(client, sessionState);
-                            }
+                            await this.syncClientSessionState(key, true);
                         }
                     },
+                },
+                provideCompletionItem: async (document, position, context, token, next) => {
+                    await this.syncClientSessionState(key);
+                    return next(document, position, context, token);
                 },
                 provideSignatureHelp: async (document, position, context, token, next) => {
                     const result = await next(document, position, context, token);
@@ -324,10 +382,7 @@ export class LanguageService implements Disposable {
     private async registerClient(key: string, client: LanguageClient, sessionScope: string): Promise<void> {
         this.clients.set(key, client);
         this.clientScopes.set(key, sessionScope);
-        const sessionState = this.sessionStates.get(sessionScope)?.state;
-        if (sessionState) {
-            await this.applySessionState(client, sessionState);
-        }
+        await this.syncClientSessionState(key);
     }
 
     private checkClient(name: string): boolean {
