@@ -238,7 +238,7 @@ class HtmlWidgetViewerManager {
             if (entry.disposed) { return; }
             if (msg.message === 'linkClicked' && msg.href) {
                 void env.openExternal(Uri.parse(msg.href));
-            } else if (msg.message === 'widget/find' && !entry.disposed && msg.generation === entry.revision) {
+            } else if (msg.message === 'widget/find' && msg.generation === entry.revision) {
                 panel.reveal(panel.viewColumn, false);
                 await commands.executeCommand('editor.action.webvieweditor.showFind');
             } else if (msg.message === 'widget/navigate' && msg.generation === entry.revision &&
@@ -386,7 +386,7 @@ class HtmlWidgetViewerManager {
     }
 }
 
-export async function getWebviewHtml(
+async function getWebviewHtml(
     webview: Webview, file: string | undefined, title: string, dir: string, sessionOwned = false, generation = 0, state?: HtmlViewerPanelReference,
 ): Promise<string> {
     const { extensionPath } = getManager().context;

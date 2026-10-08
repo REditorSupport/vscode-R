@@ -156,13 +156,9 @@ suite('Session-aware HTML widget Viewer', () => {
         }
     }
 
-    async function remove(panel: vscode.WebviewPanel, oldGeneration?: number): Promise<void> {
-        if (oldGeneration !== undefined) {
-            await receivers.get(panel)!({ message: 'widget/remove', generation: oldGeneration });
-        } else {
-            activate(panel);
-            await runHtmlViewerCommand('remove');
-        }
+    async function remove(panel: vscode.WebviewPanel): Promise<void> {
+        activate(panel);
+        await runHtmlViewerCommand('remove');
     }
 
     function disabled(panel: vscode.WebviewPanel, button: 'back' | 'forward' | 'remove'): boolean {
@@ -461,11 +457,10 @@ suite('Session-aware HTML widget Viewer', () => {
         sinon.assert.calledOnce(information);
     });
 
-    test('late removal renders and stale remove messages cannot replace or delete newer output', async () => {
+    test('late removal renders cannot replace or delete newer output', async () => {
         const source = owner('html-remove-stale');
         await show('/tmp/a.html', source, 'A');
         await show('/tmp/b.html', source, 'B');
-        const generation = Number(/data-generation="(\d+)"/.exec(panels[0].webview.html)?.[1]);
         const slow = deferred<string>();
         read.onCall(2).returns(slow.promise);
         const pending = remove(panels[0]);
@@ -473,7 +468,6 @@ suite('Session-aware HTML widget Viewer', () => {
         const latest = panels[0].webview.html;
         slow.resolve('<div>A</div>');
         await pending;
-        await remove(panels[0], generation);
         assert.strictEqual(panels[0].webview.html, latest);
         assert.strictEqual(outputTitle(panels[0]), 'C');
         assert.strictEqual(position(panels[0]), '2 / 2');
@@ -481,7 +475,7 @@ suite('Session-aware HTML widget Viewer', () => {
         assert.strictEqual(outputTitle(panels[0]), 'A');
     });
 
-    test('late history loads and stale toolbar messages cannot replace newer output', async () => {
+    test('late history loads and stale document navigation cannot replace newer output', async () => {
         const source = owner('html-history-stale');
         await show('/tmp/a.html', source, 'A');
         await show('/tmp/b.html', source, 'B');

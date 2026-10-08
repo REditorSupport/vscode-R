@@ -21,26 +21,11 @@ export interface VsCode {
  */
 export const acquireVsCodeApi: () => VsCode = (globalThis as { acquireVsCodeApi?: () => VsCode }).acquireVsCodeApi || (() => ({} as VsCode));
 
-export interface IMessage {
-    message: string;
-}
-
-export interface LogMessage extends IMessage {
-    message: 'log',
-    body: any
-}
-export interface MouseClickMessage extends IMessage {
-    message: 'mouseClick',
-    button: number,
-    scrollY: number
-}
-export interface LinkClickedMessage extends IMessage {
+export interface LinkClickedMessage {
     message: 'linkClicked',
-    href: string,
-    scrollY: number
+    href: string
 }
 
-export type OutMessage = LogMessage | MouseClickMessage | LinkClickedMessage
-    | { message: 'viewer-session/ready' }
+export type OutMessage = LinkClickedMessage
     | { message: 'widget/navigate'; direction: 'back' | 'forward'; generation: number }
     | { message: 'widget/find'; generation: number };

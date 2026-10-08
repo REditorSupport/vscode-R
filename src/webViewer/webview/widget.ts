@@ -22,7 +22,7 @@ export function initializeWidgetContent(vscode: VsCode, generation: number, sess
             else if (!fragment || fragment.toLowerCase() === 'top') { window.scrollTo(0, 0); }
         } else if (/^(https?:|mailto:)/i.test(href)) {
             event.preventDefault();
-            vscode.postMessage({ message: 'linkClicked', href: anchor.href, scrollY: window.scrollY });
+            vscode.postMessage({ message: 'linkClicked', href: anchor.href });
         }
     });
     document.addEventListener('mousedown', event => {
