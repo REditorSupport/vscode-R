@@ -1,5 +1,6 @@
 import * as assert from 'assert';
 import * as fs from 'fs-extra';
+import { rm } from 'node:fs/promises';
 import * as os from 'os';
 import * as path from 'path';
 import * as sinon from 'sinon';
@@ -101,7 +102,9 @@ suite('Session completion with real R language server', () => {
                 await client?.dispose();
             } finally {
                 sandbox.restore();
-                await fs.remove(root);
+                // TCP shutdown can finish before R releases its working directory
+                // on Windows. Retry transient locks instead of failing cleanup.
+                await rm(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
             }
         }
     }).timeout(60000);
