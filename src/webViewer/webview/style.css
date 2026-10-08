@@ -11,3 +11,71 @@ body {
     display: block;
     padding: 10px;
 }
+
+html:has(.widget-viewer), .widget-viewer {
+    height: 100%;
+    overflow: hidden;
+}
+
+.widget-viewer {
+    display: flex;
+    flex-direction: column;
+}
+
+#widget-toolbar {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    align-items: center;
+    flex-shrink: 0;
+    gap: 6px;
+    padding: 4px 8px;
+    border-bottom: 1px solid var(--vscode-panel-border);
+    background: var(--vscode-editor-background);
+    font: var(--vscode-font-size, 13px) var(--vscode-font-family, sans-serif);
+}
+
+#widget-toolbar button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    padding: 4px;
+    border: 1px solid transparent;
+    border-radius: 3px;
+    background: transparent;
+    color: var(--vscode-foreground);
+    cursor: pointer;
+}
+
+#widget-toolbar button:hover:not(:disabled) {
+    background: var(--vscode-toolbar-hoverBackground);
+}
+
+#widget-toolbar button:disabled {
+    opacity: .45;
+    cursor: default;
+}
+
+#widget-toolbar button:focus-visible {
+    outline: 1px solid var(--vscode-focusBorder);
+    outline-offset: -1px;
+}
+
+#widget-position {
+    color: var(--vscode-descriptionForeground);
+}
+
+#widget-session-info {
+    display: inline-flex;
+    margin-left: auto;
+}
+
+#widget-frame {
+    flex: 1;
+    min-height: 0;
+    width: 100%;
+    border: 0;
+    background: white;
+}

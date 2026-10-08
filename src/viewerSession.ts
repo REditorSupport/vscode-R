@@ -1,14 +1,70 @@
-// Shared by the standalone list and data viewers.
+import type { WebviewPanel } from 'vscode';
+import type { SessionProcessMonitor } from './sessionProcessMonitor';
+
+interface ViewerSessionSource {
+    sessionId: string;
+    host: string;
+    pid: string;
+    rVer: string;
+    processExited: boolean;
+}
+
+export interface ViewerSessionContext {
+    readonly sessionId: string;
+    getHtml(): string;
+    attach(panel: WebviewPanel): void;
+}
+
+// Shared by the standalone HTML, list and data viewers.
+export function createViewerSessionContext<Session extends ViewerSessionSource>(
+    owner: Session, monitor: SessionProcessMonitor<Session>,
+): ViewerSessionContext {
+    return {
+        sessionId: owner.sessionId,
+        getHtml: () => {
+            const exited = monitor.hasExited(owner);
+            if (!exited && (!owner.pid || !owner.rVer)) { return ''; }
+            const text = exited ? 'R: (not attached)' : formatSessionLabel(owner.rVer, owner.pid);
+            const info = text.replace(/[&<>"']/g, character => ({
+                '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+            })[character]!);
+            return `<span class="viewer-session" role="img" tabindex="0" aria-label="${info}" aria-describedby="viewer-session-tooltip"><span class="codicon codicon-info" aria-hidden="true"></span><span id="viewer-session-tooltip" class="viewer-session-tooltip" role="tooltip">${info}</span></span>`;
+        },
+        attach: panel => {
+            if (!monitor.hasExited(owner) && (!owner.pid || !owner.rVer)) { return; }
+            const attachedLabel = formatSessionLabel(owner.rVer, owner.pid);
+            const refresh = (force = false) => {
+                const text = source.exited ? 'R: (not attached)' : attachedLabel;
+                if (force || text !== lastLabel) {
+                    lastLabel = text;
+                    void panel.webview.postMessage({ message: 'viewer-session/update', text });
+                }
+            };
+            // Retain the originating process identity through detach and reconnect.
+            const source = monitor.observe(owner, refresh);
+            let lastLabel = source.exited ? 'R: (not attached)' : attachedLabel;
+            const received = panel.webview.onDidReceiveMessage((message: { message?: string }) => {
+                if (message?.message === 'viewer-session/ready') { refresh(true); }
+            });
+            panel.onDidDispose(() => { source.dispose(); received?.dispose(); });
+        },
+    };
+}
+
 export function formatSessionLabel(version: string, pid: string): string {
     const normalized = version.replace(/^R (?:version )?/, '').replace(/\s+\(.*/, '');
     return `R ${normalized}: ${pid}`;
 }
 
 export function getViewerSessionScript(): string {
-    return `
+    return `(${initializeViewerSession.toString()})(vscode);`;
+}
+
+export function initializeViewerSession(vscode: { postMessage?(message: { message: 'viewer-session/ready' }): unknown }): void {
     window.addEventListener('message', event => {
-        const message = event.data;
-        if (message?.message !== 'viewer-session/update' || typeof message.text !== 'string') { return; }
+        const message: unknown = event.data;
+        if (!message || typeof message !== 'object' || !('message' in message) ||
+            message.message !== 'viewer-session/update' || !('text' in message) || typeof message.text !== 'string') { return; }
         const icon = document.querySelector('.viewer-session');
         const tooltip = document.getElementById('viewer-session-tooltip');
         if (icon && tooltip) {
@@ -38,7 +94,6 @@ export function getViewerSessionScript(): string {
     } else {
         initializeViewerSessionInfo();
     }
-    `;
 }
 
 export const viewerSessionStyle = `

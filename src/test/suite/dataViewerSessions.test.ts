@@ -151,14 +151,14 @@ suite('Viewer session ownership', () => {
         notify(first, 'webview', { url: '/tmp/first-widget.html' });
         await waitFor(() => panels.length === 1 && panels[0].panel.webview.html.includes('first-widget.html'));
         const original = panels[0].panel;
-        assert.ok(!original.webview.html.includes('viewer-session'));
+        assert.ok(original.webview.html.includes('R 4.6.1: 12101'));
         notify(first, 'webview', { url: '/tmp/updated-widget.html' });
         await waitFor(() => original.webview.html.includes('updated-widget.html'));
         assert.strictEqual(panels.length, 1);
 
         notify(second, 'webview', { url: '/tmp/second-widget.html' });
         await waitFor(() => panels.length === 2 && panels[1].panel.webview.html.includes('second-widget.html'));
-        assert.ok(!panels[1].panel.webview.html.includes('viewer-session'));
+        assert.ok(panels[1].panel.webview.html.includes('R 4.6.2: 12102'));
         assert.ok(original.webview.html.includes('updated-widget.html'));
         assert.strictEqual(session.activeSession?.sessionId, second.id);
     });

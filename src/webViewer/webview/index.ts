@@ -1,6 +1,10 @@
 import { acquireVsCodeApi, VsCode } from '../webviewMessages';
+import { initializeViewerSession } from '../../viewerSession';
+import { initializeWidgetToolbar } from './toolbar';
 
 const vscode: VsCode = acquireVsCodeApi();
+initializeViewerSession({ postMessage: message => vscode.postMessage(message) });
+initializeWidgetToolbar(vscode);
 
 const replaceReg = /vscode-webview:\/\//;
 const testReg = /vscode-webview:\/\/.*\.[A-Za-z/0-9_-]*?\/.+/;

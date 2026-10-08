@@ -27,4 +27,6 @@ export interface LinkClickedMessage extends IMessage {
     scrollY: number
 }
 
-export type OutMessage = LogMessage | MouseClickMessage | LinkClickedMessage;
+export type OutMessage = LogMessage | MouseClickMessage | LinkClickedMessage
+    | { message: 'viewer-session/ready' }
+    | { message: 'widget/navigate'; direction: 'back' | 'forward'; generation: number };

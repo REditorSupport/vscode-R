@@ -13,6 +13,7 @@ suite('Session-aware HTML widget Viewer', () => {
     let read: sinon.SinonStub;
     const owners: session.Session[] = [];
     const panels: vscode.WebviewPanel[] = [];
+    const receivers = new Map<vscode.WebviewPanel, (message: unknown) => Promise<void>>();
 
     setup(() => {
         sandbox = sinon.createSandbox();
@@ -21,12 +22,16 @@ suite('Session-aware HTML widget Viewer', () => {
             `<div>${String(file)}</div><script src="lib/widget.js"></script>`));
         sandbox.stub(vscode.window, 'createWebviewPanel').callsFake((_type, title, _column, options) => {
             const disposed = new vscode.EventEmitter<void>();
-            const received = new vscode.EventEmitter<unknown>();
+            const listeners: Array<(message: unknown) => unknown> = [];
             let closed = false;
             const webview = {
                 html: '', options, cspSource: 'webview-test:',
                 asWebviewUri: (uri: vscode.Uri) => uri,
-                onDidReceiveMessage: received.event, postMessage: sandbox.stub().resolves(true),
+                onDidReceiveMessage: (listener: (message: unknown) => unknown) => {
+                    listeners.push(listener);
+                    return { dispose: () => { listeners.splice(listeners.indexOf(listener), 1); } };
+                },
+                postMessage: sandbox.stub().resolves(true),
             };
             const panel = {
                 title, viewColumn: vscode.ViewColumn.Two, reveal: sandbox.stub(),
@@ -37,16 +42,18 @@ suite('Session-aware HTML widget Viewer', () => {
                 onDidDispose: disposed.event,
                 dispose: () => {
                     if (closed) { return; }
-                    closed = true; disposed.fire(); disposed.dispose(); received.dispose();
+                    closed = true; disposed.fire(); disposed.dispose(); listeners.length = 0;
                 },
             } as unknown as vscode.WebviewPanel;
             panels.push(panel);
+            receivers.set(panel, async message => { await Promise.all(listeners.map(listener => listener(message))); });
             return panel;
         });
     });
 
     teardown(() => {
         panels.splice(0).forEach(panel => { panel.dispose(); });
+        receivers.clear();
         owners.splice(0).forEach(owner => session.unregisterSessionTransport(owner));
         sandbox.restore();
     });
@@ -59,7 +66,26 @@ suite('Session-aware HTML widget Viewer', () => {
     }
 
     function show(file: string, source: session.Session, title = 'Viewer', viewer: string | boolean = 'Two') {
-        return showWebView(file, title, viewer, source.sessionId);
+        return showWebView(file, title, viewer, session.getViewerSessionContext(source.sessionId));
+    }
+
+    function widgetDocument(panel: vscode.WebviewPanel): string {
+        const attribute = /data-widget-document="([^"]*)"/.exec(panel.webview.html)?.[1];
+        assert.ok(attribute, 'Widgets must render in an iframe separate from the toolbar');
+        return attribute.replace(/&(amp|lt|gt|quot|#39);/g, entity => ({
+            '&amp;': '&', '&lt;': '<', '&gt;': '>', '&quot;': '"', '&#39;': "'",
+        })[entity]!);
+    }
+
+    async function navigate(panel: vscode.WebviewPanel, direction: 'back' | 'forward', generation?: number): Promise<void> {
+        await receivers.get(panel)!({
+            message: 'widget/navigate', direction,
+            generation: generation ?? Number(/data-generation="(\d+)"/.exec(panel.webview.html)?.[1]),
+        });
+    }
+
+    function disabled(panel: vscode.WebviewPanel, button: 'back' | 'forward'): boolean {
+        return new RegExp(`<button id="widget-${button}"[^>]*\\bdisabled`).test(panel.webview.html);
     }
 
     test('reuses one panel per session and updates widget dependencies without moving its editor group', async () => {
@@ -71,12 +97,15 @@ suite('Session-aware HTML widget Viewer', () => {
         assert.strictEqual(panels.length, 2);
         assert.strictEqual(panels[0].title, 'Updated Viewer');
         assert.ok(panels[0].webview.html.includes('/tmp/widget-c/index.html'));
-        assert.ok(panels[0].webview.html.includes('/tmp/widget-c/lib/widget.js'));
+        assert.ok(widgetDocument(panels[0]).includes('<base href="file:///tmp/widget-c/">'));
+        assert.ok(widgetDocument(panels[0]).includes('src="lib/widget.js"'));
         assert.ok(panels[1].webview.html.includes('/tmp/widget-b/index.html'));
         assert.strictEqual(panels[0].webview.options.localResourceRoots?.[0].fsPath, '/tmp/widget-c');
         assert.deepStrictEqual((panels[0].reveal as sinon.SinonStub).lastCall.args, [vscode.ViewColumn.Two, true]);
-        assert.ok(!panels[0].webview.html.includes('viewer-session'));
-        assert.ok(!panels[1].webview.html.includes('viewer-session'));
+        assert.ok(panels[0].webview.html.includes(`R 4.6.1: ${first.pid}`));
+        assert.ok(panels[1].webview.html.includes(`R 4.6.1: ${second.pid}`));
+        assert.ok(!widgetDocument(panels[0]).includes('widget-toolbar'));
+        assert.ok(!widgetDocument(panels[0]).includes('viewer-session'));
     });
 
     test('concurrent requests share a panel and the newest request wins', async () => {
@@ -134,5 +163,125 @@ suite('Session-aware HTML widget Viewer', () => {
         await showWebView('/tmp/page-a/index.html', 'Page Viewer', 'Two');
         await showWebView('/tmp/page-b/index.html', 'Page Viewer', 'Two');
         assert.strictEqual(panels.length, 2);
+        assert.ok(!panels[0].webview.html.includes('widget-toolbar'));
+    });
+
+    test('Back and Forward browse only the owning session with correct boundary states', async () => {
+        const first = owner('html-history-first');
+        const second = owner('html-history-second');
+        await show('/tmp/a/index.html', first, 'A');
+        const panel = panels[0];
+        assert.ok(disabled(panel, 'back') && disabled(panel, 'forward'));
+        await show('/tmp/b/index.html', first, 'B');
+        await show('/tmp/other/index.html', second, 'Other');
+        const other = panels[1].webview.html;
+        assert.ok(!disabled(panel, 'back') && disabled(panel, 'forward'));
+        assert.ok(panel.webview.html.includes('2 / 2'));
+        await navigate(panel, 'back');
+        assert.strictEqual(panel.title, 'A');
+        assert.ok(widgetDocument(panel).includes('/tmp/a/index.html'));
+        assert.strictEqual(panel.webview.options.localResourceRoots?.[0].fsPath, '/tmp/a');
+        assert.ok(disabled(panel, 'back') && !disabled(panel, 'forward'));
+        const firstHtml = panel.webview.html;
+        await navigate(panel, 'back');
+        assert.strictEqual(panel.webview.html, firstHtml);
+        await navigate(panel, 'forward');
+        assert.strictEqual(panel.title, 'B');
+        assert.ok(!disabled(panel, 'back') && disabled(panel, 'forward'));
+        assert.strictEqual(panels.length, 2);
+        assert.strictEqual(panels[1].webview.html, other);
+    });
+
+    test('new output while browsing history appends without losing existing forward entries', async () => {
+        const source = owner('html-history-append');
+        await show('/tmp/a.html', source, 'A');
+        await show('/tmp/b.html', source, 'B');
+        await navigate(panels[0], 'back');
+        await show('/tmp/c.html', source, 'C');
+        assert.ok(panels[0].webview.html.includes('3 / 3'));
+        await navigate(panels[0], 'back');
+        assert.strictEqual(panels[0].title, 'B');
+        await navigate(panels[0], 'back');
+        assert.strictEqual(panels[0].title, 'A');
+    });
+
+    test('late history loads and stale toolbar messages cannot replace newer output', async () => {
+        const source = owner('html-history-stale');
+        await show('/tmp/a.html', source, 'A');
+        await show('/tmp/b.html', source, 'B');
+        const generation = Number(/data-generation="(\d+)"/.exec(panels[0].webview.html)?.[1]);
+        const slow = deferred<string>();
+        read.onCall(2).returns(slow.promise);
+        const pending = navigate(panels[0], 'back');
+        await show('/tmp/c.html', source, 'C');
+        const latest = panels[0].webview.html;
+        slow.resolve('<div>A</div>');
+        await pending;
+        await navigate(panels[0], 'back', generation);
+        assert.strictEqual(panels[0].webview.html, latest);
+        assert.strictEqual(panels[0].title, 'C');
+    });
+
+    test('missing historical files show an error and Forward still returns to available output', async () => {
+        const source = owner('html-history-missing');
+        await show('/tmp/a.html', source, 'A');
+        await show('/tmp/b.html', source, 'B');
+        read.onCall(2).rejects(Object.assign(new Error('Missing file'), { code: 'ENOENT' }));
+        await navigate(panels[0], 'back');
+        assert.ok(widgetDocument(panels[0]).includes('This HTML widget could not be loaded'));
+        assert.ok(!disabled(panels[0], 'forward'));
+        await navigate(panels[0], 'forward');
+        assert.ok(widgetDocument(panels[0]).includes('/tmp/b.html'));
+    });
+
+    test('closing clears history and releases the session update listener', async () => {
+        const source = owner('html-history-close');
+        await show('/tmp/a.html', source);
+        await show('/tmp/b.html', source);
+        const webview = panels[0].webview;
+        panels[0].dispose();
+        source.processExited = true;
+        assert.strictEqual((webview.postMessage as sinon.SinonStub).callCount, 0);
+        await show('/tmp/c.html', source);
+        assert.strictEqual(panels.length, 2);
+        assert.ok(panels[1].webview.html.includes('1 / 1'));
+        assert.ok(disabled(panels[1], 'back') && disabled(panels[1], 'forward'));
+    });
+
+    test('session info updates after process exit without reloading the widget or its history', async () => {
+        const source = owner('html-history-exit');
+        await show('/tmp/a.html', source);
+        await show('/tmp/b.html', source);
+        const html = panels[0].webview.html;
+        source.processExited = true;
+        assert.deepStrictEqual((panels[0].webview.postMessage as sinon.SinonStub).lastCall.args, [{
+            message: 'viewer-session/update', text: 'R: (not attached)',
+        }]);
+        assert.strictEqual(panels[0].webview.html, html);
+        await navigate(panels[0], 'back');
+        assert.ok(widgetDocument(panels[0]).includes('/tmp/a.html'));
+        assert.ok(panels[0].webview.html.includes('R: (not attached)'));
+    });
+
+    test('full widget documents keep scripts and styles in the iframe and escape their title', async () => {
+        const source = owner('html-history-document');
+        read.resolves('<!doctype html><html><head><style>body { margin: 0 }</style></head><body><script src="lib/widget.js"></script><div>Widget</div></body></html>');
+        await show('/tmp/widget/index.html', source, '<Widget "title">');
+        const document = widgetDocument(panels[0]);
+        assert.ok(document.startsWith('<!doctype html><html><head><meta'));
+        assert.ok(document.includes('<base href="file:///tmp/widget/">'));
+        assert.ok(document.includes('<style>body { margin: 0 }</style>'));
+        assert.ok(document.includes('src="lib/widget.js"'));
+        assert.ok(document.includes('/dist/webviews/webview/widget.js'));
+        assert.ok(panels[0].webview.html.includes('title="&lt;Widget &quot;title&quot;&gt;"'));
+    });
+
+    test('history is bounded to the latest 50 outputs', async () => {
+        const source = owner('html-history-limit');
+        for (let i = 0; i < 51; i++) { await show(`/tmp/widget-${i}.html`, source, `Widget ${i}`); }
+        assert.ok(panels[0].webview.html.includes('50 / 50'));
+        for (let i = 0; i < 49; i++) { await navigate(panels[0], 'back'); }
+        assert.strictEqual(panels[0].title, 'Widget 1');
+        assert.ok(disabled(panels[0], 'back'));
     });
 });
