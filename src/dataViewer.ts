@@ -1,5 +1,7 @@
 'use strict';
 
+import { viewerSessionStyle } from './viewerSession';
+
 export function getDataViewerStyle(): string {
     return `
     body {
@@ -8,10 +10,14 @@ export function getDataViewerStyle(): string {
     }
     #gridContainer { position: relative; flex: 1; min-height: 0; }
     #viewerToolbar {
-        display: flex; align-items: center; flex-wrap: wrap; gap: 6px;
+        display: flex; align-items: flex-start; gap: 6px;
         padding: 6px 8px; border-bottom: 1px solid var(--vscode-panel-border);
         background: var(--vscode-editor-background); color: var(--vscode-foreground);
         font: var(--vscode-font-size, 13px) var(--vscode-font-family, sans-serif);
+    }
+    #viewerControls {
+        display: flex; align-items: center; flex-wrap: wrap; gap: 6px;
+        flex: 1; min-width: 0;
     }
     #viewerToolbar button {
         padding: 4px 8px; border: 1px solid transparent; border-radius: 3px;
@@ -24,21 +30,31 @@ export function getDataViewerStyle(): string {
     #viewerToolbar button:focus-visible, #columnPanel :focus-visible {
         outline: 1px solid var(--vscode-focusBorder); outline-offset: 2px;
     }
-    #viewerRowCount { margin-left: auto; font-size: 12px; color: var(--vscode-descriptionForeground); }
+    #viewerInfo {
+        display: flex; align-items: center; gap: 12px; padding-top: 5px;
+        flex-shrink: 0; white-space: nowrap;
+        font-size: 12px; color: var(--vscode-descriptionForeground);
+    }
+    ${viewerSessionStyle}
     .dataview-na { color: var(--vscode-descriptionForeground); font-style: italic; opacity: 0.75; }
     `;
 }
 
-export function getDataViewerToolbarHtml(): string {
+export function getDataViewerToolbarHtml(sessionHtml = ''): string {
     return `
     <div id="viewerToolbar" role="group" aria-label="Data viewer controls">
+        <div id="viewerControls">
         <button id="columnPanelToggle" type="button" aria-controls="columnPanel" aria-expanded="false">Columns</button>
         <button id="viewerFilters" type="button" aria-pressed="false" title="Show filters below the headers. Press Enter to apply text and number filters.">Filters</button>
         <button id="viewerClearFilters" type="button" disabled>Clear filters</button>
         <button id="viewerAutoSize" type="button" aria-pressed="false" title="Size columns to their loaded contents">Size to content</button>
         <button id="viewerFit" type="button" aria-pressed="true" title="Keep columns fitted to the available width">Fit width</button>
         <button id="viewerReset" type="button" title="Reset column layout, sorting, filters and page size">Reset view</button>
-        <span id="viewerRowCount" role="status" aria-live="polite"></span>
+        </div>
+        <div id="viewerInfo">
+            <span id="viewerRowCount" role="status" aria-live="polite"></span>
+            ${sessionHtml}
+        </div>
     </div>
     `;
 }

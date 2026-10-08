@@ -1249,12 +1249,16 @@ cat("\n")`;
         });
         try {
             await vscode.commands.executeCommand('r.runSelection', 'rebase_view <- structure(list(table=data.frame(value=1:2)), class="test_list"); View(rebase_view)');
-            await until(() => panels.length === 1 && receivers[0].calledOnce);
+            await until(() => panels.length === 1 && /const documentGeneration = \d+/.test(panels[0].webview.html));
             assert.strictEqual(panels[0].title, 'rebase_view');
             await vscode.commands.executeCommand('r.interactive.open', manifests[1]);
-            const receive = receivers[0].firstCall.args[0] as (message: unknown) => Promise<void>;
             const documentGeneration = Number(/const documentGeneration = (\d+)/.exec(panels[0].webview.html)?.[1]);
-            await receive({ message: 'listview/view', documentGeneration, requestId: 1, path: [], index: 1 });
+            // VS Code delivers webview messages to every registered listener,
+            // including the session tooltip and list navigation listeners.
+            await Promise.all(receivers[0].getCalls().map(call => {
+                const receive = call.args[0] as (message: unknown) => unknown;
+                return receive({ message: 'listview/view', documentGeneration, requestId: 1, path: [], index: 1 });
+            }));
             await until(() => panels.length === 2);
             assert.strictEqual(panels[1].title, 'rebase_view$table');
         } finally {
