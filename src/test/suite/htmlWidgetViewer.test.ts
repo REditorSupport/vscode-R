@@ -4,7 +4,9 @@ import * as sinon from 'sinon';
 import * as vscode from 'vscode';
 import * as session from '../../session';
 import * as util from '../../util';
-import { showWebView } from '../../webViewer';
+import { initializeHtmlWidgetViewers, restoreHtmlViewer, showWebView, shutdownHtmlWidgetViewers } from '../../webViewer';
+import { extensionContext } from '../../extension';
+import { widgetHistoryKey, WidgetHistory } from '../../webViewer/history';
 import { mockExtensionContext } from '../common/mockvscode';
 import { deferred } from '../common/sessionConnections';
 
@@ -14,10 +16,17 @@ suite('Session-aware HTML widget Viewer', () => {
     const owners: session.Session[] = [];
     const panels: vscode.WebviewPanel[] = [];
     const receivers = new Map<vscode.WebviewPanel, (message: unknown) => Promise<void>>();
+    const savedState = new Map<string, unknown>();
 
     setup(() => {
         sandbox = sinon.createSandbox();
         mockExtensionContext(path.resolve(__dirname, '../../..'), sandbox);
+        savedState.clear();
+        (extensionContext.workspaceState.get as sinon.SinonStub).callsFake((key: string, fallback: unknown) => savedState.get(key) ?? fallback);
+        (extensionContext.workspaceState.update as sinon.SinonStub).callsFake((key: string, value: unknown) => {
+            savedState.set(key, JSON.parse(JSON.stringify(value)));
+            return Promise.resolve();
+        });
         read = sandbox.stub(util, 'readContent').callsFake(file => Promise.resolve(
             `<div>${String(file)}</div><script src="lib/widget.js"></script>`));
         sandbox.stub(vscode.window, 'createWebviewPanel').callsFake((_type, title, _column, options) => {
@@ -40,6 +49,7 @@ suite('Session-aware HTML widget Viewer', () => {
                     return webview;
                 },
                 onDidDispose: disposed.event,
+                onDidChangeViewState: sandbox.stub(),
                 dispose: () => {
                     if (closed) { return; }
                     closed = true; disposed.fire(); disposed.dispose(); listeners.length = 0;
@@ -51,8 +61,9 @@ suite('Session-aware HTML widget Viewer', () => {
         });
     });
 
-    teardown(() => {
+    teardown(async () => {
         panels.splice(0).forEach(panel => { panel.dispose(); });
+        await shutdownHtmlWidgetViewers();
         receivers.clear();
         owners.splice(0).forEach(owner => session.unregisterSessionTransport(owner));
         sandbox.restore();
@@ -234,18 +245,112 @@ suite('Session-aware HTML widget Viewer', () => {
         assert.ok(widgetDocument(panels[0]).includes('/tmp/b.html'));
     });
 
-    test('closing clears history and releases the session update listener', async () => {
+    test('closing releases the panel bridge but retains history and the last selected widget for restore', async () => {
         const source = owner('html-history-close');
-        await show('/tmp/a.html', source);
-        await show('/tmp/b.html', source);
+        await show('/tmp/a.html', source, 'A');
+        await show('/tmp/b.html', source, 'B');
+        await navigate(panels[0], 'back');
         const webview = panels[0].webview;
         panels[0].dispose();
-        source.processExited = true;
+        await restoreHtmlViewer(source.sessionId);
+        assert.strictEqual(panels.length, 2);
+        assert.strictEqual(panels[1].title, 'A');
+        assert.ok(panels[1].webview.html.includes('1 / 2'));
+        await navigate(panels[1], 'forward');
+        assert.strictEqual(panels[1].title, 'B');
         assert.strictEqual((webview.postMessage as sinon.SinonStub).callCount, 0);
+        await restoreHtmlViewer(source.sessionId);
+        assert.strictEqual(panels.length, 2, 'Restoration must reuse an open Viewer');
+    });
+
+    test('confirmed session exit clears retained history even with its Viewer closed', async () => {
+        const source = owner('html-history-closed-exit');
+        await show('/tmp/a.html', source);
+        panels[0].dispose();
+        source.processExited = true;
+        const information = sandbox.stub(vscode.window, 'showInformationMessage');
+        await restoreHtmlViewer(source.sessionId);
+        await shutdownHtmlWidgetViewers();
+        assert.strictEqual(panels.length, 1);
+        assert.deepStrictEqual(savedState.get(widgetHistoryKey), []);
+        sinon.assert.calledOnce(information);
+    });
+
+    test('new output after closing appends to retained history', async () => {
+        const source = owner('html-history-append-after-close');
+        await show('/tmp/a.html', source, 'A');
+        await show('/tmp/b.html', source, 'B');
+        panels[0].dispose();
         await show('/tmp/c.html', source);
         assert.strictEqual(panels.length, 2);
-        assert.ok(panels[1].webview.html.includes('1 / 1'));
-        assert.ok(disabled(panels[1], 'back') && disabled(panels[1], 'forward'));
+        assert.ok(panels[1].webview.html.includes('3 / 3'));
+        await navigate(panels[1], 'back');
+        assert.strictEqual(panels[1].title, 'B');
+    });
+
+    test('restores persisted selection after extension-host recreation and transport reconnect', async () => {
+        const source = owner('html-history-reload');
+        await show('/tmp/a.html', source, 'A');
+        await show('/tmp/b.html', source, 'B');
+        await navigate(panels[0], 'back');
+        await shutdownHtmlWidgetViewers();
+        session.unregisterSessionTransport(source);
+        initializeHtmlWidgetViewers(extensionContext);
+        const reconnected = owner(source.sessionId);
+        reconnected.pid = source.pid;
+        await restoreHtmlViewer(source.sessionId);
+        assert.strictEqual(panels.length, 2);
+        assert.strictEqual(panels[1].title, 'A');
+        assert.ok(panels[1].webview.html.includes('1 / 2'));
+        assert.ok(panels[1].webview.html.includes(`R 4.6.1: ${source.pid}`));
+        await navigate(panels[1], 'forward');
+        assert.strictEqual(panels[1].title, 'B');
+        await show('/tmp/c.html', reconnected, 'C');
+        assert.strictEqual(panels.length, 2);
+        assert.ok(panels[1].webview.html.includes('3 / 3'));
+    });
+
+    test('restores a detached session without attaching its Viewer to the active session', async () => {
+        const source = owner('html-history-detached');
+        await show('/tmp/a.html', source, 'Detached widget');
+        panels[0].dispose();
+        session.unregisterSessionTransport(source);
+        const other = owner('html-history-active');
+        sandbox.stub(session, 'activeSession').value(other);
+        await restoreHtmlViewer(source.sessionId);
+        assert.strictEqual(panels[1].title, 'Detached widget');
+        assert.ok(panels[1].webview.html.includes(`R 4.6.1: ${source.pid}`));
+        assert.ok(!panels[1].webview.html.includes(`R 4.6.1: ${other.pid}`));
+    });
+
+    test('command chooses among retained sessions when none is active', async () => {
+        const first = owner('html-history-pick-first');
+        const second = owner('html-history-pick-second');
+        await show('/tmp/first.html', first, 'First');
+        await show('/tmp/second.html', second, 'Second');
+        panels.forEach(panel => { panel.dispose(); });
+        session.unregisterSessionTransport(first);
+        session.unregisterSessionTransport(second);
+        const pick = sandbox.stub(vscode.window, 'showQuickPick').callsFake((items: unknown) =>
+            Promise.resolve((items as Array<vscode.QuickPickItem>)[1]));
+        await restoreHtmlViewer();
+        sinon.assert.calledOnce(pick);
+        assert.strictEqual(panels[2].title, 'Second');
+        assert.ok(panels[2].webview.html.includes(`R 4.6.1: ${second.pid}`));
+    });
+
+    test('restoring unavailable HTML keeps history navigation available', async () => {
+        const source = owner('html-history-restore-missing');
+        await show('/tmp/a.html', source, 'A');
+        await show('/tmp/b.html', source, 'B');
+        panels[0].dispose();
+        read.onCall(2).rejects(Object.assign(new Error('Missing file'), { code: 'ENOENT' }));
+        await restoreHtmlViewer(source.sessionId);
+        assert.ok(widgetDocument(panels[1]).includes('This HTML widget could not be loaded'));
+        await navigate(panels[1], 'back');
+        assert.strictEqual(panels[1].title, 'A');
+        const stored = savedState.get(widgetHistoryKey) as WidgetHistory[];
+        assert.strictEqual(stored[0].index, 0);
     });
 
     test('session info updates after process exit without reloading the widget or its history', async () => {

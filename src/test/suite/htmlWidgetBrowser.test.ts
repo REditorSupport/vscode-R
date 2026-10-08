@@ -5,12 +5,12 @@ import * as path from 'path';
 import * as sinon from 'sinon';
 import * as vscode from 'vscode';
 import * as session from '../../session';
-import { showWebView } from '../../webViewer';
+import { restoreHtmlViewer, showWebView, shutdownHtmlWidgetViewers } from '../../webViewer';
 import { mockExtensionContext } from '../common/mockvscode';
 import { waitForValue } from '../common/sessionConnections';
 
 suite('HTML widget browser rendering', () => {
-    test('loads relative dependencies in the iframe and navigates with the real toolbar', async () => {
+    test('loads relative dependencies, navigates, and restores a closed Viewer with the real toolbar', async () => {
         const sandbox = sinon.createSandbox();
         const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'vscode-r-widget-browser-'));
         const panels: vscode.WebviewPanel[] = [];
@@ -88,8 +88,16 @@ suite('HTML widget browser rendering', () => {
             await panel.webview.postMessage({ message: 'widget-test/navigate', direction: 'forward' });
             await loaded('second', secondCount);
             assert.strictEqual(panel.title, 'Second widget');
+            panel.dispose();
+            const restoreCount = count('second');
+            await restoreHtmlViewer(source.sessionId);
+            await loaded('second', restoreCount);
+            assert.strictEqual(panels.length, 2);
+            assert.strictEqual(panels[1].title, 'Second widget');
+            assert.ok(panels[1].webview.html.includes('2 / 2'));
         } finally {
             panels.forEach(panel => { panel.dispose(); });
+            await shutdownHtmlWidgetViewers();
             session.unregisterSessionTransport(source);
             sandbox.restore();
             fs.rmSync(directory, { recursive: true, force: true });

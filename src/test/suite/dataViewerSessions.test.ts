@@ -73,6 +73,7 @@ suite('Viewer session ownership', () => {
                     },
                 },
                 onDidDispose: disposed.event,
+                onDidChangeViewState: sandbox.stub(),
                 dispose: () => {
                     if (!closed) {
                         closed = true;

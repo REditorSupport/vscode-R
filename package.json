@@ -255,6 +255,11 @@
         "category": "R"
       },
       {
+        "command": "r.htmlViewer.restore",
+        "title": "Restore HTML Viewer",
+        "category": "R"
+      },
+      {
         "title": "Create R terminal",
         "category": "R",
         "command": "r.createRTerm"

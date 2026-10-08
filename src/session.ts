@@ -26,7 +26,7 @@ import { showWebView } from './webViewer';
 import { getListViewerScript, listViewerStyle, ListViewNavigation } from './listViewer';
 import { getDataViewerScript, getDataViewerStyle, getDataViewerToolbarHtml } from './dataViewer';
 import { getDataViewerColumnPanelHtml, getDataViewerColumnPanelScript, getDataViewerColumnPanelStyle } from './dataViewerColumnPanel';
-import { createViewerSessionContext, formatSessionLabel, getViewerSessionScript, ViewerSessionContext } from './viewerSession';
+import { createViewerSessionContext, formatSessionLabel, getViewerSessionScript, ViewerSessionContext, ViewerSessionSource } from './viewerSession';
 
 export interface SessionInfo {
     version: string;
@@ -115,7 +115,7 @@ export let workspaceFile: string;
 const SESS_PROTOCOL_VERSION = 2;
 
 const sessions = new Map<string, Session>();
-const sessionProcessMonitor = new SessionProcessMonitor<Session>(isLocalHost);
+const sessionProcessMonitor = new SessionProcessMonitor<ViewerSessionSource>(isLocalHost);
 // Only the newest handshake for a stable ID may commit after terminal discovery.
 const pendingSessionAttachments = new Map<string, IpcSocket>();
 const terminalRegistry = new TerminalSessionRegistry<Session, vscode.Terminal>(
@@ -1247,8 +1247,11 @@ function attachViewerSessionBridge(panel: vscode.WebviewPanel, sessionId: string
     getViewerSessionContext(sessionId)?.attach(panel);
 }
 
-export function getViewerSessionContext(sessionId: string | null): ViewerSessionContext | undefined {
-    const owner = sessions.get(sessionId ?? '');
+export function getViewerSessionContext(sessionId: string | null, saved?: ViewerSessionSource): ViewerSessionContext | undefined {
+    const attached = sessions.get(sessionId ?? '');
+    // A saved Viewer belongs to its original process, never a replacement.
+    const owner = saved && (!attached || attached.host.toLowerCase() !== saved.host.toLowerCase() || attached.pid !== saved.pid)
+        ? saved : attached;
     return owner ? createViewerSessionContext(owner, sessionProcessMonitor) : undefined;
 }
 

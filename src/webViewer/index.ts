@@ -1,22 +1,23 @@
 'use strict';
 
 import * as path from 'path';
-import { Uri, ViewColumn, Webview, WebviewPanel, window, env } from 'vscode';
-import { readContent, UriIcon } from '../util';
+import { ExtensionContext, Uri, ViewColumn, Webview, WebviewPanel, window, env } from 'vscode';
+import { config, readContent, UriIcon } from '../util';
 import { extensionContext } from '../extension';
 import { ViewerSessionContext, viewerSessionStyle } from '../viewerSession';
+import { activeSession, getViewerSessionContext } from '../session';
+import { WidgetHistory, WidgetHistoryStore, widgetHistoryLimit } from './history';
 
 interface WidgetViewer {
     panel: WebviewPanel;
     revision: number;
     disposed: boolean;
     session?: ViewerSessionContext;
-    history: Array<{ file: string; title: string }>;
-    index: number;
+    state: Pick<WidgetHistory, 'history' | 'index' | 'viewColumn'>;
+    saved?: WidgetHistory;
 }
 
-const widgetViewers = new Map<string, WidgetViewer>();
-const historyLimit = 50;
+let manager: HtmlWidgetViewerManager | undefined;
 
 interface WidgetToolbar {
     index: number;
@@ -33,7 +34,7 @@ function escapeHtml(text: string): string {
 
 async function renderWidget(entry: WidgetViewer): Promise<void> {
     const generation = ++entry.revision;
-    const item = entry.history[entry.index];
+    const item = entry.state.history[entry.state.index];
     const dir = path.dirname(item.file);
     const { panel } = entry;
     const resourceRoots = [
@@ -42,7 +43,7 @@ async function renderWidget(entry: WidgetViewer): Promise<void> {
         Uri.file(path.join(extensionContext.extensionPath, 'dist/resources')),
     ];
     const toolbar = entry.session ? {
-        index: entry.index, count: entry.history.length, generation, sessionHtml: entry.session.getHtml(),
+        index: entry.state.index, count: entry.state.history.length, generation, sessionHtml: entry.session.getHtml(),
     } : undefined;
     const html = await getWebviewHtml(panel.webview, item.file, item.title, dir, toolbar);
     if (!entry.disposed && entry.revision === generation) {
@@ -53,65 +54,156 @@ async function renderWidget(entry: WidgetViewer): Promise<void> {
     }
 }
 
+/** Initialize retained history once per extension host, including closed Viewer tabs. */
+export function initializeHtmlWidgetViewers(context: ExtensionContext): HtmlWidgetViewerManager {
+    manager?.dispose();
+    manager = new HtmlWidgetViewerManager(context);
+    context.subscriptions.push(manager);
+    return manager;
+}
+
+function getManager(): HtmlWidgetViewerManager {
+    if (!manager || manager.disposed || manager.context !== extensionContext) {
+        return initializeHtmlWidgetViewers(extensionContext);
+    }
+    return manager;
+}
+
 export async function showWebView(
     file: string, title: string, viewer: string | boolean, session?: ViewerSessionContext,
 ): Promise<void> {
-    console.info(`[showWebView] file: ${file}, viewer: ${viewer.toString()}`);
     if (viewer === false) {
         void env.openExternal(Uri.file(file));
-    } else {
-        const dir = path.dirname(file);
-        const resourceRoots = [
-            Uri.file(dir),
-            Uri.file(path.join(extensionContext.extensionPath, 'dist/webviews/webview')),
-        ];
-        const sessionId = session?.sessionId;
-        let entry = sessionId ? widgetViewers.get(sessionId) : undefined;
-        if (!entry) {
-            const panel = window.createWebviewPanel('webview', title,
-                {
-                    preserveFocus: true,
-                    viewColumn: ViewColumn[String(viewer) as keyof typeof ViewColumn],
-                },
-                {
-                    enableScripts: true,
-                    enableFindWidget: true,
-                    retainContextWhenHidden: true,
-                    localResourceRoots: resourceRoots,
-                });
-            entry = { panel, revision: 0, disposed: false, session, history: [], index: -1 };
-            // Register before loading HTML so concurrent requests reuse the panel.
-            if (sessionId) { widgetViewers.set(sessionId, entry); }
-            const created = entry;
-            panel.onDidDispose(() => {
-                created.disposed = true;
-                created.history = [];
-                if (sessionId && widgetViewers.get(sessionId) === created) {
-                    widgetViewers.delete(sessionId);
-                }
-            });
-            panel.iconPath = new UriIcon('globe');
-            session?.attach(panel);
-            panel.webview.onDidReceiveMessage(async (msg: {
-                message: string; href?: string; direction?: string; generation?: number;
-            }) => {
-                if (msg.message === 'linkClicked' && msg.href) {
-                    void env.openExternal(Uri.parse(msg.href));
-                } else if (msg.message === 'widget/navigate' && session && !created.disposed &&
-                    msg.generation === created.revision && (msg.direction === 'back' || msg.direction === 'forward')) {
-                    const index = created.index + (msg.direction === 'back' ? -1 : 1);
-                    if (index < 0 || index >= created.history.length) { return; }
-                    created.index = index;
-                    await renderWidget(created);
-                }
-            });
-        }
-        entry.history.push({ file, title });
-        if (entry.history.length > historyLimit) { entry.history.shift(); }
-        entry.index = entry.history.length - 1;
-        await renderWidget(entry);
+        return;
     }
-    console.info('[showWebView] Done');
+    await getManager().show(file, title, viewer, session);
+}
+
+export async function restoreHtmlViewer(sessionId?: string): Promise<void> {
+    await getManager().restore(sessionId);
+}
+
+export async function shutdownHtmlWidgetViewers(): Promise<void> {
+    manager?.dispose();
+    await manager?.histories.flush();
+}
+
+class HtmlWidgetViewerManager {
+    readonly histories: WidgetHistoryStore;
+    readonly viewers = new Map<string, WidgetViewer>();
+    disposed = false;
+
+    constructor(readonly context: ExtensionContext) {
+        this.histories = new WidgetHistoryStore(context.workspaceState,
+            source => getViewerSessionContext(source.sessionId, source)!);
+    }
+
+    async show(file: string, title: string, viewer: string | boolean, session?: ViewerSessionContext): Promise<void> {
+        const saved = session ? this.histories.remember(session) : undefined;
+        const entry = this.open(title, viewer, session, saved);
+        entry.state.history.push({ file, title });
+        if (entry.state.history.length > widgetHistoryLimit) { entry.state.history.shift(); }
+        entry.state.index = entry.state.history.length - 1;
+        const pending = this.save(entry);
+        await renderWidget(entry);
+        await pending;
+    }
+
+    async restore(sessionId?: string): Promise<void> {
+        // Polling can discover an exit while the session picker is open.
+        const available = [...this.histories.entries.values()].filter(record => {
+            if (getViewerSessionContext(record.source.sessionId, record.source)!.hasExited) {
+                this.histories.forget(record.source.sessionId);
+                return false;
+            }
+            return record.history.length > 0;
+        });
+        let record = sessionId ? this.histories.entries.get(sessionId) :
+            available.find(item => item.source.sessionId === activeSession?.sessionId);
+        if (!record && !sessionId) {
+            if (available.length === 1) { record = available[0]; }
+            else if (available.length > 1) {
+                const picked = await window.showQuickPick(available.map(item => ({
+                    label: item.history[item.index].title,
+                    description: `R ${item.source.rVer}: ${item.source.pid} · ${item.source.host}`,
+                    detail: `${item.history.length} HTML outputs · ${item.source.sessionId}`,
+                    record: item,
+                })), { title: 'Restore HTML Viewer', matchOnDescription: true, matchOnDetail: true });
+                if (!picked) { return; }
+                record = picked.record;
+            }
+        }
+        if (!record || this.histories.entries.get(record.source.sessionId) !== record) {
+            void window.showInformationMessage('No retained HTML Viewer history is available for this session.');
+            return;
+        }
+        const session = getViewerSessionContext(record.source.sessionId, record.source)!;
+        if (session.hasExited) {
+            this.histories.forget(session.sessionId);
+            void window.showInformationMessage('This R session has exited; its HTML Viewer history is no longer available.');
+            return;
+        }
+        const viewer = record.viewColumn ? ViewColumn[record.viewColumn] :
+            config().get<Record<string, string>>('session.viewers.viewColumn')?.viewer ?? 'Two';
+        // Explicit restoration opens a Viewer even if automatic viewing is disabled.
+        const entry = this.open(record.history[record.index].title, viewer, session, record);
+        const pending = this.save(entry);
+        await renderWidget(entry);
+        await pending;
+    }
+
+    private open(title: string, viewer: string | boolean, session?: ViewerSessionContext, saved?: WidgetHistory): WidgetViewer {
+        const sessionId = session?.sessionId;
+        const existing = sessionId ? this.viewers.get(sessionId) : undefined;
+        if (existing) { return existing; }
+        const panel = window.createWebviewPanel('webview', title,
+            { preserveFocus: true, viewColumn: ViewColumn[String(viewer) as keyof typeof ViewColumn] ?? ViewColumn.Two },
+            { enableScripts: true, enableFindWidget: true, retainContextWhenHidden: true });
+        const entry: WidgetViewer = {
+            panel, revision: 0, disposed: false, session, saved,
+            state: saved ?? { history: [], index: -1 },
+        };
+        // Register before loading HTML so concurrent requests reuse the panel.
+        if (sessionId) { this.viewers.set(sessionId, entry); }
+        panel.onDidDispose(() => {
+            entry.disposed = true;
+            if (!this.disposed) { void this.save(entry); }
+            if (sessionId && this.viewers.get(sessionId) === entry) { this.viewers.delete(sessionId); }
+        });
+        panel.onDidChangeViewState(() => { if (!entry.disposed) { void this.save(entry); } });
+        panel.iconPath = new UriIcon('globe');
+        session?.attach(panel);
+        panel.webview.onDidReceiveMessage(async (msg: {
+            message: string; href?: string; direction?: string; generation?: number;
+        }) => {
+            if (msg.message === 'linkClicked' && msg.href) {
+                void env.openExternal(Uri.parse(msg.href));
+            } else if (msg.message === 'widget/navigate' && session && !entry.disposed &&
+                msg.generation === entry.revision && (msg.direction === 'back' || msg.direction === 'forward')) {
+                const index = entry.state.index + (msg.direction === 'back' ? -1 : 1);
+                if (index < 0 || index >= entry.state.history.length) { return; }
+                entry.state.index = index;
+                const pending = this.save(entry);
+                await renderWidget(entry);
+                await pending;
+            }
+        });
+        return entry;
+    }
+
+    private save(entry: WidgetViewer): Promise<void> {
+        if (!entry.disposed) { entry.state.viewColumn = entry.panel.viewColumn; }
+        return entry.saved ? this.histories.save(entry.saved) : Promise.resolve();
+    }
+
+    dispose(): void {
+        if (this.disposed) { return; }
+        this.viewers.forEach(entry => { void this.save(entry); });
+        this.disposed = true;
+        this.viewers.forEach(entry => { entry.panel.dispose(); });
+        this.viewers.clear();
+        this.histories.dispose();
+    }
 }
 
 export async function getWebviewHtml(

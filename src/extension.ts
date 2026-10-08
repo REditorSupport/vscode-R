@@ -26,6 +26,7 @@ import * as languageService from './languageService';
 import { RTaskProvider } from './tasks';
 import { showRDebuggerCompatibilityWarningOnce } from './rDebuggerCompatibility';
 import { InteractiveManager } from './interactive/manager';
+import { initializeHtmlWidgetViewers, restoreHtmlViewer, shutdownHtmlWidgetViewers } from './webViewer';
 
 
 // global objects used in other files
@@ -66,6 +67,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
 
     // assign extension context to global variable
     extensionContext = context;
+    initializeHtmlWidgetViewers(context);
 
     // assign session watcher setting to global variable
     enableSessionWatcher = util.config().get<boolean>('sessionWatcher') ?? false;
@@ -163,6 +165,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
         'r.browser.refresh': session.refreshBrowser,
         'r.browser.openExternal': session.openExternalBrowser,
         'r.webview.find': () => vscode.commands.executeCommand('editor.action.webvieweditor.showFind'),
+        'r.htmlViewer.restore': restoreHtmlViewer,
 
         // (help related commands are registered in rHelp.initializeHelp)
     };
@@ -282,6 +285,7 @@ export function ensureWorkspaceViewer(): void {
 }
 
 export async function deactivate(): Promise<void> {
+    await shutdownHtmlWidgetViewers();
     (globalPlotManager as plotViewer.CommonPlotManager)?.dispose();
     await session.shutdownSessionWatcher();
 }

@@ -1,7 +1,7 @@
 import type { WebviewPanel } from 'vscode';
 import type { SessionProcessMonitor } from './sessionProcessMonitor';
 
-interface ViewerSessionSource {
+export interface ViewerSessionSource {
     sessionId: string;
     host: string;
     pid: string;
@@ -11,6 +11,9 @@ interface ViewerSessionSource {
 
 export interface ViewerSessionContext {
     readonly sessionId: string;
+    readonly source: Readonly<ViewerSessionSource>;
+    readonly hasExited: boolean;
+    observeExit(listener: () => void): { dispose(): void };
     getHtml(): string;
     attach(panel: WebviewPanel): void;
 }
@@ -21,6 +24,9 @@ export function createViewerSessionContext<Session extends ViewerSessionSource>(
 ): ViewerSessionContext {
     return {
         sessionId: owner.sessionId,
+        source: { sessionId: owner.sessionId, host: owner.host, pid: owner.pid, rVer: owner.rVer, processExited: owner.processExited },
+        get hasExited() { return monitor.hasExited(owner); },
+        observeExit: listener => monitor.observe(owner, listener),
         getHtml: () => {
             const exited = monitor.hasExited(owner);
             if (!exited && (!owner.pid || !owner.rVer)) { return ''; }
