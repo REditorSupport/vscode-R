@@ -1,49 +1,83 @@
 'use strict';
 
 import * as path from 'path';
-import { Uri, ViewColumn, Webview, window, env } from 'vscode';
+import { Uri, ViewColumn, Webview, WebviewPanel, window, env } from 'vscode';
 import { readContent, UriIcon } from '../util';
 import { extensionContext } from '../extension';
 
-export async function showWebView(file: string, title: string, viewer: string | boolean): Promise<void> {
+interface WidgetViewer {
+    panel: WebviewPanel;
+    revision: number;
+    disposed: boolean;
+}
+
+const widgetViewers = new Map<string, WidgetViewer>();
+
+export async function showWebView(
+    file: string, title: string, viewer: string | boolean, sessionId: string | null = null,
+): Promise<void> {
     console.info(`[showWebView] file: ${file}, viewer: ${viewer.toString()}`);
     if (viewer === false) {
         void env.openExternal(Uri.file(file));
     } else {
         const dir = path.dirname(file);
-        const panel = window.createWebviewPanel('webview', title,
-            {
-                preserveFocus: true,
-                viewColumn: ViewColumn[String(viewer) as keyof typeof ViewColumn],
-            },
-            {
-                enableScripts: true,
-                enableFindWidget: true,
-                retainContextWhenHidden: true,
-                localResourceRoots: [
-                    Uri.file(dir),
-                    Uri.file(path.join(extensionContext.extensionPath, 'dist/webviews/webview'))
-                ],
+        const resourceRoots = [
+            Uri.file(dir),
+            Uri.file(path.join(extensionContext.extensionPath, 'dist/webviews/webview')),
+        ];
+        let entry = sessionId ? widgetViewers.get(sessionId) : undefined;
+        if (!entry) {
+            const panel = window.createWebviewPanel('webview', title,
+                {
+                    preserveFocus: true,
+                    viewColumn: ViewColumn[String(viewer) as keyof typeof ViewColumn],
+                },
+                {
+                    enableScripts: true,
+                    enableFindWidget: true,
+                    retainContextWhenHidden: true,
+                    localResourceRoots: resourceRoots,
+                });
+            entry = { panel, revision: 0, disposed: false };
+            // Register before loading HTML so concurrent requests reuse the panel.
+            if (sessionId) { widgetViewers.set(sessionId, entry); }
+            const created = entry;
+            panel.onDidDispose(() => {
+                created.disposed = true;
+                if (sessionId && widgetViewers.get(sessionId) === created) {
+                    widgetViewers.delete(sessionId);
+                }
             });
-        panel.iconPath = new UriIcon('globe');
-        panel.webview.html = await getWebviewHtml(panel.webview, file, title, dir);
-
-        panel.webview.onDidReceiveMessage((msg: { message: string, href?: string }) => {
-            if (msg.message === 'linkClicked' && msg.href) {
-                void env.openExternal(Uri.parse(msg.href));
-            }
-        });
+            panel.iconPath = new UriIcon('globe');
+            panel.webview.onDidReceiveMessage((msg: { message: string, href?: string }) => {
+                if (msg.message === 'linkClicked' && msg.href) {
+                    void env.openExternal(Uri.parse(msg.href));
+                }
+            });
+        }
+        const revision = ++entry.revision;
+        const { panel } = entry;
+        const html = await getWebviewHtml(panel.webview, file, title, dir);
+        if (!entry.disposed && entry.revision === revision) {
+            panel.title = title;
+            panel.webview.options = { ...panel.webview.options, localResourceRoots: resourceRoots };
+            panel.webview.html = html;
+            panel.reveal(panel.viewColumn, true);
+        }
     }
     console.info('[showWebView] Done');
 }
 
-export async function getWebviewHtml(webview: Webview, file: string, title: string, dir: string): Promise<string> {
-    const body = (await readContent(file, 'utf8') || '').toString()
-        .replace(/<(\w+)(.*)\s+(href|src)="(?!\w+:)/g,
-            `<$1 $2 $3="${String(webview.asWebviewUri(Uri.file(dir)))}/`);
-
+export async function getWebviewHtml(
+    webview: Webview, file: string, title: string, dir: string,
+): Promise<string> {
+    // Resolve webview URIs before awaiting I/O; the panel may close while loading.
+    const baseUri = String(webview.asWebviewUri(Uri.file(dir)));
     const scriptUri = webview.asWebviewUri(Uri.file(path.join(extensionContext.extensionPath, 'dist/webviews/webview/index.js')));
     const styleUri = webview.asWebviewUri(Uri.file(path.join(extensionContext.extensionPath, 'dist/webviews/webview/style.css')));
+    const body = (await readContent(file, 'utf8') || '').toString()
+        .replace(/<(\w+)(.*)\s+(href|src)="(?!\w+:)/g,
+            `<$1 $2 $3="${baseUri}/`);
 
     // define the content security policy for the webview
     // * whilst it is recommended to be strict as possible,

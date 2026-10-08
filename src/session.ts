@@ -2287,7 +2287,8 @@ async function handleNotification(message: Record<string, unknown>, socket: IpcS
                     }
                 } else {
                     if (url.toLowerCase().endsWith('.html') || url.toLowerCase().endsWith('.htm')) {
-                        await showWebView(url, title, viewColumn);
+                        await showWebView(url, title, viewColumn,
+                            method === 'webview' ? socket._sessionId ?? null : null);
                     } else {
                         await showDataView('object', 'txt', title, url, String(viewColumn));
                     }

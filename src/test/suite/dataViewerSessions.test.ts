@@ -142,6 +142,27 @@ suite('Viewer session ownership', () => {
         return client;
     }
 
+    test('HTML widget notifications use their source session while another session is active', async () => {
+        sandbox.stub(util, 'readContent').callsFake(file => Promise.resolve(`<div>${String(file)}</div>`));
+        const first = await attach('html-source', '12101', '4.6.1');
+        const second = await attach('html-active', '12102', '4.6.2');
+        assert.strictEqual(session.activeSession?.sessionId, second.id);
+
+        notify(first, 'webview', { url: '/tmp/first-widget.html' });
+        await waitFor(() => panels.length === 1 && panels[0].panel.webview.html.includes('first-widget.html'));
+        const original = panels[0].panel;
+        assert.ok(!original.webview.html.includes('viewer-session'));
+        notify(first, 'webview', { url: '/tmp/updated-widget.html' });
+        await waitFor(() => original.webview.html.includes('updated-widget.html'));
+        assert.strictEqual(panels.length, 1);
+
+        notify(second, 'webview', { url: '/tmp/second-widget.html' });
+        await waitFor(() => panels.length === 2 && panels[1].panel.webview.html.includes('second-widget.html'));
+        assert.ok(!panels[1].panel.webview.html.includes('viewer-session'));
+        assert.ok(original.webview.html.includes('updated-widget.html'));
+        assert.strictEqual(session.activeSession?.sessionId, second.id);
+    });
+
     async function open(
         client: Client, source: 'list' | 'table', existing?: Panel, stateGeneration = 1,
     ): Promise<Panel> {
