@@ -1,4 +1,6 @@
 import * as assert from 'assert';
+import * as os from 'os';
+import * as path from 'path';
 import * as sinon from 'sinon';
 import * as vscode from 'vscode';
 import { LanguageClient } from 'vscode-languageclient/node';
@@ -6,12 +8,13 @@ import { LanguageService } from '../../languageService';
 import * as session from '../../session';
 import * as extension from '../../extension';
 import * as util from '../../util';
+import { mockExtensionContext } from '../common/mockvscode';
 
 suite('Session package completion', () => {
     let sandbox: sinon.SinonSandbox;
     let service: LanguageService;
     let multiServer: boolean;
-    const folder = { uri: vscode.Uri.file('/project'), name: 'project', index: 0 };
+    const folder = { uri: vscode.Uri.file(path.join(os.tmpdir(), 'vscode-r-language-service', 'project')), name: 'project', index: 0 };
     const packages = (name: string) => ({ search: ['.GlobalEnv', `package:${name}`, 'package:base'], loaded_namespaces: [name, 'base'], globalenv: {} });
 
     // Keep the tests independent of installed R packages and server processes.
@@ -35,12 +38,16 @@ suite('Session package completion', () => {
 
     setup(() => {
         sandbox = sinon.createSandbox();
+        mockExtensionContext(path.join(__dirname, '..', '..', '..'), sandbox);
         multiServer = false;
         sandbox.stub(LanguageService.prototype as unknown as ServiceInternals, 'startLanguageService').resolves();
         sandbox.stub(vscode.workspace, 'getConfiguration').returns({
             get: (key: string) => key === 'lsp.multiServer' ? multiServer : undefined
         } as vscode.WorkspaceConfiguration);
-        sandbox.stub(vscode.workspace, 'getWorkspaceFolder').callsFake(uri => uri.fsPath.startsWith('/project') ? folder : undefined);
+        sandbox.stub(vscode.workspace, 'getWorkspaceFolder').callsFake(uri =>
+            uri.fsPath === folder.uri.fsPath || uri.fsPath.startsWith(`${folder.uri.fsPath}${path.sep}`)
+                ? folder
+                : undefined);
         service = new LanguageService();
         sandbox.stub(extension, 'rLanguageService').value(service);
     });
@@ -104,7 +111,7 @@ suite('Session package completion', () => {
         const request = sandbox.stub(LanguageClient.prototype, 'sendRequest').resolves(true);
         const internals = service as unknown as ServiceInternals;
         const client = await internals.createClient(
-            'global', [{ scheme: 'file', language: 'r' }], '/project',
+            'global', [{ scheme: 'file', language: 'r' }], folder.uri.fsPath,
             undefined, internals.outputChannel, folder.uri, 'global'
         );
 
@@ -142,7 +149,7 @@ suite('Session package completion', () => {
         const global = client('global', 'global');
         const input = client('input', 'session:interactive-packages');
         const notebook = client('notebook', 'session:interactive-packages');
-        const target = session.registerSessionTransport('interactive-packages', 'host', '/project', () => Promise.resolve(undefined));
+        const target = session.registerSessionTransport('interactive-packages', 'host', folder.uri.fsPath, () => Promise.resolve(undefined));
         try {
             assert.strictEqual(target.resource?.toString(), folder.uri.toString());
             session.updateSessionWorkspace(target, packages('stats'));
