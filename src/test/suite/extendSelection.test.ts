@@ -573,6 +573,12 @@ suite('extendSelection Tests', () => {
         assert.strictEqual(extendSelection(3, f, doc.length).endLine, 3);
     });
 
+    test('Selecting multi-line string from its first line', () => {
+        const doc = ['x <- "', 'a', '"', 'y <- 1'];
+        function f(i: number) { return doc[i]; }
+        assert.deepStrictEqual(extendSelection(0, f, doc.length), { startLine: 0, endLine: 2 });
+    });
+
     test('Selecting multi-line brackets with multi-line string and unmatched brackets', () => {
         const doc = `
         print("
