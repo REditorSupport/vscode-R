@@ -100,9 +100,18 @@ suite('Viewer session ownership', () => {
     teardown(async () => {
         panels.splice(0).forEach(item => { item.panel.dispose(); });
         await shutdownHtmlWidgetViewers();
+        session.deferWorkspaceRefresh();
         for (const client of clients.splice(0)) {
+            // Finish queued replies before closing the server side; destroying
+            // it first can leave the mock client writing to a broken Unix pipe.
+            if (!client.socket.destroyed) {
+                await new Promise<void>((resolve, reject) => {
+                    client.socket.once('close', () => resolve());
+                    client.socket.once('error', reject);
+                    client.socket.end();
+                });
+            }
             await session.cleanupSession(client.id);
-            client.socket.destroy();
         }
         await session.shutdownSessionWatcher();
         sandbox.restore();
@@ -136,7 +145,9 @@ suite('Viewer session ownership', () => {
                         result = { title: 'x$child', path: [1], breadcrumbs: [{ label: 'x', path: [] }] };
                         break;
                 }
-                socket.write(JSON.stringify({ jsonrpc: '2.0', id: request.id, result }) + '\n');
+                if (socket.writable) {
+                    socket.write(JSON.stringify({ jsonrpc: '2.0', id: request.id, result }) + '\n');
+                }
             }
         });
         await new Promise<void>((resolve, reject) => {

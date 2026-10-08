@@ -35,7 +35,10 @@ function treeTooltip(item: vscode.TreeItem): string {
     let agents: SessionAgent[];
     let manifests: SessionManifest[];
     let controller: vscode.NotebookController;
+    let originalTabs: Set<vscode.Tab>;
+    let originalLanguageClients: Set<LanguageClient>;
     suiteSetup(async () => {
+        originalTabs = new Set(vscode.window.tabGroups.all.flatMap(group => group.tabs));
         // Match R's cwd and temporary root on macOS as well as Linux. Symlinked
         // /var or /tmp paths otherwise hide languageserver's temp-file filter.
         previousTmpdir = process.env.TMPDIR;
@@ -51,6 +54,7 @@ function treeTooltip(item: vscode.TreeItem): string {
         fs.cpSync(path.join(process.cwd(), 'sess'), path.join(root, 'sess'), { recursive: true });
         await promisify(execFile)('R', ['CMD', 'INSTALL', '--clean', `--library=${path.join(root, 'library')}`, path.join(root, 'sess')]);
         await vscode.extensions.getExtension('REditorSupport.r')?.activate();
+        originalLanguageClients = new Set(languageService().clients.values());
         // Startup restoration may activate R before this suite configures its private
         // registry. Recreate only the manager, just as a host reload would do.
         const context = bundleContext();
@@ -78,6 +82,21 @@ function treeTooltip(item: vscode.TreeItem): string {
         await vscode.workspace.getConfiguration('r').update('interactive.storagePath', previousStorage, vscode.ConfigurationTarget.Global);
         await bundleContext().workspaceState.update('r.interactive.connections', previousConnections);
         await Promise.all(agents?.map(agent => agent.close()) ?? []);
+        const service = languageService();
+        await Promise.all(service.clientUpdates.values());
+        const clients = new Set([...service.clients.values()].filter(client => !originalLanguageClients.has(client)));
+        // Detach retains editors. Close this suite's tabs and await its language
+        // servers before deleting directories that those R processes use as cwd.
+        await vscode.window.tabGroups.close(vscode.window.tabGroups.all.flatMap(group => group.tabs)
+            .filter(tab => !originalTabs.has(tab)), true);
+        await Promise.all(service.clientUpdates.values());
+        for (const [key, client] of service.clients) {
+            if (!originalLanguageClients.has(client)) {
+                clients.add(client);
+                service.clients.delete(key);
+            }
+        }
+        await Promise.all([...clients].map(client => client.stop()));
         await new Promise(resolve => setTimeout(resolve, 200));
         fs.rmSync(root, { recursive: true, force: true });
         sourceDirectories.forEach(directory => fs.rmSync(directory, { recursive: true, force: true }));
@@ -91,6 +110,12 @@ function treeTooltip(item: vscode.TreeItem): string {
     };
     function bundleContext(): vscode.ExtensionContext {
         return (createRequire(__filename)(path.join(process.cwd(), 'dist/extension')) as { extensionContext: vscode.ExtensionContext }).extensionContext;
+    }
+    function languageService(): { clients: Map<string, LanguageClient>; clientUpdates: Map<string, Promise<void>> } {
+        const service = bundleContext().subscriptions.find(item =>
+            (item as { clients?: unknown }).clients instanceof Map) as ReturnType<typeof languageService> | undefined;
+        assert.ok(service, 'Language service must be registered');
+        return service;
     }
     function interactiveManager(context = bundleContext()): InteractiveManager {
         // The HTML Viewer manager also exposes open(); identify the Interactive
@@ -766,9 +791,7 @@ function treeTooltip(item: vscode.TreeItem): string {
         } finally { sourceDirectories.push(directory); }
     });
     test('starts each Interactive input language server in its owning session directory', async () => {
-        const service = bundleContext().subscriptions.find(item =>
-            (item as { clients?: unknown }).clients instanceof Map) as { clients: Map<string, LanguageClient> } | undefined;
-        assert.ok(service);
+        const service = languageService();
         try {
             for (const manifest of manifests) {
                 await vscode.commands.executeCommand('r.interactive.open', manifest);

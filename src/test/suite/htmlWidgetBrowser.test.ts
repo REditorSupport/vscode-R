@@ -12,6 +12,15 @@ import { extensionContext } from '../../extension';
 import { mockExtensionContext } from '../common/mockvscode';
 import { waitForValue } from '../common/sessionConnections';
 
+async function focusHtmlViewer(panel: vscode.WebviewPanel): Promise<void> {
+    panel.reveal(panel.viewColumn, false);
+    // reveal() queues a workbench request. Await editor focus before running
+    // commands, rather than relying on a possibly stale panel.active value.
+    await vscode.commands.executeCommand('workbench.action.focusActiveEditorGroup');
+    await waitForValue(() => panel.active &&
+        vscode.window.tabGroups.activeTabGroup.activeTab?.label === panel.title ? true : undefined);
+}
+
 suite('HTML widget browser rendering', () => {
     test('Cmd/Ctrl+F inside the widget opens native Find while other keys stay with the widget', async () => {
         const sandbox = sinon.createSandbox();
@@ -225,8 +234,7 @@ suite('HTML widget browser rendering', () => {
             assert.strictEqual(panels.length, 1);
             const panel = panels[0];
             assert.strictEqual(panel.viewType, 'r.htmlViewer');
-            panel.reveal(panel.viewColumn, false);
-            await waitForValue(() => panel.active ? true : undefined);
+            await focusHtmlViewer(panel);
             const firstCount = count('first');
             await runHtmlViewerCommand('back');
             await loaded('first', firstCount);
@@ -239,9 +247,11 @@ suite('HTML widget browser rendering', () => {
             assert.ok(fs.existsSync(second), 'Removing history must preserve the original HTML file');
             const information = sandbox.stub(vscode.window, 'showInformationMessage').resolves();
             const html = panel.webview.html;
+            await focusHtmlViewer(panel);
             await runHtmlViewerCommand('info');
             assert.strictEqual(panel.title, `HTML Viewer · R 4.6.1: ${source.pid}`);
             assert.strictEqual(panel.webview.html, html);
+            await focusHtmlViewer(panel);
             await runHtmlViewerCommand('info');
             assert.strictEqual(panel.title, 'HTML Viewer');
             sinon.assert.notCalled(information);
@@ -308,31 +318,34 @@ suite('HTML widget browser rendering', () => {
             fs.writeFileSync(second, '<!doctype html><html><head></head><body>Native second</body></html>');
             notify('webview', { url: first, title: 'First' });
             const panel = await waitForValue(() => panels[0]?.webview.html.includes('Native first') ? panels[0] : undefined);
+            const run = async (viewer: vscode.WebviewPanel, action: 'back' | 'forward' | 'remove' | 'info') => {
+                await focusHtmlViewer(viewer);
+                await vscode.commands.executeCommand(`r.htmlViewer.${action}`);
+                // Title changes also reach the workbench asynchronously. Finish
+                // each action before the next one can change focus or Info state.
+                await waitForValue(() => vscode.window.tabGroups.activeTabGroup.activeTab?.label === viewer.title ? true : undefined);
+            };
             notify('webview', { url: second, title: 'Second' });
             await waitForValue(() => panel.webview.html.includes('Native second') ? true : undefined);
-            panel.reveal(panel.viewColumn, false);
-            await waitForValue(() => panel.active ? true : undefined);
-            await vscode.commands.executeCommand('r.htmlViewer.back');
+            await run(panel, 'back');
             assert.ok(panel.webview.html.includes('Native first'));
-            await vscode.commands.executeCommand('r.htmlViewer.forward');
+            await run(panel, 'forward');
             assert.ok(panel.webview.html.includes('Native second'));
             const html = panel.webview.html;
-            await vscode.commands.executeCommand('r.htmlViewer.info');
+            await run(panel, 'info');
             assert.strictEqual(panel.title, 'HTML Viewer · R 4.6.1: 12104');
             assert.strictEqual(panel.webview.html, html);
-            await vscode.commands.executeCommand('r.htmlViewer.info');
+            await run(panel, 'info');
             assert.strictEqual(panel.title, 'HTML Viewer');
             sinon.assert.notCalled(information);
-            await vscode.commands.executeCommand('r.htmlViewer.remove');
+            await run(panel, 'remove');
             assert.ok(panel.webview.html.includes('Native first'));
             assert.ok(fs.existsSync(second));
             panel.dispose();
             await vscode.commands.executeCommand('r.htmlViewer.restore', id);
             assert.strictEqual(panels.length, 2);
             assert.ok(panels[1].webview.html.includes('Native first'));
-            panels[1].reveal(panels[1].viewColumn, false);
-            await waitForValue(() => panels[1].active ? true : undefined);
-            await vscode.commands.executeCommand('r.htmlViewer.remove');
+            await run(panels[1], 'remove');
             assert.ok(panels[1].webview.html.includes('No HTML outputs in this session'));
         } finally {
             panels.forEach(panel => { panel.dispose(); });
