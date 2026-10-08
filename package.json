@@ -32,6 +32,7 @@
   "activationEvents": [
     "workspaceContains:**/*.{rproj,Rproj,r,R,rd,Rd,rmd,Rmd}",
     "onWebviewPanel:rhelp",
+    "onWebviewPanel:r.htmlViewer",
     "onLanguage:r",
     "onLanguage:rmd",
     "onNotebook:r-interactive",
@@ -258,6 +259,34 @@
         "command": "r.htmlViewer.restore",
         "title": "Restore HTML Viewer",
         "category": "R"
+      },
+      {
+        "command": "r.htmlViewer.back",
+        "title": "Previous HTML Output",
+        "category": "R HTML Viewer",
+        "icon": "$(arrow-circle-left)",
+        "enablement": "activeWebviewPanelId == 'r.htmlViewer' && r.htmlViewer.canGoBack"
+      },
+      {
+        "command": "r.htmlViewer.forward",
+        "title": "Next HTML Output",
+        "category": "R HTML Viewer",
+        "icon": "$(arrow-circle-right)",
+        "enablement": "activeWebviewPanelId == 'r.htmlViewer' && r.htmlViewer.canGoForward"
+      },
+      {
+        "command": "r.htmlViewer.remove",
+        "title": "Remove Current HTML Output",
+        "category": "R HTML Viewer",
+        "icon": "$(trash)",
+        "enablement": "activeWebviewPanelId == 'r.htmlViewer' && r.htmlViewer.canRemove"
+      },
+      {
+        "command": "r.htmlViewer.info",
+        "title": "Session information",
+        "category": "R HTML Viewer",
+        "icon": "$(info)",
+        "enablement": "activeWebviewPanelId == 'r.htmlViewer' && r.htmlViewer.canShowInfo"
       },
       {
         "title": "Create R terminal",
@@ -1026,6 +1055,22 @@
     "menus": {
       "commandPalette": [
         {
+          "command": "r.htmlViewer.back",
+          "when": "activeWebviewPanelId == 'r.htmlViewer'"
+        },
+        {
+          "command": "r.htmlViewer.forward",
+          "when": "activeWebviewPanelId == 'r.htmlViewer'"
+        },
+        {
+          "command": "r.htmlViewer.remove",
+          "when": "activeWebviewPanelId == 'r.htmlViewer'"
+        },
+        {
+          "command": "r.htmlViewer.info",
+          "when": "activeWebviewPanelId == 'r.htmlViewer'"
+        },
+        {
           "command": "r.plot.toggleStyle",
           "when": "false"
         },
@@ -1198,6 +1243,26 @@
         }
       ],
       "editor/title": [
+        {
+          "command": "r.htmlViewer.back",
+          "when": "activeWebviewPanelId == 'r.htmlViewer'",
+          "group": "navigation@1"
+        },
+        {
+          "command": "r.htmlViewer.forward",
+          "when": "activeWebviewPanelId == 'r.htmlViewer'",
+          "group": "navigation@2"
+        },
+        {
+          "command": "r.htmlViewer.remove",
+          "when": "activeWebviewPanelId == 'r.htmlViewer'",
+          "group": "navigation@3"
+        },
+        {
+          "command": "r.htmlViewer.info",
+          "when": "activeWebviewPanelId == 'r.htmlViewer'",
+          "group": "navigation@4"
+        },
         {
           "command": "r.rmarkdown.preview.openExternal",
           "when": "resourceScheme =~ /webview/ && r.rmarkdown.preview.active",

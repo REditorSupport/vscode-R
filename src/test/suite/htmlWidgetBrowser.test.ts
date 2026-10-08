@@ -1,11 +1,13 @@
 import * as assert from 'assert';
 import * as fs from 'fs';
 import * as os from 'os';
+import * as net from 'net';
+import type { RExtension } from '../../api';
 import * as path from 'path';
 import * as sinon from 'sinon';
 import * as vscode from 'vscode';
 import * as session from '../../session';
-import { initializeHtmlWidgetViewers, restoreHtmlViewer, showWebView, shutdownHtmlWidgetViewers } from '../../webViewer';
+import { initializeHtmlWidgetViewers, restoreHtmlViewer, runHtmlViewerCommand, showWebView, shutdownHtmlWidgetViewers } from '../../webViewer';
 import { extensionContext } from '../../extension';
 import { mockExtensionContext } from '../common/mockvscode';
 import { waitForValue } from '../common/sessionConnections';
@@ -13,6 +15,7 @@ import { waitForValue } from '../common/sessionConnections';
 suite('HTML widget browser rendering', () => {
     test('Cmd/Ctrl+F inside the widget opens native Find while other keys stay with the widget', async () => {
         const sandbox = sinon.createSandbox();
+        sandbox.stub(vscode.window, 'registerWebviewPanelSerializer').returns({ dispose: sandbox.stub() });
         const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'vscode-r-widget-find-'));
         const panels: vscode.WebviewPanel[] = [];
         let result: vscode.Uri | undefined;
@@ -56,7 +59,7 @@ suite('HTML widget browser rendering', () => {
                         key('handled', {ctrlKey:true});
                         key('ctrl', {ctrlKey:true});
                         key('cmd', {key:'F', metaKey:true});
-                        parent.postMessage({message:'widget/bridge', href:'https://widget-test.invalid/find?' + results}, '*');
+                        const report = document.createElement('a'); report.href = 'https://widget-test.invalid/find?' + results; document.body.append(report); report.click();
                     }, 750);
                 </script>
             </body></html>`);
@@ -70,7 +73,7 @@ suite('HTML widget browser rendering', () => {
             assert.strictEqual(command.withArgs('editor.action.webvieweditor.showFind').callCount, 2);
             assert.strictEqual(panels.length, 1);
             assert.strictEqual(vscode.window.tabGroups.activeTabGroup.activeTab?.label, 'HTML Viewer');
-            assert.ok(panels[0].webview.html.includes('1 / 1'));
+            assert.ok(!panels[0].webview.html.includes('widget-frame'));
         } finally {
             panels.forEach(panel => { panel.dispose(); });
             await shutdownHtmlWidgetViewers();
@@ -82,6 +85,7 @@ suite('HTML widget browser rendering', () => {
 
     test('fragment links scroll to IDs and named anchors inside the widget without leaving its document', async () => {
         const sandbox = sinon.createSandbox();
+        sandbox.stub(vscode.window, 'registerWebviewPanelSerializer').returns({ dispose: sandbox.stub() });
         const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'vscode-r-widget-fragments-'));
         const panels: vscode.WebviewPanel[] = [];
         let result: vscode.Uri | undefined;
@@ -134,7 +138,7 @@ suite('HTML widget browser rendering', () => {
                         const retainedScroll = scrollY;
                         click('missingLink'); results.set('missingStayed', String(scrollY === retainedScroll));
                         click('malformed'); results.set('malformedStayed', String(scrollY === retainedScroll));
-                        parent.postMessage({message:'widget/bridge', href:'https://widget-test.invalid/fragments?' + results}, '*');
+                        const report = document.createElement('a'); report.href = 'https://widget-test.invalid/fragments?' + results; document.body.append(report); report.click();
                     }, 750);
                 </script>
             </body></html>`);
@@ -155,8 +159,9 @@ suite('HTML widget browser rendering', () => {
         }
     });
 
-    test('loads relative dependencies, navigates, removes an output, and restores with the real toolbar', async () => {
+    test('native actions navigate, remove, and restore full documents with relative resources', async () => {
         const sandbox = sinon.createSandbox();
+        sandbox.stub(vscode.window, 'registerWebviewPanelSerializer').returns({ dispose: sandbox.stub() });
         const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'vscode-r-widget-browser-'));
         const panels: vscode.WebviewPanel[] = [];
         const urls: vscode.Uri[] = [];
@@ -176,22 +181,42 @@ suite('HTML widget browser rendering', () => {
             const fixture = (name: string) => {
                 const root = path.join(directory, name);
                 fs.mkdirSync(path.join(root, 'lib'), { recursive: true });
-                fs.writeFileSync(path.join(root, 'lib/widget.js'), `let reports = 0; const timer = setInterval(() => {
-                    window.parent.postMessage({ message: 'widget/bridge', href: 'https://widget-test.invalid/${name}?width=' + innerWidth + '&height=' + innerHeight }, '*');
-                    if (++reports === 20) clearInterval(timer);
-                }, 100);`);
+                fs.writeFileSync(path.join(root, 'lib/widget.css'), '#widget { min-width:137px; }' +
+                    (name === 'first' ? 'body { background:white; }' : 'body { background:#123; color:#eee; } code { color:#abc; background:#234; }'));
+                fs.writeFileSync(path.join(root, 'lib/pixel.svg'), '<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1"><rect width="1" height="1"/></svg>');
+                fs.writeFileSync(path.join(root, 'lib/data.json'), JSON.stringify({ name }));
+                fs.writeFileSync(path.join(root, 'lib/widget.js'), `let reports = 0; let fetched = false;
+                    fetch('lib/data.json').then(response => response.json()).then(data => { fetched = data.name === '${name}'; });
+                    const report = document.createElement('a'); document.body.append(report);
+                    const timer = setInterval(() => {
+                        const params = new URLSearchParams({ width: String(innerWidth), height: String(innerHeight),
+                            css: String(getComputedStyle(document.getElementById('widget')).minWidth === '137px'),
+                            image: String(document.getElementById('widget-image').naturalWidth === 1), fetch: String(fetched),
+                            direct: String(!document.getElementById('widget-frame') && !document.getElementById('widget-toolbar')),
+                            textColor: getComputedStyle(document.getElementById('markdown-text')).color,
+                            codeColor: getComputedStyle(document.getElementById('markdown-code')).color });
+                        report.href = 'https://widget-test.invalid/${name}?' + params; report.click();
+                        if (++reports === 30) clearInterval(timer);
+                    }, 100);`);
                 const file = path.join(root, 'index.html');
-                fs.writeFileSync(file, `<!doctype html><html><head><style>body { margin:0; font-size:80px; } #widget { height:100vh; }</style><script src="lib/widget.js"></script></head><body><div id="widget">${name}</div></body></html>`);
+                fs.writeFileSync(file, `<!doctype html><html><head><style>body { margin:0; font-size:80px; } #widget { height:100vh; }</style><link rel="stylesheet" href="lib/widget.css"></head><body><div id="widget">${name}<p id="markdown-text">Rendered Markdown <code id="markdown-code">inline code</code></p><img id="widget-image" src="lib/pixel.svg"></div><script src="lib/widget.js"></script></body></html>`);
                 return file;
             };
             const first = fixture('first');
             const second = fixture('second');
             const count = (name: string) => urls.filter(uri => uri.path === `/${name}`).length;
             const loaded = async (name: string, previous: number) => {
-                await waitForValue(() => count(name) > previous ? true : undefined);
-                const uri = urls.filter(uri => uri.path === `/${name}`).at(-1)!;
+                const uri = await waitForValue(() => {
+                    const reports = urls.filter(uri => uri.path === `/${name}`);
+                    const latest = reports.at(-1);
+                    const params = new URLSearchParams(latest?.query);
+                    return reports.length > previous && ['css', 'image', 'fetch', 'direct'].every(key => params.get(key) === 'true') ? latest : undefined;
+                });
                 const dimensions = new URLSearchParams(uri.query);
                 assert.ok(Number(dimensions.get('width')) > 0 && Number(dimensions.get('height')) > 0);
+                assert.strictEqual(dimensions.get('textColor'), name === 'first' ? 'rgb(0, 0, 0)' : 'rgb(238, 238, 238)');
+                assert.strictEqual(dimensions.get('codeColor'), name === 'first' ? 'rgb(0, 0, 0)' : 'rgb(170, 187, 204)');
+                assert.ok(!panels.at(-1)!.webview.html.includes('r-html-viewer-info'));
             };
             await showWebView(first, 'First widget', 'Two', session.getViewerSessionContext(source.sessionId));
             await loaded('first', 0);
@@ -199,59 +224,33 @@ suite('HTML widget browser rendering', () => {
             await loaded('second', 0);
             assert.strictEqual(panels.length, 1);
             const panel = panels[0];
-            let controlRevision = 0;
-            // A test-only host script drives native button clicks and reports geometry.
-            const installControls = async (name: string) => {
-                const previous = count(name);
-                const token = ++controlRevision;
-                panel.webview.html = panel.webview.html.replace('</body></html>', `<script>
-                    window.addEventListener('message', event => {
-                        if (event.data?.message === 'widget-test/navigate') {
-                            document.getElementById('widget-' + event.data.direction).click();
-                        } else if (event.data?.message === 'widget-test/remove') {
-                            document.getElementById('widget-remove').click();
-                        } else if (event.data?.message === 'widget-test/inspect') {
-                            const toolbar = document.getElementById('widget-toolbar');
-                            const frame = document.getElementById('widget-frame');
-                            const good = toolbar.getBoundingClientRect().height > 0 && frame.getBoundingClientRect().height > 0 &&
-                                frame.getBoundingClientRect().bottom <= innerHeight + 1 &&
-                                getComputedStyle(toolbar).fontSize !== '80px' && toolbar.querySelector('.viewer-session');
-                            window.dispatchEvent(new MessageEvent('message', { source: frame.contentWindow,
-                                data: { message: 'widget/bridge', href: 'https://widget-test.invalid/host?good=' + Boolean(good) } }));
-                        }
-                    });
-                    window.dispatchEvent(new MessageEvent('message', { source: document.getElementById('widget-frame').contentWindow,
-                        data: { message: 'widget/bridge', href: 'https://widget-test.invalid/controls?token=${token}' } }));
-                </script></body></html>`);
-                await waitForValue(() => urls.find(uri => uri.path === '/controls' && uri.query === 'token=' + token));
-                await loaded(name, previous);
-            };
-            await installControls('second');
-            await panel.webview.postMessage({ message: 'widget-test/inspect' });
-            await waitForValue(() => urls.find(uri => uri.path === '/host'));
-            assert.ok(urls.find(uri => uri.path === '/host')?.query.includes('good=true'));
+            assert.strictEqual(panel.viewType, 'r.htmlViewer');
+            panel.reveal(panel.viewColumn, false);
+            await waitForValue(() => panel.active ? true : undefined);
             const firstCount = count('first');
-            await panel.webview.postMessage({ message: 'widget-test/navigate', direction: 'back' });
+            await runHtmlViewerCommand('back');
             await loaded('first', firstCount);
-            assert.strictEqual(panel.title, 'HTML Viewer');
-            await installControls('first');
             const secondCount = count('second');
-            await panel.webview.postMessage({ message: 'widget-test/navigate', direction: 'forward' });
+            await runHtmlViewerCommand('forward');
             await loaded('second', secondCount);
-            assert.strictEqual(panel.title, 'HTML Viewer');
-            await installControls('second');
             const removeCount = count('first');
-            await panel.webview.postMessage({ message: 'widget-test/remove' });
+            await runHtmlViewerCommand('remove');
             await loaded('first', removeCount);
-            assert.ok(panel.webview.html.includes('1 / 1'));
             assert.ok(fs.existsSync(second), 'Removing history must preserve the original HTML file');
+            const information = sandbox.stub(vscode.window, 'showInformationMessage').resolves();
+            const html = panel.webview.html;
+            await runHtmlViewerCommand('info');
+            assert.strictEqual(panel.title, `HTML Viewer · R 4.6.1: ${source.pid}`);
+            assert.strictEqual(panel.webview.html, html);
+            await runHtmlViewerCommand('info');
+            assert.strictEqual(panel.title, 'HTML Viewer');
+            sinon.assert.notCalled(information);
             panel.dispose();
             const restoreCount = count('first');
             await restoreHtmlViewer(source.sessionId);
             await loaded('first', restoreCount);
             assert.strictEqual(panels.length, 2);
             assert.strictEqual(panels[1].title, 'HTML Viewer');
-            assert.ok(panels[1].webview.html.includes('1 / 1'));
         } finally {
             panels.forEach(panel => { panel.dispose(); });
             await shutdownHtmlWidgetViewers();
@@ -260,4 +259,87 @@ suite('HTML widget browser rendering', () => {
             fs.rmSync(directory, { recursive: true, force: true });
         }
     });
+    test('registered native commands operate on HTML outputs received by the activated extension', async () => {
+        const sandbox = sinon.createSandbox();
+        sandbox.stub(vscode.window, 'registerWebviewPanelSerializer').returns({ dispose: sandbox.stub() });
+        const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'vscode-r-native-commands-'));
+        const panels: vscode.WebviewPanel[] = [];
+        let client: net.Socket | undefined;
+        try {
+            const extension = vscode.extensions.getExtension<RExtension>('REditorSupport.r');
+            assert.ok(extension);
+            const api = await extension.activate();
+            const connection = await api.session.getConnectionInfo();
+            assert.ok(connection, 'The activated extension must expose its session endpoint');
+            const createPanel = vscode.window.createWebviewPanel.bind(vscode.window);
+            sandbox.stub(vscode.window, 'createWebviewPanel').callsFake((...args) => {
+                const panel = createPanel(...args);
+                if (panel.viewType === 'r.htmlViewer') { panels.push(panel); }
+                return panel;
+            });
+            const information = sandbox.stub(vscode.window, 'showInformationMessage').resolves();
+            const id = `native-toolbar-${Date.now()}`;
+            client = net.createConnection(connection.endpoint);
+            let attached = false;
+            let buffer = '';
+            const socket = client;
+            socket.on('data', data => {
+                buffer += data.toString();
+                let newline: number;
+                while ((newline = buffer.indexOf('\n')) >= 0) {
+                    const request = JSON.parse(buffer.slice(0, newline)) as { id?: number; method?: string };
+                    buffer = buffer.slice(newline + 1);
+                    if (request.id === undefined) { continue; }
+                    if (request.method === 'workspace') { attached = true; }
+                    socket.write(JSON.stringify({ jsonrpc: '2.0', id: request.id,
+                        result: request.method === 'workspace' ? { globalenv: {}, search: [], loaded_namespaces: [] } : true }) + '\n');
+                }
+            });
+            await new Promise<void>((resolve, reject) => { socket.once('connect', resolve); socket.once('error', reject); });
+            const notify = (method: string, params: Record<string, unknown>) => {
+                socket.write(JSON.stringify({ jsonrpc: '2.0', method, params }) + '\n');
+            };
+            notify('attach', { protocol_version: connection.protocolVersion, session_id: id,
+                host: 'native-toolbar-test-host', pid: '12104', version: '4.6.1', tempdir: directory, wd: directory });
+            await waitForValue(() => attached ? true : undefined);
+            const first = path.join(directory, 'first.html');
+            const second = path.join(directory, 'second.html');
+            fs.writeFileSync(first, '<!doctype html><html><head></head><body>Native first</body></html>');
+            fs.writeFileSync(second, '<!doctype html><html><head></head><body>Native second</body></html>');
+            notify('webview', { url: first, title: 'First' });
+            const panel = await waitForValue(() => panels[0]?.webview.html.includes('Native first') ? panels[0] : undefined);
+            notify('webview', { url: second, title: 'Second' });
+            await waitForValue(() => panel.webview.html.includes('Native second') ? true : undefined);
+            panel.reveal(panel.viewColumn, false);
+            await waitForValue(() => panel.active ? true : undefined);
+            await vscode.commands.executeCommand('r.htmlViewer.back');
+            assert.ok(panel.webview.html.includes('Native first'));
+            await vscode.commands.executeCommand('r.htmlViewer.forward');
+            assert.ok(panel.webview.html.includes('Native second'));
+            const html = panel.webview.html;
+            await vscode.commands.executeCommand('r.htmlViewer.info');
+            assert.strictEqual(panel.title, 'HTML Viewer · R 4.6.1: 12104');
+            assert.strictEqual(panel.webview.html, html);
+            await vscode.commands.executeCommand('r.htmlViewer.info');
+            assert.strictEqual(panel.title, 'HTML Viewer');
+            sinon.assert.notCalled(information);
+            await vscode.commands.executeCommand('r.htmlViewer.remove');
+            assert.ok(panel.webview.html.includes('Native first'));
+            assert.ok(fs.existsSync(second));
+            panel.dispose();
+            await vscode.commands.executeCommand('r.htmlViewer.restore', id);
+            assert.strictEqual(panels.length, 2);
+            assert.ok(panels[1].webview.html.includes('Native first'));
+            panels[1].reveal(panels[1].viewColumn, false);
+            await waitForValue(() => panels[1].active ? true : undefined);
+            await vscode.commands.executeCommand('r.htmlViewer.remove');
+            assert.ok(panels[1].webview.html.includes('No HTML outputs in this session'));
+        } finally {
+            panels.forEach(panel => { panel.dispose(); });
+            client?.destroy();
+            sandbox.restore();
+            fs.rmSync(directory, { recursive: true, force: true });
+        }
+    });
+
 });

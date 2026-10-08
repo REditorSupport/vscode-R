@@ -16,6 +16,7 @@ import * as rTerminal from './rTerminal';
 import { getProcessAncestors } from './processTree';
 import { TerminalSessionRegistry } from './terminalSessionRegistry';
 import { SessionProcessMonitor } from './sessionProcessMonitor';
+import { sessionProcessIdentity } from './sessionIdentity';
 import { purgeAddinPickerItems, RSEditOperation, RSRange } from './rstudioapi';
 
 import { extensionContext, rWorkspace, globalRHelp, globalPlotManager, sessionStatusBarItem, enableSessionWatcher } from './extension';
@@ -1250,7 +1251,7 @@ function attachViewerSessionBridge(panel: vscode.WebviewPanel, sessionId: string
 export function getViewerSessionContext(sessionId: string | null, saved?: ViewerSessionSource): ViewerSessionContext | undefined {
     const attached = sessions.get(sessionId ?? '');
     // A saved Viewer belongs to its original process, never a replacement.
-    const owner = saved && (!attached || attached.host.toLowerCase() !== saved.host.toLowerCase() || attached.pid !== saved.pid)
+    const owner = saved && (saved.processExited || !attached || sessionProcessIdentity(attached) !== sessionProcessIdentity(saved))
         ? saved : attached;
     return owner ? createViewerSessionContext(owner, sessionProcessMonitor) : undefined;
 }

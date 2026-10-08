@@ -1,13 +1,11 @@
 import type { Memento, ViewColumn } from 'vscode';
 import type { ViewerSessionContext, ViewerSessionSource } from '../viewerSession';
+import { sessionProcessIdentity as widgetSessionIdentity } from '../sessionIdentity';
+
+export { widgetSessionIdentity };
 
 export const widgetHistoryKey = 'r.htmlViewer.histories';
 export const widgetHistoryLimit = 50;
-
-/** Session IDs identify a process lifetime; host and PID guard against ID reuse. */
-export function widgetSessionIdentity(source: Readonly<ViewerSessionSource>): string {
-    return JSON.stringify([source.sessionId, source.host.toLowerCase(), source.pid]);
-}
 
 export interface WidgetHistory {
     source: ViewerSessionSource;

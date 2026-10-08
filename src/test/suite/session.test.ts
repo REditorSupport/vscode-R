@@ -628,9 +628,9 @@ suite('Session Communication', () => {
 
         // 4. Test webview
         term.sendText('tf <- tempfile(fileext=".html"); writeLines("test", tf); getOption("viewer")(tf)\n');
-        await waitFor(() => createWebviewPanelSpy.calledWith('webview'), 10000, 200);
+        await waitFor(() => createWebviewPanelSpy.calledWith('r.htmlViewer'), 10000, 200);
 
-        assert.ok(createWebviewPanelSpy.calledWith('webview'), 'webview should be triggered for html file');
+        assert.ok(createWebviewPanelSpy.calledWith('r.htmlViewer'), 'webview should be triggered for html file');
 
     }).timeout(85000);
 

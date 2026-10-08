@@ -1,7 +1,20 @@
 
+import type { ViewerSessionSource } from '../viewerSession';
+
+export interface HtmlViewerPanelState {
+    id: string;
+    version: 1;
+    source?: ViewerSessionSource;
+    history: Array<{ file: string; title: string }>;
+    index: number;
+    showSessionInfo: boolean;
+}
+
+export type HtmlViewerPanelReference = Pick<HtmlViewerPanelState, 'id'>;
+
 export interface VsCode {
     postMessage: (msg: OutMessage) => void;
-    setState: (state: string) => void;
+    setState: (state: unknown) => void;
 }
 /**
  * Function declared by VS Code in Webview
@@ -30,5 +43,4 @@ export interface LinkClickedMessage extends IMessage {
 export type OutMessage = LogMessage | MouseClickMessage | LinkClickedMessage
     | { message: 'viewer-session/ready' }
     | { message: 'widget/navigate'; direction: 'back' | 'forward'; generation: number }
-    | { message: 'widget/find'; generation: number }
-    | { message: 'widget/remove'; generation: number };
+    | { message: 'widget/find'; generation: number };

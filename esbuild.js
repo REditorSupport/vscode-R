@@ -100,8 +100,7 @@ async function main() {
         entryPoints: {
             'help/index': './src/helpViewer/webview/index.ts',
             'httpgd/index': './src/plotViewer/webview/index.ts',
-            'webview/index': './src/webViewer/webview/index.ts',
-            'webview/widget': './src/webViewer/webview/widget.ts'
+            'webview/index': './src/webViewer/webview/index.ts'
         },
         bundle: true,
         minify: production,

@@ -1,3 +1,5 @@
+import { sessionProcessIdentity } from './sessionIdentity';
+
 interface ProcessSession {
     readonly sessionId: string;
     readonly pid: string;
@@ -7,6 +9,8 @@ interface ProcessSession {
 
 interface WatchedProcess {
     readonly key: string;
+    readonly sessionId: string;
+    readonly host: string;
     readonly pid: number;
     exited: boolean;
     readonly listeners: Set<() => void>;
@@ -22,20 +26,21 @@ export class SessionProcessMonitor<Session extends ProcessSession> {
     constructor(private readonly isLocalHost: (host: string) => boolean) {}
 
     hasExited(owner: Session): boolean {
-        return owner.processExited || Boolean((this.sources.get(owner) ?? this.identities.get(this.key(owner)))?.exited);
+        return owner.processExited || Boolean(this.find(owner)?.exited);
     }
 
     observe(owner: Session, listener: () => void): { readonly exited: boolean; dispose(): void } {
-        let source = this.sources.get(owner);
+        let source = this.find(owner);
         if (!source) {
             // Capture the original PID; a restart must not redirect old viewers.
-            const key = this.key(owner);
+            const key = sessionProcessIdentity(owner);
             // Native reconnects replace the transport object but keep their session ID.
-            source = this.identities.get(key) ?? {
-                key, pid: Number(owner.pid), exited: owner.processExited, listeners: new Set(),
+            source = {
+                key, sessionId: owner.sessionId, host: owner.host.toLowerCase(),
+                pid: Number(owner.pid), exited: owner.processExited, listeners: new Set(),
             };
-            this.sources.set(owner, source);
         }
+        this.sources.set(owner, source);
         const watched = source;
         if (owner.processExited) { this.finish(watched); }
         this.identities.set(watched.key, watched);
@@ -63,13 +68,19 @@ export class SessionProcessMonitor<Session extends ProcessSession> {
 
     /** A confirmed exit is authoritative, including for remote sessions. */
     markExited(owner: Session): void {
-        const source = this.sources.get(owner) ?? this.identities.get(this.key(owner));
+        const source = this.find(owner);
         if (source) { this.finish(source); }
     }
 
-    private key(owner: Session): string {
-        // Session IDs identify a process lifetime even after exit clears its PID.
-        return JSON.stringify([owner.host.toLowerCase(), owner.sessionId]);
+    private find(owner: Session): WatchedProcess | undefined {
+        const captured = this.sources.get(owner);
+        const known = this.identities.get(captured?.key ?? sessionProcessIdentity(owner)) ?? captured;
+        if (known || owner.pid) { return known; }
+        // An exit/reconnect may arrive after PID metadata was cleared. Resolve
+        // only an unambiguous original process; never select a replacement.
+        const matches = [...this.identities.values()].filter(source =>
+            source.sessionId === owner.sessionId && source.host === owner.host.toLowerCase());
+        return matches.length === 1 ? matches[0] : undefined;
     }
 
     private poll(): void {

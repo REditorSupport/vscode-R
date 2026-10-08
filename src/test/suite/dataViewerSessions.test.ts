@@ -8,7 +8,7 @@ import * as vscode from 'vscode';
 import * as extension from '../../extension';
 import * as session from '../../session';
 import * as util from '../../util';
-import { initializeHtmlWidgetViewers, restoreHtmlViewer, shutdownHtmlWidgetViewers } from '../../webViewer';
+import { initializeHtmlWidgetViewers, restoreHtmlViewer, runHtmlViewerCommand, shutdownHtmlWidgetViewers } from '../../webViewer';
 import { mockExtensionContext } from '../common/mockvscode';
 
 interface Request {
@@ -41,14 +41,18 @@ async function waitFor(condition: () => boolean): Promise<void> {
 
 suite('Viewer session ownership', () => {
     let sandbox: sinon.SinonSandbox;
+    let htmlViewers: ReturnType<typeof initializeHtmlWidgetViewers>;
+    let information: sinon.SinonStub;
     const clients: Client[] = [];
     const panels: Panel[] = [];
 
     setup(() => {
         sandbox = sinon.createSandbox();
+        information = sandbox.stub(vscode.window, 'showInformationMessage').resolves();
+        sandbox.stub(vscode.window, 'registerWebviewPanelSerializer').returns({ dispose: sandbox.stub() });
         const root = path.join(__dirname, '..', '..', '..');
         mockExtensionContext(root, sandbox);
-        initializeHtmlWidgetViewers(extension.extensionContext, {
+        htmlViewers = initializeHtmlWidgetViewers(extension.extensionContext, {
             resolveSession: source => session.getViewerSessionContext(source.sessionId, source)!,
             getActiveSessionId: () => session.activeSession?.sessionId,
         });
@@ -150,6 +154,22 @@ suite('Viewer session ownership', () => {
         return client;
     }
 
+    async function htmlSessionInfo(panel: vscode.WebviewPanel): Promise<string> {
+        for (const viewer of panels) {
+            Object.defineProperty(viewer.panel, 'active', { value: viewer.panel === panel, configurable: true });
+        }
+        await runHtmlViewerCommand('info');
+        const label = panel.title.slice('HTML Viewer · '.length);
+        await runHtmlViewerCommand('info');
+        sinon.assert.notCalled(information);
+        return label;
+    }
+
+    function htmlPosition(panel: vscode.WebviewPanel): string {
+        const entry = [...htmlViewers.viewers.values()].find(entry => entry.panel === panel)!;
+        return `${entry.state.index + 1} / ${entry.state.history.length}`;
+    }
+
     test('HTML widget notifications use their source session while another session is active', async () => {
         const read: sinon.SinonStub = sandbox.stub(fs, 'readFile');
         read.callsFake(file => Promise.resolve(`<div>${String(file)}</div>`));
@@ -160,14 +180,14 @@ suite('Viewer session ownership', () => {
         notify(first, 'webview', { url: '/tmp/first-widget.html' });
         await waitFor(() => panels.length === 1 && panels[0].panel.webview.html.includes('first-widget.html'));
         const original = panels[0].panel;
-        assert.ok(original.webview.html.includes('R 4.6.1: 12101'));
+        assert.ok((await htmlSessionInfo(original)).includes('R 4.6.1: 12101'));
         notify(first, 'webview', { url: '/tmp/updated-widget.html' });
         await waitFor(() => original.webview.html.includes('updated-widget.html'));
         assert.strictEqual(panels.length, 1);
 
         notify(second, 'webview', { url: '/tmp/second-widget.html' });
         await waitFor(() => panels.length === 2 && panels[1].panel.webview.html.includes('second-widget.html'));
-        assert.ok(panels[1].panel.webview.html.includes('R 4.6.2: 12102'));
+        assert.ok((await htmlSessionInfo(panels[1].panel)).includes('R 4.6.2: 12102'));
         assert.ok(original.webview.html.includes('updated-widget.html'));
         assert.strictEqual(session.activeSession?.sessionId, second.id);
     });
@@ -190,13 +210,13 @@ suite('Viewer session ownership', () => {
         await waitFor(() => viewer.panel.webview.html.includes('/tmp/profvis'));
         assert.strictEqual(panels.length, 1);
         assert.strictEqual(outputTitle(viewer.panel), 'Page Viewer');
-        assert.ok(viewer.panel.webview.html.includes('2 / 2'));
-        assert.ok(viewer.panel.webview.html.includes('R 4.6.1: 12101'));
+        assert.strictEqual(htmlPosition(viewer.panel), '2 / 2');
+        assert.ok((await htmlSessionInfo(viewer.panel)).includes('R 4.6.1: 12101'));
 
         notify(source, 'browser', { url: '/tmp/report.HTM', title: 'Report' });
         await waitFor(() => viewer.panel.webview.html.includes('<title>Report</title>'));
         assert.strictEqual(panels.length, 1);
-        assert.ok(viewer.panel.webview.html.includes('3 / 3'));
+        assert.strictEqual(htmlPosition(viewer.panel), '3 / 3');
         assert.strictEqual(outputTitle(viewer.panel), 'Report');
         assert.strictEqual(session.activeSession?.sessionId, other.id);
         const navigate = (direction: 'back' | 'forward') => viewer.receive({
@@ -213,14 +233,14 @@ suite('Viewer session ownership', () => {
         await restoreHtmlViewer(source.id);
         assert.strictEqual(panels.length, 2);
         assert.strictEqual(outputTitle(panels[1].panel), 'Page Viewer');
-        assert.ok(panels[1].panel.webview.html.includes('2 / 3'));
-        assert.ok(panels[1].panel.webview.html.includes('R 4.6.1: 12101'));
+        assert.strictEqual(htmlPosition(panels[1].panel), '2 / 3');
+        assert.ok((await htmlSessionInfo(panels[1].panel)).includes('R 4.6.1: 12101'));
 
         notify(other, 'page_viewer', { url: '/tmp/other-profvis.html', title: 'Other profile' });
         await waitFor(() => panels.length === 3 && panels[2].panel.webview.html.includes('<title>Other profile</title>'));
-        assert.ok(panels[2].panel.webview.html.includes('1 / 1'));
+        assert.strictEqual(htmlPosition(panels[2].panel), '1 / 1');
         assert.strictEqual(outputTitle(panels[2].panel), 'Other profile');
-        assert.ok(panels[2].panel.webview.html.includes('R 4.6.2: 12102'));
+        assert.ok((await htmlSessionInfo(panels[2].panel)).includes('R 4.6.2: 12102'));
     });
 
     test('server URLs from every HTML route use Simple Browser and stay outside widget history', async () => {
@@ -228,7 +248,7 @@ suite('Viewer session ownership', () => {
         read.resolves('<div>Widget</div>');
         const source = await attach('html-server-source', '12101', '4.6.1');
         notify(source, 'webview', { url: '/tmp/widget.html' });
-        await waitFor(() => panels.length === 1 && panels[0].panel.webview.html.includes('1 / 1'));
+        await waitFor(() => panels.length === 1 && panels[0].panel.webview.html.includes('data-generation='));
         const html = panels[0].panel.webview.html;
         const commands = sandbox.stub(vscode.commands, 'executeCommand').resolves();
         const externalUri = sandbox.stub(vscode.env, 'asExternalUri').resolves(vscode.Uri.parse('https://forwarded.invalid/shiny'));
@@ -256,7 +276,7 @@ suite('Viewer session ownership', () => {
         const external = sandbox.stub(vscode.env, 'openExternal').resolves(true);
         const source = await attach('html-disabled-routes', '12101', '4.6.1');
         notify(source, 'webview', { url: '/tmp/widget.html' });
-        await waitFor(() => panels.length === 1 && panels[0].panel.webview.html.includes('1 / 1'));
+        await waitFor(() => panels.length === 1 && panels[0].panel.webview.html.includes('data-generation='));
         const html = panels[0].panel.webview.html;
         notify(source, 'page_viewer', { url: '/tmp/profvis.html' });
         await waitFor(() => external.callCount === 1);
@@ -431,6 +451,18 @@ suite('Viewer session ownership', () => {
             owner.pid = ''; owner.rVer = '';
             await panels[1].receive({ message: 'viewer-session/ready' });
             assert.strictEqual(panels[1].replies.at(-1)?.text, 'R: (not attached)');
+        } finally { session.unregisterSessionTransport(owner); }
+    });
+
+    test('a saved confirmed exit remains authoritative when a matching transport still has stale metadata', () => {
+        const owner = session.registerSessionTransport('saved-exited-viewer', 'foreign-host', '/tmp', sandbox.stub().resolves({}));
+        owner.pid = '12103'; owner.rVer = '4.6.2';
+        try {
+            const context = session.getViewerSessionContext(owner.sessionId, {
+                sessionId: owner.sessionId, host: owner.host, pid: owner.pid, rVer: owner.rVer, processExited: true,
+            })!;
+            assert.strictEqual(context.hasExited, true);
+            assert.ok(context.getHtml().includes('R: (not attached)'));
         } finally { session.unregisterSessionTransport(owner); }
     });
 
