@@ -1,6 +1,6 @@
 'use strict';
 
-import { removeSync, statSync } from 'fs-extra';
+import { rmSync, statSync } from 'node:fs';
 import { commands, extensions, window, workspace } from 'vscode';
 
 import { runTextInTerm } from './rTerminal';
@@ -73,7 +73,7 @@ async function openTmpCSV(pathToTmpCsv: string, tmpDir: string): Promise<false |
 
     if (!checkIfFileExists(pathToTmpCsv)) {
         void window.showErrorMessage('Dataframe failed to display.');
-        removeSync(tmpDir);
+        rmSync(tmpDir, { recursive: true, force: true });
 
         return false;
     }
@@ -82,7 +82,7 @@ async function openTmpCSV(pathToTmpCsv: string, tmpDir: string): Promise<false |
     const success = await waitForFileToFinish(pathToTmpCsv);
     if (!success) {
         void window.showWarningMessage('Visual Studio Code currently limits opening files to 20 MB.');
-        removeSync(tmpDir);
+        rmSync(tmpDir, { recursive: true, force: true });
 
         return false;
     }
@@ -91,7 +91,7 @@ async function openTmpCSV(pathToTmpCsv: string, tmpDir: string): Promise<false |
     void workspace.openTextDocument(pathToTmpCsv).then(
         async (file) => {
             await commands.executeCommand('csv.preview', file.uri);
-            removeSync(tmpDir);
+            rmSync(tmpDir, { recursive: true, force: true });
         }
     );
 }

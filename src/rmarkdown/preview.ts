@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import * as fs from 'fs-extra';
+import * as fs from 'node:fs';
 import * as cheerio from 'cheerio';
 
 import path = require('path');
@@ -31,7 +31,7 @@ class RMarkdownPreview extends vscode.Disposable {
             this.cp?.dispose();
             this.panel?.dispose();
             this.fileWatcher?.close();
-            fs.removeSync(this.outputUri.fsPath);
+            fs.rmSync(this.outputUri.fsPath, { recursive: true, force: true });
         });
 
         this.title = title;

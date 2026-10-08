@@ -9,10 +9,9 @@
 !R/help/**
 !R/rmarkdown/**
 !R/template/**
-!html/**/*.ejs
-!html/**/*.css
-!html/**/*.js
-!images/**
+!images/Rlogo.png
+!images/Rlogo.svg
+!images/icons/**
 !language-configuration/**
 !snippets/**
 !syntaxes/**

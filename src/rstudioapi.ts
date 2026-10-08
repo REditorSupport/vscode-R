@@ -5,7 +5,7 @@ import {
     workspace, WorkspaceEdit, Position, Range, Selection,
     QuickPickItem, QuickPickOptions, ViewColumn
 } from 'vscode';
-import { readJSON } from 'fs-extra';
+import { readJson } from './fileSystem';
 import * as path from 'path';
 import { sessionDir, sessionDirectoryExists } from './session';
 import { runTextInTerm, chooseTerminal } from './rTerminal';
@@ -309,9 +309,9 @@ interface RawAddin {
 export async function getAddinPickerItems(): Promise<AddinItem[]> {
 
     if (typeof addinQuickPicks === 'undefined') {
-        const addins: RawAddin[] = await readJSON(path.join(sessionDir, 'addins.json')).
+        const addins: RawAddin[] = await readJson(path.join(sessionDir, 'addins.json')).
             then(
-                (result: RawAddin[]) => result,
+                (result) => result as RawAddin[],
                 () => {
                     throw ('Could not find list of installed addins.' +
                         ' options(vsc.rstudioapi = TRUE) must be set in your .Rprofile to use ' +

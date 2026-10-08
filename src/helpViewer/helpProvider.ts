@@ -1,8 +1,8 @@
 import { Memento, window } from 'vscode';
-import * as nodeFetch from 'node-fetch';
 import * as cp from 'child_process';
 
 import * as rHelp from '.';
+import { getHttpText } from './http';
 import { extensionContext } from '../extension';
 import { catchAsError, config, DisposableProcess, getRLibPaths, spawn, spawnAsync } from '../util';
 
@@ -118,22 +118,27 @@ export class HelpProvider {
         }
 
         // forward request to R instance
-        const url = `http://localhost:${port}/${requestPath}`;
-        const rep = await nodeFetch.default(url);
+        const url = new URL(`http://127.0.0.1:${port}/${requestPath}`);
+        // tools::startDynamicHelp() also redirects to CRAN when a Windows FAQ
+        // or manual is not installed locally (src/library/tools/R/dynamicHelp.R).
+        // The initial request is loopback, but HTTP(S) redirects may be external.
+        const rep = await getHttpText(url);
         if(rep.status !== 200){
             return undefined;
         }
-        const html = await rep.text();
+        const html = rep.text;
 
         // read "corrected" request path, that was forwarded to
-        const requestPath1 = rep.url.replace(/^http:\/\/localhost:[0-9]*\//, '');
+        // An external FAQ/manual redirect must retain its complete URL.
+        const prefix = `${url.origin}/`;
+        const requestPath1 = rep.url.startsWith(prefix) ? rep.url.slice(prefix.length) : rep.url;
 
         // return help file
         const ret: rHelp.HelpFile = {
             requestPath: requestPath1,
             html: html,
             isRealFile: false,
-            url: url
+            url: url.href
         };
         return ret;
     }

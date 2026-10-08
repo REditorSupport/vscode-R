@@ -1,7 +1,8 @@
 'use strict';
 
 import { homedir } from 'os';
-import { existsSync, PathLike, readFile } from 'fs-extra';
+import { existsSync, PathLike, readFile as readFileCallback } from 'node:fs';
+import { promisify } from 'node:util';
 import * as fs from 'fs';
 import winreg = require('winreg');
 import * as path from 'path';
@@ -168,9 +169,11 @@ export function getCurrentWorkspaceFolder(resource?: vscode.Uri): vscode.Workspa
     return selectWorkspaceFolder(workspaceFolders, activeFileWorkspaceFolder, resourceWorkspaceFolder);
 }
 
+const readFile = promisify(readFileCallback);
+
 export function readContent(file: PathLike | number): Promise<Buffer> | undefined;
-export function readContent(file: PathLike | number, encoding: string): Promise<string> | undefined;
-export function readContent(file: PathLike | number, encoding?: string): Promise<string | Buffer> | undefined {
+export function readContent(file: PathLike | number, encoding: BufferEncoding): Promise<string> | undefined;
+export function readContent(file: PathLike | number, encoding?: BufferEncoding): Promise<string | Buffer> | undefined {
     return encoding === undefined ? readFile(file) : readFile(file, encoding);
 }
 
