@@ -126,7 +126,9 @@ export class HelpProvider {
         const html = rep.text;
 
         // read "corrected" request path, that was forwarded to
-        const requestPath1 = rep.url.slice(`${url.origin}/`.length);
+        // An external FAQ/manual redirect must retain its complete URL.
+        const prefix = `${url.origin}/`;
+        const requestPath1 = rep.url.startsWith(prefix) ? rep.url.slice(prefix.length) : rep.url;
 
         // return help file
         const ret: rHelp.HelpFile = {

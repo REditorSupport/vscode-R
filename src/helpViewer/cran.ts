@@ -1,6 +1,7 @@
 
 import * as cheerio from 'cheerio';
 import { Package} from './packages';
+import { fetchWithBasicAuth } from './fetch';
 
 type ParseFunction = (html: string, baseUrl: string) => Package[];
 
@@ -24,7 +25,7 @@ export async function getPackagesFromCran(cranUrl: string): Promise<Package[]> {
     for(const site of cranSites){
         try{
             // fetch html
-            const res = await fetch(site.url);
+            const res = await fetchWithBasicAuth(site.url);
             const html = await (res).text();
 
             // parse html

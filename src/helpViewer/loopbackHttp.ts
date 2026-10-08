@@ -1,4 +1,5 @@
 import { get, IncomingMessage } from 'node:http';
+import { fetchWithBasicAuth } from './fetch';
 
 export interface LocalHttpResponse {
     status: number;
@@ -7,7 +8,8 @@ export interface LocalHttpResponse {
 }
 
 // R's help server can use ports forbidden by Fetch, including 10080.
-// Keep this transport scoped to the same loopback origin, including redirects.
+// Use this transport for the initial loopback origin; delegate other HTTP(S)
+// origins to Fetch so it handles external redirects and compressed responses.
 export async function getLoopbackHttp(url: URL, redirectsLeft = 5): Promise<LocalHttpResponse> {
     if (url.protocol !== 'http:' || !['127.0.0.1', 'localhost'].includes(url.hostname)
         || url.username || url.password) {
@@ -29,8 +31,15 @@ export async function getLoopbackHttp(url: URL, redirectsLeft = 5): Promise<Loca
                 throw new Error('Too many loopback HTTP redirects');
             }
             const next = new URL(location, current);
+            if (!['http:', 'https:'].includes(next.protocol)) {
+                throw new Error('R help redirect must use HTTP or HTTPS');
+            }
             if (next.origin !== origin || next.username || next.password) {
-                throw new Error('Loopback HTTP redirect must stay on the same origin');
+                // tools::startDynamicHelp() redirects to CRAN when a Windows FAQ
+                // or manual is not installed locally (tools/R/dynamicHelp.R).
+                // Rejecting external redirects would break those help pages.
+                const external = await fetchWithBasicAuth(next);
+                return { status: external.status, url: external.url, text: await external.text() };
             }
             current = next;
             redirectsLeft--;

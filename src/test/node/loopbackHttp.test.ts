@@ -1,6 +1,8 @@
 import * as assert from 'node:assert';
 import { createServer, Server } from 'node:http';
 import { AddressInfo } from 'node:net';
+import { gzipSync } from 'node:zlib';
+import * as sinon from 'sinon';
 import { getLoopbackHttp } from '../../helpViewer/loopbackHttp';
 
 function listen(server: Server, port = 0): Promise<void> {
@@ -22,6 +24,7 @@ function close(server: Server): Promise<void> {
 suite('R help loopback HTTP', () => {
     let server: Server;
     let origin: string;
+    let externalUrl: string;
     const html = '<html>日本語のRヘルプ</html>';
 
     setup(async () => {
@@ -33,9 +36,8 @@ suite('R help loopback HTTP', () => {
             } else if (pathname === '/loop') {
                 response.writeHead(302, { Location: '/loop' });
                 response.end();
-            } else if (pathname === '/external' || pathname === '/other-port') {
-                const location = pathname === '/external' ? 'http://example.com/help' : 'http://127.0.0.1:1/help';
-                response.writeHead(302, { Location: location });
+            } else if (pathname === '/external') {
+                response.writeHead(302, { Location: externalUrl });
                 response.end();
             } else if (pathname === '/truncated') {
                 response.writeHead(200, { 'Content-Length': 100 });
@@ -70,10 +72,44 @@ suite('R help loopback HTTP', () => {
         assert.strictEqual(response.status, 404);
         assert.strictEqual(response.text, 'Not found');
     });
-    test('rejects redirect loops, external hosts and other loopback ports', async () => {
+    test('rejects redirect loops and non-HTTP redirects', async () => {
         await assert.rejects(getLoopbackHttp(new URL('/loop', origin)), /Too many/);
-        for (const path of ['/external', '/other-port']) {
-            await assert.rejects(getLoopbackHttp(new URL(path, origin)), /same origin/);
+        externalUrl = 'file:///tmp/help.html';
+        await assert.rejects(getLoopbackHttp(new URL('/external', origin)), /HTTP or HTTPS/);
+    });
+    test('delegates the Windows FAQ HTTPS redirect to Fetch', async () => {
+        externalUrl = 'https://cran.r-project.org/bin/windows/base/rw-FAQ.html';
+        const nativeFetch = sinon.stub(globalThis, 'fetch').resolves(new Response(html));
+        try {
+            const response = await getLoopbackHttp(new URL('/external', origin));
+            assert.strictEqual(response.text, html);
+            assert.strictEqual(nativeFetch.callCount, 1);
+            const fetchedUrl = nativeFetch.firstCall.args[0];
+            assert.ok(fetchedUrl instanceof URL);
+            assert.strictEqual(fetchedUrl.href, externalUrl);
+        } finally {
+            nativeFetch.restore();
+        }
+    });
+    test('follows external redirects, decompresses HTML and retains the final URL', async () => {
+        const external = createServer((request, response) => {
+            if (request.url === '/redirect') {
+                response.writeHead(302, { Location: '/manual' });
+                response.end();
+            } else {
+                response.writeHead(200, { 'Content-Encoding': 'gzip' });
+                response.end(gzipSync(html));
+            }
+        });
+        await listen(external);
+        const externalOrigin = `http://127.0.0.1:${(external.address() as AddressInfo).port}`;
+        externalUrl = `${externalOrigin}/redirect`;
+        try {
+            assert.deepStrictEqual(await getLoopbackHttp(new URL('/external', origin)), {
+                status: 200, url: `${externalOrigin}/manual`, text: html
+            });
+        } finally {
+            await close(external);
         }
     });
     test('rejects non-loopback, non-HTTP and credential-bearing initial URLs', async () => {
