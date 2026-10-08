@@ -30,4 +30,5 @@ export interface LinkClickedMessage extends IMessage {
 export type OutMessage = LogMessage | MouseClickMessage | LinkClickedMessage
     | { message: 'viewer-session/ready' }
     | { message: 'widget/navigate'; direction: 'back' | 'forward'; generation: number }
+    | { message: 'widget/find'; generation: number }
     | { message: 'widget/remove'; generation: number };

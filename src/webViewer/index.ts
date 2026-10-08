@@ -1,7 +1,7 @@
 'use strict';
 
 import * as path from 'path';
-import { ExtensionContext, Uri, ViewColumn, Webview, WebviewPanel, window, env } from 'vscode';
+import { ExtensionContext, Uri, ViewColumn, Webview, WebviewPanel, window, env, commands } from 'vscode';
 import { config, readContent, UriIcon } from '../util';
 import { extensionContext } from '../extension';
 import { ViewerSessionContext, viewerSessionStyle } from '../viewerSession';
@@ -179,6 +179,11 @@ class HtmlWidgetViewerManager {
         }) => {
             if (msg.message === 'linkClicked' && msg.href) {
                 void env.openExternal(Uri.parse(msg.href));
+            } else if (msg.message === 'widget/find' && session && !entry.disposed && msg.generation === entry.revision) {
+                // Synthetic key events from the nested iframe are ignored by VS Code.
+                // Activate its owning panel before opening the built-in Find widget.
+                panel.reveal(panel.viewColumn, false);
+                await commands.executeCommand('editor.action.webvieweditor.showFind');
             } else if (msg.message === 'widget/navigate' && session && !entry.disposed &&
                 msg.generation === entry.revision && (msg.direction === 'back' || msg.direction === 'forward')) {
                 const index = entry.state.index + (msg.direction === 'back' ? -1 : 1);

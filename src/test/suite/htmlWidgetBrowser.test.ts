@@ -10,6 +10,71 @@ import { mockExtensionContext } from '../common/mockvscode';
 import { waitForValue } from '../common/sessionConnections';
 
 suite('HTML widget browser rendering', () => {
+    test('Cmd/Ctrl+F inside the widget opens native Find while other keys stay with the widget', async () => {
+        const sandbox = sinon.createSandbox();
+        const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'vscode-r-widget-find-'));
+        const panels: vscode.WebviewPanel[] = [];
+        let result: vscode.Uri | undefined;
+        let findCommands = 0;
+        const source = session.registerSessionTransport('html-browser-find', 'widget-test-host', directory, () => Promise.resolve({}));
+        source.pid = '12103'; source.rVer = '4.6.1';
+        try {
+            mockExtensionContext(path.resolve(__dirname, '../../..'), sandbox);
+            const createPanel = vscode.window.createWebviewPanel.bind(vscode.window);
+            sandbox.stub(vscode.window, 'createWebviewPanel').callsFake((...args) => {
+                const panel = createPanel(...args); panels.push(panel); return panel;
+            });
+            const executeCommand = vscode.commands.executeCommand.bind(vscode.commands);
+            const command = sandbox.stub(vscode.commands, 'executeCommand').callThrough();
+            command.withArgs('editor.action.webvieweditor.showFind').callsFake(async () => {
+                await executeCommand('editor.action.webvieweditor.showFind');
+                findCommands++;
+            });
+            sandbox.stub(vscode.env, 'openExternal').callsFake(uri => { result = uri; return Promise.resolve(true); });
+            const file = path.join(directory, 'index.html');
+            fs.writeFileSync(file, `<!doctype html><html><body>
+                <p>Searchable widget content</p><input id="widget-input">
+                <script>
+                    setTimeout(() => {
+                        const input = document.getElementById('widget-input');
+                        input.focus();
+                        const results = new URLSearchParams();
+                        const key = (name, options) => {
+                            const event = new KeyboardEvent('keydown', {key:'f', code:'KeyF', bubbles:true, cancelable:true, ...options});
+                            input.dispatchEvent(event);
+                            results.set(name, String(event.defaultPrevented));
+                        };
+                        key('plain', {});
+                        key('shift', {ctrlKey:true, shiftKey:true});
+                        key('alt', {ctrlKey:true, altKey:true});
+                        input.addEventListener('keydown', event => event.preventDefault(), {once:true});
+                        key('handled', {ctrlKey:true});
+                        key('ctrl', {ctrlKey:true});
+                        key('cmd', {key:'F', metaKey:true});
+                        parent.postMessage({message:'widget/bridge', href:'https://widget-test.invalid/find?' + results}, '*');
+                    }, 750);
+                </script>
+            </body></html>`);
+            await showWebView(file, 'Find in widget', 'Two', session.getViewerSessionContext(source.sessionId));
+            const response = await waitForValue(() => result);
+            assert.strictEqual(response.path, '/find');
+            const observations = new URLSearchParams(response.query);
+            for (const name of ['ctrl', 'cmd', 'handled']) { assert.strictEqual(observations.get(name), 'true', name); }
+            for (const name of ['plain', 'shift', 'alt']) { assert.strictEqual(observations.get(name), 'false', name); }
+            await waitForValue(() => findCommands === 2 ? true : undefined);
+            assert.strictEqual(command.withArgs('editor.action.webvieweditor.showFind').callCount, 2);
+            assert.strictEqual(panels.length, 1);
+            assert.strictEqual(vscode.window.tabGroups.activeTabGroup.activeTab?.label, 'HTML Viewer');
+            assert.ok(panels[0].webview.html.includes('1 / 1'));
+        } finally {
+            panels.forEach(panel => { panel.dispose(); });
+            await shutdownHtmlWidgetViewers();
+            session.unregisterSessionTransport(source);
+            sandbox.restore();
+            fs.rmSync(directory, { recursive: true, force: true });
+        }
+    });
+
     test('fragment links scroll to IDs and named anchors inside the widget without leaving its document', async () => {
         const sandbox = sinon.createSandbox();
         const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'vscode-r-widget-fragments-'));

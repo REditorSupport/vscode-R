@@ -26,8 +26,12 @@ document.addEventListener('mousedown', event => {
     }
 });
 document.addEventListener('keydown', event => {
+    if (event.defaultPrevented) { return; }
     if (event.altKey && (event.key === 'ArrowLeft' || event.key === 'ArrowRight')) {
         event.preventDefault();
         window.parent.postMessage({ message: 'widget/bridge', direction: event.key === 'ArrowLeft' ? 'back' : 'forward' }, '*');
+    } else if ((event.ctrlKey || event.metaKey) && !event.altKey && !event.shiftKey && event.key.toLowerCase() === 'f') {
+        event.preventDefault();
+        window.parent.postMessage({ message: 'widget/bridge', command: 'find' }, '*');
     }
 });

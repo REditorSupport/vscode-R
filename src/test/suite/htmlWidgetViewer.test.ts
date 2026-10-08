@@ -182,6 +182,31 @@ suite('Session-aware HTML widget Viewer', () => {
         sinon.assert.notCalled(read);
     });
 
+    test('Find activates its owning panel and ignores stale requests without changing history', async () => {
+        const command = sandbox.stub(vscode.commands, 'executeCommand').resolves();
+        const source = owner('html-find');
+        await show('/tmp/a.html', source, 'A');
+        const panel = panels[0];
+        const previousGeneration = Number(/data-generation="(\d+)"/.exec(panel.webview.html)?.[1]);
+        await show('/tmp/b.html', source, 'B');
+        await show('/tmp/other.html', owner('html-find-other'), 'Other');
+        const html = panel.webview.html;
+        const generation = Number(/data-generation="(\d+)"/.exec(html)?.[1]);
+        await receivers.get(panel)!({ message: 'widget/find', generation: previousGeneration });
+        await receivers.get(panel)!({ message: 'widget/find' });
+        sinon.assert.notCalled(command);
+        const reveal = (panel as unknown as { reveal: sinon.SinonStub }).reveal;
+        reveal.resetHistory();
+        await receivers.get(panel)!({ message: 'widget/find', generation });
+        sinon.assert.calledOnceWithExactly(command, 'editor.action.webvieweditor.showFind');
+        sinon.assert.calledOnceWithExactly(reveal, vscode.ViewColumn.Two, false);
+        assert.strictEqual(panel.webview.html, html);
+        assert.ok(panel.webview.html.includes('2 / 2'));
+        panel.dispose();
+        await receivers.get(panel)!({ message: 'widget/find', generation });
+        sinon.assert.calledOnce(command);
+    });
+
     test('unowned HTML pages retain independent panels', async () => {
         await showWebView('/tmp/page-a/index.html', 'Page Viewer', 'Two');
         await showWebView('/tmp/page-b/index.html', 'Page Viewer', 'Two');

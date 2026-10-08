@@ -57,6 +57,8 @@ export function initializeWidgetToolbar(vscode: VsCode): void {
         if (!message || typeof message !== 'object' || !('message' in message) || message.message !== 'widget/bridge') { return; }
         if ('direction' in message && (message.direction === 'back' || message.direction === 'forward')) {
             navigate(message.direction);
+        } else if ('command' in message && message.command === 'find') {
+            vscode.postMessage({ message: 'widget/find', generation: Number(toolbar.dataset.generation) });
         } else if ('href' in message && typeof message.href === 'string' && /^(https?:|mailto:)/i.test(message.href)) {
             vscode.postMessage({ message: 'linkClicked', href: message.href, scrollY: 0 });
         }

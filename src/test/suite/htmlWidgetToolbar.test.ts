@@ -76,4 +76,15 @@ suite('HTML widget toolbar controls', () => {
         receive({ source: widget.frame.contentWindow, data: { message: 'widget/bridge', href: 'https://example.com' } });
         assert.deepStrictEqual(widget.posted, [{ message: 'linkClicked', href: 'https://example.com', scrollY: 0 }]);
     });
+
+    test('only the widget frame can request Find for the displayed generation', () => {
+        const widget = toolbar();
+        const receive = widget.events.get('message')!;
+        receive({ source: {}, data: { message: 'widget/bridge', command: 'find' } });
+        receive({ source: widget.frame.contentWindow, data: { message: 'widget/bridge', command: 'unknown' } });
+        assert.strictEqual(widget.posted.length, 0);
+        receive({ source: widget.frame.contentWindow, data: { message: 'widget/bridge', command: 'find' } });
+        assert.deepStrictEqual(widget.posted, [{ message: 'widget/find', generation: 7 }]);
+        assert.ok(!widget.back.disabled && !widget.forward.disabled && !widget.remove.disabled);
+    });
 });
