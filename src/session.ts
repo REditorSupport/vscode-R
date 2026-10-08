@@ -2273,8 +2273,10 @@ async function handleNotification(message: Record<string, unknown>, socket: IpcS
                     }
                 } else {
                     if (url.toLowerCase().endsWith('.html') || url.toLowerCase().endsWith('.htm')) {
+                        // Standalone HTML can arrive through page_viewer (e.g. profvis)
+                        // or browseURL as well as viewer; all belong to the source session.
                         await showWebView(url, title, viewColumn,
-                            method === 'webview' ? getViewerSessionContext(socket._sessionId ?? null) : undefined);
+                            getViewerSessionContext(socket._sessionId ?? null));
                     } else {
                         await showDataView('object', 'txt', title, url, String(viewColumn));
                     }

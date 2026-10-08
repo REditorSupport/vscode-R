@@ -80,6 +80,11 @@ suite('Session-aware HTML widget Viewer', () => {
         return showWebView(file, title, viewer, session.getViewerSessionContext(source.sessionId));
     }
 
+    function outputTitle(panel: vscode.WebviewPanel): string | undefined {
+        assert.strictEqual(panel.title, 'HTML Viewer');
+        return /<title>(.*?)<\/title>/.exec(panel.webview.html)?.[1];
+    }
+
     function widgetDocument(panel: vscode.WebviewPanel): string {
         const attribute = /data-widget-document="([^"]*)"/.exec(panel.webview.html)?.[1];
         assert.ok(attribute, 'Widgets must render in an iframe separate from the toolbar');
@@ -106,7 +111,7 @@ suite('Session-aware HTML widget Viewer', () => {
         await show('/tmp/widget-b/index.html', second);
         await show('/tmp/widget-c/index.html', first, 'Updated Viewer', 'Beside');
         assert.strictEqual(panels.length, 2);
-        assert.strictEqual(panels[0].title, 'Updated Viewer');
+        assert.strictEqual(outputTitle(panels[0]), 'Updated Viewer');
         assert.ok(panels[0].webview.html.includes('/tmp/widget-c/index.html'));
         assert.ok(widgetDocument(panels[0]).includes('<base href="file:///tmp/widget-c/">'));
         assert.ok(widgetDocument(panels[0]).includes('src="lib/widget.js"'));
@@ -130,7 +135,7 @@ suite('Session-aware HTML widget Viewer', () => {
         slow.resolve('<div>Old HTML</div>');
         await pending;
         assert.strictEqual(panels[0].webview.html, latest);
-        assert.strictEqual(panels[0].title, 'Latest');
+        assert.strictEqual(outputTitle(panels[0]), 'Latest');
         assert.strictEqual(panels[0].webview.options.localResourceRoots?.[0].fsPath, '/tmp/latest');
     });
 
@@ -175,6 +180,7 @@ suite('Session-aware HTML widget Viewer', () => {
         await showWebView('/tmp/page-b/index.html', 'Page Viewer', 'Two');
         assert.strictEqual(panels.length, 2);
         assert.ok(!panels[0].webview.html.includes('widget-toolbar'));
+        assert.ok(panels.every(panel => panel.title === 'HTML Viewer'));
     });
 
     test('Back and Forward browse only the owning session with correct boundary states', async () => {
@@ -189,7 +195,7 @@ suite('Session-aware HTML widget Viewer', () => {
         assert.ok(!disabled(panel, 'back') && disabled(panel, 'forward'));
         assert.ok(panel.webview.html.includes('2 / 2'));
         await navigate(panel, 'back');
-        assert.strictEqual(panel.title, 'A');
+        assert.strictEqual(outputTitle(panel), 'A');
         assert.ok(widgetDocument(panel).includes('/tmp/a/index.html'));
         assert.strictEqual(panel.webview.options.localResourceRoots?.[0].fsPath, '/tmp/a');
         assert.ok(disabled(panel, 'back') && !disabled(panel, 'forward'));
@@ -197,7 +203,7 @@ suite('Session-aware HTML widget Viewer', () => {
         await navigate(panel, 'back');
         assert.strictEqual(panel.webview.html, firstHtml);
         await navigate(panel, 'forward');
-        assert.strictEqual(panel.title, 'B');
+        assert.strictEqual(outputTitle(panel), 'B');
         assert.ok(!disabled(panel, 'back') && disabled(panel, 'forward'));
         assert.strictEqual(panels.length, 2);
         assert.strictEqual(panels[1].webview.html, other);
@@ -211,9 +217,9 @@ suite('Session-aware HTML widget Viewer', () => {
         await show('/tmp/c.html', source, 'C');
         assert.ok(panels[0].webview.html.includes('3 / 3'));
         await navigate(panels[0], 'back');
-        assert.strictEqual(panels[0].title, 'B');
+        assert.strictEqual(outputTitle(panels[0]), 'B');
         await navigate(panels[0], 'back');
-        assert.strictEqual(panels[0].title, 'A');
+        assert.strictEqual(outputTitle(panels[0]), 'A');
     });
 
     test('late history loads and stale toolbar messages cannot replace newer output', async () => {
@@ -230,7 +236,7 @@ suite('Session-aware HTML widget Viewer', () => {
         await pending;
         await navigate(panels[0], 'back', generation);
         assert.strictEqual(panels[0].webview.html, latest);
-        assert.strictEqual(panels[0].title, 'C');
+        assert.strictEqual(outputTitle(panels[0]), 'C');
     });
 
     test('missing historical files show an error and Forward still returns to available output', async () => {
@@ -254,10 +260,10 @@ suite('Session-aware HTML widget Viewer', () => {
         panels[0].dispose();
         await restoreHtmlViewer(source.sessionId);
         assert.strictEqual(panels.length, 2);
-        assert.strictEqual(panels[1].title, 'A');
+        assert.strictEqual(outputTitle(panels[1]), 'A');
         assert.ok(panels[1].webview.html.includes('1 / 2'));
         await navigate(panels[1], 'forward');
-        assert.strictEqual(panels[1].title, 'B');
+        assert.strictEqual(outputTitle(panels[1]), 'B');
         assert.strictEqual((webview.postMessage as sinon.SinonStub).callCount, 0);
         await restoreHtmlViewer(source.sessionId);
         assert.strictEqual(panels.length, 2, 'Restoration must reuse an open Viewer');
@@ -285,7 +291,7 @@ suite('Session-aware HTML widget Viewer', () => {
         assert.strictEqual(panels.length, 2);
         assert.ok(panels[1].webview.html.includes('3 / 3'));
         await navigate(panels[1], 'back');
-        assert.strictEqual(panels[1].title, 'B');
+        assert.strictEqual(outputTitle(panels[1]), 'B');
     });
 
     test('restores persisted selection after extension-host recreation and transport reconnect', async () => {
@@ -300,11 +306,11 @@ suite('Session-aware HTML widget Viewer', () => {
         reconnected.pid = source.pid;
         await restoreHtmlViewer(source.sessionId);
         assert.strictEqual(panels.length, 2);
-        assert.strictEqual(panels[1].title, 'A');
+        assert.strictEqual(outputTitle(panels[1]), 'A');
         assert.ok(panels[1].webview.html.includes('1 / 2'));
         assert.ok(panels[1].webview.html.includes(`R 4.6.1: ${source.pid}`));
         await navigate(panels[1], 'forward');
-        assert.strictEqual(panels[1].title, 'B');
+        assert.strictEqual(outputTitle(panels[1]), 'B');
         await show('/tmp/c.html', reconnected, 'C');
         assert.strictEqual(panels.length, 2);
         assert.ok(panels[1].webview.html.includes('3 / 3'));
@@ -318,7 +324,7 @@ suite('Session-aware HTML widget Viewer', () => {
         const other = owner('html-history-active');
         sandbox.stub(session, 'activeSession').value(other);
         await restoreHtmlViewer(source.sessionId);
-        assert.strictEqual(panels[1].title, 'Detached widget');
+        assert.strictEqual(outputTitle(panels[1]), 'Detached widget');
         assert.ok(panels[1].webview.html.includes(`R 4.6.1: ${source.pid}`));
         assert.ok(!panels[1].webview.html.includes(`R 4.6.1: ${other.pid}`));
     });
@@ -335,7 +341,7 @@ suite('Session-aware HTML widget Viewer', () => {
             Promise.resolve((items as Array<vscode.QuickPickItem>)[1]));
         await restoreHtmlViewer();
         sinon.assert.calledOnce(pick);
-        assert.strictEqual(panels[2].title, 'Second');
+        assert.strictEqual(outputTitle(panels[2]), 'Second');
         assert.ok(panels[2].webview.html.includes(`R 4.6.1: ${second.pid}`));
     });
 
@@ -348,7 +354,7 @@ suite('Session-aware HTML widget Viewer', () => {
         await restoreHtmlViewer(source.sessionId);
         assert.ok(widgetDocument(panels[1]).includes('This HTML widget could not be loaded'));
         await navigate(panels[1], 'back');
-        assert.strictEqual(panels[1].title, 'A');
+        assert.strictEqual(outputTitle(panels[1]), 'A');
         const stored = savedState.get(widgetHistoryKey) as WidgetHistory[];
         assert.strictEqual(stored[0].index, 0);
     });
@@ -386,7 +392,7 @@ suite('Session-aware HTML widget Viewer', () => {
         for (let i = 0; i < 51; i++) { await show(`/tmp/widget-${i}.html`, source, `Widget ${i}`); }
         assert.ok(panels[0].webview.html.includes('50 / 50'));
         for (let i = 0; i < 49; i++) { await navigate(panels[0], 'back'); }
-        assert.strictEqual(panels[0].title, 'Widget 1');
+        assert.strictEqual(outputTitle(panels[0]), 'Widget 1');
         assert.ok(disabled(panels[0], 'back'));
     });
 });

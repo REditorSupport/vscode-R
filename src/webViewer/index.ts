@@ -18,6 +18,7 @@ interface WidgetViewer {
 }
 
 let manager: HtmlWidgetViewerManager | undefined;
+const htmlViewerTitle = 'HTML Viewer';
 
 interface WidgetToolbar {
     index: number;
@@ -47,7 +48,7 @@ async function renderWidget(entry: WidgetViewer): Promise<void> {
     } : undefined;
     const html = await getWebviewHtml(panel.webview, item.file, item.title, dir, toolbar);
     if (!entry.disposed && entry.revision === generation) {
-        panel.title = item.title;
+        panel.title = htmlViewerTitle;
         panel.webview.options = { ...panel.webview.options, localResourceRoots: resourceRoots };
         panel.webview.html = html;
         panel.reveal(panel.viewColumn, true);
@@ -100,7 +101,7 @@ class HtmlWidgetViewerManager {
 
     async show(file: string, title: string, viewer: string | boolean, session?: ViewerSessionContext): Promise<void> {
         const saved = session ? this.histories.remember(session) : undefined;
-        const entry = this.open(title, viewer, session, saved);
+        const entry = this.open(viewer, session, saved);
         entry.state.history.push({ file, title });
         if (entry.state.history.length > widgetHistoryLimit) { entry.state.history.shift(); }
         entry.state.index = entry.state.history.length - 1;
@@ -146,17 +147,17 @@ class HtmlWidgetViewerManager {
         const viewer = record.viewColumn ? ViewColumn[record.viewColumn] :
             config().get<Record<string, string>>('session.viewers.viewColumn')?.viewer ?? 'Two';
         // Explicit restoration opens a Viewer even if automatic viewing is disabled.
-        const entry = this.open(record.history[record.index].title, viewer, session, record);
+        const entry = this.open(viewer, session, record);
         const pending = this.save(entry);
         await renderWidget(entry);
         await pending;
     }
 
-    private open(title: string, viewer: string | boolean, session?: ViewerSessionContext, saved?: WidgetHistory): WidgetViewer {
+    private open(viewer: string | boolean, session?: ViewerSessionContext, saved?: WidgetHistory): WidgetViewer {
         const sessionId = session?.sessionId;
         const existing = sessionId ? this.viewers.get(sessionId) : undefined;
         if (existing) { return existing; }
-        const panel = window.createWebviewPanel('webview', title,
+        const panel = window.createWebviewPanel('webview', htmlViewerTitle,
             { preserveFocus: true, viewColumn: ViewColumn[String(viewer) as keyof typeof ViewColumn] ?? ViewColumn.Two },
             { enableScripts: true, enableFindWidget: true, retainContextWhenHidden: true });
         const entry: WidgetViewer = {

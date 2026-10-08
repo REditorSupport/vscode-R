@@ -82,18 +82,18 @@ suite('HTML widget browser rendering', () => {
             const firstCount = count('first');
             await panel.webview.postMessage({ message: 'widget-test/navigate', direction: 'back' });
             await loaded('first', firstCount);
-            assert.strictEqual(panel.title, 'First widget');
+            assert.strictEqual(panel.title, 'HTML Viewer');
             await installControls('first');
             const secondCount = count('second');
             await panel.webview.postMessage({ message: 'widget-test/navigate', direction: 'forward' });
             await loaded('second', secondCount);
-            assert.strictEqual(panel.title, 'Second widget');
+            assert.strictEqual(panel.title, 'HTML Viewer');
             panel.dispose();
             const restoreCount = count('second');
             await restoreHtmlViewer(source.sessionId);
             await loaded('second', restoreCount);
             assert.strictEqual(panels.length, 2);
-            assert.strictEqual(panels[1].title, 'Second widget');
+            assert.strictEqual(panels[1].title, 'HTML Viewer');
             assert.ok(panels[1].webview.html.includes('2 / 2'));
         } finally {
             panels.forEach(panel => { panel.dispose(); });

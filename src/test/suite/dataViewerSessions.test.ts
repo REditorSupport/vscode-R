@@ -7,6 +7,7 @@ import * as vscode from 'vscode';
 import * as extension from '../../extension';
 import * as session from '../../session';
 import * as util from '../../util';
+import { restoreHtmlViewer, shutdownHtmlWidgetViewers } from '../../webViewer';
 import { mockExtensionContext } from '../common/mockvscode';
 
 interface Request {
@@ -89,6 +90,7 @@ suite('Viewer session ownership', () => {
 
     teardown(async () => {
         panels.splice(0).forEach(item => { item.panel.dispose(); });
+        await shutdownHtmlWidgetViewers();
         for (const client of clients.splice(0)) {
             await session.cleanupSession(client.id);
             client.socket.destroy();
@@ -162,6 +164,99 @@ suite('Viewer session ownership', () => {
         assert.ok(panels[1].panel.webview.html.includes('R 4.6.2: 12102'));
         assert.ok(original.webview.html.includes('updated-widget.html'));
         assert.strictEqual(session.activeSession?.sessionId, second.id);
+    });
+
+    function outputTitle(panel: vscode.WebviewPanel): string | undefined {
+        assert.strictEqual(panel.title, 'HTML Viewer');
+        return /<title>(.*?)<\/title>/.exec(panel.webview.html)?.[1];
+    }
+
+    test('page_viewer and browser HTML share widget history, source ownership, and restoration', async () => {
+        sandbox.stub(util, 'readContent').callsFake(file => Promise.resolve(`<div>${String(file)}</div>`));
+        const source = await attach('html-mixed-source', '12101', '4.6.1');
+        const other = await attach('html-mixed-active', '12102', '4.6.2');
+        notify(source, 'webview', { url: '/tmp/widget.html', title: 'Widget' });
+        await waitFor(() => panels.length === 1 && panels[0].panel.webview.html.includes('widget.html'));
+        const viewer = panels[0];
+        // htmlwidgets::print.suppress_viewer sends profvis through page_viewer.
+        notify(source, 'page_viewer', { url: '/tmp/profvis/index.html' });
+        await waitFor(() => viewer.panel.webview.html.includes('/tmp/profvis'));
+        assert.strictEqual(panels.length, 1);
+        assert.strictEqual(outputTitle(viewer.panel), 'Page Viewer');
+        assert.ok(viewer.panel.webview.html.includes('2 / 2'));
+        assert.ok(viewer.panel.webview.html.includes('R 4.6.1: 12101'));
+
+        notify(source, 'browser', { url: '/tmp/report.HTM', title: 'Report' });
+        await waitFor(() => viewer.panel.webview.html.includes('<title>Report</title>'));
+        assert.strictEqual(panels.length, 1);
+        assert.ok(viewer.panel.webview.html.includes('3 / 3'));
+        assert.strictEqual(outputTitle(viewer.panel), 'Report');
+        assert.strictEqual(session.activeSession?.sessionId, other.id);
+        const navigate = (direction: 'back' | 'forward') => viewer.receive({
+            message: 'widget/navigate', direction,
+            generation: Number(/data-generation="(\d+)"/.exec(viewer.panel.webview.html)?.[1]),
+        });
+        await navigate('back');
+        assert.strictEqual(outputTitle(viewer.panel), 'Page Viewer');
+        assert.ok(viewer.panel.webview.html.includes('/tmp/profvis'));
+        await navigate('back');
+        assert.strictEqual(outputTitle(viewer.panel), 'Widget');
+        await navigate('forward');
+        viewer.panel.dispose();
+        await restoreHtmlViewer(source.id);
+        assert.strictEqual(panels.length, 2);
+        assert.strictEqual(outputTitle(panels[1].panel), 'Page Viewer');
+        assert.ok(panels[1].panel.webview.html.includes('2 / 3'));
+        assert.ok(panels[1].panel.webview.html.includes('R 4.6.1: 12101'));
+
+        notify(other, 'page_viewer', { url: '/tmp/other-profvis.html', title: 'Other profile' });
+        await waitFor(() => panels.length === 3 && panels[2].panel.webview.html.includes('<title>Other profile</title>'));
+        assert.ok(panels[2].panel.webview.html.includes('1 / 1'));
+        assert.strictEqual(outputTitle(panels[2].panel), 'Other profile');
+        assert.ok(panels[2].panel.webview.html.includes('R 4.6.2: 12102'));
+    });
+
+    test('server URLs from every HTML route use Simple Browser and stay outside widget history', async () => {
+        sandbox.stub(util, 'readContent').resolves('<div>Widget</div>');
+        const source = await attach('html-server-source', '12101', '4.6.1');
+        notify(source, 'webview', { url: '/tmp/widget.html' });
+        await waitFor(() => panels.length === 1 && panels[0].panel.webview.html.includes('1 / 1'));
+        const html = panels[0].panel.webview.html;
+        const commands = sandbox.stub(vscode.commands, 'executeCommand').resolves();
+        const externalUri = sandbox.stub(vscode.env, 'asExternalUri').resolves(vscode.Uri.parse('https://forwarded.invalid/shiny'));
+        const routes = ['webview', 'page_viewer', 'browser'];
+        for (const [index, method] of routes.entries()) {
+            notify(source, method, { url: 'http://localhost:4321' });
+            await waitFor(() => commands.withArgs('simpleBrowser.show').callCount === index + 1);
+        }
+        sinon.assert.calledThrice(externalUri);
+        sinon.assert.calledWith(commands, 'simpleBrowser.show', 'https://forwarded.invalid/shiny');
+        notify(source, 'page_viewer', { url: 'https://example.com/report' });
+        await waitFor(() => commands.withArgs('simpleBrowser.show').callCount === 4);
+        sinon.assert.calledWith(commands, 'simpleBrowser.show', 'https://example.com/report');
+        assert.strictEqual(panels.length, 1);
+        assert.strictEqual(panels[0].panel.webview.html, html);
+    });
+
+    test('disabled Page Viewer and Browser settings open local HTML externally without adding history', async () => {
+        (util.config as sinon.SinonStub).returns({
+            get: (key: string, fallback: unknown) => key === 'session.viewers.viewColumn'
+                ? { viewer: 'Two', pageViewer: 'Disable', browser: 'Disable' } : fallback,
+        });
+        sandbox.stub(util, 'readContent').resolves('<div>Widget</div>');
+        const external = sandbox.stub(vscode.env, 'openExternal').resolves(true);
+        const source = await attach('html-disabled-routes', '12101', '4.6.1');
+        notify(source, 'webview', { url: '/tmp/widget.html' });
+        await waitFor(() => panels.length === 1 && panels[0].panel.webview.html.includes('1 / 1'));
+        const html = panels[0].panel.webview.html;
+        notify(source, 'page_viewer', { url: '/tmp/profvis.html' });
+        await waitFor(() => external.callCount === 1);
+        assert.strictEqual((external.lastCall.args[0] as vscode.Uri).fsPath, '/tmp/profvis.html');
+        notify(source, 'browser', { url: '/tmp/report.htm' });
+        await waitFor(() => external.callCount === 2);
+        assert.strictEqual((external.lastCall.args[0] as vscode.Uri).fsPath, '/tmp/report.htm');
+        assert.strictEqual(panels.length, 1);
+        assert.strictEqual(panels[0].panel.webview.html, html);
     });
 
     async function open(
