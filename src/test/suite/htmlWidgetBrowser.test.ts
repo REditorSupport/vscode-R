@@ -10,6 +10,77 @@ import { mockExtensionContext } from '../common/mockvscode';
 import { waitForValue } from '../common/sessionConnections';
 
 suite('HTML widget browser rendering', () => {
+    test('fragment links scroll to IDs and named anchors inside the widget without leaving its document', async () => {
+        const sandbox = sinon.createSandbox();
+        const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'vscode-r-widget-fragments-'));
+        const panels: vscode.WebviewPanel[] = [];
+        let result: vscode.Uri | undefined;
+        const source = session.registerSessionTransport('html-browser-fragments', 'widget-test-host', directory, () => Promise.resolve({}));
+        source.pid = '12102'; source.rVer = '4.6.1';
+        try {
+            mockExtensionContext(path.resolve(__dirname, '../../..'), sandbox);
+            const createPanel = vscode.window.createWebviewPanel.bind(vscode.window);
+            sandbox.stub(vscode.window, 'createWebviewPanel').callsFake((...args) => {
+                const panel = createPanel(...args); panels.push(panel); return panel;
+            });
+            sandbox.stub(vscode.env, 'openExternal').callsFake(uri => { result = uri; return Promise.resolve(true); });
+            const file = path.join(directory, 'index.html');
+            fs.writeFileSync(file, `<!doctype html><html><head><style>
+                html { scroll-behavior:auto; } body { margin:0; } .gap { height:1500px; }
+            </style></head><body>
+                <a id="toc" href="#section"><span>Section</span></a>
+                <a id="encoded" href="#section%20two">Encoded ID</a>
+                <a id="named" href="#legacy">Named anchor</a>
+                <a id="empty" href="#">Top</a><a id="topLink" href="#top">Top</a>
+                <a id="missingLink" href="#missing">Missing target</a>
+                <a id="malformed" href="#bad%ZZ">Malformed fragment</a>
+                <div class="gap"></div><h2 id="section">Section</h2>
+                <div class="gap"></div><h2 id="section two">Encoded section</h2>
+                <div class="gap"></div><a name="legacy">Legacy section</a><div class="gap"></div>
+                <script>
+                    setTimeout(() => {
+                        const results = new URLSearchParams();
+                        const click = (id, target) => {
+                            let intercepted = false;
+                            document.addEventListener('click', event => {
+                                intercepted = event.defaultPrevented;
+                                // A broken bridge must still return its observations.
+                                event.preventDefault();
+                            }, {once:true});
+                            (document.querySelector('#' + id + ' span') || document.getElementById(id)).click();
+                            results.set(id, String(intercepted && (!target || Math.abs(target.getBoundingClientRect().top) < 2)));
+                        };
+                        click('toc', document.getElementById('section'));
+                        click('encoded', document.getElementById('section two'));
+                        click('named', document.getElementsByName('legacy')[0]);
+                        click('empty'); results.set('emptyTop', String(scrollY === 0));
+                        window.scrollTo(0, 500);
+                        click('topLink'); results.set('topTop', String(scrollY === 0));
+                        window.scrollTo(0, 500);
+                        const retainedScroll = scrollY;
+                        click('missingLink'); results.set('missingStayed', String(scrollY === retainedScroll));
+                        click('malformed'); results.set('malformedStayed', String(scrollY === retainedScroll));
+                        parent.postMessage({message:'widget/bridge', href:'https://widget-test.invalid/fragments?' + results}, '*');
+                    }, 750);
+                </script>
+            </body></html>`);
+            await showWebView(file, 'Report fragments', 'Two', session.getViewerSessionContext(source.sessionId));
+            const response = await waitForValue(() => result);
+            assert.strictEqual(response.path, '/fragments');
+            const observations = new URLSearchParams(response.query);
+            for (const key of ['toc', 'encoded', 'named', 'empty', 'emptyTop', 'topLink', 'topTop', 'missingLink', 'missingStayed', 'malformed', 'malformedStayed']) {
+                assert.strictEqual(observations.get(key), 'true', `${key} must stay within the displayed HTML document`);
+            }
+            assert.strictEqual(panels.length, 1);
+        } finally {
+            panels.forEach(panel => { panel.dispose(); });
+            await shutdownHtmlWidgetViewers();
+            session.unregisterSessionTransport(source);
+            sandbox.restore();
+            fs.rmSync(directory, { recursive: true, force: true });
+        }
+    });
+
     test('loads relative dependencies, navigates, removes an output, and restores with the real toolbar', async () => {
         const sandbox = sinon.createSandbox();
         const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'vscode-r-widget-browser-'));
