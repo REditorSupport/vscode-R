@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Focus the terminal created from the "R Terminal" profile (the terminal panel's "+" menu). VS Code focuses "the last terminal" before a contributed-profile terminal is registered, so with a remote extension host (Codespaces, SSH, vscode.dev) the new R terminal opened without focus, unlike "R: Create R Terminal". The extension now shows the terminal it provided.
+
 ## 3.0.1 - 2026-09-28
 
 - Bump version of both the extension and `sess` to `3.0.1` so users who installed an earlier `3.0.0` pre-release build of `sess` (before its connection protocol was finalized) are prompted to reinstall `sess`. (#1794)

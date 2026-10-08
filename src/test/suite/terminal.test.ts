@@ -344,6 +344,83 @@ suite('R Terminal', () => {
         }
     });
 
+    function stubProfileConfig() {
+        const configStub = { get: () => undefined };
+        sandbox.stub(util, 'config').returns(configStub as unknown as vscode.WorkspaceConfiguration);
+        sandbox.stub(util, 'getRterm').resolves(process.execPath);
+        rTerminal.resetProfileTerminalPending();
+    }
+
+    function terminalFrom(creationOptions: vscode.TerminalOptions, show: sinon.SinonSpy): vscode.Terminal {
+        return { name: creationOptions.name, creationOptions, show } as unknown as vscode.Terminal;
+    }
+
+    test('the contributed profile focuses the terminal VS Code creates from it', async () => {
+        stubProfileConfig();
+        const profile = await rTerminal.provideTerminalProfile();
+        assert.strictEqual(profile.options.name, 'R Interactive');
+
+        const show = sinon.spy();
+        const profileTerminal = terminalFrom(profile.options, show);
+        assert.strictEqual(rTerminal.focusProfileTerminal(profileTerminal), true, 'the profile terminal is focused');
+        assert.strictEqual(show.callCount, 1);
+        assert.deepStrictEqual(show.firstCall.args, [], 'show() without preserveFocus, i.e. take focus');
+
+        assert.strictEqual(rTerminal.focusProfileTerminal(profileTerminal), false, 'only once per profile request');
+        assert.strictEqual(show.callCount, 1);
+    });
+
+    test('an unrelated R terminal that opens first does not consume the profile request', async () => {
+        stubProfileConfig();
+        const profile = await rTerminal.provideTerminalProfile();
+
+        // Same name, different options object: what createRTerm(true) produces
+        // (Run Selection, Restart R Terminal) — it must keep its preserve-focus.
+        const commandShow = sinon.spy();
+        const commandOptions = await rTerminal.makeTerminalOptions();
+        assert.notStrictEqual(commandOptions, profile.options);
+        const commandTerminal = terminalFrom(commandOptions, commandShow);
+        assert.strictEqual(rTerminal.focusProfileTerminal(commandTerminal), false, 'command terminal is left alone');
+        assert.strictEqual(commandShow.callCount, 0);
+
+        const profileShow = sinon.spy();
+        const profileTerminal = terminalFrom(profile.options, profileShow);
+        assert.strictEqual(rTerminal.focusProfileTerminal(profileTerminal), true, 'the request is still pending for its own terminal');
+        assert.strictEqual(profileShow.callCount, 1);
+    });
+
+    test('several in-flight profile requests each focus their own terminal', async () => {
+        stubProfileConfig();
+        const first = await rTerminal.provideTerminalProfile();
+        const second = await rTerminal.provideTerminalProfile();
+        assert.notStrictEqual(first.options, second.options);
+
+        const showSecond = sinon.spy();
+        const showFirst = sinon.spy();
+        assert.strictEqual(rTerminal.focusProfileTerminal(terminalFrom(second.options, showSecond)), true);
+        assert.strictEqual(rTerminal.focusProfileTerminal(terminalFrom(first.options, showFirst)), true);
+        assert.strictEqual(showSecond.callCount, 1);
+        assert.strictEqual(showFirst.callCount, 1);
+    });
+
+    test('a terminal that opens without a pending profile request is not focused', async () => {
+        stubProfileConfig();
+        const show = sinon.spy();
+        const options = await rTerminal.makeTerminalOptions();
+        assert.strictEqual(rTerminal.focusProfileTerminal(terminalFrom(options, show)), false);
+        assert.strictEqual(show.callCount, 0);
+    });
+
+    test('a pending profile request expires', async () => {
+        stubProfileConfig();
+        const requested = Date.now();
+        const profile = await rTerminal.provideTerminalProfile(undefined, requested);
+        const show = sinon.spy();
+        const profileTerminal = terminalFrom(profile.options, show);
+        assert.strictEqual(rTerminal.focusProfileTerminal(profileTerminal, requested + 11_000), false, 'expired request is dropped');
+        assert.strictEqual(show.callCount, 0);
+    });
+
     test('makeTerminalOptions does not set session watcher env if disabled', async () => {
         const configStub = {
             get: (key: string) => {
