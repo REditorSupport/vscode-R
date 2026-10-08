@@ -2,7 +2,7 @@ import { Memento, window } from 'vscode';
 import * as cp from 'child_process';
 
 import * as rHelp from '.';
-import { getLoopbackHttp } from './loopbackHttp';
+import { getHttpText } from './http';
 import { extensionContext } from '../extension';
 import { catchAsError, config, DisposableProcess, getRLibPaths, spawn, spawnAsync } from '../util';
 
@@ -119,7 +119,10 @@ export class HelpProvider {
 
         // forward request to R instance
         const url = new URL(`http://127.0.0.1:${port}/${requestPath}`);
-        const rep = await getLoopbackHttp(url);
+        // tools::startDynamicHelp() also redirects to CRAN when a Windows FAQ
+        // or manual is not installed locally (src/library/tools/R/dynamicHelp.R).
+        // The initial request is loopback, but HTTP(S) redirects may be external.
+        const rep = await getHttpText(url);
         if(rep.status !== 200){
             return undefined;
         }

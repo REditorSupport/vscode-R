@@ -1,13 +1,14 @@
 import * as assert from 'node:assert';
 import { createServer, Server } from 'node:http';
 import { AddressInfo } from 'node:net';
-import { fetchWithBasicAuth } from '../../helpViewer/fetch';
+import { gzipSync } from 'node:zlib';
+import { getHttpText } from '../../helpViewer/http';
 import { getPackagesFromCran } from '../../helpViewer/cran';
 
-function listen(server: Server): Promise<string> {
+function listen(server: Server, port = 0): Promise<string> {
     return new Promise((resolve, reject) => {
         server.once('error', reject);
-        server.listen(0, '127.0.0.1', () => {
+        server.listen(port, '127.0.0.1', () => {
             server.removeListener('error', reject);
             resolve(`http://127.0.0.1:${(server.address() as AddressInfo).port}`);
         });
@@ -69,22 +70,22 @@ suite('CRAN HTTP authentication', () => {
     test('decodes URL credentials into Basic Auth without mutating the caller URL', async () => {
         const url = authenticatedUrl('/authenticated');
         const original = url.href;
-        const response = await fetchWithBasicAuth(url);
+        const response = await getHttpText(url);
         assert.strictEqual(response.status, 200);
-        assert.strictEqual(await response.text(), 'authenticated');
+        assert.strictEqual(response.text, 'authenticated');
         assert.strictEqual(requests[0].authorization, authorization);
         assert.strictEqual(url.href, original);
         assert.strictEqual(response.url, `${origin}/authenticated`);
     });
     test('retains authentication for a same-origin redirect', async () => {
-        const response = await fetchWithBasicAuth(authenticatedUrl('/same-origin'));
-        assert.strictEqual(await response.text(), 'authenticated');
+        const response = await getHttpText(authenticatedUrl('/same-origin'));
+        assert.strictEqual(response.text, 'authenticated');
         assert.strictEqual(response.url, `${origin}/authenticated`);
         assert.deepStrictEqual(requests.map(request => request.authorization), [authorization, authorization]);
     });
     test('does not forward authentication to another origin', async () => {
-        const response = await fetchWithBasicAuth(authenticatedUrl('/cross-origin'));
-        assert.strictEqual(await response.text(), 'external');
+        const response = await getHttpText(authenticatedUrl('/cross-origin'));
+        assert.strictEqual(response.text, 'external');
         assert.strictEqual(requests[0].authorization, authorization);
         assert.strictEqual(externalAuthorization, undefined);
     });
@@ -97,10 +98,48 @@ suite('CRAN HTTP authentication', () => {
         ]);
         assert.ok(requests.every(request => request.authorization === authorization));
     });
+    test('loads an authenticated CRAN index on port 10080 with redirects and compression', async function () {
+        const seen: (string | undefined)[] = [];
+        const blockedPortServer = createServer((request, response) => {
+            seen.push(request.headers.authorization);
+            if (request.headers.authorization !== authorization) {
+                response.writeHead(401);
+                response.end();
+            } else if (request.url?.endsWith('available_packages_by_date.html')) {
+                response.writeHead(404);
+                response.end();
+            } else if (request.url === '/repo/src/contrib/PACKAGES') {
+                response.writeHead(302, { Location: '/index' });
+                response.end();
+            } else {
+                response.writeHead(200, { 'Content-Encoding': 'gzip' });
+                response.end(gzipSync('Package: privatePackage\nVersion: 1.0.0\n'));
+            }
+        });
+        try {
+            await listen(blockedPortServer, 10080);
+        } catch (error) {
+            if ((error as NodeJS.ErrnoException).code === 'EADDRINUSE') {
+                this.skip();
+                return;
+            }
+            throw error;
+        }
+        try {
+            const url = new URL('http://127.0.0.1:10080/repo/');
+            url.username = 'user';
+            url.password = 'p@ss:word';
+            assert.deepStrictEqual(await getPackagesFromCran(url.href), [{
+                name: 'privatePackage', description: '', isCran: true
+            }]);
+            assert.deepStrictEqual(seen, [authorization, authorization, authorization]);
+        } finally {
+            await close(blockedPortServer);
+        }
+    });
     test('keeps ordinary URLs free of an Authorization header', async () => {
-        const response = await fetchWithBasicAuth(`${origin}/unauthenticated`);
+        const response = await getHttpText(`${origin}/unauthenticated`);
         assert.strictEqual(response.status, 401);
-        await response.text();
         assert.strictEqual(requests[0].authorization, undefined);
     });
 });

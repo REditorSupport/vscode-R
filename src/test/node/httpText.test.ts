@@ -1,9 +1,11 @@
 import * as assert from 'node:assert';
 import { createServer, Server } from 'node:http';
 import { AddressInfo } from 'node:net';
-import { gzipSync } from 'node:zlib';
+import { gzipSync, deflateSync, deflateRawSync, brotliCompressSync } from 'node:zlib';
+import http from 'node:http';
+import https from 'node:https';
 import * as sinon from 'sinon';
-import { getLoopbackHttp } from '../../helpViewer/loopbackHttp';
+import { getHttpText } from '../../helpViewer/http';
 
 function listen(server: Server, port = 0): Promise<void> {
     return new Promise((resolve, reject) => {
@@ -21,7 +23,7 @@ function close(server: Server): Promise<void> {
     });
 }
 
-suite('R help loopback HTTP', () => {
+suite('HTTP(S) help transport', () => {
     let server: Server;
     let origin: string;
     let externalUrl: string;
@@ -46,6 +48,19 @@ suite('R help loopback HTTP', () => {
             } else if (pathname === '/missing') {
                 response.writeHead(404);
                 response.end('Not found');
+            } else if (pathname.startsWith('/compressed/')) {
+                const encoding = pathname.split('/')[2];
+                const compressors: Record<string, (input: string) => Buffer> = {
+                    gzip: gzipSync, deflate: deflateSync, raw: deflateRawSync, br: brotliCompressSync
+                };
+                response.writeHead(200, { 'Content-Encoding': encoding === 'raw' ? 'deflate' : encoding });
+                response.end(compressors[encoding](html));
+            } else if (pathname === '/invalid-gzip') {
+                response.writeHead(200, { 'Content-Encoding': 'gzip' });
+                response.end('invalid');
+            } else if (pathname === '/empty-gzip') {
+                response.writeHead(204, { 'Content-Encoding': 'gzip' });
+                response.end();
             } else {
                 const body = Buffer.from(html);
                 response.write(body.subarray(0, 8));
@@ -59,36 +74,48 @@ suite('R help loopback HTTP', () => {
 
     test('collects UTF-8 HTML even when a character spans response chunks', async () => {
         const url = new URL('/help', origin);
-        assert.deepStrictEqual(await getLoopbackHttp(url), { status: 200, url: url.href, text: html });
+        assert.deepStrictEqual(await getHttpText(url), { status: 200, url: url.href, text: html });
     });
     test('follows relative redirects and retains the final URL and query', async () => {
         for (const status of [301, 302, 303, 307, 308]) {
-            const response = await getLoopbackHttp(new URL(`/redirect/${status}`, origin));
+            const response = await getHttpText(new URL(`/redirect/${status}`, origin));
             assert.deepStrictEqual(response, { status: 200, url: `${origin}/help?topic=mean`, text: html });
         }
     });
     test('preserves unsuccessful status codes', async () => {
-        const response = await getLoopbackHttp(new URL('/missing', origin));
+        const response = await getHttpText(new URL('/missing', origin));
         assert.strictEqual(response.status, 404);
         assert.strictEqual(response.text, 'Not found');
     });
-    test('rejects redirect loops and non-HTTP redirects', async () => {
-        await assert.rejects(getLoopbackHttp(new URL('/loop', origin)), /Too many/);
-        externalUrl = 'file:///tmp/help.html';
-        await assert.rejects(getLoopbackHttp(new URL('/external', origin)), /HTTP or HTTPS/);
-    });
-    test('delegates the Windows FAQ HTTPS redirect to Fetch', async () => {
-        externalUrl = 'https://cran.r-project.org/bin/windows/base/rw-FAQ.html';
-        const nativeFetch = sinon.stub(globalThis, 'fetch').resolves(new Response(html));
-        try {
-            const response = await getLoopbackHttp(new URL('/external', origin));
+    test('decodes gzip, deflate, raw deflate and Brotli responses', async () => {
+        for (const encoding of ['gzip', 'deflate', 'raw', 'br']) {
+            const response = await getHttpText(new URL(`/compressed/${encoding}`, origin));
             assert.strictEqual(response.text, html);
-            assert.strictEqual(nativeFetch.callCount, 1);
-            const fetchedUrl = nativeFetch.firstCall.args[0];
+        }
+        const empty = await getHttpText(new URL('/empty-gzip', origin));
+        assert.strictEqual(empty.status, 204);
+        assert.strictEqual(empty.text, '');
+        await assert.rejects(getHttpText(new URL('/invalid-gzip', origin)));
+    });
+    test('rejects redirect loops and non-HTTP redirects', async () => {
+        await assert.rejects(getHttpText(new URL('/loop', origin)), /Too many/);
+        externalUrl = 'file:///tmp/help.html';
+        await assert.rejects(getHttpText(new URL('/external', origin)), /HTTP or HTTPS/);
+    });
+    test('follows the Windows FAQ redirect using the HTTPS transport', async () => {
+        externalUrl = 'https://cran.r-project.org/bin/windows/base/rw-FAQ.html';
+        // Route the HTTPS transport call to the local fixture, without accessing CRAN.
+        const httpsGet = sinon.stub(https, 'get').callsFake((_url, options, callback) =>
+            http.get(new URL('/help', origin), options, callback));
+        try {
+            const response = await getHttpText(new URL('/external', origin));
+            assert.deepStrictEqual(response, { status: 200, url: externalUrl, text: html });
+            assert.strictEqual(httpsGet.callCount, 1);
+            const fetchedUrl = httpsGet.firstCall.args[0];
             assert.ok(fetchedUrl instanceof URL);
             assert.strictEqual(fetchedUrl.href, externalUrl);
         } finally {
-            nativeFetch.restore();
+            httpsGet.restore();
         }
     });
     test('follows external redirects, decompresses HTML and retains the final URL', async () => {
@@ -105,25 +132,23 @@ suite('R help loopback HTTP', () => {
         const externalOrigin = `http://127.0.0.1:${(external.address() as AddressInfo).port}`;
         externalUrl = `${externalOrigin}/redirect`;
         try {
-            assert.deepStrictEqual(await getLoopbackHttp(new URL('/external', origin)), {
+            assert.deepStrictEqual(await getHttpText(new URL('/external', origin)), {
                 status: 200, url: `${externalOrigin}/manual`, text: html
             });
         } finally {
             await close(external);
         }
     });
-    test('rejects non-loopback, non-HTTP and credential-bearing initial URLs', async () => {
-        for (const url of ['http://example.com/', 'https://127.0.0.1/', 'http://user@127.0.0.1/']) {
-            await assert.rejects(getLoopbackHttp(new URL(url)), /Expected a loopback/);
-        }
+    test('rejects non-HTTP initial URLs', async () => {
+        await assert.rejects(getHttpText('file:///tmp/help.html'), /HTTP or HTTPS/);
     });
     test('rejects truncated responses and connection errors', async () => {
-        await assert.rejects(getLoopbackHttp(new URL('/truncated', origin)));
+        await assert.rejects(getHttpText(new URL('/truncated', origin)));
         const temporary = createServer();
         await listen(temporary);
         const port = (temporary.address() as AddressInfo).port;
         await close(temporary);
-        await assert.rejects(getLoopbackHttp(new URL(`http://127.0.0.1:${port}/`)));
+        await assert.rejects(getHttpText(new URL(`http://127.0.0.1:${port}/`)));
     });
     test('loads help HTML and follows a redirect on Fetch-blocked port 10080', async function () {
         const blockedPortServer = createServer((request, response) => {
@@ -145,8 +170,8 @@ suite('R help loopback HTTP', () => {
         }
         try {
             const url = new URL('http://127.0.0.1:10080/help');
-            assert.deepStrictEqual(await getLoopbackHttp(url), { status: 200, url: url.href, text: html });
-            assert.deepStrictEqual(await getLoopbackHttp(new URL('/redirect', url)), {
+            assert.deepStrictEqual(await getHttpText(url), { status: 200, url: url.href, text: html });
+            assert.deepStrictEqual(await getHttpText(new URL('/redirect', url)), {
                 status: 200, url: url.href, text: html
             });
         } finally {
