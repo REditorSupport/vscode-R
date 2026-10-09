@@ -2646,7 +2646,7 @@
     "@types/mocha": "^10.0.10",
     "@types/node": "^26.6.4",
     "@types/sinon": "^22.0.0",
-    "@types/vscode": "~1.140.0",
+    "@types/vscode": "~1.98.0",
     "@types/winreg": "^1.2.36",
     "@vscode/test-cli": "^0.0.15",
     "@vscode/test-electron": "^3.1.0",

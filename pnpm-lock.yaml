@@ -52,8 +52,8 @@ importers:
         specifier: ^22.0.0
         version: 22.0.0
       '@types/vscode':
-        specifier: ~1.140.0
-        version: 1.140.0
+        specifier: ~1.98.0
+        version: 1.98.0
       '@types/winreg':
         specifier: ^1.2.36
         version: 1.2.36
@@ -917,8 +917,8 @@ packages:
   '@types/sinonjs__fake-timers@15.0.1':
     resolution: {integrity: sha512-Ko2tjWJq8oozHzHV+reuvS5KYIRAokHnGbDwGh/J64LntgpbuylF74ipEL24HCyRjf9FOlBiBHWBR1RlVKsI1w==}
 
-  '@types/vscode@1.140.0':
-    resolution: {integrity: sha512-KAB5RBZIgnUhpp4mKsVJPPHLOQKu6WtGy2xpfWjaajEXO4xIIC+UESAXLiQ9ewx6QD1uBmvC/S8BJzkbvv4bRA==}
+  '@types/vscode@1.98.0':
+    resolution: {integrity: sha512-+KuiWhpbKBaG2egF+51KjbGWatTH5BbmWQjSLMDCssb4xF8FJnW4nGH4nuAdOOfMbpD0QlHtI+C3tPq+DoKElg==}
 
   '@types/winreg@1.2.36':
     resolution: {integrity: sha512-DtafHy5A8hbaosXrbr7YdjQZaqVewXmiasRS5J4tYMzt3s1gkh40ixpxgVFfKiQ0JIYetTJABat47v9cpr/sQg==}
@@ -3339,7 +3339,7 @@ snapshots:
 
   '@types/sinonjs__fake-timers@15.0.1': {}
 
-  '@types/vscode@1.140.0': {}
+  '@types/vscode@1.98.0': {}
 
   '@types/winreg@1.2.36': {}
 
