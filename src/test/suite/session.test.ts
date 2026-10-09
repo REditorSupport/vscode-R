@@ -221,7 +221,7 @@ suite('Session Communication', () => {
         // error immediately after listening, before initialization is published.
         const fail = process.platform !== 'win32'
             ? sandbox.stub(fsp, 'chmod').rejects(failure)
-            : sandbox.stub(net.Server.prototype, 'emit').callsFake(function (this: net.Server, event: string, ...args: unknown[]) {
+            : sandbox.stub(net.Server.prototype, 'emit').callsFake(function (this: net.Server, event: string | symbol, ...args: unknown[]) {
                 const result = EventEmitter.prototype.emit.call(this, event, ...args);
                 if (event === 'listening') {
                     EventEmitter.prototype.emit.call(this, 'error', failure);

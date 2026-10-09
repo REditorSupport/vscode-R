@@ -22,6 +22,147 @@ async function focusHtmlViewer(panel: vscode.WebviewPanel): Promise<void> {
 }
 
 suite('HTML widget browser rendering', () => {
+    test('document edits preserve authored titles, SVG accessibility, and tag-shaped script text', async () => {
+        const sandbox = sinon.createSandbox();
+        sandbox.stub(vscode.window, 'registerWebviewPanelSerializer').returns({ dispose: sandbox.stub() });
+        const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'vscode-r-widget-document-'));
+        const panels: vscode.WebviewPanel[] = [];
+        let result: vscode.Uri | undefined;
+        try {
+            mockExtensionContext(path.resolve(__dirname, '../../..'), sandbox);
+            initializeHtmlWidgetViewers(extensionContext, {
+                resolveSession: source => session.getViewerSessionContext(source.sessionId, source)!,
+                getActiveSessionId: () => session.activeSession?.sessionId,
+            });
+            const createPanel = vscode.window.createWebviewPanel.bind(vscode.window);
+            sandbox.stub(vscode.window, 'createWebviewPanel').callsFake((...args) => {
+                const panel = createPanel(...args); panels.push(panel); return panel;
+            });
+            sandbox.stub(vscode.env, 'openExternal').callsFake(uri => { result = uri; return Promise.resolve(true); });
+            for (const structure of ['explicit', 'implicit-head', 'fragment']) {
+                result = undefined;
+                const title = '<title>Authored R output</title>';
+                const content = `<svg><title>Accessible chart</title></svg>
+                    <textarea id="example">&lt;head&gt;&lt;/body&gt;</textarea>
+                    <script>
+                        const example = '</body>';
+                        const markup = '<svg><title>Template title</title></svg>';
+                        const head = '<head data-example=">">';
+                        window.example = example;
+                        setTimeout(() => {
+                            const observations = new URLSearchParams({
+                                title: document.title,
+                                svgTitle: document.querySelector('svg title').textContent,
+                                example: window.example, markup, head,
+                                textarea: document.getElementById('example').value
+                            });
+                            const report = document.createElement('a');
+                            report.href = 'https://widget-test.invalid/document?' + observations;
+                            document.body.append(report); report.click();
+                        }, 750);
+                    </script>`;
+                const html = structure === 'explicit'
+                    ? `<!doctype html><!-- <head></body> --><html><HEAD data-example=">">${title}</HEAD><BODY>${content}</BODY></html>`
+                    : structure === 'implicit-head'
+                        ? `<!doctype html><html>${title}<body>${content}</body></html>`
+                        : title + content;
+                const file = path.join(directory, `${structure}.html`);
+                fs.writeFileSync(file, html);
+                await showWebView(file, 'History entry title', 'Two');
+                const response = await waitForValue(() => result);
+                assert.strictEqual(response.path, '/document');
+                const observations = new URLSearchParams(response.query);
+                assert.strictEqual(observations.get('title'), 'Authored R output', structure);
+                assert.strictEqual(observations.get('svgTitle'), 'Accessible chart', structure);
+                assert.strictEqual(observations.get('example'), '</body>', structure);
+                assert.strictEqual(observations.get('markup'), '<svg><title>Template title</title></svg>', structure);
+                assert.strictEqual(observations.get('head'), '<head data-example=">">', structure);
+                assert.strictEqual(observations.get('textarea'), '<head></body>', structure);
+                assert.strictEqual(panels[panels.length - 1].title, 'HTML Viewer');
+                panels[panels.length - 1].dispose();
+            }
+        } finally {
+            panels.forEach(panel => { panel.dispose(); });
+            await shutdownHtmlWidgetViewers();
+            sandbox.restore();
+            fs.rmSync(directory, { recursive: true, force: true });
+        }
+    });
+
+    test('authored local bases load relative resources from their own directories', async () => {
+        const sandbox = sinon.createSandbox();
+        sandbox.stub(vscode.window, 'registerWebviewPanelSerializer').returns({ dispose: sandbox.stub() });
+        const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'vscode-r-widget-base-'));
+        const panels: vscode.WebviewPanel[] = [];
+        let result: vscode.Uri | undefined;
+        try {
+            mockExtensionContext(path.resolve(__dirname, '../../..'), sandbox);
+            initializeHtmlWidgetViewers(extensionContext, {
+                resolveSession: source => session.getViewerSessionContext(source.sessionId, source)!,
+                getActiveSessionId: () => session.activeSession?.sessionId,
+            });
+            const createPanel = vscode.window.createWebviewPanel.bind(vscode.window);
+            sandbox.stub(vscode.window, 'createWebviewPanel').callsFake((...args) => {
+                const panel = createPanel(...args); panels.push(panel); return panel;
+            });
+            sandbox.stub(vscode.env, 'openExternal').callsFake(uri => { result = uri; return Promise.resolve(true); });
+            const output = path.join(directory, 'output');
+            const shared = path.join(directory, 'shared assets');
+            for (const resources of [path.join(output, 'assets'), shared]) {
+                fs.mkdirSync(resources, { recursive: true });
+                fs.writeFileSync(path.join(resources, 'data.json'), JSON.stringify({ value: 'authored base' }));
+                fs.writeFileSync(path.join(resources, 'widget.css'), '#widget { min-width:137px; }');
+                fs.writeFileSync(path.join(resources, 'widget.js'), 'window.authoredBaseScriptLoaded = true;');
+            }
+            const cases = [
+                { href: 'assets/', resources: path.join(output, 'assets') },
+                { href: '../shared%20assets/', resources: shared },
+                { href: vscode.Uri.file(shared).toString() + '/', resources: shared },
+            ];
+            for (const [index, fixture] of cases.entries()) {
+                result = undefined;
+                const file = path.join(output, `index-${index}.html`);
+                fs.writeFileSync(file, `<!doctype html><html><head>
+                    <base target="_self"><template><base href="ignored-template/"></template>
+                    <base href="${fixture.href}" data-authored="yes"><base href="ignored-second/">
+                    <link rel="stylesheet" href="widget.css"><script src="widget.js"></script>
+                    </head><body><div id="widget">Widget</div><script>
+                        setTimeout(async () => {
+                            let value;
+                            try { value = (await (await fetch('data.json')).json()).value; }
+                            catch (error) { value = String(error); }
+                            const observations = new URLSearchParams({ value, base: encodeURIComponent(document.baseURI),
+                                css: String(getComputedStyle(document.getElementById('widget')).minWidth === '137px'),
+                                script: String(window.authoredBaseScriptLoaded === true),
+                                authored: document.querySelector('base[data-authored]').getAttribute('data-authored') });
+                            const report = document.createElement('a');
+                            report.href = 'https://widget-test.invalid/base?' + observations;
+                            document.body.append(report); report.click();
+                        }, 750);
+                    </script></body></html>`);
+                await showWebView(file, 'Authored base', 'Two');
+                const response = await waitForValue(() => result);
+                assert.strictEqual(response.path, '/base');
+                const observations = new URLSearchParams(response.query);
+                assert.strictEqual(observations.get('value'), 'authored base', fixture.href);
+                assert.strictEqual(observations.get('css'), 'true', fixture.href);
+                assert.strictEqual(observations.get('script'), 'true', fixture.href);
+                assert.strictEqual(observations.get('authored'), 'yes', fixture.href);
+                const panel = panels[panels.length - 1];
+                // File URLs normalize Windows drive casing during resolution.
+                const normalizeBase = (url: string) => new URL(url).href.replace(/\/([a-z])%3A\//i, (_match, drive: string) => `/${drive.toLowerCase()}%3A/`);
+                assert.strictEqual(normalizeBase(observations.get('base')!), normalizeBase(String(panel.webview.asWebviewUri(vscode.Uri.file(fixture.resources))) + '/'));
+                assert.ok(panel.webview.html.includes('<base href="ignored-second/">'));
+                panel.dispose();
+            }
+        } finally {
+            panels.forEach(panel => { panel.dispose(); });
+            await shutdownHtmlWidgetViewers();
+            sandbox.restore();
+            fs.rmSync(directory, { recursive: true, force: true });
+        }
+    });
+
     test('Cmd/Ctrl+F inside the widget opens native Find while other keys stay with the widget', async () => {
         const sandbox = sinon.createSandbox();
         sandbox.stub(vscode.window, 'registerWebviewPanelSerializer').returns({ dispose: sandbox.stub() });

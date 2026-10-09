@@ -2,7 +2,9 @@
 
 import * as path from 'path';
 import { randomUUID } from 'crypto';
-import { readFile } from 'fs-extra';
+import { pathToFileURL } from 'url';
+import { readFile } from 'fs/promises';
+import { load } from 'cheerio';
 import { Disposable, ExtensionContext, Uri, ViewColumn, Webview, WebviewPanel, window, env, commands, workspace } from 'vscode';
 import { ViewerSessionContext, ViewerSessionSource, formatSessionLabel } from '../viewerSession';
 import { WidgetHistory, WidgetHistoryStore, widgetHistoryLimit, widgetSessionIdentity } from './history';
@@ -345,11 +347,9 @@ class HtmlWidgetViewerManager {
         const dir = item ? path.dirname(item.file) : path.join(extensionPath, 'dist/webviews/webview');
         const { panel } = entry;
         try {
-            const html = await getWebviewHtml(panel.webview, item?.file, item?.title ?? htmlViewerTitle, dir, Boolean(entry.session), generation, { id: entry.id });
+            const { html, localResourceRoots } = await getWebviewHtml(panel.webview, item?.file, dir, Boolean(entry.session), generation, { id: entry.id });
             if (!entry.disposed && entry.revision === generation) {
-                panel.webview.options = { ...panel.webview.options, localResourceRoots: [
-                    Uri.file(dir), Uri.file(path.join(extensionPath, 'dist/webviews/webview')),
-                ] };
+                panel.webview.options = { ...panel.webview.options, localResourceRoots };
                 panel.webview.html = html;
                 if (reveal) { panel.reveal(panel.viewColumn, true); }
             }
@@ -387,13 +387,14 @@ class HtmlWidgetViewerManager {
 }
 
 async function getWebviewHtml(
-    webview: Webview, file: string | undefined, title: string, dir: string, sessionOwned = false, generation = 0, state?: HtmlViewerPanelReference,
-): Promise<string> {
+    webview: Webview, file: string | undefined, dir: string, sessionOwned = false, generation = 0, state?: HtmlViewerPanelReference,
+): Promise<{ html: string; localResourceRoots: Uri[] }> {
     const { extensionPath } = getManager().context;
     // Resolve webview URIs before awaiting I/O; the panel may close while loading.
     const baseUri = String(webview.asWebviewUri(Uri.file(dir)));
     const scriptUri = webview.asWebviewUri(Uri.file(path.join(extensionPath, 'dist/webviews/webview/index.js')));
     const styleUri = webview.asWebviewUri(Uri.file(path.join(extensionPath, 'dist/webviews/webview/style.css')));
+    const localResourceRoots = [Uri.file(dir), Uri.file(path.join(extensionPath, 'dist/webviews/webview'))];
     let source = '<p>No HTML outputs in this session. New HTML output will appear here.</p>';
     if (file !== undefined) {
         try {
@@ -413,14 +414,56 @@ async function getWebviewHtml(
         worker-src https: data: filesystem: blob:;
         frame-src https: data: blob:;
     `;
-    const head = `<meta http-equiv="Content-Security-Policy" content="${CSP}"><base href="${escapeHtml(baseUri)}/"><title>${escapeHtml(title)}</title><link rel="stylesheet" href="${escapeHtml(String(styleUri))}">`;
-    // Keep the output's document structure; history controls live in the native title bar.
-    let html = /<head\b[^>]*>/i.test(source)
-        ? source.replace(/<title\b[^>]*>[\s\S]*?<\/title\s*>/gi, '').replace(/<head\b[^>]*>/i, match => match + head)
-        : `<!doctype html><html><head>${head}</head><body>${source}</body></html>`;
     const script = `<script src="${escapeHtml(String(scriptUri))}" data-generation="${generation}" data-session-owned="${sessionOwned}" data-viewer-state="${escapeHtml(JSON.stringify(state ?? null))}"></script>`;
-    html = /<\/body\s*>/i.test(html) ? html.replace(/<\/body\s*>/i, script + '</body>') : html + script;
-    return html;
+
+    // Parse only to locate real document boundaries, then splice the original
+    // source without reserializing it or changing authored titles and scripts.
+    const document = load(source, { sourceCodeLocationInfo: true });
+    const htmlLocation = document('html')[0]?.sourceCodeLocation;
+    const headLocation = document('html > head')[0]?.sourceCodeLocation;
+    const bodyLocation = document('html > body')[0]?.sourceCodeLocation;
+    const headOffset = headLocation?.startTag?.endOffset ?? htmlLocation?.startTag?.endOffset ??
+        document.root()[0].children.find(node => node.type === 'directive')?.sourceCodeLocation?.endOffset ?? 0;
+    const bodyOffset = bodyLocation?.endTag?.startOffset ?? htmlLocation?.endTag?.startOffset ?? source.length;
+    const base = document('base[href]').toArray().find(element => {
+        if (element.namespace !== 'http://www.w3.org/1999/xhtml') { return false; }
+        // Template contents live in a separate document fragment, so their
+        // bases do not participate in the output's document base URL.
+        for (let parent = element.parent; parent; parent = parent.parent) {
+            if (parent.type === 'tag' && parent.name === 'template') { return false; }
+        }
+        return true;
+    });
+    const edits = [{ start: bodyOffset, end: bodyOffset, text: script }];
+    if (base) {
+        const fileUrl = pathToFileURL(file ?? path.join(dir, 'index.html'));
+        let resolvedBase: URL;
+        try {
+            resolvedBase = new URL(base.attribs.href, fileUrl);
+        } catch {
+            resolvedBase = fileUrl;
+        }
+        // Invalid, data:, and javascript: bases fall back to the original file.
+        if (resolvedBase.protocol === 'data:' || resolvedBase.protocol === 'javascript:') { resolvedBase = fileUrl; }
+        const hrefLocation = (base.sourceCodeLocation as {
+            attrs?: Record<string, { startOffset: number; endOffset: number }>;
+        } | undefined)?.attrs?.href;
+        if (resolvedBase.protocol === 'file:' && hrefLocation) {
+            const localBase = Uri.parse(resolvedBase.href);
+            localResourceRoots.push(Uri.joinPath(localBase, localBase.path.endsWith('/') ? '.' : '..').with({ query: '', fragment: '' }));
+            edits.push({ start: hrefLocation.startOffset, end: hrefLocation.endOffset,
+                text: `href="${escapeHtml(String(webview.asWebviewUri(localBase)))}"` });
+        }
+    }
+    const baseTag = base ? '' : `<base href="${escapeHtml(baseUri)}/">`;
+    const head = `<meta http-equiv="Content-Security-Policy" content="${CSP}">${baseTag}<link rel="stylesheet" href="${escapeHtml(String(styleUri))}">`;
+    const headInsertion = headLocation?.startTag ? head : `<head>${head}</head>`;
+    edits.push({ start: headOffset, end: headOffset, text: headInsertion });
+    let html = source;
+    for (const edit of edits.sort((left, right) => right.start - left.start)) {
+        html = html.slice(0, edit.start) + edit.text + html.slice(edit.end);
+    }
+    return { html, localResourceRoots };
 }
 
 function parsePanelState(state: unknown): HtmlViewerPanelState | undefined {

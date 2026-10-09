@@ -63,6 +63,26 @@ suite('Rmd Params Test Suite', () => {
         assert.strictEqual(cmd, 'params <- list(a = 1+1)');
     });
 
+    test('getRmdParamsCommand preserves YAML merges, scalar types, and tagged expressions', () => {
+        const mockDoc = {
+            languageId: 'rmd',
+            getText: () => `---
+defaults: &defaults
+  count: 2
+  expression: !r seq_len(3)
+params:
+  <<: *defaults
+  enabled: false
+  label: yes
+  values: [1, null, true]
+---`,
+            uri: vscode.Uri.file('/test_merged_params.Rmd'),
+            version: 1,
+        } as vscode.TextDocument;
+        assert.strictEqual(rTerminal.getRmdParamsCommand(mockDoc),
+            'params <- list(count = 2, expression = seq_len(3), enabled = FALSE, label = "yes", values = c(1, NULL, TRUE))');
+    });
+
     test('getRmdParamsCommand respects cache invalidation by version', () => {
         const mockDoc = {
             languageId: 'rmd',

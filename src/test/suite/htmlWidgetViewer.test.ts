@@ -1,5 +1,5 @@
 import * as assert from 'assert';
-import fs from 'fs-extra';
+import fs from 'fs/promises';
 import { readFileSync } from 'fs';
 import * as path from 'path';
 import * as sinon from 'sinon';
@@ -8,6 +8,7 @@ import * as session from '../../session';
 import { HtmlViewerSessionAccess, initializeHtmlWidgetViewers, restoreHtmlViewer, runHtmlViewerCommand, showWebView, shutdownHtmlWidgetViewers } from '../../webViewer';
 import { extensionContext } from '../../extension';
 import { widgetHistoryKey, WidgetHistory } from '../../webViewer/history';
+import type { HtmlViewerPanelState } from '../../webViewer/webviewMessages';
 import { mockExtensionContext } from '../common/mockvscode';
 import { deferred } from '../common/sessionConnections';
 
@@ -109,7 +110,12 @@ suite('Session-aware HTML widget Viewer', () => {
 
     function outputTitle(panel: vscode.WebviewPanel): string | undefined {
         assert.strictEqual(panel.title, 'HTML Viewer');
-        return /<title>(.*?)<\/title>/.exec(panel.webview.html)?.[1];
+        const reference = panelReference(panel);
+        const states = savedState.get('r.htmlViewer.panels') as HtmlViewerPanelState[];
+        const state = states.find(state => state.id === reference.id)!;
+        const item = state.history[state.index];
+        assert.ok(panel.webview.html.includes(`<div>${item.file}</div>`), 'The retained title must belong to the rendered output');
+        return item.title;
     }
 
     function widgetDocument(panel: vscode.WebviewPanel): string {
@@ -796,9 +802,9 @@ suite('Session-aware HTML widget Viewer', () => {
         sinon.assert.calledOnce(dispose);
     });
 
-    test('full widget documents retain scripts, styles, and escaped titles without an iframe', async () => {
+    test('full widget documents retain scripts, styles, and authored titles without an iframe', async () => {
         const source = owner('html-history-document');
-        read.resolves('<!doctype html><html><head><style>body { margin: 0 }</style></head><body><script src="lib/widget.js"></script><div>Widget</div></body></html>');
+        read.resolves('<!doctype html><html><head><title>Authored &amp; original</title><style>body { margin: 0 }</style></head><body><script src="lib/widget.js"></script><div>Widget</div></body></html>');
         await show('/tmp/widget/index.html', source, '<Widget "title">');
         const document = widgetDocument(panels[0]);
         assert.ok(document.startsWith('<!doctype html><html><head><meta'));
@@ -806,7 +812,87 @@ suite('Session-aware HTML widget Viewer', () => {
         assert.ok(document.includes('<style>body { margin: 0 }</style>'));
         assert.ok(document.includes('src="lib/widget.js"'));
         assert.ok(document.includes('/dist/webviews/webview/index.js'));
-        assert.ok(panels[0].webview.html.includes('<title>&lt;Widget &quot;title&quot;&gt;</title>'));
+        assert.ok(document.includes('<title>Authored &amp; original</title>'));
+        assert.ok(!document.includes('&lt;Widget &quot;title&quot;&gt;'));
+        assert.strictEqual(panels[0].title, 'HTML Viewer');
+    });
+
+    test('viewer resources are inserted without rewriting the original HTML source', async () => {
+        const original = `<!doctype html><!-- <head></body> --><html><HEAD data-example=">">
+            <title>Original title</title><style>p::after { content: '</body>'; }</style>
+            </HEAD><BODY><svg><title>Accessible chart</title></svg>
+            <script>const example = '</body>'; const markup = '<svg><title>Template</title></svg>';</script>
+            <textarea><head></body></textarea></BODY></html>`;
+        read.resolves(original);
+        await showWebView('/tmp/document.html', 'History title', 'Two');
+        const rendered = panels[0].webview.html;
+        const headStart = original.indexOf('<HEAD data-example=">">') + '<HEAD data-example=">">'.length;
+        const headEnd = rendered.indexOf('\n            <title>Original title</title>', headStart);
+        const scriptStart = rendered.lastIndexOf('<script src=');
+        const scriptEnd = rendered.indexOf('</script>', scriptStart) + '</script>'.length;
+        assert.ok(rendered.slice(headStart, headEnd).startsWith('<meta http-equiv="Content-Security-Policy"'));
+        assert.ok(rendered.slice(scriptStart, scriptEnd).includes('/dist/webviews/webview/index.js'));
+        assert.strictEqual(rendered.slice(0, headStart) + rendered.slice(headEnd, scriptStart) + rendered.slice(scriptEnd), original);
+    });
+
+    test('fragments without a document title do not receive the history title', async () => {
+        await showWebView('/tmp/fragment.html', 'History title', 'Two');
+        assert.ok(panels[0].webview.html.includes('<div>/tmp/fragment.html</div>'));
+        assert.ok(!panels[0].webview.html.includes('<title>'));
+    });
+
+    test('local authored bases resolve against the HTML file and allow their resource directories', async () => {
+        const file = path.resolve('/tmp/output/index.html');
+        for (const fixture of [
+            { href: 'assets/', target: '/tmp/output/assets/', root: '/tmp/output/assets' },
+            { href: '../shared%20assets/', target: '/tmp/shared assets/', root: '/tmp/shared assets' },
+            { href: '', target: '/tmp/output/index.html', root: '/tmp/output' },
+            { href: vscode.Uri.file(path.resolve('/tmp/external/assets.html')).toString(), target: '/tmp/external/assets.html', root: '/tmp/external' },
+            { href: '/', target: path.parse(file).root, root: path.parse(file).root },
+            { href: 'data:text/plain,ignored', target: '/tmp/output/index.html', root: '/tmp/output' },
+            { href: 'https://[', target: '/tmp/output/index.html', root: '/tmp/output' },
+        ]) {
+            read.resolves(`<!doctype html><html><head><base target="_self"><base HREF='${fixture.href}' data-authored="yes"><base href="ignored/"></head><body>Output</body></html>`);
+            await showWebView(file, 'Authored base', 'Two');
+            const panel = panels[panels.length - 1];
+            const expected = vscode.Uri.file(path.resolve(fixture.target)).toString() + (fixture.target.endsWith('/') ? '/' : '');
+            assert.ok(panel.webview.html.includes(`<base href="${expected}" data-authored="yes">`), fixture.href);
+            assert.ok(panel.webview.html.includes('<base target="_self">'));
+            assert.ok(panel.webview.html.includes('<base href="ignored/">'));
+            assert.strictEqual((panel.webview.html.match(/<base /g) ?? []).length, 3);
+            assert.ok(panel.webview.options.localResourceRoots?.some(uri => uri.fsPath === vscode.Uri.file(path.resolve(fixture.root)).fsPath), fixture.href);
+        }
+    });
+
+    test('authored local bases use webview URIs while resource roots retain file URIs', async () => {
+        const source = owner('html-authored-base-uri');
+        const file = path.resolve('/tmp/output/index.html');
+        await show(file, source);
+        sandbox.stub(panels[0].webview, 'asWebviewUri').callsFake(uri => uri.with({ scheme: 'https', authority: 'widget-local.test' }));
+        read.resolves('<html><head><base href="../shared%20assets/" target="_self"></head><body>Output</body></html>');
+        await show(file, source);
+        const expected = vscode.Uri.file(path.resolve('/tmp/shared assets')).with({ scheme: 'https', authority: 'widget-local.test' }).toString() + '/';
+        assert.ok(panels[0].webview.html.includes(`<base href="${expected}" target="_self">`));
+        assert.ok(panels[0].webview.options.localResourceRoots?.some(uri => uri.scheme === 'file' && uri.fsPath === vscode.Uri.file(path.resolve('/tmp/shared assets')).fsPath));
+    });
+
+    test('absolute web bases and their authored attributes are preserved', async () => {
+        const original = "<base HREF='https://cdn.example.test/assets/?v=1&amp;mode=all' target='_self' data-authored='yes'>";
+        read.resolves(`<html><head>${original}</head><body>Output</body></html>`);
+        await showWebView('/tmp/output/index.html', 'Remote base', 'Two');
+        assert.ok(panels[0].webview.html.includes(original));
+        assert.strictEqual((panels[0].webview.html.match(/<base /g) ?? []).length, 1);
+        assert.strictEqual(panels[0].webview.options.localResourceRoots?.length, 2);
+    });
+
+    test('bases in templates, SVGs, comments, and script strings do not suppress the directory base', async () => {
+        const content = `<!-- <base href="comment/"> --><template><base href="template/"></template>
+            <svg><base href="svg/"></base></svg><script>const example = '<base href="script/">';</script>`;
+        read.resolves(`<html><head><base target="_self"></head><body>${content}</body></html>`);
+        await showWebView('/tmp/output/index.html', 'No effective base', 'Two');
+        assert.ok(panels[0].webview.html.includes('<base href="file:///tmp/output/">'));
+        assert.ok(panels[0].webview.html.includes(content));
+        assert.ok(panels[0].webview.html.includes('<base target="_self">'));
     });
 
     test('native commands target the active HTML panel and clear enablement when focus leaves it', async () => {
@@ -843,7 +929,7 @@ suite('Session-aware HTML widget Viewer', () => {
         assert.strictEqual(contexts.get('r.htmlViewer.canShowInfo'), true);
         await runHtmlViewerCommand('remove');
         await runHtmlViewerCommand('forward');
-        slow.resolve('<div>A</div>');
+        slow.resolve('<div>/tmp/a.html</div>');
         await pending;
         assert.strictEqual(position(panels[0]), '1 / 2');
         assert.strictEqual(outputTitle(panels[0]), 'A');

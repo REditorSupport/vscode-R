@@ -136,7 +136,7 @@ export async function newDraft(): Promise<void> {
             const dir = path.join(parsedPath.dir, parsedPath.name);
             if (fs.existsSync(dir)) {
                 if (await getConfirmation(`Folder already exists. Are you sure you want to replace the folder?`)) {
-                    fs.rmdirSync(dir, { recursive: true });
+                    fs.rmSync(dir, { recursive: true });
                 } else {
                     return;
                 }
@@ -157,6 +157,6 @@ export async function newDraft(): Promise<void> {
             await workspace.openTextDocument({ language: 'rmd', content: text })
                 .then(document => window.showTextDocument(document));
         }
-        fs.rmdirSync(tempDir, { recursive: true });
+        fs.rmSync(tempDir, { recursive: true });
     }
 }

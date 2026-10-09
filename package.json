@@ -2389,7 +2389,9 @@
           "markdownDescription": "Path to a custom CSS file to be used when `#r.plot.defaults.colorTheme#` is `vscode`. Replaces the default CSS overwrites!"
         },
         "r.interactive.executionTarget": {
-          "tags": ["experimental"],
+          "tags": [
+            "experimental"
+          ],
           "type": "string",
           "enum": [
             "auto",
@@ -2400,7 +2402,9 @@
           "description": "Execution target for R source commands. Auto uses the selected Interactive session or R terminal and offers a target chooser when none is available. Use Terminal for R Execution switches back to terminal routing."
         },
         "r.interactive.supervision": {
-          "tags": ["experimental"],
+          "tags": [
+            "experimental"
+          ],
           "type": "string",
           "ignoreSync": true,
           "enum": [
@@ -2413,28 +2417,36 @@
           "description": "Independent session supervision. Auto prefers tmux on Linux when available, otherwise uses a detached process; macOS uses a detached process. Explicit tmux/systemd selections require their executables on the R host. Detached processes survive editor reload/exit, but host logout policies may stop them. Changes apply to new or restarted sessions."
         },
         "r.interactive.nodePath": {
-          "tags": ["experimental"],
+          "tags": [
+            "experimental"
+          ],
           "type": "string",
           "ignoreSync": true,
           "default": "",
           "description": "Optional standalone Node.js 18+ executable on the R host for persistent session agents. Empty uses VS Code's runtime automatically (VS Code Server on remote hosts). Set an executable name on PATH or a path if the automatic runtime is unavailable in a compatible IDE; supports ~ and ${userHome}/${workspaceFolder}. Changes apply to new or restarted sessions."
         },
         "r.interactive.arfPath": {
-          "tags": ["experimental"],
+          "tags": [
+            "experimental"
+          ],
           "type": "string",
           "ignoreSync": true,
           "default": "arf",
           "description": "arf executable required for managed headless Interactive sessions, resolved on the R host. Use an executable name on PATH or a path (supports ~ and ${userHome}/${workspaceFolder}). Ordinary R terminals do not require arf; if unavailable, the Interactive provider picker offers configuration."
         },
         "r.interactive.storagePath": {
-          "tags": ["experimental"],
+          "tags": [
+            "experimental"
+          ],
           "type": "string",
           "ignoreSync": true,
           "default": "",
           "description": "Absolute, writable path on the R host for persistent Interactive sessions. Empty uses $XDG_STATE_HOME/vscode-r/interactive when set, otherwise ~/Library/Application Support/vscode-r/interactive on macOS or ~/.local/state/vscode-r/interactive on Linux. Existing macOS registries at the Linux-style path are reused. Reload VS Code after changing this setting."
         },
         "r.interactive.plotBackend": {
-          "tags": ["experimental"],
+          "tags": [
+            "experimental"
+          ],
           "type": "string",
           "ignoreSync": true,
           "enum": [
@@ -2446,21 +2458,33 @@
           "description": "Interactive graphics provider. JGD uses a separate systemfonts R process for font metrics while the editor is disconnected."
         },
         "r.interactive.tableView": {
-          "tags": ["experimental"],
+          "tags": [
+            "experimental"
+          ],
           "type": "string",
-          "enum": ["table", "text"],
-          "enumDescriptions": ["Show a paged table preview.", "Show the table's ordinary R printout."],
+          "enum": [
+            "table",
+            "text"
+          ],
+          "enumDescriptions": [
+            "Show a paged table preview.",
+            "Show the table's ordinary R printout."
+          ],
           "default": "table",
           "description": "Default presentation for Interactive table outputs. Each output can switch between table and printed views without rerunning R. Printed snapshots require a session started with the current extension build."
         },
         "r.interactive.restore": {
-          "tags": ["experimental"],
+          "tags": [
+            "experimental"
+          ],
           "type": "boolean",
           "default": true,
           "description": "Reconnect the workspace’s Interactive sessions when VS Code reopens."
         },
         "r.interactive.historyLimit": {
-          "tags": ["experimental"],
+          "tags": [
+            "experimental"
+          ],
           "type": "integer",
           "minimum": 1,
           "maximum": 1000,
@@ -2468,7 +2492,9 @@
           "description": "Recent executions and plots restored in an Interactive window."
         },
         "r.interactive.maxOutputSizeMiB": {
-          "tags": ["experimental"],
+          "tags": [
+            "experimental"
+          ],
           "type": "number",
           "ignoreSync": true,
           "minimum": 0.0625,
@@ -2477,7 +2503,9 @@
           "description": "Maximum retained console text output per execution, in MiB (1 MiB = 1,048,576 bytes). Excess output is drained and reported as truncated. Rich outputs have separate limits. Changes apply to new or restarted sessions."
         },
         "r.interactive.maxJournalSizeMiB": {
-          "tags": ["experimental"],
+          "tags": [
+            "experimental"
+          ],
           "type": "number",
           "ignoreSync": true,
           "minimum": 8,
@@ -2486,7 +2514,9 @@
           "description": "Approximate retained output journal limit per R generation, in MiB (1 MiB = 1,048,576 bytes). Old output is removed when journal segments rotate, roughly every 4 MiB. Earlier generations and execution records are retained separately. Changes apply to new or restarted sessions."
         },
         "r.interactive.maxAssetSizeMiB": {
-          "tags": ["experimental"],
+          "tags": [
+            "experimental"
+          ],
           "type": "number",
           "ignoreSync": true,
           "default": 1024,
@@ -2613,31 +2643,31 @@
   "devDependencies": {
     "@types/ejs": "^3.1.5",
     "@types/js-yaml": "^4.0.9",
-    "@types/mocha": "^8.2.3",
-    "@types/node": "^22.20.5",
-    "@types/sinon": "^10.0.20",
-    "@types/vscode": "~1.94.0",
+    "@types/mocha": "^10.0.10",
+    "@types/node": "^26.6.4",
+    "@types/sinon": "^22.0.0",
+    "@types/vscode": "~1.140.0",
     "@types/winreg": "^1.2.36",
-    "@vscode/test-cli": "^0.0.12",
+    "@vscode/test-cli": "^0.0.15",
     "@vscode/test-electron": "^3.1.0",
-    "@vscode/vsce": "^3.6.0",
-    "esbuild": "^0.28.1",
-    "git-cliff": "^2.12.0",
+    "@vscode/vsce": "^4.0.0",
+    "esbuild": "^0.28.2",
+    "git-cliff": "^2.14.2",
     "glob": "^13.0.6",
-    "mocha": "^11.7.5",
-    "ovsx": "^0.10.8",
-    "sinon": "^15.2.0",
-    "typescript": "~7.0.2",
-    "oxlint": "^1.86.0",
-    "oxlint-tsgolint": "~7.0.2003"
+    "mocha": "^12.0.3",
+    "ovsx": "^1.2.0",
+    "oxlint": "^1.87.0",
+    "oxlint-tsgolint": "~7.0.2003",
+    "sinon": "^22.1.0",
+    "typescript": "~7.0.2"
   },
   "dependencies": {
     "@vscode/codicons": "0.0.46-24",
     "ag-grid-community": "^36.2.0",
-    "cheerio": "1.0.0-rc.12",
-    "ejs": "^3.1.10",
-    "highlight.js": "^11.11.1",
-    "js-yaml": "^4.3.2",
+    "cheerio": "1.2.0",
+    "ejs": "^7.0.1",
+    "highlight.js": "^11.12.0",
+    "js-yaml": "^5.4.3",
     "vscode-languageclient": "^10.1.2",
     "winreg": "^1.2.5"
   },

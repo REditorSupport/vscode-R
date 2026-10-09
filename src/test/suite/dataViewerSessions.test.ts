@@ -1,5 +1,5 @@
 import * as assert from 'assert';
-import fs from 'fs-extra';
+import fs from 'fs/promises';
 import * as net from 'net';
 import * as os from 'os';
 import * as path from 'path';
@@ -205,7 +205,10 @@ suite('Viewer session ownership', () => {
 
     function outputTitle(panel: vscode.WebviewPanel): string | undefined {
         assert.strictEqual(panel.title, 'HTML Viewer');
-        return /<title>(.*?)<\/title>/.exec(panel.webview.html)?.[1];
+        const viewer = [...htmlViewers.viewers.values()].find(viewer => viewer.panel === panel)!;
+        const item = viewer.state.history[viewer.state.index];
+        assert.ok(panel.webview.html.includes(`<div>${item.file}</div>`));
+        return item.title;
     }
 
     test('page_viewer and browser HTML share widget history, source ownership, and restoration', async () => {
@@ -225,7 +228,7 @@ suite('Viewer session ownership', () => {
         assert.ok((await htmlSessionInfo(viewer.panel)).includes('R 4.6.1: 12101'));
 
         notify(source, 'browser', { url: '/tmp/report.HTM', title: 'Report' });
-        await waitFor(() => viewer.panel.webview.html.includes('<title>Report</title>'));
+        await waitFor(() => viewer.panel.webview.html.includes('<div>/tmp/report.HTM</div>'));
         assert.strictEqual(panels.length, 1);
         assert.strictEqual(htmlPosition(viewer.panel), '3 / 3');
         assert.strictEqual(outputTitle(viewer.panel), 'Report');
@@ -248,7 +251,7 @@ suite('Viewer session ownership', () => {
         assert.ok((await htmlSessionInfo(panels[1].panel)).includes('R 4.6.1: 12101'));
 
         notify(other, 'page_viewer', { url: '/tmp/other-profvis.html', title: 'Other profile' });
-        await waitFor(() => panels.length === 3 && panels[2].panel.webview.html.includes('<title>Other profile</title>'));
+        await waitFor(() => panels.length === 3 && panels[2].panel.webview.html.includes('<div>/tmp/other-profvis.html</div>'));
         assert.strictEqual(htmlPosition(panels[2].panel), '1 / 1');
         assert.strictEqual(outputTitle(panels[2].panel), 'Other profile');
         assert.ok((await htmlSessionInfo(panels[2].panel)).includes('R 4.6.2: 12102'));
@@ -410,7 +413,7 @@ suite('Viewer session ownership', () => {
     });
 
     test('viewers share polling and release it when the last viewer closes', async () => {
-        const clock = sandbox.useFakeTimers();
+        const clock = sandbox.useFakeTimers({ toFake: ['setInterval', 'clearInterval'], shouldClearNativeTimers: true });
         const kill = sandbox.stub(process, 'kill').returns(true);
         const request = sandbox.stub().resolves({});
         const first = session.registerSessionTransport('shared-polling-first', os.hostname(), '/tmp', request);

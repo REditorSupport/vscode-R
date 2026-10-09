@@ -4,7 +4,7 @@ import { HttpgdClient, HttpgdIdResponse, HttpgdPlotId, HttpgdRendererId } from '
 import { HttpgdPlot, IHttpgdViewer, HttpgdViewerOptions } from './httpgdTypes';
 import * as path from 'path';
 import * as fs from 'fs';
-import * as ejs from 'ejs';
+import ejs from 'ejs';
 
 import { asViewColumn, config, setContext, UriIcon, makeWebviewCommandUriString } from '../util';
 import { extensionContext } from '../extension';
