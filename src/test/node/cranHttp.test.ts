@@ -2,7 +2,7 @@ import * as assert from 'node:assert';
 import { createServer, Server } from 'node:http';
 import { AddressInfo } from 'node:net';
 import { gzipSync } from 'node:zlib';
-import { getHttpText } from '../../helpViewer/http';
+import { getHttpText } from '../../http';
 import { getPackagesFromCran } from '../../helpViewer/cran';
 
 function listen(server: Server, port = 0): Promise<string> {

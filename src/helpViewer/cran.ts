@@ -1,7 +1,7 @@
 
 import * as cheerio from 'cheerio';
 import { Package} from './packages';
-import { getHttpText } from './http';
+import { getHttpText } from '../http';
 
 type ParseFunction = (html: string, baseUrl: string) => Package[];
 

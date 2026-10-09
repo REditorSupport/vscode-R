@@ -1,7 +1,6 @@
 
 
-import { Httpgd } from 'httpgd';
-import { HttpgdPlotId } from 'httpgd/lib/types';
+import { HttpgdClient, HttpgdPlotId } from './httpgdClient';
 import * as vscode from 'vscode';
 import { HttpgdManager } from '.';
 import { PreviewPlotLayout } from './webviewMessages';
@@ -43,7 +42,7 @@ export class IHttpgdViewer {
     webviewPanel?: vscode.WebviewPanel;
 
     // Api that provides plot contents etc.
-    api: Httpgd;
+    api: HttpgdClient;
 
     // active plots
     plots: HttpgdPlot<string>[];

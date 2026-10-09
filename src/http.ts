@@ -9,34 +9,54 @@ export interface HttpTextResponse {
     text: string;
 }
 
+export interface HttpResponse {
+    status: number;
+    url: string;
+    body: Buffer;
+}
+
+export interface HttpRequestOptions {
+    headers?: Record<string, string>;
+    signal?: AbortSignal;
+    timeoutMs?: number;
+}
+
 const decompressGzip = promisify(gunzip);
 const decompressDeflate = promisify(inflate);
 const decompressRawDeflate = promisify(inflateRaw);
 const decompressBrotli = promisify(brotliDecompress);
 
-// Both R help servers and private CRAN repositories can use Fetch-blocked ports
+// R help/httpgd servers and private CRAN repositories can use Fetch-blocked ports
 // or Basic Auth URLs. Node's HTTP(S) transport preserves access to those URLs.
 export async function getHttpText(input: URL | string, redirectsLeft = 20): Promise<HttpTextResponse> {
+    const response = await getHttpResponse(input, {}, redirectsLeft);
+    return { status: response.status, url: response.url, text: response.body.toString('utf8') };
+}
+
+export async function getHttpResponse(input: URL | string, options: HttpRequestOptions = {}, redirectsLeft = 20): Promise<HttpResponse> {
     let current = new URL(input);
-    let authorization: string | undefined;
+    const headers: Record<string, string> = { accept: '*/*', 'accept-encoding': 'gzip, deflate, br' };
+    for (const [name, value] of Object.entries(options.headers ?? {})) {
+        headers[name.toLowerCase()] = value;
+    }
     while (true) {
+        options.signal?.throwIfAborted();
         if (!['http:', 'https:'].includes(current.protocol)) {
             throw new Error('Expected an HTTP or HTTPS URL');
         }
         if (current.username || current.password) {
             const credentials = `${decodeURIComponent(current.username)}:${decodeURIComponent(current.password)}`;
-            authorization = `Basic ${Buffer.from(credentials, 'utf8').toString('base64')}`;
+            headers.authorization = `Basic ${Buffer.from(credentials, 'utf8').toString('base64')}`;
             current.username = '';
             current.password = '';
         }
-        const headers: Record<string, string> = { Accept: '*/*', 'Accept-Encoding': 'gzip, deflate, br' };
-        if (authorization) {
-            headers.Authorization = authorization;
-        }
         const response = await new Promise<IncomingMessage>((resolve, reject) => {
             const transport = current.protocol === 'https:' ? https : http;
-            const request = transport.get(current, { headers }, resolve);
+            const request = transport.get(current, { headers, signal: options.signal }, resolve);
             request.on('error', reject);
+            if (options.timeoutMs) {
+                request.setTimeout(options.timeoutMs, () => request.destroy(new Error('HTTP request timed out')));
+            }
         });
         const status = response.statusCode ?? 0;
         const location = response.headers.location;
@@ -46,10 +66,12 @@ export async function getHttpText(input: URL | string, redirectsLeft = 20): Prom
                 throw new Error('Too many HTTP redirects');
             }
             const next = new URL(location, current);
-            // Retain Basic Auth only within an origin; never forward it to a
+            // Retain credentials only within an origin; never forward them to a
             // different host/port or on an HTTPS-to-HTTP redirect.
             if (next.origin !== current.origin) {
-                authorization = undefined;
+                delete headers.authorization;
+                delete headers.cookie;
+                delete headers['x-httpgd-token'];
             }
             current = next;
             redirectsLeft--;
@@ -77,6 +99,7 @@ export async function getHttpText(input: URL | string, redirectsLeft = 20): Prom
                     break;
             }
         }
-        return { status, url: current.href, text: body.toString('utf8') };
+        options.signal?.throwIfAborted();
+        return { status, url: current.href, body };
     }
 }

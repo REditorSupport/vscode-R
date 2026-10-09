@@ -2,7 +2,7 @@ import { Memento, window } from 'vscode';
 import * as cp from 'child_process';
 
 import * as rHelp from '.';
-import { getHttpText } from './http';
+import { getHttpText } from '../http';
 import { extensionContext } from '../extension';
 import { catchAsError, config, DisposableProcess, getRLibPaths, spawn, spawnAsync } from '../util';
 
