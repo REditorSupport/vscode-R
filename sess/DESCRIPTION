@@ -36,7 +36,7 @@ Suggests:
     htmltools,
     htmlwidgets,
     systemfonts,
-    httpgd (>= 2.0.1),
+    httpgd,
     jgd,
     svglite,
     tinytest

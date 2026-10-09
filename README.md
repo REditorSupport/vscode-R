@@ -61,7 +61,7 @@ Steps 1–3 above are all that's required to get started with R in VS Code. But 
 
 * Install an interactive plotting backend for a better R graphics experience:
   * [jgd](https://github.com/grantmcdermott/jgd): Lightweight JSON graphics device with native vscode-R integration.
-  * [httpgd](https://github.com/nx10/httpgd): SVG-based graphics device served via HTTP and WebSockets (version 2.0.1 or later).
+  * [httpgd](https://github.com/nx10/httpgd): SVG-based graphics device served via HTTP and WebSockets.
 
 * [arf](https://github.com/eitsupi/arf): A modern R console with many features: syntax highlighting, multiline editing, vi/emacs keybindings, R version switching, etc. Successor to [radian](https://github.com/randy3k/radian) written in Rust.
 

@@ -142,7 +142,7 @@ For displaying R plots, `sess` chooses a graphics device in this order when
 1. **jgd**, if `JGD_SOCKET` is set and the
    [jgd](https://cran.r-project.org/package=jgd) package is installed.
 2. **httpgd**, if the [httpgd](https://cran.r-project.org/package=httpgd)
-   package version 2.0.1 or later is installed.
+   package is installed.
 3. **Standard**: plots are recorded on a null device and re-rendered by the
    client on demand at the viewer's size (as SVG via
    [svglite](https://cran.r-project.org/package=svglite) if installed,
