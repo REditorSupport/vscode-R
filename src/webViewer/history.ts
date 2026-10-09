@@ -23,7 +23,7 @@ export class WidgetHistoryStore {
 
     constructor(
         private readonly state: Memento,
-        private readonly resolveSession: (source: ViewerSessionSource) => ViewerSessionContext,
+        resolveSession: (source: ViewerSessionSource) => ViewerSessionContext,
     ) {
         const saved = state.get<unknown>(widgetHistoryKey);
         if (Array.isArray(saved)) {
@@ -34,7 +34,7 @@ export class WidgetHistoryStore {
                 const session = resolveSession(record.source);
                 if (!session.hasExited) {
                     this.entries.set(session.sessionId, record);
-                    this.watch(record, session);
+                    this.watch(session);
                 }
             }
             // Drop invalid records and any already-confirmed process exits.
@@ -51,7 +51,7 @@ export class WidgetHistoryStore {
         record ??= { source: { ...session.source }, history: [], index: -1 };
         if (!session.hasExited && !this.entries.has(session.sessionId)) {
             this.entries.set(session.sessionId, record);
-            this.watch(record, session);
+            this.watch(session);
         }
         return record;
     }
@@ -67,7 +67,7 @@ export class WidgetHistoryStore {
         if (this.entries.delete(sessionId)) { void this.persist(); }
     }
 
-    private watch(record: WidgetHistory, session: ViewerSessionContext): void {
+    private watch(session: ViewerSessionContext): void {
         this.subscriptions.get(session.sessionId)?.dispose();
         this.subscriptions.set(session.sessionId, session.observeExit(() => this.forget(session.sessionId)));
     }
