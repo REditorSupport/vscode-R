@@ -22,11 +22,13 @@ local({
     version <- versions[[i]]
     for (backend in c("auto", "httpgd")) {
       warnings <- character()
-      withCallingHandlers(start(use_rstudioapi = FALSE, plot_backend = backend),
+      withCallingHandlers(
+        start(use_rstudioapi = FALSE, plot_backend = backend),
         warning = function(w) {
           warnings <<- c(warnings, conditionMessage(w))
           invokeRestart("muffleWarning")
-        })
+        }
+      )
       expect_equal("sess.plot" %in% getTaskCallbackNames(), !supported[i])
       expect_length(warnings, if (backend == "httpgd" && !supported[i]) 1L else 0L)
       if (length(warnings)) expect_true(grepl("httpgd >= 2.0.1", warnings, fixed = TRUE))
