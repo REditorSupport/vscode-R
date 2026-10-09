@@ -2,8 +2,6 @@
 
 ## Unreleased
 
-### Breaking changes
-
 - The httpgd plot backend now requires the `httpgd` R package version 2.0.1 or later. Older versions are treated as unavailable when choosing the plot backend. (#1855)
 
 ## 3.0.1 - 2026-09-28
