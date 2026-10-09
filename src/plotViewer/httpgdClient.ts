@@ -115,7 +115,9 @@ export class HttpgdClient {
     private async request(url: URL): Promise<Buffer> {
         const signal = this.controller?.signal;
         if (!signal || signal.aborted) { throw new Error('httpgd client is disconnected'); }
-        const response = await getHttpResponse(url, { headers: this.headers, signal, timeoutMs: 10000 });
+        // Rendering and exports may be slow; preserve httpgd-js's lack of a
+        // request timeout while still cancelling requests on disconnect.
+        const response = await getHttpResponse(url, { headers: this.headers, signal });
         if (response.status !== 200) { throw new Error(`httpgd request failed (${response.status})`); }
         return response.body;
     }
