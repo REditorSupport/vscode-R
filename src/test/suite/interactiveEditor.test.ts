@@ -2,6 +2,7 @@ import * as assert from 'assert';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
+import * as net from 'net';
 import * as vscode from 'vscode';
 import * as sinon from 'sinon';
 import { execFile } from 'child_process';
@@ -18,7 +19,7 @@ import { shellQuote } from '../../interactive/launcher';
 import type { InteractiveManager } from '../../interactive/manager';
 import type { GlobalEnvItem, WorkspaceDataProvider } from '../../workspaceViewer';
 import type { WorkspaceData } from '../../session';
-import type { LanguageClient } from 'vscode-languageclient/node';
+import { LanguageClient, State, StreamMessageReader, StreamMessageWriter, createMessageConnection } from 'vscode-languageclient/node';
 
 function treeTooltip(item: vscode.TreeItem): string {
     return typeof item.tooltip === 'string' ? item.tooltip : item.tooltip?.value ?? '';
@@ -85,6 +86,8 @@ function treeTooltip(item: vscode.TreeItem): string {
         const service = languageService();
         await Promise.all(service.clientUpdates.values());
         const clients = new Set([...service.clients.values()].filter(client => !originalLanguageClients.has(client)));
+        // Await shutdown before tab-close handlers can start an unobserved stop.
+        await Promise.all([...clients].map(stopLanguageClient));
         // Detach retains editors. Close this suite's tabs and await its language
         // servers before deleting directories that those R processes use as cwd.
         await vscode.window.tabGroups.close(vscode.window.tabGroups.all.flatMap(group => group.tabs)
@@ -96,7 +99,7 @@ function treeTooltip(item: vscode.TreeItem): string {
                 service.clients.delete(key);
             }
         }
-        await Promise.all([...clients].map(client => client.stop()));
+        await Promise.all([...clients].map(stopLanguageClient));
         await new Promise(resolve => setTimeout(resolve, 200));
         fs.rmSync(root, { recursive: true, force: true });
         sourceDirectories.forEach(directory => fs.rmSync(directory, { recursive: true, force: true }));
@@ -2093,4 +2096,73 @@ par(mfrow=c(1,1))`);
         assert.ok(!JSON.stringify(ipynb).includes('private-token'));
     });
 
+});
+
+async function stopLanguageClient(client: LanguageClient): Promise<void> {
+    try {
+        await client.stop();
+    } catch (error) {
+        // R's language server can close on shutdown before the client's exit
+        // notification is written. The client has already completed cleanup.
+        if (client.state === State.Stopped && error instanceof Error && 'code' in error && error.code === 'EPIPE') { return; }
+        throw error;
+    }
+}
+
+suite('Interactive language client cleanup', () => {
+    test('accepts a completed shutdown when the server closes before the exit notification', async () => {
+        const connections: Array<{ dispose(): void }> = [];
+        let serverSocket: net.Socket | undefined;
+        const server = net.createServer(socket => {
+            serverSocket = socket;
+            const connection = createMessageConnection(new StreamMessageReader(socket), new StreamMessageWriter(socket));
+            connections.push(connection);
+            connection.onRequest('initialize', () => ({ capabilities: {} }));
+            connection.onRequest('shutdown', () => null);
+            connection.listen();
+        });
+        await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
+        const socket = net.connect((server.address() as net.AddressInfo).port, '127.0.0.1');
+        const ended = new Promise<void>(resolve => socket.once('end', resolve));
+        const writer = new StreamMessageWriter(socket);
+        const write = writer.write.bind(writer);
+        let exitErrorCode: string | undefined;
+        // Force the same ordering that macOS can produce during R shutdown.
+        writer.write = async message => {
+            const isExit = 'method' in message && message.method === 'exit';
+            if (isExit) {
+                serverSocket!.end();
+                await ended;
+            }
+            try {
+                return await write(message);
+            } catch (error) {
+                if (isExit) { exitErrorCode = (error as NodeJS.ErrnoException).code; }
+                throw error;
+            }
+        };
+        const channel = vscode.window.createOutputChannel('Test language client cleanup', { log: true });
+        const client = new LanguageClient('cleanup-test', 'Cleanup test', () => Promise.resolve({
+            reader: new StreamMessageReader(socket), writer,
+        }), { documentSelector: [], outputChannel: channel });
+        try {
+            await client.start();
+            await stopLanguageClient(client);
+            assert.strictEqual(client.state, State.Stopped);
+            assert.strictEqual(exitErrorCode, 'EPIPE');
+        } finally {
+            writer.dispose(); socket.destroy();
+            connections.forEach(connection => connection.dispose());
+            await new Promise<void>(resolve => server.close(() => resolve()));
+            channel.dispose();
+        }
+    });
+
+    test('does not suppress unrelated shutdown failures or an unstopped client', async () => {
+        const error = Object.assign(new Error('Socket shutdown failed'), { code: 'EPIPE' });
+        for (const [state, failure] of [[State.Running, error], [State.Stopped, new Error('Unexpected shutdown failure')]] as const) {
+            const client = { state, stop: () => Promise.reject(failure) } as unknown as LanguageClient;
+            await assert.rejects(stopLanguageClient(client), thrown => thrown === failure);
+        }
+    });
 });

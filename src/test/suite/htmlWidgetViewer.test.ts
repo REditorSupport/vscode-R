@@ -848,14 +848,15 @@ suite('Session-aware HTML widget Viewer', () => {
             { href: '../shared%20assets/', target: '/tmp/shared assets/', root: '/tmp/shared assets' },
             { href: '', target: '/tmp/output/index.html', root: '/tmp/output' },
             { href: vscode.Uri.file(path.resolve('/tmp/external/assets.html')).toString(), target: '/tmp/external/assets.html', root: '/tmp/external' },
-            { href: '/', target: path.parse(file).root, root: path.parse(file).root },
+            { href: '/', target: path.parse(file).root.replace(/\\/g, '/'), root: path.parse(file).root },
             { href: 'data:text/plain,ignored', target: '/tmp/output/index.html', root: '/tmp/output' },
             { href: 'https://[', target: '/tmp/output/index.html', root: '/tmp/output' },
         ]) {
             read.resolves(`<!doctype html><html><head><base target="_self"><base HREF='${fixture.href}' data-authored="yes"><base href="ignored/"></head><body>Output</body></html>`);
             await showWebView(file, 'Authored base', 'Two');
             const panel = panels[panels.length - 1];
-            const expected = vscode.Uri.file(path.resolve(fixture.target)).toString() + (fixture.target.endsWith('/') ? '/' : '');
+            let expected = vscode.Uri.file(path.resolve(fixture.target)).toString();
+            if (fixture.target.endsWith('/') && !expected.endsWith('/')) { expected += '/'; }
             assert.ok(panel.webview.html.includes(`<base href="${expected}" data-authored="yes">`), fixture.href);
             assert.ok(panel.webview.html.includes('<base target="_self">'));
             assert.ok(panel.webview.html.includes('<base href="ignored/">'));
