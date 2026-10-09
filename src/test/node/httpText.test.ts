@@ -5,7 +5,7 @@ import { gzipSync, deflateSync, deflateRawSync, brotliCompressSync } from 'node:
 import http from 'node:http';
 import https from 'node:https';
 import * as sinon from 'sinon';
-import { getHttpText } from '../../helpViewer/http';
+import { getHttpText, getHttpResponse } from '../../http';
 
 function listen(server: Server, port = 0): Promise<void> {
     return new Promise((resolve, reject) => {
@@ -32,7 +32,10 @@ suite('HTTP(S) help transport', () => {
     setup(async () => {
         server = createServer((request, response) => {
             const pathname = new URL(request.url ?? '/', origin).pathname;
-            if (pathname.startsWith('/redirect/')) {
+            if (pathname === '/stall') {
+                response.writeHead(200);
+                response.write('partial');
+            } else if (pathname.startsWith('/redirect/')) {
                 response.writeHead(Number(pathname.split('/')[2]), { Location: '../help?topic=mean' });
                 response.end();
             } else if (pathname === '/loop') {
@@ -72,6 +75,29 @@ suite('HTTP(S) help transport', () => {
     });
     teardown(async () => { await close(server); });
 
+    test('aborts a pending response body and enforces the request timeout', async () => {
+        const controller = new AbortController();
+        const request = getHttpResponse(new URL('/stall', origin), { signal: controller.signal });
+        const timer = setTimeout(() => controller.abort(), 20);
+        try { await assert.rejects(request, /abort/i); }
+        finally { clearTimeout(timer); }
+        await assert.rejects(getHttpResponse(new URL('/stall', origin), { timeoutMs: 20 }), /aborted|timed out/i);
+        await assert.rejects(getHttpResponse(new URL('/help', origin), { signal: controller.signal }), /abort/i);
+    });
+    test('does not forward the httpgd token or cookies to another origin', async () => {
+        let headers: http.IncomingHttpHeaders = {};
+        const external = createServer((request, response) => { headers = request.headers; response.end('ok'); });
+        await listen(external);
+        externalUrl = `http://127.0.0.1:${(external.address() as AddressInfo).port}/help`;
+        try {
+            const response = await getHttpResponse(new URL('/external', origin), {
+                headers: { 'X-HTTPGD-TOKEN': 'secret', Cookie: 'session=secret' }
+            });
+            assert.strictEqual(response.body.toString(), 'ok');
+            assert.strictEqual(headers['x-httpgd-token'], undefined);
+            assert.strictEqual(headers.cookie, undefined);
+        } finally { await close(external); }
+    });
     test('collects UTF-8 HTML even when a character spans response chunks', async () => {
         const url = new URL('/help', origin);
         assert.deepStrictEqual(await getHttpText(url), { status: 200, url: url.href, text: html });

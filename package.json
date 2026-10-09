@@ -27,7 +27,7 @@
     "R Markdown"
   ],
   "engines": {
-    "vscode": "^1.94.0"
+    "vscode": "^1.98.2"
   },
   "activationEvents": [
     "workspaceContains:**/*.{rproj,Rproj,r,R,rd,Rd,rmd,Rmd}",
@@ -2216,7 +2216,7 @@
           "default": false,
           "scope": "window",
           "ignoreSync": true,
-          "markdownDescription": "Legacy compatibility setting for selecting the httpgd plot viewer. When `#r.plot.backend#` is `auto`, setting this to `true` selects the `httpgd` backend. Workspace settings take precedence over user settings. Within the same scope, an explicit `#r.plot.backend#` value takes precedence.\n\nRequires the `httpgd` R package version 1.2.0 or later.",
+          "markdownDescription": "Legacy compatibility setting for selecting the httpgd plot viewer. When `#r.plot.backend#` is `auto`, setting this to `true` selects the `httpgd` backend. Workspace settings take precedence over user settings. Within the same scope, an explicit `#r.plot.backend#` value takes precedence.\n\nRequires the `httpgd` R package version 2.0.1 or later.",
           "markdownDeprecationMessage": "Deprecated: use `#r.plot.backend#` instead. This setting is retained for compatibility with existing configurations but will be removed in a future release.",
           "deprecationMessage": "Deprecated: use r.plot.backend instead. This setting is retained for compatibility with existing configurations but will be removed in a future release."
         },
@@ -2567,7 +2567,6 @@
     "cheerio": "1.0.0-rc.12",
     "ejs": "^3.1.10",
     "highlight.js": "^11.11.1",
-    "httpgd": "0.1.6",
     "js-yaml": "^4.3.2",
     "vscode-languageclient": "^10.1.2",
     "winreg": "^1.2.5"
