@@ -661,7 +661,9 @@ export class InteractiveManager implements vscode.Disposable, vscode.TreeDataPro
         const previous = this.views.get(key);
         if (previous && !previous.notebook.isClosed && (previous.client.connected || previous.restarting)) {
             if (previous.notebook.notebookType === 'interactive') {
-                await vscode.commands.executeCommand('interactive.open', { preserveFocus: true }, previous.notebook.uri);
+                const result = await vscode.commands.executeCommand<{ inputUri: vscode.Uri }>(
+                    'interactive.open', { preserveFocus: true }, previous.notebook.uri);
+                if (result?.inputUri) { await this.bindInput(previous, result.inputUri); }
             } else {
                 const editor = vscode.window.visibleNotebookEditors.find(item => item.notebook === previous.notebook);
                 await vscode.window.showNotebookDocument(previous.notebook, { preserveFocus: true, viewColumn: editor?.viewColumn });
@@ -743,8 +745,7 @@ export class InteractiveManager implements vscode.Disposable, vscode.TreeDataPro
                 });
             }
             if (inputUri) {
-                session.bindSessionDocument(inputUri, target);
-                await vscode.languages.setTextDocumentLanguage(await vscode.workspace.openTextDocument(inputUri), 'r');
+                await this.bindInput(view, inputUri);
             }
             const restoring = notebook === existing || !!savedUri && notebook.uri.toString() === savedUri;
             if (!restoring && inputUri) {
@@ -774,6 +775,18 @@ export class InteractiveManager implements vscode.Disposable, vscode.TreeDataPro
             else { created.forEach(item => { item.dispose(); }); }
             throw error;
         }
+    }
+
+    private async bindInput(view: InteractiveView, inputUri: vscode.Uri): Promise<void> {
+        // Native Interactive can recreate its input model when a tab is restored.
+        // Reapply its owner and R language on reopen as well as initial creation.
+        if (view.inputUri && view.inputUri.toString() !== inputUri.toString()
+            && session.boundSessionForDocument(view.inputUri) === view.target) {
+            session.unbindSessionDocument(view.inputUri);
+        }
+        view.inputUri = inputUri;
+        session.bindSessionDocument(inputUri, view.target);
+        await vscode.languages.setTextDocumentLanguage(await vscode.workspace.openTextDocument(inputUri), 'r');
     }
 
     private registerTarget(client: AgentClient): session.Session {

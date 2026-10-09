@@ -680,6 +680,45 @@ suite('Session Communication', () => {
         await session.shutdownSessionWatcher();
     }).timeout(15000);
 
+    test('local session working directory resolves workspace without terminal association', async () => {
+        const endpoint = await session.getGlobalPipePath();
+        const workspaceUri = vscode.Uri.file(path.join(os.tmpdir(), 'vscode-r-session-workspace'));
+        const workspaceFolder = { uri: workspaceUri, name: 'session-workspace', index: 0 };
+        sandbox.stub(vscode.workspace, 'getWorkspaceFolder').callsFake(uri =>
+            uri.fsPath === workspaceUri.fsPath || uri.fsPath.startsWith(`${workspaceUri.fsPath}${path.sep}`)
+                ? workspaceFolder
+                : undefined);
+        const terminal = { processId: Promise.resolve(41000) } as unknown as vscode.Terminal;
+        sandbox.stub(vscode.window, 'terminals').value([terminal]);
+        sandbox.stub(vscode.window, 'activeTerminal').value(terminal);
+
+        const existing = new Set(session.activeConnections);
+        const client = net.createConnection(endpoint);
+        try {
+            await new Promise<void>((resolve, reject) => {
+                client.once('connect', resolve);
+                client.once('error', reject);
+            });
+            const socket = await waitFor(() => [...session.activeConnections].find(candidate => !existing.has(candidate)));
+            assert.ok(socket);
+            client.write(`${JSON.stringify({
+                jsonrpc: '2.0', method: 'attach', params: {
+                    protocol_version: 2, session_id: 'workspace-fallback', host: os.hostname(),
+                    pid: 41001, version: '4.4.0', tempdir: os.tmpdir(),
+                    wd: path.join(workspaceUri.fsPath, 'project'),
+                },
+            })}\n`);
+            const attached = await waitFor(() => session.activeSession?.sessionId === 'workspace-fallback'
+                ? session.activeSession : undefined);
+            assert.ok(attached);
+            assert.strictEqual(attached.resource?.toString(), workspaceUri.toString());
+            assert.strictEqual(socket._terminalPid, undefined);
+        } finally {
+            client.destroy();
+            await session.cleanupSession('workspace-fallback');
+        }
+    });
+
     test('reconnecting terminals preserve the selected terminal in either attach order', async () => {
         const endpoint = await session.getGlobalPipePath();
         const selected = { processId: Promise.resolve(46240) };
