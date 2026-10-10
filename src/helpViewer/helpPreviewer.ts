@@ -3,7 +3,7 @@ import * as path from 'path';
 import * as fs from 'fs';
 import * as vscode from 'vscode';
 import * as rHelp from './index';
-import ejs from 'ejs';
+import * as ejs from 'ejs';
 import { isDirSafe, isFileSafe, readFileSyncSafe, config, spawnAsync } from '../util';
 import { Topic, TopicType } from './packages';
 

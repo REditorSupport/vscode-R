@@ -66,14 +66,11 @@ const terminalSends = new WeakMap<vscode.Terminal, Promise<void>>();
 let lastParamsRmdPath: string | undefined;
 let lastParamsRmdVersion: number | undefined;
 
-const rExprType = yaml.defineScalarTag('!r', {
-    resolve: source => ({ __rExpr: source }),
-    identify: () => false,
+const rExprType = new yaml.Type('!r', {
+    kind: 'scalar',
+    construct: (data: string) => ({ __rExpr: data }),
 });
-// Retain js-yaml 4's default tag support alongside R Markdown expressions.
-const RMARKDOWN_SCHEMA = yaml.CORE_SCHEMA.withTags(
-    yaml.mergeTag, yaml.timestampTag, yaml.binaryTag, yaml.omapTag, yaml.pairsTag, yaml.setTag, rExprType,
-);
+const RMARKDOWN_SCHEMA = yaml.DEFAULT_SCHEMA.extend([rExprType]);
 
 function valueToR(val: unknown): string {
     if (val === null || val === undefined) {

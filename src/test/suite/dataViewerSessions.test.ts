@@ -413,7 +413,7 @@ suite('Viewer session ownership', () => {
     });
 
     test('viewers share polling and release it when the last viewer closes', async () => {
-        const clock = sandbox.useFakeTimers({ toFake: ['setInterval', 'clearInterval'], shouldClearNativeTimers: true });
+        const clock = sandbox.useFakeTimers();
         const kill = sandbox.stub(process, 'kill').returns(true);
         const request = sandbox.stub().resolves({});
         const first = session.registerSessionTransport('shared-polling-first', os.hostname(), '/tmp', request);
