@@ -26,6 +26,28 @@ local({
 
 local({
     initialize_sess <- function() {
+        startup_file <- Sys.getenv("VSCODE_R_SESS_STARTUP_FILE", unset = "")
+        write_startup_status <- function(status) {
+            if (!nzchar(startup_file)) {
+                return(invisible(FALSE))
+            }
+            temporary <- ""
+            on.exit(if (nzchar(temporary)) suppressWarnings(unlink(temporary)), add = TRUE)
+            tryCatch(suppressWarnings({
+                temporary <- tempfile(pattern = ".startup-", tmpdir = dirname(startup_file))
+                writeLines(status, temporary, useBytes = TRUE)
+                if (.Platform$OS.type == "unix") {
+                    Sys.chmod(temporary, "0600")
+                }
+                isTRUE(file.rename(temporary, startup_file))
+            }), error = function(error) FALSE)
+        }
+        completed <- FALSE
+        if (nzchar(startup_file)) {
+            write_startup_status("pending")
+            on.exit(write_startup_status(if (completed) "ready" else "failed"), add = TRUE)
+        }
+
         bundled_path <- Sys.getenv("VSCODE_R_SESS_PKG_PATH", unset = "")
         if (!nzchar(bundled_path)) {
             return(invisible(NULL))
@@ -51,12 +73,16 @@ local({
         }
 
         plot_backend <- Sys.getenv("SESS_PLOT_BACKEND", "auto")
-        get("connect", envir = ns, inherits = FALSE)(
+        result <- get("connect", envir = ns, inherits = FALSE)(
             use_rstudioapi = as.logical(Sys.getenv("SESS_RSTUDIOAPI", "TRUE")),
             plot_backend = plot_backend
         )
+        completed <- TRUE
+        result
     }
     tryCatch(initialize_sess(), error = function(error) {
         message("vscode-R could not start the session watcher: ", conditionMessage(error))
+    }, interrupt = function(error) {
+        message("vscode-R session watcher startup was interrupted: ", conditionMessage(error))
     })
 })

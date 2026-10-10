@@ -1,5 +1,7 @@
 import * as assert from 'assert';
 import * as path from 'path';
+import * as os from 'os';
+import * as fsp from 'node:fs/promises';
 import * as sinon from 'sinon';
 import * as vscode from 'vscode';
 import type { RSessionApi } from '../../api';
@@ -12,10 +14,40 @@ import * as util from '../../util';
 import { mockExtensionContext } from '../common/mockvscode';
 import { deferred, SessionConnections, waitForValue as waitFor } from '../common/sessionConnections';
 
+async function settleWithFakeTime<T>(promise: Promise<T>, clock: sinon.SinonFakeTimers): Promise<T> {
+    let settled = false;
+    void promise.then(() => { settled = true; }, () => { settled = true; });
+    for (let attempt = 0; attempt < 100 && !settled; attempt++) {
+        await clock.tickAsync(10);
+    }
+    assert.strictEqual(settled, true, 'async session handshake should settle while fake timers advance');
+    return await promise;
+}
+
 suite('Session Terminal Lifecycle', () => {
     let sandbox: sinon.SinonSandbox;
     let ancestors: sinon.SinonStub;
     let connections: SessionConnections;
+
+    async function makeStartupFile(state: 'pending' | 'ready' | 'failed'): Promise<{ directory: string; file: string }> {
+        const directory = await fsp.mkdtemp(path.join(os.tmpdir(), 'vscode-r-terminal-startup-'));
+        const file = path.join(directory, 'session.json.startup');
+        await fsp.writeFile(file, `${state}\n`);
+        return { directory, file };
+    }
+
+    async function waitForTimerDelay(timerSpy: sinon.SinonSpy, delay: number, startupFile: string): Promise<() => void> {
+        for (let attempt = 0; attempt < 100; attempt++) {
+            const call = timerSpy.getCalls().find(candidate => candidate.args[1] === delay);
+            if (call && typeof call.args[0] === 'function') {
+                return call.args[0] as () => void;
+            }
+            // Let the real filesystem read in the startup poll complete without
+            // waiting for wall-clock time or guessing how long libuv will take.
+            await fsp.readFile(startupFile);
+        }
+        assert.fail(`The startup wait did not schedule its ${delay}ms deadline`);
+    }
 
     setup(() => {
         sandbox = sinon.createSandbox();
@@ -160,7 +192,7 @@ suite('Session Terminal Lifecycle', () => {
             const waitUntilReady = session.waitForTerminalReady;
             // Exercise the real readiness logic, with a bounded failure timeout.
             const readiness = sandbox.stub(session, 'waitForTerminalReady')
-                .callsFake(terminal => waitUntilReady(terminal, 1000));
+                .callsFake((terminal, _timeout, startupPath) => waitUntilReady(terminal, 1000, startupPath));
             const warning = sandbox.stub(vscode.window, 'showWarningMessage').resolves(undefined);
             const sendText = sandbox.stub();
             const terminal = {
@@ -182,7 +214,7 @@ suite('Session Terminal Lifecycle', () => {
                     assert.strictEqual(await api.activate(owner.sessionId, { terminal }), true);
                 }
                 assert.strictEqual(await rTerminal.runTextInTerm('source("example.R")'), true);
-                sinon.assert.calledOnceWithExactly(readiness, terminal);
+                sinon.assert.calledOnceWithExactly(readiness, terminal, 30000, '/unused-test-discovery.startup');
                 sinon.assert.calledOnceWithExactly(sendText, 'source("example.R")');
                 sinon.assert.notCalled(warning);
             } finally {
@@ -347,22 +379,207 @@ suite('Session Terminal Lifecycle', () => {
     });
 
     test('terminal readiness aborts on close even before processId resolves', async () => {
+        const { directory, file } = await makeStartupFile('pending');
         const terminal = { processId: new Promise<number>(() => undefined) } as unknown as vscode.Terminal;
         const close = new vscode.EventEmitter<vscode.Terminal>();
         sandbox.stub(vscode.window, 'onDidCloseTerminal').callsFake(close.event);
-        const waiting = session.waitForTerminalReady(terminal);
-        close.fire(terminal);
-        assert.strictEqual(await waiting, false);
-        close.dispose();
+        const clock = sandbox.useFakeTimers();
+        const timerSpy = sinon.spy(globalThis, 'setTimeout');
+        const waiting = session.waitForTerminalReady(terminal, 30000, file);
+        try {
+            await waitForTimerDelay(timerSpy, 600000, file);
+            close.fire(terminal);
+            assert.strictEqual(await waiting, false);
+            assert.strictEqual(clock.countTimers(), 0, 'closing the terminal removes the pending startup deadline and poll');
+        } finally {
+            close.dispose();
+            timerSpy.restore();
+            clock.restore();
+            await fsp.rm(directory, { recursive: true, force: true });
+        }
+    });
+
+    test('pending startup holds queued terminal input beyond 30 seconds until ready and this terminal attaches', async () => {
+        const { directory, file: startupFile } = await makeStartupFile('pending');
+        const discoveryFile = startupFile.slice(0, -'.startup'.length);
+        const rPid = 46291;
+        const otherPid = 46292;
+        const sendText = sandbox.stub();
+        const terminal = {
+            name: 'R Interactive', processId: Promise.resolve(rPid),
+            show: sandbox.stub(), dispose: sandbox.stub(), sendText,
+        } as unknown as vscode.Terminal;
+        sandbox.stub(executionTarget, 'tryInteractiveExecution').resolves(false);
+        sandbox.stub(util, 'config').returns({
+            get: (key: string) => ({ sessionWatcher: true, consoleArgs: [], bracketedPaste: true, 'source.focus': 'none' })[key],
+        } as unknown as vscode.WorkspaceConfiguration);
+        sandbox.stub(util, 'getRterm').resolves(process.execPath);
+        sandbox.stub(session, 'getSessConsentDirectory').resolves('/unused-test-consent');
+        sandbox.stub(session, 'createSessionDiscoveryFile').resolves(discoveryFile);
+        sandbox.stub(session, 'updateTerminalSessionDiscoveryFile').resolves();
+        sandbox.stub(vscode.window, 'terminals').value([terminal]);
+        sandbox.stub(vscode.window, 'activeTerminal').value(terminal);
+        sandbox.stub(vscode.window, 'createTerminal').returns(terminal);
+        const waitForReady = session.waitForTerminalReady;
+        let readinessStarted!: () => void;
+        const started = new Promise<void>(resolve => { readinessStarted = resolve; });
+        const readyStub = sandbox.stub(session, 'waitForTerminalReady').callsFake((current, timeout, startupPath) => {
+            readinessStarted();
+            return waitForReady(current, timeout, startupPath);
+        });
+        const clock = sandbox.useFakeTimers();
+        const timerSpy = sinon.spy(globalThis, 'setTimeout');
+        let fakeClockRestored = false;
+        const restoreFakeClock = () => {
+            if (!fakeClockRestored) {
+                timerSpy.restore();
+                clock.restore();
+                fakeClockRestored = true;
+            }
+        };
+
+        try {
+            assert.strictEqual(await rTerminal.createRTerm(), true);
+            const first = rTerminal.runTextInTerm('first');
+            const second = rTerminal.runTextInTerm('second');
+            let firstSettled = false;
+            const firstResult = first.then(value => { firstSettled = true; return value; });
+            await started;
+            assert.strictEqual(readyStub.firstCall.args[2], startupFile);
+            await waitForTimerDelay(timerSpy, 600000, startupFile);
+            await clock.tickAsync(35000);
+            assert.strictEqual(firstSettled, false, 'pending setup suppresses the ordinary 30 second timeout');
+            sinon.assert.notCalled(sendText);
+
+            await fsp.writeFile(startupFile, 'ready\n');
+            await clock.tickAsync(500);
+            assert.strictEqual(sendText.called, false, 'ready state alone cannot release terminal input');
+
+            const unrelated = connections.attach('startup-unrelated', otherPid);
+            await settleWithFakeTime(unrelated, clock);
+            assert.strictEqual(sendText.called, false, 'an unrelated R attach cannot release this terminal');
+
+            const target = connections.attach('startup-target', rPid);
+            await settleWithFakeTime(target, clock);
+            assert.strictEqual(await firstResult, true);
+            assert.strictEqual(await second, true);
+            sinon.assert.calledTwice(sendText);
+            assert.deepStrictEqual(sendText.args, [
+                ['\x1b[200~first\x1b[201~', true],
+                ['\x1b[200~second\x1b[201~', true],
+            ]);
+        } finally {
+            rTerminal.deleteTerminal(terminal);
+            await connections.dispose();
+            restoreFakeClock();
+            await fsp.rm(directory, { recursive: true, force: true });
+        }
+    });
+
+    test('failed startup declines input before late attach, while a fresh attached-terminal retry can proceed', async () => {
+        const { directory, file: startupFile } = await makeStartupFile('pending');
+        const discoveryFile = startupFile.slice(0, -'.startup'.length);
+        const rPid = 46293;
+        const sendText = sandbox.stub();
+        const terminal = {
+            name: 'R Interactive', processId: Promise.resolve(rPid),
+            show: sandbox.stub(), dispose: sandbox.stub(), sendText,
+        } as unknown as vscode.Terminal;
+        sandbox.stub(executionTarget, 'tryInteractiveExecution').resolves(false);
+        sandbox.stub(util, 'config').returns({
+            get: (key: string) => ({ sessionWatcher: true, consoleArgs: [], bracketedPaste: true, 'source.focus': 'none' })[key],
+        } as unknown as vscode.WorkspaceConfiguration);
+        sandbox.stub(util, 'getRterm').resolves(process.execPath);
+        sandbox.stub(session, 'getSessConsentDirectory').resolves('/unused-test-consent');
+        sandbox.stub(session, 'createSessionDiscoveryFile').resolves(discoveryFile);
+        sandbox.stub(session, 'updateTerminalSessionDiscoveryFile').resolves();
+        sandbox.stub(vscode.window, 'terminals').value([terminal]);
+        sandbox.stub(vscode.window, 'activeTerminal').value(terminal);
+        sandbox.stub(vscode.window, 'createTerminal').returns(terminal);
+        const warning = sandbox.stub(vscode.window, 'showWarningMessage').resolves(undefined);
+        const waitForReady = session.waitForTerminalReady;
+        let readinessStarted!: () => void;
+        const started = new Promise<void>(resolve => { readinessStarted = resolve; });
+        const readyStub = sandbox.stub(session, 'waitForTerminalReady').callsFake((current, timeout, startupPath) => {
+            readinessStarted();
+            return waitForReady(current, timeout, startupPath);
+        });
+        const clock = sandbox.useFakeTimers();
+        const timerSpy = sinon.spy(globalThis, 'setTimeout');
+        let fakeClockRestored = false;
+        const restoreFakeClock = () => {
+            if (!fakeClockRestored) {
+                timerSpy.restore();
+                clock.restore();
+                fakeClockRestored = true;
+            }
+        };
+
+        try {
+            assert.strictEqual(await rTerminal.createRTerm(), true);
+            let rejectionSettled = false;
+            const rejected = rTerminal.runTextInTerm('must not send').then(result => {
+                rejectionSettled = true;
+                return result;
+            });
+            await started;
+            assert.strictEqual(readyStub.firstCall.args[2], startupFile);
+            await waitForTimerDelay(timerSpy, 600000, startupFile);
+            await fsp.writeFile(startupFile, 'failed\n');
+            for (let attempt = 0; attempt < 100 && !rejectionSettled; attempt++) {
+                await clock.tickAsync(100);
+                await fsp.readFile(startupFile);
+                // Await the command state through a short fake-time turn after each poll.
+            }
+            assert.strictEqual(rejectionSettled, true, 'failed startup status should settle the pending input promptly');
+            assert.strictEqual(await rejected, false);
+            sinon.assert.notCalled(sendText);
+            sinon.assert.calledOnce(warning);
+            assert.strictEqual(clock.countTimers(), 0, 'failed startup clears its bounded wait and poll');
+
+            restoreFakeClock();
+            await connections.attach('startup-late-attach', rPid);
+            assert.strictEqual(sendText.called, false, 'late attach cannot release the already failed input');
+            assert.strictEqual(await session.waitForTerminalReady(terminal, 1, startupFile), true,
+                'a new wait on an attached terminal permits manual recovery despite the stale failed state');
+            assert.strictEqual(await rTerminal.runTextInTerm('retry after attach'), true);
+            sinon.assert.calledOnceWithExactly(sendText, '\x1b[200~retry after attach\x1b[201~', true);
+        } finally {
+            rTerminal.deleteTerminal(terminal);
+            await connections.dispose();
+            restoreFakeClock();
+            await fsp.rm(directory, { recursive: true, force: true });
+        }
     });
 
     test('terminal readiness timeout does not declare the terminal ready', async () => {
         const terminal = { processId: new Promise<number>(() => undefined) } as unknown as vscode.Terminal;
         const clock = sandbox.useFakeTimers();
-        const waiting = session.waitForTerminalReady(terminal, 100);
-        await clock.tickAsync(100);
+        let settled = false;
+        const waiting = session.waitForTerminalReady(terminal).then(result => { settled = true; return result; });
+        await clock.tickAsync(29999);
+        assert.strictEqual(settled, false, 'absence of startup state keeps the default 30 second timeout');
+        await clock.tickAsync(1);
         assert.strictEqual(await waiting, false);
         assert.strictEqual(clock.countTimers(), 0);
+    });
+
+    test('pending startup has a finite 10 minute deadline', async () => {
+        const { directory, file } = await makeStartupFile('pending');
+        const terminal = { processId: new Promise<number>(() => undefined) } as unknown as vscode.Terminal;
+        const clock = sandbox.useFakeTimers();
+        const timerSpy = sinon.spy(globalThis, 'setTimeout');
+        const waiting = session.waitForTerminalReady(terminal, 30000, file);
+        try {
+            const expire = await waitForTimerDelay(timerSpy, 600000, file);
+            expire();
+            assert.strictEqual(await waiting, false);
+            assert.strictEqual(clock.countTimers(), 0);
+        } finally {
+            timerSpy.restore();
+            clock.restore();
+            await fsp.rm(directory, { recursive: true, force: true });
+        }
     });
 
 });

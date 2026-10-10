@@ -213,26 +213,117 @@ export function registerSessionTransport(id: string, host: string, directory: st
     sessions.set(id, target);
     return target;
 }
-/** Wait for the same connected owner used by execution and terminal selection. */
-export function waitForTerminalReady(terminal: vscode.Terminal, timeout = 30000): Promise<boolean> {
+type TerminalStartupState = 'pending' | 'ready' | 'failed';
+const SESS_SETUP_TIMEOUT = 600000;
+
+/** Read the bounded, one-line status sidecar written by R/profile.R. */
+async function readTerminalStartupState(filePath: string): Promise<TerminalStartupState | undefined> {
+    let file: fs.promises.FileHandle | undefined;
+    try {
+        file = await fsp.open(filePath, 'r');
+        const buffer = Buffer.alloc(33);
+        const { bytesRead } = await file.read(buffer, 0, buffer.length, 0);
+        if (bytesRead > 32) { return undefined; }
+        let value = buffer.toString('utf8', 0, bytesRead);
+        if (value.endsWith('\r\n')) { value = value.slice(0, -2); }
+        else if (value.endsWith('\n')) { value = value.slice(0, -1); }
+        if (value.includes('\n') || value.includes('\r')) { return undefined; }
+        return value === 'pending' || value === 'ready' || value === 'failed' ? value : undefined;
+    } catch {
+        return undefined;
+    } finally {
+        await file?.close().catch(() => undefined);
+    }
+}
+
+/**
+ * Wait for the same connected owner used by execution and terminal selection.
+ * Profile setup may take up to ten minutes after reporting pending; ready still
+ * requires this terminal to attach, and failed always aborts this wait.
+ */
+export function waitForTerminalReady(terminal: vscode.Terminal, timeout = 30000, startupFilePath?: string): Promise<boolean> {
     return new Promise(resolve => {
         let settled = false;
+        let observedState: TerminalStartupState | undefined;
+        let startupTimer: NodeJS.Timeout | undefined;
+        let pendingTimer: NodeJS.Timeout | undefined;
+        let pollTimer: NodeJS.Timeout | undefined;
+        let checkingOwner = false;
+
         const finish = (ready: boolean) => {
             if (settled) { return; }
             settled = true;
-            clearTimeout(timer);
+            if (startupTimer) { clearTimeout(startupTimer); }
+            if (pendingTimer) { clearTimeout(pendingTimer); }
+            if (pollTimer) { clearTimeout(pollTimer); }
             attached.dispose();
             closed.dispose();
             resolve(ready);
         };
+        const isClosed = () => terminalRegistry.isClosed(terminal) || terminal.exitStatus !== undefined;
+        const hasOwner = () => Boolean(terminalRegistry.ownerOf(terminal));
+        const checkOwner = () => {
+            if (settled) { return; }
+            if (isClosed()) { finish(false); }
+            else if (observedState === 'failed') { finish(false); }
+            else if (observedState !== 'pending' && hasOwner()) { finish(true); }
+        };
+        const setState = (state: TerminalStartupState) => {
+            if (settled || observedState === 'failed') { return; }
+            if (state === 'failed') {
+                observedState = 'failed';
+                finish(false);
+            } else if (state === 'pending') {
+                if (observedState === undefined) {
+                    observedState = 'pending';
+                    if (startupTimer) { clearTimeout(startupTimer); startupTimer = undefined; }
+                    pendingTimer = setTimeout(() => finish(false), SESS_SETUP_TIMEOUT);
+                }
+            } else if (state === 'ready') {
+                if (observedState !== 'ready') {
+                    observedState = 'ready';
+                    if (startupTimer) { clearTimeout(startupTimer); startupTimer = undefined; }
+                    if (pendingTimer) { clearTimeout(pendingTimer); pendingTimer = undefined; }
+                    startupTimer = setTimeout(() => finish(false), timeout);
+                }
+                checkOwner();
+            }
+        };
         const check = () => {
-            if (terminalRegistry.isClosed(terminal) || terminal.exitStatus) { finish(false); }
-            else if (terminalRegistry.ownerOf(terminal)) { finish(true); }
+            if (settled) { return; }
+            if (isClosed()) { finish(false); return; }
+            if (!hasOwner()) { return; }
+            if (!startupFilePath || observedState !== undefined) { checkOwner(); return; }
+            if (checkingOwner) { return; }
+            checkingOwner = true;
+            void readTerminalStartupState(startupFilePath).then(state => {
+                checkingOwner = false;
+                if (settled) { return; }
+                if (state) { setState(state); }
+                if (!settled) { checkOwner(); }
+            }).catch(() => {
+                checkingOwner = false;
+                if (!settled) { checkOwner(); }
+            });
         };
         const attached = terminalRegistry.onDidChange(changed => { if (changed === terminal) { check(); } });
         const closed = window.onDidCloseTerminal(changed => { if (changed === terminal) { finish(false); } });
-        // A timeout rejects startup; it never authorizes sending input.
-        const timer = setTimeout(() => finish(false), timeout);
+
+        // A missing or invalid state keeps the ordinary attachment timeout.
+        startupTimer = setTimeout(() => finish(false), timeout);
+        // A fresh retry on an already-owned terminal is ready even if an earlier
+        // startup attempt left a failed marker behind.
+        if (hasOwner()) { finish(true); return; }
+        if (startupFilePath) {
+            const poll = async () => {
+                if (settled) { return; }
+                const state = await readTerminalStartupState(startupFilePath);
+                if (settled) { return; }
+                if (state) { setState(state); }
+                if (!settled) { pollTimer = setTimeout(() => { void poll(); }, 100); }
+            };
+            void poll().catch(() => undefined);
+        }
         check();
     });
 }
@@ -495,7 +586,10 @@ export async function removeTerminalDiscoveryFile(terminal: vscode.Terminal): Pr
         }
 
         if (discoveryPath) {
-            await fsp.rm(discoveryPath, { recursive: true, force: true });
+            await Promise.all([
+                fsp.rm(discoveryPath, { recursive: true, force: true }),
+                fsp.rm(`${discoveryPath}.startup`, { force: true }),
+            ]);
         }
     });
 }

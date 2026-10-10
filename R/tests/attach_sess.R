@@ -3,6 +3,7 @@ source("R/sess_source.R")
 root <- tempfile("attach-sess-")
 dir.create(root)
 on.exit(unlink(root, recursive = TRUE), add = TRUE)
+Sys.unsetenv("VSCODE_R_SESS_STARTUP_FILE")
 
 revision <- paste0("git-tree:", strrep("a", 40))
 mismatch <- paste0("git-tree:", strrep("b", 40))
@@ -49,6 +50,7 @@ writeLines(c(
     "managed_root <- file.path(root, 'vscode-R')",
     "managed_library <- sess_managed_library(managed_root, revision)",
     "ready_path <- file.path(dirname(managed_library), '.ready')",
+    "startup_status <- file.path(root, 'profile.status')",
     "lock_path <- file.path(dirname(managed_library), '.setup-lock')",
     "owner_file <- file.path(lock_path, 'fixture-owner')",
     "owner_ready <- file.path(root, 'owner-lock-ready')",
@@ -147,8 +149,8 @@ writeLines(c(
     "  stopifnot(same_paths(.libPaths(), ordinary))",
     "  stopifnot(identical(read.dcf(desc_path), desc))",
     "  stopifnot(!dir.exists(sess_managed_library(managed_root, revision)))",
-    "} else if (mode %in% c('profile_exact', 'profile_prepared')) {",
-    "  expected <- if (mode == 'profile_exact') normal else",
+    "} else if (mode %in% c('profile_exact', 'profile_prepared', 'profile_no_status')) {",
+    "  expected <- if (mode %in% c('profile_exact', 'profile_no_status')) normal else",
     "    sess_managed_library(managed_root, revision)",
     "  stopifnot('sess' %in% loadedNamespaces())",
     "  stopifnot(identical(sess_loaded_source_revision(), revision))",
@@ -163,6 +165,8 @@ writeLines(c(
     "  stopifnot(any(normalizePath(.libPaths()) == normalizePath(project_library)))",
     "  stopifnot(length(list.files(consent, pattern='\\\\.request$')) == 0L)",
     "  if (mode == 'profile_prepared') stopifnot(identical(readLines(ready_path), revision))",
+    "  if (mode == 'profile_no_status') stopifnot(!file.exists(startup_status))",
+    "  else stopifnot(identical(readLines(startup_status), 'ready'))",
     "} else if (mode == 'profile_decline') {",
     "  wrong_library <- file.path(managed_root, 'fixture-other-platform',",
     "                             '99.99', strrep('a', 40), 'library')",
@@ -175,6 +179,7 @@ writeLines(c(
     "  stopifnot(file.exists(file.path(root, 'user-profile-ran')))",
     "  stopifnot(!dir.exists(sess_managed_library(managed_root, revision)))",
     "  stopifnot(!file.exists(ready_path))",
+    "  stopifnot(identical(readLines(startup_status), 'failed'))",
     "  stopifnot(file.exists(file.path(wrong_library, 'sess', 'DESCRIPTION')))",
     "  stopifnot(length(list.files(consent, pattern='\\\\.request$')) == 0L)",
     "} else if (mode == 'profile_approve') {",
@@ -193,6 +198,7 @@ writeLines(c(
     "  stopifnot(same_paths(actual, file.path(library, 'sess')))",
     "  stopifnot(file.exists(file.path(library, 'sess', 'DESCRIPTION')))",
     "  stopifnot(identical(readLines(ready_path), revision))",
+    "  stopifnot(identical(readLines(startup_status), 'ready'))",
     "  stopifnot(file.exists(file.path(wrong_library, 'sess', 'DESCRIPTION')))",
     "} else if (mode == 'timeout') {",
     "  set.seed(8841); seed <- .Random.seed",
@@ -297,10 +303,12 @@ r_literal <- function(value) encodeString(value, quote = "\"")
 run_case <- function(mode) {
     case_root <- file.path(root, mode)
     dir.create(case_root)
+    startup_status <- file.path(case_root, "profile.status")
     consent <- file.path(case_root, "consent")
     dir.create(consent)
     profile_modes <- c(
-                       "profile_exact", "profile_prepared", "profile_decline", "profile_approve")
+                       "profile_exact", "profile_prepared", "profile_decline", "profile_approve",
+                       "profile_no_status")
     startup <- mode %in% profile_modes
     if (startup) {
         normal <- file.path(case_root, "normal library")
@@ -317,6 +325,7 @@ run_case <- function(mode) {
             paste0("file.create(", r_literal(marker), ")")
         ), user_profile)
         startup_profile <- file.path(case_root, "startup.Rprofile")
+        startup_status <- file.path(case_root, "profile.status")
         production_profile <- file.path(getwd(), "R", "profile.R")
         writeLines(c(
             "Sys.setenv(R_PROFILE_USER_OLD=Sys.getenv('VSCODE_R_TEST_USER_PROFILE'))",
@@ -328,6 +337,7 @@ run_case <- function(mode) {
                                   mode,
                                   profile_exact = normal,
                                   profile_prepared = managed_library,
+                                  profile_no_status = normal,
                                   file.path(managed_root,
                                             "fixture-other-platform", "99.99", strrep("a", 40), "library"))
         dir.create(install_library, recursive = TRUE, showWarnings = FALSE)
@@ -344,7 +354,7 @@ run_case <- function(mode) {
                 writeLines(revision, file.path(dirname(install_library), ".ready"))
             }
         }
-        if (mode %in% c("profile_exact", "profile_prepared")) {
+        if (mode %in% c("profile_exact", "profile_prepared", "profile_no_status")) {
             unlink(consent, recursive = TRUE)
         }
         profile_environment <- c(
@@ -357,7 +367,10 @@ run_case <- function(mode) {
                                  VSCODE_R_SESS_ATTACH_HELPER = file.path(getwd(), "R", "attach_sess.R"),
                                  VSCODE_R_SESS_INSTALLER_HELPER = file.path(getwd(), "R", "sess-package-install.R"),
                                  VSCODE_R_SESS_ROOT = managed_root,
-                                 VSCODE_R_SESS_CONSENT_DIRECTORY = consent)
+                                 VSCODE_R_SESS_CONSENT_DIRECTORY = consent,
+                                 if (mode != "profile_no_status") {
+                                     c(VSCODE_R_SESS_STARTUP_FILE = startup_status)
+                                 })
         profile_keys <- names(profile_environment)
         previous_environment <- Sys.getenv(profile_keys, unset = NA_character_)
         on.exit({
@@ -383,9 +396,14 @@ run_case <- function(mode) {
         count <- if (mode == "twice") 2L else 1L
         approve_modes <- c("approve", "profile_approve")
         answer <- if (mode %in% approve_modes) "approve" else "decline"
+        release_marker <- if (mode %in% c("profile_decline", "profile_approve")) {
+            file.path(case_root, "release-profile-consent")
+        } else {
+            ""
+        }
         system2(r_binary, shQuote(c(
             "--vanilla", "--slave", paste0("--file=", agent), "--args",
-            consent, as.character(count), answer, log, identity_log, status_log, ""
+            consent, as.character(count), answer, log, identity_log, status_log, release_marker
         )), wait = FALSE, stdout = FALSE, stderr = FALSE)
     }
     flags <- if (startup) {
@@ -393,12 +411,53 @@ run_case <- function(mode) {
     } else {
         c("--vanilla", "--slave", "--no-save", "--no-restore")
     }
-    output <- suppressWarnings(system2(r_binary, shQuote(c(
-        flags,
-        paste0("--file=", runner), "--args", mode, case_root, pkg, revision, mismatch
-    )), stdout = TRUE, stderr = TRUE))
-    status <- attr(output, "status")
-    if (!is.null(status) && status != 0L) stop(paste(output, collapse = "\n"))
+    if (mode %in% c("profile_decline", "profile_approve")) {
+        result_file <- file.path(case_root, "startup-runner-result")
+        stdout_path <- file.path(case_root, "startup-runner-stdout")
+        stderr_path <- file.path(case_root, "startup-runner-stderr")
+        system2(
+            r_binary,
+            shQuote(c(
+                flags,
+                paste0("--file=", runner), "--args", mode, case_root, pkg, revision, mismatch,
+                "", result_file
+            )),
+            wait = FALSE,
+            stdout = stdout_path,
+            stderr = stderr_path
+        )
+        deadline <- Sys.time() + 10
+        requests <- character()
+        while (!length(requests) && Sys.time() < deadline) {
+            requests <- list.files(consent, pattern = "\\.request$", full.names = TRUE)
+            if (!length(requests)) Sys.sleep(0.01)
+        }
+        if (!length(requests)) stop("profile startup did not publish a consent request")
+        stopifnot(identical(readLines(startup_status, warn = FALSE), "pending"))
+        file.create(release_marker)
+        deadline <- Sys.time() + 30
+        while (!file.exists(result_file) && Sys.time() < deadline) Sys.sleep(0.01)
+        if (!file.exists(result_file)) {
+            child_output <- c(readLines(stdout_path, warn = FALSE), readLines(stderr_path, warn = FALSE))
+            stop(paste("profile startup child did not complete:", paste(child_output, collapse = "\n")))
+        }
+        stopifnot(identical(readLines(result_file, warn = FALSE), "ok"))
+    } else {
+        output <- suppressWarnings(
+            system2(
+                r_binary,
+                shQuote(c(
+                    flags,
+                    paste0("--file=", runner), "--args", mode, case_root, pkg, revision, mismatch,
+                    "", ""
+                )),
+                stdout = TRUE,
+                stderr = TRUE
+            )
+        )
+        status <- attr(output, "status")
+        if (!is.null(status) && status != 0L) stop(paste(output, collapse = "\n"))
+    }
     if (mode %in% consent_modes) {
         status_path <- file.path(case_root, "consent-agent-status")
         deadline <- Sys.time() + 5
@@ -425,7 +484,7 @@ run_case <- function(mode) {
 
 for (mode in c(
     "twice", "mismatch", "exact", "prepared", "unready", "wrong_ready", "timeout", "approve",
-    "profile_exact", "profile_prepared", "profile_decline", "profile_approve"
+    "profile_exact", "profile_prepared", "profile_decline", "profile_approve", "profile_no_status"
 )) run_case(mode)
 
 wait_for_file <- function(path, seconds, description) {

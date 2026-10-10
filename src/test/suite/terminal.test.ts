@@ -231,13 +231,15 @@ suite('R Terminal', () => {
     test('deleteTerminal removes only its discovery file after an explicit terminal close', async () => {
         const endpoint = await session.getGlobalPipePath();
         const discoveryFile = await session.createSessionDiscoveryFile(endpoint);
+        const startupFile = `${discoveryFile}.startup`;
+        await fsp.writeFile(startupFile, 'pending\n');
         const unrelatedFile = await session.createSessionDiscoveryFile(endpoint);
         const terminal = {
             name: 'R Interactive',
             processId: Promise.resolve(45239),
             creationOptions: {
                 name: 'R Interactive',
-                env: { SESS_DISCOVERY_FILE: discoveryFile },
+                env: { SESS_DISCOVERY_FILE: discoveryFile, VSCODE_R_SESS_STARTUP_FILE: startupFile },
             },
             exitStatus: { code: undefined, reason: vscode.TerminalExitReason.User },
         } as unknown as vscode.Terminal;
@@ -245,9 +247,11 @@ suite('R Terminal', () => {
         try {
             rTerminal.deleteTerminal(terminal);
             await waitForDiscoveryRemoval(discoveryFile);
+            await waitForDiscoveryRemoval(startupFile);
             assert.strictEqual(await pathExists(unrelatedFile), true);
         } finally {
             await fsp.rm(discoveryFile, { recursive: true, force: true });
+            await fsp.rm(startupFile, { recursive: true, force: true });
             await fsp.rm(unrelatedFile, { recursive: true, force: true });
         }
     });
@@ -256,16 +260,20 @@ suite('R Terminal', () => {
         const endpoint = await session.getGlobalPipePath();
         const shutdownFile = await session.createSessionDiscoveryFile(endpoint);
         const unknownFile = await session.createSessionDiscoveryFile(endpoint);
+        const shutdownStartupFile = `${shutdownFile}.startup`;
+        const unknownStartupFile = `${unknownFile}.startup`;
+        await fsp.writeFile(shutdownStartupFile, 'pending\n');
+        await fsp.writeFile(unknownStartupFile, 'pending\n');
         const shutdownTerminal = {
             name: 'R Interactive',
             processId: Promise.resolve(45241),
-            creationOptions: { name: 'R Interactive', env: { SESS_DISCOVERY_FILE: shutdownFile } },
+            creationOptions: { name: 'R Interactive', env: { SESS_DISCOVERY_FILE: shutdownFile, VSCODE_R_SESS_STARTUP_FILE: shutdownStartupFile } },
             exitStatus: { code: undefined, reason: vscode.TerminalExitReason.Shutdown },
         } as unknown as vscode.Terminal;
         const unknownTerminal = {
             name: 'R Interactive',
             processId: Promise.resolve(45243),
-            creationOptions: { name: 'R Interactive', env: { SESS_DISCOVERY_FILE: unknownFile } },
+            creationOptions: { name: 'R Interactive', env: { SESS_DISCOVERY_FILE: unknownFile, VSCODE_R_SESS_STARTUP_FILE: unknownStartupFile } },
             exitStatus: { code: undefined, reason: vscode.TerminalExitReason.Unknown },
         } as unknown as vscode.Terminal;
 
@@ -275,9 +283,13 @@ suite('R Terminal', () => {
             await new Promise(resolve => setTimeout(resolve, 10));
             assert.strictEqual(await pathExists(shutdownFile), true);
             assert.strictEqual(await pathExists(unknownFile), true);
+            assert.strictEqual(await pathExists(shutdownStartupFile), true);
+            assert.strictEqual(await pathExists(unknownStartupFile), true);
         } finally {
             await fsp.rm(shutdownFile, { recursive: true, force: true });
             await fsp.rm(unknownFile, { recursive: true, force: true });
+            await fsp.rm(shutdownStartupFile, { recursive: true, force: true });
+            await fsp.rm(unknownStartupFile, { recursive: true, force: true });
         }
     });
 
@@ -635,10 +647,14 @@ suite('R Terminal', () => {
 
     test('createRTerm removes its discovery file when the configured executable is invalid', async () => {
         const createdDiscoveryFiles: string[] = [];
+        const createdStartupFiles: string[] = [];
         const createDiscoveryFile = session.createSessionDiscoveryFile;
         sandbox.stub(session, 'createSessionDiscoveryFile').callsFake(async endpoint => {
             const filePath = await createDiscoveryFile(endpoint);
             createdDiscoveryFiles.push(filePath);
+            const startupPath = `${filePath}.startup`;
+            createdStartupFiles.push(startupPath);
+            await fsp.writeFile(startupPath, 'pending\n');
             return filePath;
         });
         const configStub = {
@@ -651,17 +667,23 @@ suite('R Terminal', () => {
             assert.strictEqual(await rTerminal.createRTerm(), false);
             assert.strictEqual(createdDiscoveryFiles.length, 1);
             assert.strictEqual(await pathExists(createdDiscoveryFiles[0]), false);
+            assert.strictEqual(await pathExists(createdStartupFiles[0]), false);
         } finally {
             await Promise.all(createdDiscoveryFiles.map(filePath => fsp.rm(filePath, { recursive: true, force: true })));
+            await Promise.all(createdStartupFiles.map(filePath => fsp.rm(filePath, { recursive: true, force: true })));
         }
     });
 
     test('createRTerm removes its discovery file when VS Code terminal creation throws', async () => {
         const createdDiscoveryFiles: string[] = [];
+        const createdStartupFiles: string[] = [];
         const createDiscoveryFile = session.createSessionDiscoveryFile;
         sandbox.stub(session, 'createSessionDiscoveryFile').callsFake(async endpoint => {
             const filePath = await createDiscoveryFile(endpoint);
             createdDiscoveryFiles.push(filePath);
+            const startupPath = `${filePath}.startup`;
+            createdStartupFiles.push(startupPath);
+            await fsp.writeFile(startupPath, 'pending\n');
             return filePath;
         });
         const configStub = {
@@ -675,8 +697,10 @@ suite('R Terminal', () => {
             await assert.rejects(rTerminal.createRTerm(), /terminal creation failed/);
             assert.strictEqual(createdDiscoveryFiles.length, 1);
             assert.strictEqual(await pathExists(createdDiscoveryFiles[0]), false);
+            assert.strictEqual(await pathExists(createdStartupFiles[0]), false);
         } finally {
             await Promise.all(createdDiscoveryFiles.map(filePath => fsp.rm(filePath, { recursive: true, force: true })));
+            await Promise.all(createdStartupFiles.map(filePath => fsp.rm(filePath, { recursive: true, force: true })));
         }
     });
 

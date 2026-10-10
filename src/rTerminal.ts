@@ -32,6 +32,7 @@ let rTermResource: vscode.Uri | undefined;
 const terminalStartup = new WeakMap<vscode.Terminal, {
     integrated: boolean;
     ready: boolean;
+    startupFilePath?: string;
     pending?: Promise<boolean>;
 }>();
 
@@ -43,7 +44,7 @@ async function prepareTerminalForInput(terminal: vscode.Terminal): Promise<boole
     if (!startup.pending) {
         startup.pending = (async () => {
             const ready = startup.integrated
-                ? await waitForTerminalReady(terminal)
+                ? await waitForTerminalReady(terminal, 30000, startup.startupFilePath)
                 : await delay(200).then(() => !isTerminalClosed(terminal) && !terminal.exitStatus);
             startup.ready = ready;
             if (!ready && !isTerminalClosed(terminal) && !terminal.exitStatus) {
@@ -258,6 +259,7 @@ export async function makeTerminalOptions(resource?: vscode.Uri): Promise<vscode
         const pipePath = await getGlobalPipePath();
         const consentDirectory = await getSessConsentDirectory();
         const discoveryFile = await createSessionDiscoveryFile(pipePath);
+        const startupFile = `${discoveryFile}.startup`;
         const backend = resolveBackend();
         termOptions.env = {
             R_PROFILE_USER_OLD: process.env.R_PROFILE_USER,
@@ -268,6 +270,7 @@ export async function makeTerminalOptions(resource?: vscode.Uri): Promise<vscode
             VSCODE_R_SESS_CONSENT_DIRECTORY: consentDirectory,
             VSCODE_R_SESS_INSTALLER_HELPER: extensionContext.asAbsolutePath(path.join('R', 'sess-package-install.R')),
             VSCODE_R_SESS_ATTACH_HELPER: extensionContext.asAbsolutePath(path.join('R', 'attach_sess.R')),
+            VSCODE_R_SESS_STARTUP_FILE: startupFile,
             // Remove inherited endpoint overrides so the per-terminal discovery file
             // remains authoritative, including after a VS Code window reload.
             SESS_ENDPOINT: null,
@@ -288,15 +291,17 @@ export async function createRTerm(preserveshow?: boolean, resource?: vscode.Uri)
     const termOptions = await makeTerminalOptions(resource);
     const termPath = termOptions.shellPath;
     const discoveryFile = termOptions.env?.['SESS_DISCOVERY_FILE'];
+    const startupFile = termOptions.env?.['VSCODE_R_SESS_STARTUP_FILE'];
     const discardDiscoveryFile = async () => {
-        if (typeof discoveryFile === 'string') {
+        for (const filePath of [discoveryFile, startupFile]) {
+            if (typeof filePath !== 'string') { continue; }
             try {
-                await fs.promises.unlink(discoveryFile);
+                await fs.promises.unlink(filePath);
             } catch (error) {
                 if (error instanceof Error && 'code' in error && error.code === 'ENOENT') {
-                    return;
+                    continue;
                 }
-                console.error('Failed to remove unused session discovery file', error);
+                console.error('Failed to remove unused session startup file', error);
             }
         }
     };
@@ -322,6 +327,7 @@ export async function createRTerm(preserveshow?: boolean, resource?: vscode.Uri)
     terminalStartup.set(createdTerminal, {
         integrated: typeof discoveryFile === 'string' && !skipsProfile,
         ready: false,
+        startupFilePath: typeof startupFile === 'string' ? startupFile : undefined,
     });
     createdTerminal.show(preserveshow);
 
