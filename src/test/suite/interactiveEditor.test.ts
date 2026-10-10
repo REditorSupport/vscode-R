@@ -2,6 +2,7 @@ import * as assert from 'assert';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
+import * as net from 'net';
 import * as vscode from 'vscode';
 import * as sinon from 'sinon';
 import { execFile } from 'child_process';
@@ -18,7 +19,7 @@ import { shellQuote } from '../../interactive/launcher';
 import type { InteractiveManager } from '../../interactive/manager';
 import type { GlobalEnvItem, WorkspaceDataProvider } from '../../workspaceViewer';
 import type { WorkspaceData } from '../../session';
-import type { LanguageClient } from 'vscode-languageclient/node';
+import { LanguageClient, State, StreamMessageReader, StreamMessageWriter, createMessageConnection } from 'vscode-languageclient/node';
 
 function treeTooltip(item: vscode.TreeItem): string {
     return typeof item.tooltip === 'string' ? item.tooltip : item.tooltip?.value ?? '';
@@ -35,7 +36,10 @@ function treeTooltip(item: vscode.TreeItem): string {
     let agents: SessionAgent[];
     let manifests: SessionManifest[];
     let controller: vscode.NotebookController;
+    let originalTabs: Set<vscode.Tab>;
+    let originalLanguageClients: Set<LanguageClient>;
     suiteSetup(async () => {
+        originalTabs = new Set(vscode.window.tabGroups.all.flatMap(group => group.tabs));
         // Match R's cwd and temporary root on macOS as well as Linux. Symlinked
         // /var or /tmp paths otherwise hide languageserver's temp-file filter.
         previousTmpdir = process.env.TMPDIR;
@@ -51,6 +55,7 @@ function treeTooltip(item: vscode.TreeItem): string {
         fs.cpSync(path.join(process.cwd(), 'sess'), path.join(root, 'sess'), { recursive: true });
         await promisify(execFile)('R', ['CMD', 'INSTALL', '--clean', `--library=${path.join(root, 'library')}`, path.join(root, 'sess')]);
         await vscode.extensions.getExtension('REditorSupport.r')?.activate();
+        originalLanguageClients = new Set(languageService().clients.values());
         // Startup restoration may activate R before this suite configures its private
         // registry. Recreate only the manager, just as a host reload would do.
         const context = bundleContext();
@@ -78,6 +83,23 @@ function treeTooltip(item: vscode.TreeItem): string {
         await vscode.workspace.getConfiguration('r').update('interactive.storagePath', previousStorage, vscode.ConfigurationTarget.Global);
         await bundleContext().workspaceState.update('r.interactive.connections', previousConnections);
         await Promise.all(agents?.map(agent => agent.close()) ?? []);
+        const service = languageService();
+        await Promise.all(service.clientUpdates.values());
+        const clients = new Set([...service.clients.values()].filter(client => !originalLanguageClients.has(client)));
+        // Await shutdown before tab-close handlers can start an unobserved stop.
+        await Promise.all([...clients].map(stopLanguageClient));
+        // Detach retains editors. Close this suite's tabs and await its language
+        // servers before deleting directories that those R processes use as cwd.
+        await vscode.window.tabGroups.close(vscode.window.tabGroups.all.flatMap(group => group.tabs)
+            .filter(tab => !originalTabs.has(tab)), true);
+        await Promise.all(service.clientUpdates.values());
+        for (const [key, client] of service.clients) {
+            if (!originalLanguageClients.has(client)) {
+                clients.add(client);
+                service.clients.delete(key);
+            }
+        }
+        await Promise.all([...clients].map(stopLanguageClient));
         await new Promise(resolve => setTimeout(resolve, 200));
         fs.rmSync(root, { recursive: true, force: true });
         sourceDirectories.forEach(directory => fs.rmSync(directory, { recursive: true, force: true }));
@@ -92,8 +114,23 @@ function treeTooltip(item: vscode.TreeItem): string {
     function bundleContext(): vscode.ExtensionContext {
         return (createRequire(__filename)(path.join(process.cwd(), 'dist/extension')) as { extensionContext: vscode.ExtensionContext }).extensionContext;
     }
+    function languageService(): { clients: Map<string, LanguageClient>; clientUpdates: Map<string, Promise<void>> } {
+        const service = bundleContext().subscriptions.find(item =>
+            (item as { clients?: unknown }).clients instanceof Map) as ReturnType<typeof languageService> | undefined;
+        assert.ok(service, 'Language service must be registered');
+        return service;
+    }
+    function interactiveManager(context = bundleContext()): InteractiveManager {
+        // The HTML Viewer manager also exposes open(); identify the Interactive
+        // manager by its session tree as well, including after it is recreated.
+        const manager = context.subscriptions.find(item =>
+            typeof (item as InteractiveManager).open === 'function'
+            && typeof (item as InteractiveManager).getChildren === 'function') as InteractiveManager | undefined;
+        assert.ok(manager, 'Interactive manager must be registered');
+        return manager;
+    }
     function recreateManager(context: vscode.ExtensionContext): void {
-        const manager = context.subscriptions.find(item => typeof (item as InteractiveManager).open === 'function') as InteractiveManager;
+        const manager = interactiveManager(context);
         assert.ok(manager);
         const Manager = (Object.getPrototypeOf(manager) as { constructor: typeof InteractiveManager }).constructor;
         manager.dispose(); context.subscriptions.splice(context.subscriptions.indexOf(manager), 1);
@@ -371,7 +408,7 @@ function treeTooltip(item: vscode.TreeItem): string {
             assert.deepStrictEqual(selectionEvents, [], 'Presentation refresh must not deselect the execution kernel');
             affinity.resetHistory();
             // Repeated unchanged status updates must not continually rebuild the picker.
-            const manager = bundleContext().subscriptions.find(item => typeof (item as InteractiveManager).open === 'function');
+            const manager = interactiveManager();
             const status = manager as unknown as { updateStatus(): void };
             status.updateStatus(); status.updateStatus();
             await new Promise<void>(resolve => setImmediate(resolve));
@@ -432,7 +469,7 @@ function treeTooltip(item: vscode.TreeItem): string {
         // Load the activated bundle's context/constructor, so execution routing and
         // command registration use the same module instances as the real extension.
         const context = bundleContext();
-        const manager = context.subscriptions.find(item => typeof (item as InteractiveManager).open === 'function') as InteractiveManager;
+        const manager = interactiveManager(context) as InteractiveManager;
         assert.ok(manager);
         const Manager = (Object.getPrototypeOf(manager) as { constructor: typeof InteractiveManager }).constructor;
         for (const manifest of manifests) { await vscode.commands.executeCommand('r.interactive.open', manifest); }
@@ -494,7 +531,7 @@ function treeTooltip(item: vscode.TreeItem): string {
         }
     });
     test('refreshes session tree connection and control details after reconnect and Take Control', async () => {
-        const manager = bundleContext().subscriptions.find(item => typeof (item as InteractiveManager).open === 'function') as InteractiveManager;
+        const manager = interactiveManager() as InteractiveManager;
         const view = (manager as unknown as { views: Map<string, { client: AgentClient }> }).views.get(`${manifests[0].id}:${manifests[0].generation}`);
         assert.ok(view);
         let refreshes = 0;
@@ -517,7 +554,7 @@ function treeTooltip(item: vscode.TreeItem): string {
     });
     test('observer execution consistently reports errors from native input, cells and source commands', async () => {
         await vscode.commands.executeCommand('r.interactive.open', manifests[0]);
-        const manager = bundleContext().subscriptions.find(item => typeof (item as InteractiveManager).open === 'function') as InteractiveManager;
+        const manager = interactiveManager() as InteractiveManager;
         const view = (manager as unknown as { views: Map<string, { client: AgentClient; controller: vscode.NotebookController; notebook: vscode.NotebookDocument }> }).views.get(`${manifests[0].id}:${manifests[0].generation}`);
         assert.ok(view);
         const other = new AgentClient(manifests[0]);
@@ -757,9 +794,7 @@ function treeTooltip(item: vscode.TreeItem): string {
         } finally { sourceDirectories.push(directory); }
     });
     test('starts each Interactive input language server in its owning session directory', async () => {
-        const service = bundleContext().subscriptions.find(item =>
-            (item as { clients?: unknown }).clients instanceof Map) as { clients: Map<string, LanguageClient> } | undefined;
-        assert.ok(service);
+        const service = languageService();
         try {
             for (const manifest of manifests) {
                 await vscode.commands.executeCommand('r.interactive.open', manifest);
@@ -1171,7 +1206,7 @@ cat("\n")`;
             const plain = report.cells.at(-1)?.outputs?.flatMap(output => output.items).find(item => item.mime === 'text/plain');
             assert.ok(plain); assert.strictEqual(Buffer.from(plain.data).toString(), table.printedText);
             const context = bundleContext();
-            const manager = context.subscriptions.find(item => typeof (item as InteractiveManager).open === 'function') as unknown as {
+            const manager = interactiveManager(context) as unknown as {
                 rendererMessage(editor: vscode.NotebookEditor, message: Record<string, unknown>): Promise<void>;
             };
             const editor = vscode.window.visibleNotebookEditors.find(editor => editor.notebook === notebook); assert.ok(editor);
@@ -1203,7 +1238,7 @@ cat("\n")`;
         const plain = notebook.cellAt(index).outputs.flatMap(output => output.items).find(item => item.mime === 'text/plain'); assert.ok(plain);
         assert.strictEqual(Buffer.from(plain.data).toString(), list.printedText);
         const context = bundleContext();
-        const manager = context.subscriptions.find(item => typeof (item as InteractiveManager).open === 'function') as unknown as {
+        const manager = interactiveManager(context) as unknown as {
             messages: vscode.NotebookRendererMessaging;
             rendererMessage(editor: vscode.NotebookEditor, message: Record<string, unknown>): Promise<void>;
         };
@@ -1286,7 +1321,7 @@ cat("\n")`;
         try {
             await vscode.commands.executeCommand('r.interactive.export', notebook.uri);
             assert.ok(fs.readFileSync(file, 'utf8').includes('Snapshot: first 1,000 of 832,976,871 rows'));
-            const manager = bundleContext().subscriptions.find(item => typeof (item as InteractiveManager).open === 'function') as unknown as {
+            const manager = interactiveManager() as unknown as {
                 messages: vscode.NotebookRendererMessaging;
                 rendererMessage(editor: vscode.NotebookEditor, message: Record<string, unknown>): Promise<void>;
             };
@@ -1332,7 +1367,7 @@ par(mfrow=c(1,1))`);
             const gallery = displays().find(display => display.kind === 'plot'); assert.ok(gallery);
             const pages = gallery.pages as Record<string, unknown>[];
             const context = bundleContext();
-            const manager = context.subscriptions.find(item => typeof (item as InteractiveManager).open === 'function') as unknown as {
+            const manager = interactiveManager(context) as unknown as {
                 rendererMessage(editor: vscode.NotebookEditor, message: Record<string, unknown>): Promise<void>;
             };
             const editor = vscode.window.visibleNotebookEditors.find(editor => editor.notebook === notebook); assert.ok(editor);
@@ -1970,7 +2005,7 @@ par(mfrow=c(1,1))`);
                 assert.strictEqual(bulk[3].status, 'idle');
                 assert.strictEqual((await other.request<{ control: boolean }>('heartbeat')).control, true);
                 assert.match(confirm.lastCall.args[0], /Stopped 1 of 2.*1 could not be stopped/);
-                const manager = bundleContext().subscriptions.find(item => typeof (item as InteractiveManager).open === 'function') as InteractiveManager;
+                const manager = interactiveManager() as InteractiveManager;
                 assert.ok(!manager.getChildren().some(manifest => manifest.id === bulk[1].id), 'Stopped unopened sessions leave no dead tree link');
                 assert.ok(manager.getChildren().some(manifest => manifest.id === bulk[0].id), 'An open stopped transcript stays in the tree');
                 assert.strictEqual(vscode.workspace.notebookDocuments.length, windowCount);
@@ -2003,7 +2038,7 @@ par(mfrow=c(1,1))`);
         });
     });
     test('a stale saved URI cannot reconnect one session into another session window', async () => {
-        const manager = bundleContext().subscriptions.find(item => typeof (item as InteractiveManager).open === 'function') as InteractiveManager;
+        const manager = interactiveManager() as InteractiveManager;
         const saved = (manager as unknown as { savedConnections: Map<string, { id: string; notebookUri?: string }> }).savedConnections;
         const temporary: { agent: SessionAgent; manifest: SessionManifest }[] = [];
         const before = new Set(vscode.window.tabGroups.all.flatMap(group => group.tabs));
@@ -2061,4 +2096,73 @@ par(mfrow=c(1,1))`);
         assert.ok(!JSON.stringify(ipynb).includes('private-token'));
     });
 
+});
+
+async function stopLanguageClient(client: LanguageClient): Promise<void> {
+    try {
+        await client.stop();
+    } catch (error) {
+        // R's language server can close on shutdown before the client's exit
+        // notification is written. The client has already completed cleanup.
+        if (client.state === State.Stopped && error instanceof Error && 'code' in error && error.code === 'EPIPE') { return; }
+        throw error;
+    }
+}
+
+suite('Interactive language client cleanup', () => {
+    test('accepts a completed shutdown when the server closes before the exit notification', async () => {
+        const connections: Array<{ dispose(): void }> = [];
+        let serverSocket: net.Socket | undefined;
+        const server = net.createServer(socket => {
+            serverSocket = socket;
+            const connection = createMessageConnection(new StreamMessageReader(socket), new StreamMessageWriter(socket));
+            connections.push(connection);
+            connection.onRequest('initialize', () => ({ capabilities: {} }));
+            connection.onRequest('shutdown', () => null);
+            connection.listen();
+        });
+        await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
+        const socket = net.connect((server.address() as net.AddressInfo).port, '127.0.0.1');
+        const ended = new Promise<void>(resolve => socket.once('end', resolve));
+        const writer = new StreamMessageWriter(socket);
+        const write = writer.write.bind(writer);
+        let exitErrorCode: string | undefined;
+        // Force the same ordering that macOS can produce during R shutdown.
+        writer.write = async message => {
+            const isExit = 'method' in message && message.method === 'exit';
+            if (isExit) {
+                serverSocket!.end();
+                await ended;
+            }
+            try {
+                return await write(message);
+            } catch (error) {
+                if (isExit) { exitErrorCode = (error as NodeJS.ErrnoException).code; }
+                throw error;
+            }
+        };
+        const channel = vscode.window.createOutputChannel('Test language client cleanup', { log: true });
+        const client = new LanguageClient('cleanup-test', 'Cleanup test', () => Promise.resolve({
+            reader: new StreamMessageReader(socket), writer,
+        }), { documentSelector: [], outputChannel: channel });
+        try {
+            await client.start();
+            await stopLanguageClient(client);
+            assert.strictEqual(client.state, State.Stopped);
+            assert.strictEqual(exitErrorCode, 'EPIPE');
+        } finally {
+            writer.dispose(); socket.destroy();
+            connections.forEach(connection => connection.dispose());
+            await new Promise<void>(resolve => server.close(() => resolve()));
+            channel.dispose();
+        }
+    });
+
+    test('does not suppress unrelated shutdown failures or an unstopped client', async () => {
+        const error = Object.assign(new Error('Socket shutdown failed'), { code: 'EPIPE' });
+        for (const [state, failure] of [[State.Running, error], [State.Stopped, new Error('Unexpected shutdown failure')]] as const) {
+            const client = { state, stop: () => Promise.reject(failure) } as unknown as LanguageClient;
+            await assert.rejects(stopLanguageClient(client), thrown => thrown === failure);
+        }
+    });
 });

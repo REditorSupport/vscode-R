@@ -15,6 +15,7 @@ import * as session from '../../session';
 import * as processTree from '../../processTree';
 import * as extension from '../../extension';
 import * as plotViewer from '../../plotViewer';
+import { initializeHtmlWidgetViewers, shutdownHtmlWidgetViewers } from '../../webViewer';
 import type { RSessionApi } from '../../api';
 
 const extension_root: string = path.join(__dirname, '..', '..', '..');
@@ -41,11 +42,17 @@ suite('Session Communication', () => {
         sandbox.stub(processTree, 'getProcessAncestors').resolves([]);
         sandbox.stub(vscode.commands, 'registerCommand'); // prevent "command already exists" error
         mockExtensionContext(extension_root, sandbox);
+        sandbox.stub(vscode.window, 'registerWebviewPanelSerializer').returns({ dispose: sandbox.stub() });
+        initializeHtmlWidgetViewers(extension.extensionContext, {
+            resolveSession: source => session.getViewerSessionContext(source.sessionId, source)!,
+            getActiveSessionId: () => session.activeSession?.sessionId,
+        });
         session.deploySessionWatcher(extension_root);
         sandbox.stub(extension, 'globalPlotManager').value(plotViewer.initializePlotManager());
     });
 
     teardown(async () => {
+        await shutdownHtmlWidgetViewers();
         plotPanelCleanup?.();
         plotPanelCleanup = undefined;
         const plotManager = extension.globalPlotManager as plotViewer.CommonPlotManager | undefined;
@@ -628,9 +635,9 @@ suite('Session Communication', () => {
 
         // 4. Test webview
         term.sendText('tf <- tempfile(fileext=".html"); writeLines("test", tf); getOption("viewer")(tf)\n');
-        await waitFor(() => createWebviewPanelSpy.calledWith('webview'), 10000, 200);
+        await waitFor(() => createWebviewPanelSpy.calledWith('r.htmlViewer'), 10000, 200);
 
-        assert.ok(createWebviewPanelSpy.calledWith('webview'), 'webview should be triggered for html file');
+        assert.ok(createWebviewPanelSpy.calledWith('r.htmlViewer'), 'webview should be triggered for html file');
 
     }).timeout(85000);
 
