@@ -16,7 +16,6 @@ import { AssetStorageStats, exportedAssetName, readAsset } from '../../interacti
 import { resolveExecutable } from '../../interactive/executable';
 import { shellQuote } from '../../interactive/launcher';
 import type { InteractiveManager } from '../../interactive/manager';
-import * as session from '../../session';
 import type { GlobalEnvItem, WorkspaceDataProvider } from '../../workspaceViewer';
 import type { WorkspaceData } from '../../session';
 import type { LanguageClient } from 'vscode-languageclient/node';
@@ -83,15 +82,23 @@ function treeTooltip(item: vscode.TreeItem): string {
         fs.rmSync(root, { recursive: true, force: true });
         sourceDirectories.forEach(directory => fs.rmSync(directory, { recursive: true, force: true }));
     });
-    const until = async (predicate: () => boolean, timeoutMessage = 'Timed out waiting for notebook execution'): Promise<void> => {
+    const until = async (
+        predicate: () => boolean,
+        timeoutMessage: string | (() => string) = 'Timed out waiting for notebook execution',
+    ): Promise<void> => {
         const deadline = Date.now() + 20000;
         while (!predicate()) {
-            if (Date.now() > deadline) { throw new Error(timeoutMessage); }
+            if (Date.now() > deadline) {
+                throw new Error(typeof timeoutMessage === 'function' ? timeoutMessage() : timeoutMessage);
+            }
             await new Promise(resolve => setTimeout(resolve, 50));
         }
     };
     function bundleContext(): vscode.ExtensionContext {
         return (createRequire(__filename)(path.join(process.cwd(), 'dist/extension')) as { extensionContext: vscode.ExtensionContext }).extensionContext;
+    }
+    function workspaceProvider(): WorkspaceDataProvider {
+        return (createRequire(__filename)(path.join(process.cwd(), 'dist/extension')) as { rWorkspace: WorkspaceDataProvider }).rWorkspace;
     }
     function recreateManager(context: vscode.ExtensionContext): void {
         const manager = context.subscriptions.find(item => typeof (item as InteractiveManager).open === 'function') as InteractiveManager;
@@ -639,9 +646,17 @@ function treeTooltip(item: vscode.TreeItem): string {
         await vscode.workspace.applyEdit(edit);
         await vscode.commands.executeCommand('notebook.cell.execute', { ranges: [{ start: index, end: index + 1 }], document: notebook.uri });
         await until(() => notebook.cellAt(index).executionSummary?.success === true);
-        await until(() => session.activeSession?.sessionId === `${manifests[0].id}:${manifests[0].generation}`
-            && session.activeSession.workspaceData.globalenv.interactive_signature?.type === 'closure',
-        'Timed out waiting for the Interactive workspace snapshot');
+        const workspace = workspaceProvider();
+        const expectedOwner = `${manifests[0].id}:${manifests[0].generation}`;
+        const state = (): string => JSON.stringify({
+            expectedOwner,
+            actualOwner: workspace.owner?.sessionId,
+            function: workspace.data?.globalenv.interactive_signature,
+        });
+        await until(() => workspace.owner?.sessionId === expectedOwner, () => `Timed out waiting for Interactive owner: ${state()}`);
+        await until(() => workspace.owner?.sessionId === expectedOwner
+            && workspace.data?.globalenv.interactive_signature?.type === 'closure',
+            () => `Timed out waiting for Interactive workspace snapshot: ${state()}`);
         const result = await vscode.commands.executeCommand<{ inputUri: vscode.Uri }>('interactive.open', { preserveFocus: true }, notebook.uri);
         const input = await vscode.workspace.openTextDocument(result.inputUri);
         const previous = input.getText();
@@ -1492,7 +1507,7 @@ par(mfrow=c(1,1))`);
         } finally { client.close(); }
     });
     test('Workspace follows native focus and bound sources, and actions retain their displayed owner', async () => {
-        const workspace = (): WorkspaceDataProvider => (createRequire(__filename)(path.join(process.cwd(), 'dist/extension')) as { rWorkspace: WorkspaceDataProvider }).rWorkspace;
+        const workspace = workspaceProvider;
         const nodes = async (): Promise<GlobalEnvItem[]> => {
             const provider = workspace();
             const root = (await provider.getChildren()).find(item => item.id === 'globalenv');
@@ -1521,8 +1536,22 @@ par(mfrow=c(1,1))`);
         await until(() => workspace().owner === oldNode.owner);
         assert.strictEqual(workspace().data?.globalenv.workspace_marker.length, 1);
         const list = (await nodes()).find(node => node.label === 'workspace_list'); assert.ok(list);
-        const children = await workspace().getChildren(list);
-        assert.ok(children.some(child => String(child.description).includes('0')));
+        const provider = workspace();
+        const ownerBefore = provider.owner?.sessionId;
+        const generationBefore = (provider as unknown as { childPageGeneration: number }).childPageGeneration;
+        const children = await provider.getChildren(list);
+        const ownerAfter = provider.owner?.sessionId;
+        const generationAfter = (provider as unknown as { childPageGeneration: number }).childPageGeneration;
+        assert.ok(children.some(child => String(child.description).includes('0')), JSON.stringify({
+            expectedOwner: oldNode.owner?.sessionId,
+            itemOwner: list.owner?.sessionId,
+            ownerBefore,
+            ownerAfter,
+            generationBefore,
+            generationAfter,
+            displayedList: provider.data?.globalenv.workspace_list,
+            returnedChildren: children.map(child => ({ label: child.label, description: child.description })),
+        }));
         await focus(1);
         await vscode.commands.executeCommand('r.workspaceViewer.remove', oldNode);
         const firstClient = new AgentClient(manifests[0]); await firstClient.connect({ claim: false });
