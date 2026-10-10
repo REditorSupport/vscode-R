@@ -122,7 +122,7 @@ suite('R Terminal', () => {
                 assert.deepStrictEqual(sent, []);
                 sinon.assert.calledOnce(create);
                 if (integrated) {
-                    sinon.assert.calledOnceWithExactly(readyStub, terminal, 30000, '/unused-test-discovery.startup');
+                    sinon.assert.calledOnceWithExactly(readyStub, terminal, 30000, '/unused-test-discovery.startup', false);
                     sinon.assert.notCalled(delayStub);
                 } else {
                     sinon.assert.notCalled(readyStub);
@@ -172,6 +172,8 @@ suite('R Terminal', () => {
             'the warning should explain how to apply the setting to an existing terminal');
         await rTerminal.runTextInTerm('retry');
         sinon.assert.calledOnceWithExactly(sendText, '\x1b[200~retry\x1b[201~', true);
+        assert.deepStrictEqual(ready.firstCall.args, [terminal, 30000, '/unused-test-discovery.startup', false]);
+        assert.deepStrictEqual(ready.secondCall.args, [terminal, 30000, '/unused-test-discovery.startup', true]);
         rTerminal.deleteTerminal(terminal);
     });
 

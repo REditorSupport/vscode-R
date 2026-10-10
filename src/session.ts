@@ -239,9 +239,11 @@ async function readTerminalStartupState(filePath: string): Promise<TerminalStart
 /**
  * Wait for the same connected owner used by execution and terminal selection.
  * Profile setup may take up to ten minutes after reporting pending; ready still
- * requires this terminal to attach, and failed always aborts this wait.
+ * requires this terminal to attach. A previously failed setup may be recovered
+ * only by a new wait that first observes the stale failure after this terminal attached.
  */
-export function waitForTerminalReady(terminal: vscode.Terminal, timeout = 30000, startupFilePath?: string): Promise<boolean> {
+export function waitForTerminalReady(terminal: vscode.Terminal, timeout = 30000, startupFilePath?: string,
+    allowAttachedRecovery = false): Promise<boolean> {
     return new Promise(resolve => {
         let settled = false;
         let observedState: TerminalStartupState | undefined;
@@ -266,10 +268,13 @@ export function waitForTerminalReady(terminal: vscode.Terminal, timeout = 30000,
             if (settled) { return; }
             if (isClosed()) { finish(false); }
             else if (observedState === 'failed') { finish(false); }
-            else if (observedState !== 'pending' && hasOwner()) { finish(true); }
+            else if ((!startupFilePath || observedState === 'ready') && hasOwner()) { finish(true); }
         };
         const setState = (state: TerminalStartupState) => {
             if (settled || observedState === 'failed') { return; }
+            if (state === 'failed' && allowAttachedRecovery && observedState === undefined && hasOwner()) {
+                state = 'ready';
+            }
             if (state === 'failed') {
                 observedState = 'failed';
                 finish(false);
@@ -311,9 +316,9 @@ export function waitForTerminalReady(terminal: vscode.Terminal, timeout = 30000,
 
         // A missing or invalid state keeps the ordinary attachment timeout.
         startupTimer = setTimeout(() => finish(false), timeout);
-        // A fresh retry on an already-owned terminal is ready even if an earlier
-        // startup attempt left a failed marker behind.
-        if (hasOwner()) { finish(true); return; }
+        // Keep the historical immediate path for terminals without profile setup.
+        // Managed terminals must observe their sidecar before using an existing owner.
+        if (!startupFilePath && hasOwner()) { finish(true); return; }
         if (startupFilePath) {
             const poll = async () => {
                 if (settled) { return; }

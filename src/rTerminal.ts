@@ -32,6 +32,7 @@ let rTermResource: vscode.Uri | undefined;
 const terminalStartup = new WeakMap<vscode.Terminal, {
     integrated: boolean;
     ready: boolean;
+    failed?: boolean;
     startupFilePath?: string;
     pending?: Promise<boolean>;
 }>();
@@ -44,9 +45,10 @@ async function prepareTerminalForInput(terminal: vscode.Terminal): Promise<boole
     if (!startup.pending) {
         startup.pending = (async () => {
             const ready = startup.integrated
-                ? await waitForTerminalReady(terminal, 30000, startup.startupFilePath)
+                ? await waitForTerminalReady(terminal, 30000, startup.startupFilePath, startup.failed ?? false)
                 : await delay(200).then(() => !isTerminalClosed(terminal) && !terminal.exitStatus);
             startup.ready = ready;
+            startup.failed = !ready;
             if (!ready && !isTerminalClosed(terminal) && !terminal.exitStatus) {
                 void vscode.window.showWarningMessage('R session did not attach, so code was not sent. Finish sess setup in the R terminal and retry, or disable r.sessionWatcher and reload VS Code before retrying.');
             }
@@ -339,7 +341,7 @@ export async function createRTerm(preserveshow?: boolean, resource?: vscode.Uri)
             }
         }
     }).catch(error => console.error('Failed to update terminal session discovery file', error));
-    
+
     return true;
 }
 

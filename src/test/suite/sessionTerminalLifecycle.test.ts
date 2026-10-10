@@ -194,7 +194,8 @@ suite('Session Terminal Lifecycle', () => {
             const waitUntilReady = session.waitForTerminalReady;
             // Exercise the real readiness logic, with a bounded failure timeout.
             const readiness = sandbox.stub(session, 'waitForTerminalReady')
-                .callsFake((terminal, _timeout, startupPath) => waitUntilReady(terminal, 1000, startupPath));
+                .callsFake((terminal, _timeout, startupPath, allowRecovery) =>
+                    waitUntilReady(terminal, 1000, startupPath, allowRecovery));
             const warning = sandbox.stub(vscode.window, 'showWarningMessage').resolves(undefined);
             const sendText = sandbox.stub();
             const terminal = {
@@ -216,7 +217,7 @@ suite('Session Terminal Lifecycle', () => {
                     assert.strictEqual(await api.activate(owner.sessionId, { terminal }), true);
                 }
                 assert.strictEqual(await rTerminal.runTextInTerm('source("example.R")'), true);
-                sinon.assert.calledOnceWithExactly(readiness, terminal, 30000, '/unused-test-discovery.startup');
+                sinon.assert.calledOnceWithExactly(readiness, terminal, 30000, '/unused-test-discovery.startup', false);
                 sinon.assert.calledOnceWithExactly(sendText, 'source("example.R")');
                 sinon.assert.notCalled(warning);
             } finally {
@@ -427,9 +428,9 @@ suite('Session Terminal Lifecycle', () => {
         const waitForReady = session.waitForTerminalReady;
         let readinessStarted!: () => void;
         const started = new Promise<void>(resolve => { readinessStarted = resolve; });
-        const readyStub = sandbox.stub(session, 'waitForTerminalReady').callsFake((current, timeout, startupPath) => {
+        const readyStub = sandbox.stub(session, 'waitForTerminalReady').callsFake((current, timeout, startupPath, allowRecovery) => {
             readinessStarted();
-            return waitForReady(current, timeout, startupPath);
+            return waitForReady(current, timeout, startupPath, allowRecovery);
         });
         const close = new vscode.EventEmitter<vscode.Terminal>();
         sandbox.stub(vscode.window, 'onDidCloseTerminal').callsFake(close.event);
@@ -448,6 +449,7 @@ suite('Session Terminal Lifecycle', () => {
             const firstResult = first.then(value => { firstSettled = true; return value; });
             await started;
             assert.strictEqual(readyStub.firstCall.args[2], startupFile);
+            assert.strictEqual(readyStub.firstCall.args[3], false);
             await waitForTimerDelay(timerSpy, 600000, startupFile);
             await clock.tickAsync(35000);
             assert.strictEqual(firstSettled, false, 'pending setup suppresses the ordinary 30 second timeout');
@@ -481,6 +483,113 @@ suite('Session Terminal Lifecycle', () => {
         }
     });
 
+    for (const state of ['ready', 'failed'] as const) {
+        test(`an already attached managed terminal waits for pending startup to become ${state}`, async () => {
+            const { directory, file: startupFile } = await makeStartupFile('pending');
+            const discoveryFile = startupFile.slice(0, -'.startup'.length);
+            const rPid = state === 'ready' ? 46294 : 46295;
+            const sendText = sandbox.stub();
+            const terminal = {
+                name: 'R Interactive', processId: Promise.resolve(rPid),
+                show: sandbox.stub(), dispose: sandbox.stub(), sendText,
+            } as unknown as vscode.Terminal;
+            sandbox.stub(executionTarget, 'tryInteractiveExecution').resolves(false);
+            sandbox.stub(util, 'config').returns({
+                get: (key: string) => ({ sessionWatcher: true, consoleArgs: [], bracketedPaste: true, 'source.focus': 'none' })[key],
+            } as unknown as vscode.WorkspaceConfiguration);
+            sandbox.stub(util, 'getRterm').resolves(process.execPath);
+            sandbox.stub(session, 'getSessConsentDirectory').resolves('/unused-test-consent');
+            sandbox.stub(session, 'createSessionDiscoveryFile').resolves(discoveryFile);
+            sandbox.stub(session, 'updateTerminalSessionDiscoveryFile').resolves();
+            sandbox.stub(vscode.window, 'terminals').value([terminal]);
+            sandbox.stub(vscode.window, 'activeTerminal').value(terminal);
+            sandbox.stub(vscode.window, 'createTerminal').returns(terminal);
+            const warning = sandbox.stub(vscode.window, 'showWarningMessage').resolves(undefined);
+            const close = new vscode.EventEmitter<vscode.Terminal>();
+            sandbox.stub(vscode.window, 'onDidCloseTerminal').callsFake(close.event);
+            const timerSandbox = sinon.createSandbox();
+            let commandSettled: Promise<PromiseSettledResult<boolean>> | undefined;
+
+            try {
+                assert.strictEqual(await rTerminal.createRTerm(), true);
+                await connections.attach(`startup-attached-before-wait-${state}`, rPid);
+                await waitFor(() => session.activeSession?.pid === String(rPid) ? session.activeSession : undefined);
+
+                const clock = timerSandbox.useFakeTimers();
+                const timerSpy = timerSandbox.spy(globalThis, 'setTimeout');
+                const submitted = rTerminal.runTextInTerm(`run only after ${state}`);
+                commandSettled = Promise.allSettled([submitted]).then(results => results[0]);
+                await waitForTimerDelay(timerSpy, 600000, startupFile);
+                sinon.assert.notCalled(sendText);
+
+                await fsp.writeFile(startupFile, `${state}\n`);
+                let settled = false;
+                void submitted.then(() => { settled = true; });
+                for (let attempt = 0; attempt < 100 && !settled; attempt++) {
+                    await clock.tickAsync(100);
+                    await fsp.readFile(startupFile);
+                }
+                assert.strictEqual(settled, true, `${state} startup state should settle the command`);
+                assert.strictEqual(await submitted, state === 'ready');
+                if (state === 'ready') {
+                    sinon.assert.calledOnceWithExactly(sendText, '\x1b[200~run only after ready\x1b[201~', true);
+                    sinon.assert.notCalled(warning);
+                } else {
+                    sinon.assert.notCalled(sendText);
+                    sinon.assert.calledOnce(warning);
+                }
+            } finally {
+                close.fire(terminal);
+                rTerminal.deleteTerminal(terminal);
+                timerSandbox.restore();
+                if (commandSettled) { await commandSettled; }
+                await connections.dispose();
+                close.dispose();
+                await fsp.rm(directory, { recursive: true, force: true });
+            }
+        });
+    }
+
+    test('attached-terminal recovery still declines a failure after observing pending', async () => {
+        const { directory, file } = await makeStartupFile('pending');
+        const rPid = 46296;
+        const terminal = { processId: Promise.resolve(rPid) } as unknown as vscode.Terminal;
+        sandbox.stub(vscode.window, 'terminals').value([terminal]);
+        sandbox.stub(vscode.window, 'activeTerminal').value(terminal);
+        const close = new vscode.EventEmitter<vscode.Terminal>();
+        sandbox.stub(vscode.window, 'onDidCloseTerminal').callsFake(close.event);
+        const timerSandbox = sinon.createSandbox();
+        let waiting: Promise<boolean> | undefined;
+
+        try {
+            await connections.attach('startup-recovery-pending', rPid);
+            await waitFor(() => session.activeSession?.pid === String(rPid) ? session.activeSession : undefined);
+
+            const clock = timerSandbox.useFakeTimers();
+            const timerSpy = timerSandbox.spy(globalThis, 'setTimeout');
+            waiting = session.waitForTerminalReady(terminal, 30000, file, true);
+            await waitForTimerDelay(timerSpy, 600000, file);
+            await fsp.writeFile(file, 'failed\n');
+            let settled = false;
+            void waiting.then(() => { settled = true; });
+            for (let attempt = 0; attempt < 100 && !settled; attempt++) {
+                await clock.tickAsync(100);
+                await fsp.readFile(file);
+            }
+            assert.strictEqual(settled, true);
+            assert.strictEqual(await waiting, false,
+                'only a failure that is stale at the start of recovery can be bypassed');
+            assert.strictEqual(clock.countTimers(), 0);
+        } finally {
+            close.fire(terminal);
+            timerSandbox.restore();
+            if (waiting) { await waiting; }
+            await connections.dispose();
+            close.dispose();
+            await fsp.rm(directory, { recursive: true, force: true });
+        }
+    });
+
     test('failed startup declines input before late attach, while a fresh attached-terminal retry can proceed', async () => {
         const { directory, file: startupFile } = await makeStartupFile('pending');
         const discoveryFile = startupFile.slice(0, -'.startup'.length);
@@ -505,9 +614,9 @@ suite('Session Terminal Lifecycle', () => {
         const waitForReady = session.waitForTerminalReady;
         let readinessStarted!: () => void;
         const started = new Promise<void>(resolve => { readinessStarted = resolve; });
-        const readyStub = sandbox.stub(session, 'waitForTerminalReady').callsFake((current, timeout, startupPath) => {
+        const readyStub = sandbox.stub(session, 'waitForTerminalReady').callsFake((current, timeout, startupPath, allowRecovery) => {
             readinessStarted();
-            return waitForReady(current, timeout, startupPath);
+            return waitForReady(current, timeout, startupPath, allowRecovery);
         });
         const close = new vscode.EventEmitter<vscode.Terminal>();
         sandbox.stub(vscode.window, 'onDidCloseTerminal').callsFake(close.event);
@@ -527,6 +636,7 @@ suite('Session Terminal Lifecycle', () => {
             pendingCommandSettled = Promise.allSettled([pendingCommand]).then(results => results[0]);
             await started;
             assert.strictEqual(readyStub.firstCall.args[2], startupFile);
+            assert.strictEqual(readyStub.firstCall.args[3], false);
             await waitForTimerDelay(timerSpy, 600000, startupFile);
             await fsp.writeFile(startupFile, 'failed\n');
             for (let attempt = 0; attempt < 100 && !rejectionSettled; attempt++) {
@@ -543,9 +653,11 @@ suite('Session Terminal Lifecycle', () => {
             timerSandbox.restore();
             await connections.attach('startup-late-attach', rPid);
             assert.strictEqual(sendText.called, false, 'late attach cannot release the already failed input');
-            assert.strictEqual(await session.waitForTerminalReady(terminal, 1, startupFile), true,
+            assert.strictEqual(await session.waitForTerminalReady(terminal, 1000, startupFile, true), true,
                 'a new wait on an attached terminal permits manual recovery despite the stale failed state');
             assert.strictEqual(await rTerminal.runTextInTerm('retry after attach'), true);
+            assert.strictEqual(readyStub.lastCall.args[3], true,
+                'a fresh terminal run enables recovery from the earlier failed startup');
             sinon.assert.calledOnceWithExactly(sendText, '\x1b[200~retry after attach\x1b[201~', true);
         } finally {
             close.fire(terminal);
