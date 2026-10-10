@@ -304,7 +304,9 @@ run_case <- function(mode) {
             "source(Sys.getenv('VSCODE_R_TEST_PROFILE'))"
         ), startup_profile)
         managed_library <- sess_managed_library(managed_root, revision)
-        install_library <- if (mode == "profile_exact") normal else {
+        install_library <- if (mode == "profile_exact") {
+            normal
+        } else {
             file.path(managed_root, "fixture-other-platform", "99.99",
                       strrep("a", 40), "library")
         }
