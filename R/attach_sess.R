@@ -208,7 +208,7 @@ vscode_r_attach_sess <- function(endpoint, pkg_path, managed_root, consent_dir,
 
     attach <- function() {
         ns <- vscode_r_prepare_sess(pkg_path, managed_root, consent_dir, source_helper, installer_helper,
-                                     timeout_seconds, setup_timeout_seconds)
+                                    timeout_seconds, setup_timeout_seconds)
         if (is.null(ns)) {
             return(invisible(FALSE))
         }

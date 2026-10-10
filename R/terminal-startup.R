@@ -1,32 +1,32 @@
 # Base-R-only notification for one managed terminal startup attempt.
 # Keep the wire format in sync with src/terminalStartup.ts: protocol, terminal
 # token, attempt ID, originating R PID, endpoint, and state.
-.vscode_r_terminal_startup_option <- "vscodeR.terminalStartup"
-.vscode_r_terminal_startup_protocol <- "vscode-r-terminal-startup-v1"
+.vscode_startup_option <- "vscodeR.terminalStartup"
+.vscode_startup_protocol <- "vscode-r-terminal-startup-v1"
 
-.vscode_r_terminal_startup_valid <- function(file, token) {
+.vscode_startup_valid <- function(file, token) {
     length(file) == 1L && !is.na(file) && nzchar(file) &&
         length(token) == 1L && !is.na(token) && grepl("^[[:xdigit:]]{32}$", token)
 }
 
-.vscode_r_terminal_startup_valid_endpoint <- function(endpoint) {
+.vscode_startup_valid_endpoint <- function(endpoint) {
     length(endpoint) == 1L && !is.na(endpoint) && nzchar(endpoint) &&
         !grepl("[\r\n]", endpoint)
 }
 
-.vscode_r_terminal_startup_registered <- function(context) {
-    registered <- getOption(.vscode_r_terminal_startup_option)
+.vscode_startup_registered <- function(context) {
+    registered <- getOption(.vscode_startup_option)
     is.list(registered) && is.list(context) &&
         identical(registered$file, context$file) &&
         identical(registered$token, context$token) &&
         identical(registered$pid, Sys.getpid()) &&
         identical(context$pid, Sys.getpid()) &&
-        .vscode_r_terminal_startup_valid_endpoint(context$endpoint)
+        .vscode_startup_valid_endpoint(context$endpoint)
 }
 
-.vscode_r_terminal_startup_write <- function(context, attempt, state) {
-    lines <- c(.vscode_r_terminal_startup_protocol, context$token, attempt,
-              as.character(context$pid), context$endpoint, state)
+.vscode_startup_write <- function(context, attempt, state) {
+    lines <- c(.vscode_startup_protocol, context$token, attempt,
+               as.character(context$pid), context$endpoint, state)
     temporary <- ""
     on.exit(if (nzchar(temporary)) unlink(temporary), add = TRUE)
     tryCatch(suppressWarnings({
@@ -46,7 +46,7 @@
 # Called only by the managed terminal profile. The option is process-local so
 # inherited environment variables cannot authorize a child R to update a parent.
 vscode_r_startup_register <- function(file, token, endpoint) {
-    if (!.vscode_r_terminal_startup_valid(file, token) || !.vscode_r_terminal_startup_valid_endpoint(endpoint)) {
+    if (!.vscode_startup_valid(file, token) || !.vscode_startup_valid_endpoint(endpoint)) {
         return(NULL)
     }
     context <- list(
@@ -56,21 +56,21 @@ vscode_r_startup_register <- function(file, token, endpoint) {
         pid = Sys.getpid(),
         attempt = NULL
     )
-    options(structure(list(context), names = .vscode_r_terminal_startup_option))
+    options(structure(list(context), names = .vscode_startup_option))
     context
 }
 
 # Manual attach reuses the immutable profile identity while recording its current
 # endpoint for this attempt. The endpoint may differ after a reconnect.
 vscode_r_startup_existing <- function(endpoint) {
-    if (!.vscode_r_terminal_startup_valid_endpoint(endpoint)) {
+    if (!.vscode_startup_valid_endpoint(endpoint)) {
         return(NULL)
     }
-    registered <- getOption(.vscode_r_terminal_startup_option)
+    registered <- getOption(.vscode_startup_option)
     if (!is.list(registered)) {
         return(NULL)
     }
-    if (!.vscode_r_terminal_startup_valid(registered$file, registered$token)) {
+    if (!.vscode_startup_valid(registered$file, registered$token)) {
         return(NULL)
     }
     if (!identical(registered$pid, Sys.getpid())) {
@@ -83,7 +83,7 @@ vscode_r_startup_existing <- function(endpoint) {
 # Publish pending before doing any package preparation or IPC work. A failed
 # publish returns NULL, leaving callers free to keep ordinary R usable.
 vscode_r_startup_begin <- function(context) {
-    if (!.vscode_r_terminal_startup_registered(context)) {
+    if (!.vscode_startup_registered(context)) {
         return(NULL)
     }
     candidate <- gsub("[^A-Za-z0-9_-]", "", basename(tempfile(pattern = "attempt-")))
@@ -93,12 +93,12 @@ vscode_r_startup_begin <- function(context) {
         message("vscode-R could not create a terminal startup attempt ID.")
         return(NULL)
     }
-    if (!.vscode_r_terminal_startup_write(context, attempt, "pending")) {
+    if (!.vscode_startup_write(context, attempt, "pending")) {
         message("vscode-R could not publish terminal startup status; the session watcher was not started.")
         return(NULL)
     }
     context$attempt <- attempt
-    options(structure(list(context), names = .vscode_r_terminal_startup_option))
+    options(structure(list(context), names = .vscode_startup_option))
     attempt
 }
 
@@ -108,17 +108,17 @@ vscode_r_startup_finish <- function(context, attempt, state) {
     if (!state %in% c("ready", "failed")) {
         return(invisible(FALSE))
     }
-    if (!.vscode_r_terminal_startup_registered(context)) {
+    if (!.vscode_startup_registered(context)) {
         return(invisible(FALSE))
     }
-    registered <- getOption(.vscode_r_terminal_startup_option)
+    registered <- getOption(.vscode_startup_option)
     if (!identical(registered$attempt, attempt)) {
         return(invisible(FALSE))
     }
     if (!identical(registered$endpoint, context$endpoint)) {
         return(invisible(FALSE))
     }
-    if (!.vscode_r_terminal_startup_write(context, attempt, state)) {
+    if (!.vscode_startup_write(context, attempt, state)) {
         message("vscode-R could not publish terminal startup completion; status remains pending.")
         return(invisible(FALSE))
     }
