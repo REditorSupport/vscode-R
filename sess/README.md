@@ -39,9 +39,27 @@ libraries.
 
 The bundled `sess` is a pure R package and needs no compiler to install from
 source. Its dependencies, including `processx`, `later`, and `jsonlite`, contain
-native code; the extension installs missing Imports from the configured CRAN
-repository before installing its bundled copy. The extension does not substitute
-a separately published `sess` package if the bundled installation fails.
+native code; during initial preparation, the extension installs missing Imports
+from the configured CRAN repository before installing its bundled copy. The
+extension does not substitute a separately published `sess` package if the
+bundled installation fails.
+
+> [!NOTE]
+>
+> ### Known limitation: isolated libraries
+>
+> A vscode-R-managed `sess` copy is reused across projects. Dependencies found in
+> ordinary R libraries during initial preparation are not copied into that managed
+> library. If an isolated project's `.libPaths()` cannot see them, `sess` may fail
+> to load; R still starts, but its session watcher is unavailable.
+>
+> In the affected project, install the missing dependencies with
+> [renv::install()](https://pkgs.rstudio.com/renv/reference/install.html). Then
+> restart R or retry manual attach. You do not need to install `sess` in the project.
+>
+> renv's default `implicit` snapshot type includes packages detected in project
+> files, so editor-only dependencies may be omitted; see
+> [snapshot types](https://pkgs.rstudio.com/renv/reference/snapshot.html#snapshot-types).
 
 R Interactive requires arf on the R host. Managed headless arf sessions stream
 console output and retain rich tables, HTML, and plots. Attached arf sessions
