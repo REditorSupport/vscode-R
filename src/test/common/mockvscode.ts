@@ -19,7 +19,7 @@ export function mockExtensionContext(extension_root: string, sandbox: sinon.Sino
         extensionUri: vscode.Uri.file(extension_root),
         globalState: {
             get: sinon.stub().callsFake((key: string, defaultValue?: unknown) => defaultValue),
-            set: sinon.stub()
+            update: sinon.stub().resolves()
         },
         globalStorageUri: vscode.Uri.file(path.join(os.tmpdir(), 'vscode-r-test-global-storage', String(process.pid))),
         logUri: sandbox.stub(),

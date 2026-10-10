@@ -234,8 +234,10 @@ sess::display("display-${cell}", "text/plain"); cat("stderr-${cell}\\n", file=st
     });
 
     test('interrupts evaluation without losing R and cancels queued code', async () => {
-        const id = await submit('kept <- 17; Sys.sleep(30)');
-        await until(() => events.some(event => event.executionId === id && event.type === 'started'));
+        const marker = `interrupt-ready-${randomUUID()}`;
+        // Keep the marker and blocking call in one expression, without inter-expression hooks between them.
+        const id = await submit(`{ kept <- 17; cat(${JSON.stringify(marker)}, "\\n"); Sys.sleep(30) }`);
+        await until(() => text(id).includes(marker));
         const queued = await submit('kept <- 0'); await client.request('cancel', { id: queued });
         assert.strictEqual((await finished(queued)).state, 'cancelled');
         await client.request('interrupt', { id }); assert.strictEqual((await finished(id)).state, 'interrupted');

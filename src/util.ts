@@ -310,22 +310,6 @@ export function readSessSourceRevision(description: string | undefined): string 
     return revision && /^git-tree:(?:[a-f0-9]{40}|[a-f0-9]{64})$/.test(revision) ? revision : undefined;
 }
 
-export async function getInstalledSessSourceRevision(cwd?: string | URL): Promise<string | undefined> {
-    const helper = extensionContext.asAbsolutePath(path.join('R', 'sess_source.R'));
-    // Use single quotes so this -e expression also works with Windows R.exe.
-    const helperLiteral = `'${helper.replace(/\\/g, '/').replace(/'/g, '\\\'')}'`;
-    // Keep the -e argument on one line for the Windows R.exe launcher.
-    const command = [
-        'local({',
-        `source(${helperLiteral}, local = TRUE);`,
-        'revision <- sess_installed_source_revision();',
-        'if (!is.null(revision)) cat(revision)',
-        '})'
-    ].join(' ');
-    const result = await executeRCommand(command, cwd);
-    return result || undefined;
-}
-
 export function getRLibPaths(): string | undefined {
     return config().get<string[]>('libPaths')
         ?.map(value => substituteVariables(value))
@@ -574,74 +558,6 @@ export async function promptToInstallRPackage(name: string, section: string, cwd
                 void _config.update(section, false);
             }
         });
-}
-
-/**
- * Prompt to install bundled sess and wait for a requested installation.
- * Return false if setup fails; declining installation still permits starting R.
- */
-export async function promptToInstallSessPackage(
-    cwd?: string | vscode.Uri,
-    _config = config,
-    _getInstalledSessSourceRevision = getInstalledSessSourceRevision,
-    _readFileSyncSafe = readFileSyncSafe,
-    _executeAsTask: (name: string, process: string, args: string[], asProcess: true, cwd?: string) => Promise<void> = executeAsTask
-): Promise<boolean> {
-    const resource = resourceFromCwd(cwd);
-    const workingDirectory = cwd instanceof vscode.Uri ? cwd.fsPath : cwd;
-    const activeConfig = _config();
-    const sessionWatcher = activeConfig.get<boolean>('sessionWatcher');
-    if (!sessionWatcher) {
-        return true;
-    }
-
-    const sessPath = extensionContext.asAbsolutePath(path.join('dist', 'resources', 'sess')).replace(/\\/g, '/');
-    const descriptionPath = path.join(sessPath, 'DESCRIPTION');
-    const descriptionContent = _readFileSyncSafe(descriptionPath);
-    const bundledRevision = readSessSourceRevision(descriptionContent);
-    if (!bundledRevision) {
-        void vscode.window.showErrorMessage('Bundled sess has no valid source revision. Rebuild or reinstall the vscode-R extension.');
-        return false;
-    }
-
-    const installedRevision = await _getInstalledSessSourceRevision(workingDirectory);
-    if (installedRevision === bundledRevision) {
-        return true;
-    }
-
-    const installSessScript = extensionContext.asAbsolutePath(path.join('R', 'install_sess.R')).replace(/\\/g, '/');
-    const installMsg = installedRevision
-        ? 'The installed "sess" package does not match this build of vscode-R. Install the bundled copy?'
-        : 'The R package "sess" bundled with this build of vscode-R is required for the session watcher to work. Do you want to install it?';
-
-    const select = await vscode.window.showWarningMessage(installMsg, 'Yes', 'No');
-    if (select !== 'Yes') {
-        return true;
-    }
-    const rPath = await getRpath(false, resource);
-    if (!rPath) {
-        return false;
-    }
-    const repo = await getCranUrl('', workingDirectory);
-    const args = [
-        '--silent',
-        '--no-echo',
-        '--no-save',
-        '--no-restore',
-        `--file=${installSessScript}`,
-        '--args', sessPath, repo
-    ];
-    try {
-        await _executeAsTask('Install "sess" package', rPath, args, true, workingDirectory);
-        if (await _getInstalledSessSourceRevision(workingDirectory) !== bundledRevision) {
-            void vscode.window.showErrorMessage('The bundled "sess" package was not installed successfully. Check the installation task output and try starting R again.');
-            return false;
-        }
-        return true;
-    } catch (error) {
-        void vscode.window.showErrorMessage(`Could not install the bundled "sess" package: ${catchAsError(error).message}`);
-        return false;
-    }
 }
 
 /**

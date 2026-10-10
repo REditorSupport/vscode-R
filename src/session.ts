@@ -11,7 +11,7 @@ import * as vscode from 'vscode';
 import { commands, Uri, ViewColumn, Webview, window, env } from 'vscode';
 
 import { restartRTerminal } from './rTerminal';
-import { config, readContent, setContext, UriIcon } from './util';
+import { config, readContent, readSessSourceRevision, setContext, UriIcon } from './util';
 import * as rTerminal from './rTerminal';
 import { getProcessAncestors } from './processTree';
 import { TerminalSessionRegistry } from './terminalSessionRegistry';
@@ -27,6 +27,13 @@ import { getListViewerScript, listViewerStyle, ListViewNavigation } from './list
 import { getDataViewerScript, getDataViewerStyle, getDataViewerToolbarHtml } from './dataViewer';
 import { getDataViewerColumnPanelHtml, getDataViewerColumnPanelScript, getDataViewerColumnPanelStyle } from './dataViewerColumnPanel';
 import { formatSessionLabel, getViewerSessionScript } from './viewerSession';
+import { SessConsentChoice, SessConsentService } from './sessConsent';
+import {
+    assessTerminalStartup,
+    parseTerminalStartupRecord,
+    TerminalStartupRecord,
+    TerminalStartupStatus,
+} from './terminalStartup';
 
 export interface SessionInfo {
     version: string;
@@ -212,26 +219,157 @@ export function registerSessionTransport(id: string, host: string, directory: st
     sessions.set(id, target);
     return target;
 }
-/** Wait for the same connected owner used by execution and terminal selection. */
-export function waitForTerminalReady(terminal: vscode.Terminal, timeout = 30000): Promise<boolean> {
+const SESS_SETUP_TIMEOUT = 600000;
+const TERMINAL_ATTACH_TIMEOUT = 30000;
+
+/** Read the bounded status sidecar written by the R startup helper. */
+async function readTerminalStartupRecord(filePath: string, token: string): Promise<TerminalStartupRecord | undefined> {
+    let file: fs.promises.FileHandle | undefined;
+    try {
+        file = await fsp.open(filePath, 'r');
+        const buffer = Buffer.alloc(513);
+        const { bytesRead } = await file.read(buffer, 0, buffer.length, 0);
+        if (bytesRead > 512) { return undefined; }
+        return parseTerminalStartupRecord(buffer.toString('utf8', 0, bytesRead), token);
+    } catch {
+        return undefined;
+    } finally {
+        await file?.close().catch(() => undefined);
+    }
+}
+
+/**
+ * Wait for this R process's setup attempt and its matching attached owner.
+ * A new manual-attach attempt may satisfy a fresh wait, but can never release
+ * input held by a wait that already observed a different attempt.
+ */
+export function waitForTerminalReady(terminal: vscode.Terminal, timeout = 30000, startupFilePath?: string,
+    startupToken?: string): Promise<boolean> {
     return new Promise(resolve => {
         let settled = false;
+        let observedAttemptId: string | undefined;
+        let observedState: TerminalStartupStatus | undefined;
+        let latestRecord: TerminalStartupRecord | undefined;
+        let startupTimer: NodeJS.Timeout | undefined;
+        let pendingTimer: NodeJS.Timeout | undefined;
+        let attachTimer: NodeJS.Timeout | undefined;
+        let pollTimer: NodeJS.Timeout | undefined;
+        let checkingRecord = false;
+
         const finish = (ready: boolean) => {
             if (settled) { return; }
             settled = true;
-            clearTimeout(timer);
+            if (startupTimer) { clearTimeout(startupTimer); }
+            if (pendingTimer) { clearTimeout(pendingTimer); }
+            if (attachTimer) { clearTimeout(attachTimer); }
+            if (pollTimer) { clearTimeout(pollTimer); }
             attached.dispose();
             closed.dispose();
             resolve(ready);
         };
+        const isClosed = () => terminalRegistry.isClosed(terminal) || terminal.exitStatus !== undefined;
+        const checkOwner = () => {
+            if (settled) { return; }
+            if (isClosed()) { finish(false); }
+            else if (observedState === 'failed') { finish(false); }
+            else if (!startupFilePath && terminalRegistry.ownerOf(terminal)) { finish(true); }
+            else if (observedState === 'ready' && latestRecord) {
+                const owner = terminalRegistry.ownerOf(terminal);
+                if (assessTerminalStartup(observedAttemptId, latestRecord, owner?.pid, owner?.pipePath).readyForOwner) {
+                    finish(true);
+                }
+            }
+        };
+        const setRecord = (record: TerminalStartupRecord | undefined) => {
+            if (settled) { return; }
+            const owner = terminalRegistry.ownerOf(terminal);
+            const decision = assessTerminalStartup(observedAttemptId, record, owner?.pid, owner?.pipePath);
+            const observation = decision.observation;
+            if (observation === 'unknown') {
+                // A read that cannot identify the current status must not leave an
+                // older ready snapshot available to a later owner event.
+                latestRecord = undefined;
+                return;
+            }
+            if (observation === 'attempt-changed') {
+                finish(false);
+                return;
+            }
+            if (!record) { return; }
+            latestRecord = record;
+            if (observedAttemptId === undefined) { observedAttemptId = decision.attemptId; }
+            if (observation === 'failed') {
+                observedState = 'failed';
+                finish(false);
+            } else if (observation === 'pending') {
+                if (observedState !== 'pending') {
+                    observedState = 'pending';
+                    if (startupTimer) { clearTimeout(startupTimer); startupTimer = undefined; }
+                    pendingTimer = setTimeout(() => finish(false), SESS_SETUP_TIMEOUT);
+                }
+            } else if (observation === 'ready') {
+                if (observedState !== 'ready') {
+                    observedState = 'ready';
+                    if (startupTimer) { clearTimeout(startupTimer); startupTimer = undefined; }
+                    if (pendingTimer) { clearTimeout(pendingTimer); pendingTimer = undefined; }
+                    attachTimer = setTimeout(() => finish(false), Math.min(timeout, TERMINAL_ATTACH_TIMEOUT));
+                }
+                if (decision.readyForOwner) { finish(true); }
+                else { checkOwner(); }
+            }
+        };
+        const schedulePoll = (delay = 100) => {
+            if (settled) { return; }
+            if (pollTimer) { clearTimeout(pollTimer); pollTimer = undefined; }
+            pollTimer = setTimeout(() => {
+                pollTimer = undefined;
+                beginRead();
+            }, delay);
+        };
+        const readCurrentRecord = async () => {
+            if (settled || !startupFilePath || !startupToken || checkingRecord) { return; }
+            checkingRecord = true;
+            const ownerSnapshotIsCurrent = terminalRegistry.snapshot(terminal);
+            let record: TerminalStartupRecord | undefined;
+            try {
+                record = await readTerminalStartupRecord(startupFilePath, startupToken);
+            } finally {
+                checkingRecord = false;
+            }
+            if (settled) { return; }
+            if (!ownerSnapshotIsCurrent()) {
+                // Ownership changed during the file read. Retry against the
+                // current association before accepting any ready record.
+                latestRecord = undefined;
+                schedulePoll(0);
+                return;
+            }
+            setRecord(record);
+            if (!settled) { checkOwner(); }
+            schedulePoll();
+        };
+        const beginRead = () => {
+            void readCurrentRecord().catch(() => {
+                checkingRecord = false;
+                if (!settled) { latestRecord = undefined; checkOwner(); schedulePoll(); }
+            });
+        };
         const check = () => {
-            if (terminalRegistry.isClosed(terminal) || terminal.exitStatus) { finish(false); }
-            else if (terminalRegistry.ownerOf(terminal)) { finish(true); }
+            if (settled) { return; }
+            if (isClosed()) { finish(false); return; }
+            if (!startupFilePath || !startupToken) { checkOwner(); return; }
+            beginRead();
         };
         const attached = terminalRegistry.onDidChange(changed => { if (changed === terminal) { check(); } });
         const closed = window.onDidCloseTerminal(changed => { if (changed === terminal) { finish(false); } });
-        // A timeout rejects startup; it never authorizes sending input.
-        const timer = setTimeout(() => finish(false), timeout);
+
+        // Missing or invalid state keeps the ordinary attachment timeout.
+        startupTimer = setTimeout(() => finish(false), timeout);
+        // Preserve the historical immediate path for terminals without profile setup.
+        if (!startupFilePath) { checkOwner(); }
+        if (startupFilePath && startupToken) {
+            beginRead();
+        }
         check();
     });
 }
@@ -432,6 +570,10 @@ function queueTerminalDiscoveryOperation(terminal: vscode.Terminal, operation: (
 let globalSessionServer: net.Server | undefined;
 let globalSessionServerStartup: Promise<string> | undefined;
 let attachSessionScriptPath: string | undefined;
+let attachConsentDirectory: string | undefined;
+let attachConsentService: SessConsentService | undefined;
+let attachConsentStartup: Promise<string> | undefined;
+const SESS_INSTALL_PROMPT_DISMISSED_REVISION = 'sessInstallPromptDismissedRevision';
 
 interface SessionDiscoveryFile {
     version: 1;
@@ -490,7 +632,10 @@ export async function removeTerminalDiscoveryFile(terminal: vscode.Terminal): Pr
         }
 
         if (discoveryPath) {
-            await fsp.rm(discoveryPath, { recursive: true, force: true });
+            await Promise.all([
+                fsp.rm(discoveryPath, { recursive: true, force: true }),
+                fsp.rm(`${discoveryPath}.startup`, { force: true }),
+            ]);
         }
     });
 }
@@ -499,8 +644,15 @@ export async function createSessionDiscoveryFile(endpoint: string): Promise<stri
     const discoveryDir = getSessionDiscoveryDir();
     await fsp.mkdir(discoveryDir, { recursive: true });
     const filePath = path.join(discoveryDir, `${crypto.randomBytes(16).toString('hex')}.json`);
-    await writeSessionDiscoveryFile(filePath, endpoint);
-    return filePath;
+    try {
+        await writeSessionDiscoveryFile(filePath, endpoint);
+        return filePath;
+    } catch (error) {
+        await fsp.rm(filePath, { recursive: true, force: true }).catch(cleanupError => {
+            console.error('Failed to clean incomplete session discovery file', cleanupError);
+        });
+        throw error;
+    }
 }
 
 async function writeSessionDiscoveryFile(filePath: string, endpoint: string, terminalPid?: number): Promise<void> {
@@ -837,39 +989,99 @@ function getAttachSessionScriptPath(pipePath: string): string {
     return path.join(extensionContext.globalStorageUri.fsPath, 'tmp', 'attach', `${scriptBase}.R`);
 }
 
-function buildAttachSessionScript(pipePath: string, sessPath: string, installSessScriptPath: string): string {
+function buildAttachSessionScript(pipePath: string, sessPath: string, consentDirectory: string): string {
     const backend = resolveBackend();
     const jgdSocket = getSessionJgdSocket();
     return [
         'local({',
         `  endpoint <- ${asRStringLiteral(pipePath)}`,
         `  sess_src <- ${asRStringLiteral(sessPath)}`,
-        `  install_sess_script <- ${asRStringLiteral(installSessScriptPath)}`,
+        `  managed_root <- ${asRStringLiteral(path.join(extensionContext.globalStorageUri.fsPath, 'sess').replace(/\\/g, '/'))}`,
+        `  consent_dir <- ${asRStringLiteral(consentDirectory.replace(/\\/g, '/'))}`,
+        `  source_helper <- ${asRStringLiteral(extensionContext.asAbsolutePath(path.join('R', 'sess_source.R')).replace(/\\/g, '/'))}`,
+        `  installer_helper <- ${asRStringLiteral(extensionContext.asAbsolutePath(path.join('R', 'sess-package-install.R')).replace(/\\/g, '/'))}`,
+        `  startup_helper <- ${asRStringLiteral(extensionContext.asAbsolutePath(path.join('R', 'terminal-startup.R')).replace(/\\/g, '/'))}`,
+        `  attach_helper <- ${asRStringLiteral(extensionContext.asAbsolutePath(path.join('R', 'attach_sess.R')).replace(/\\/g, '/'))}`,
         ...(backend === 'native' ? [] : [
             jgdSocket ? `  Sys.setenv(JGD_SOCKET = ${asRStringLiteral(jgdSocket)})` : '  Sys.unsetenv("JGD_SOCKET")',
         ]),
-        `  source(${asRStringLiteral(extensionContext.asAbsolutePath(path.join('R', 'sess_source.R')).replace(/\\/g, '/'))}, local = TRUE)`,
-        '  if (sess_install_required(sess_src)) {',
-        '    if (!file.exists(install_sess_script)) {',
-        '      stop(sprintf("install_sess.R not found: %s", install_sess_script))',
-        '    }',
-        '    Sys.setenv(VSCODE_R_SESS_PKG_PATH = sess_src)',
-        '    on.exit(Sys.unsetenv(c("VSCODE_R_SESS_PKG_PATH", "VSCODE_R_SESS_REPO")), add = TRUE)',
-        '    source(install_sess_script, local = TRUE)',
-        '  }',
-        `  sess::connect(endpoint = endpoint, plot_backend = ${asRStringLiteral(backend)})`,
+        '  source(startup_helper, local = TRUE)',
+        '  source(attach_helper, local = TRUE)',
+        `  vscode_r_attach_sess(endpoint, sess_src, managed_root, consent_dir, source_helper, installer_helper, ${asRStringLiteral(backend)})`,
         '})',
         '',
     ].join('\n');
 }
 
+async function ensureAttachSessConsentService(): Promise<string> {
+    if (attachConsentStartup) { return attachConsentStartup; }
+    if (attachConsentService && attachConsentDirectory) { return attachConsentDirectory; }
+
+    const startup = (async (): Promise<string> => {
+        const directory = path.join(extensionContext.globalStorageUri.fsPath, 'tmp', 'attach', 'consent', crypto.randomBytes(16).toString('hex'));
+        const sessDescription = await readContent(
+            extensionContext.asAbsolutePath(path.join('dist', 'resources', 'sess', 'DESCRIPTION')), 'utf8');
+        const sourceRevision = readSessSourceRevision(sessDescription);
+        if (!sourceRevision) {
+            throw new Error('The bundled sess package has no valid source revision.');
+        }
+        const service = new SessConsentService({
+            directory,
+            expectedRevision: sourceRevision,
+            isEnabled: () => config().get<boolean>('sessionWatcher') === true,
+            getDismissedRevision: () => {
+                const value = extensionContext.globalState.get<unknown>(SESS_INSTALL_PROMPT_DISMISSED_REVISION);
+                return typeof value === 'string' ? value : undefined;
+            },
+            rememberDismissedRevision: async revision => {
+                await Promise.resolve(extensionContext.globalState.update(SESS_INSTALL_PROMPT_DISMISSED_REVISION, revision));
+            },
+            prompt: async request => {
+                const mismatch = request.reason === 'mismatch';
+                const message = mismatch
+                    ? 'The installed sess does not match this build of vscode-R. Install the bundled copy in a vscode-R-managed library? Your existing sess installation will not be modified. “Don’t ask again” applies to this bundled sess revision.'
+                    : 'vscode-R needs bundled sess to attach the session watcher. Install it in a vscode-R-managed library? Your existing sess installation will not be modified. “Don’t ask again” applies to this bundled sess revision.';
+                const choice = await window.showWarningMessage(
+                    message, 'Install bundled sess', 'Not now', "Don't ask again");
+                const choices: Record<string, SessConsentChoice> = {
+                    'Install bundled sess': 'install',
+                    'Not now': 'notNow',
+                    "Don't ask again": 'dontAskAgain',
+                };
+                return choices[choice ?? ''] ?? 'dismiss';
+            },
+        });
+        try {
+            await service.start();
+            attachConsentDirectory = directory;
+            attachConsentService = service;
+            return directory;
+        } catch (error) {
+            await service.stop();
+            await removePathIfExists(directory);
+            throw error;
+        }
+    })();
+    attachConsentStartup = startup;
+    try {
+        return await startup;
+    } catch (error) {
+        if (attachConsentStartup === startup) { attachConsentStartup = undefined; }
+        throw error;
+    }
+}
+
+export async function getSessConsentDirectory(): Promise<string> {
+    return ensureAttachSessConsentService();
+}
+
 export async function getAttachSessionCommand(): Promise<string> {
     const pipePath = await getGlobalPipePath();
     const sessPath = extensionContext.asAbsolutePath(path.join('dist', 'resources', 'sess')).replace(/\\/g, '/');
-    const installSessScriptPath = extensionContext.asAbsolutePath(path.join('R', 'install_sess.R')).replace(/\\/g, '/');
+    const consentDirectory = await getSessConsentDirectory();
     const scriptPath = getAttachSessionScriptPath(pipePath);
     await fsp.mkdir(path.dirname(scriptPath), { recursive: true });
-    await fsp.writeFile(scriptPath, buildAttachSessionScript(pipePath, sessPath, installSessScriptPath), { encoding: 'utf-8', mode: 0o600 });
+    await fsp.writeFile(scriptPath, buildAttachSessionScript(pipePath, sessPath, consentDirectory), { encoding: 'utf-8', mode: 0o600 });
     await setOwnerOnlyPermissions(scriptPath);
     attachSessionScriptPath = scriptPath;
 
@@ -887,6 +1099,15 @@ async function removePathIfExists(pathLike: string): Promise<void> {
 }
 
 export async function shutdownSessionWatcher(): Promise<void> {
+    const consentStartup = attachConsentStartup;
+    await consentStartup?.catch(() => undefined);
+    await attachConsentService?.stop();
+    attachConsentService = undefined;
+    if (attachConsentDirectory) {
+        await removePathIfExists(attachConsentDirectory);
+        attachConsentDirectory = undefined;
+    }
+    if (attachConsentStartup === consentStartup) { attachConsentStartup = undefined; }
     // Startup publishes the server only after listen and permission setup finish.
     // Wait before capturing it, otherwise it could survive extension shutdown.
     await globalSessionServerStartup?.catch(() => undefined);
@@ -2502,6 +2723,10 @@ export async function sessionRequest(
 }
 
 export async function connectToSession(): Promise<void> {
+    if (!config().get<boolean>('sessionWatcher')) {
+        void window.showInformationMessage('This command requires that r.sessionWatcher be enabled.');
+        return;
+    }
     const command = await getAttachSessionCommand();
     void vscode.env.clipboard.writeText(command);
     void vscode.window.showInformationMessage(`R command copied to clipboard: ${command}`);

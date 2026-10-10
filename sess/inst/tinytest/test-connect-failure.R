@@ -94,4 +94,9 @@ local({
   expect_true(isTRUE(sess:::.runtime_state()$active))
   expect_equal(length(callbacks), 0L)
   expect_equal(sum(getTaskCallbackNames() == "sess.workspace"), 1L)
+
+  close_peer()
+  listen()
+  expect_true(isTRUE(do.call(env$connect, c(list(endpoint = endpoint), opts))))
+  close_peer()
 })
