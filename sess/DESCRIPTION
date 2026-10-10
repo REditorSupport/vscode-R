@@ -1,7 +1,7 @@
 Package: sess
 Type: Package
 Title: High-Performance IPC Bridge for R Sessions
-Version: 3.0.9000.9002
+Version: 3.0.9000.9003
 Authors@R: c(
     person(given = "Randy",
            family = "Lai",

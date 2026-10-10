@@ -28,6 +28,12 @@ import { getDataViewerScript, getDataViewerStyle, getDataViewerToolbarHtml } fro
 import { getDataViewerColumnPanelHtml, getDataViewerColumnPanelScript, getDataViewerColumnPanelStyle } from './dataViewerColumnPanel';
 import { formatSessionLabel, getViewerSessionScript } from './viewerSession';
 import { SessConsentChoice, SessConsentService } from './sessConsent';
+import {
+    assessTerminalStartup,
+    parseTerminalStartupRecord,
+    TerminalStartupRecord,
+    TerminalStartupStatus,
+} from './terminalStartup';
 
 export interface SessionInfo {
     version: string;
@@ -213,22 +219,18 @@ export function registerSessionTransport(id: string, host: string, directory: st
     sessions.set(id, target);
     return target;
 }
-type TerminalStartupState = 'pending' | 'ready' | 'failed';
 const SESS_SETUP_TIMEOUT = 600000;
+const TERMINAL_ATTACH_TIMEOUT = 30000;
 
-/** Read the bounded, one-line status sidecar written by R/profile.R. */
-async function readTerminalStartupState(filePath: string): Promise<TerminalStartupState | undefined> {
+/** Read the bounded status sidecar written by the R startup helper. */
+async function readTerminalStartupRecord(filePath: string, token: string): Promise<TerminalStartupRecord | undefined> {
     let file: fs.promises.FileHandle | undefined;
     try {
         file = await fsp.open(filePath, 'r');
-        const buffer = Buffer.alloc(33);
+        const buffer = Buffer.alloc(513);
         const { bytesRead } = await file.read(buffer, 0, buffer.length, 0);
-        if (bytesRead > 32) { return undefined; }
-        let value = buffer.toString('utf8', 0, bytesRead);
-        if (value.endsWith('\r\n')) { value = value.slice(0, -2); }
-        else if (value.endsWith('\n')) { value = value.slice(0, -1); }
-        if (value.includes('\n') || value.includes('\r')) { return undefined; }
-        return value === 'pending' || value === 'ready' || value === 'failed' ? value : undefined;
+        if (bytesRead > 512) { return undefined; }
+        return parseTerminalStartupRecord(buffer.toString('utf8', 0, bytesRead), token);
     } catch {
         return undefined;
     } finally {
@@ -237,97 +239,136 @@ async function readTerminalStartupState(filePath: string): Promise<TerminalStart
 }
 
 /**
- * Wait for the same connected owner used by execution and terminal selection.
- * Profile setup may take up to ten minutes after reporting pending; ready still
- * requires this terminal to attach. A previously failed setup may be recovered
- * only by a new wait that first observes the stale failure after this terminal attached.
+ * Wait for this R process's setup attempt and its matching attached owner.
+ * A new manual-attach attempt may satisfy a fresh wait, but can never release
+ * input held by a wait that already observed a different attempt.
  */
 export function waitForTerminalReady(terminal: vscode.Terminal, timeout = 30000, startupFilePath?: string,
-    allowAttachedRecovery = false): Promise<boolean> {
+    startupToken?: string): Promise<boolean> {
     return new Promise(resolve => {
         let settled = false;
-        let observedState: TerminalStartupState | undefined;
+        let observedAttemptId: string | undefined;
+        let observedState: TerminalStartupStatus | undefined;
+        let latestRecord: TerminalStartupRecord | undefined;
         let startupTimer: NodeJS.Timeout | undefined;
         let pendingTimer: NodeJS.Timeout | undefined;
+        let attachTimer: NodeJS.Timeout | undefined;
         let pollTimer: NodeJS.Timeout | undefined;
-        let checkingOwner = false;
+        let checkingRecord = false;
 
         const finish = (ready: boolean) => {
             if (settled) { return; }
             settled = true;
             if (startupTimer) { clearTimeout(startupTimer); }
             if (pendingTimer) { clearTimeout(pendingTimer); }
+            if (attachTimer) { clearTimeout(attachTimer); }
             if (pollTimer) { clearTimeout(pollTimer); }
             attached.dispose();
             closed.dispose();
             resolve(ready);
         };
         const isClosed = () => terminalRegistry.isClosed(terminal) || terminal.exitStatus !== undefined;
-        const hasOwner = () => Boolean(terminalRegistry.ownerOf(terminal));
         const checkOwner = () => {
             if (settled) { return; }
             if (isClosed()) { finish(false); }
             else if (observedState === 'failed') { finish(false); }
-            else if ((!startupFilePath || observedState === 'ready') && hasOwner()) { finish(true); }
-        };
-        const setState = (state: TerminalStartupState) => {
-            if (settled || observedState === 'failed') { return; }
-            if (state === 'failed' && allowAttachedRecovery && observedState === undefined && hasOwner()) {
-                state = 'ready';
+            else if (!startupFilePath && terminalRegistry.ownerOf(terminal)) { finish(true); }
+            else if (observedState === 'ready' && latestRecord) {
+                const owner = terminalRegistry.ownerOf(terminal);
+                if (assessTerminalStartup(observedAttemptId, latestRecord, owner?.pid, owner?.pipePath).readyForOwner) {
+                    finish(true);
+                }
             }
-            if (state === 'failed') {
+        };
+        const setRecord = (record: TerminalStartupRecord | undefined) => {
+            if (settled) { return; }
+            const owner = terminalRegistry.ownerOf(terminal);
+            const decision = assessTerminalStartup(observedAttemptId, record, owner?.pid, owner?.pipePath);
+            const observation = decision.observation;
+            if (observation === 'unknown') {
+                // A read that cannot identify the current status must not leave an
+                // older ready snapshot available to a later owner event.
+                latestRecord = undefined;
+                return;
+            }
+            if (observation === 'attempt-changed') {
+                finish(false);
+                return;
+            }
+            if (!record) { return; }
+            latestRecord = record;
+            if (observedAttemptId === undefined) { observedAttemptId = decision.attemptId; }
+            if (observation === 'failed') {
                 observedState = 'failed';
                 finish(false);
-            } else if (state === 'pending') {
-                if (observedState === undefined) {
+            } else if (observation === 'pending') {
+                if (observedState !== 'pending') {
                     observedState = 'pending';
                     if (startupTimer) { clearTimeout(startupTimer); startupTimer = undefined; }
                     pendingTimer = setTimeout(() => finish(false), SESS_SETUP_TIMEOUT);
                 }
-            } else if (state === 'ready') {
+            } else if (observation === 'ready') {
                 if (observedState !== 'ready') {
                     observedState = 'ready';
                     if (startupTimer) { clearTimeout(startupTimer); startupTimer = undefined; }
                     if (pendingTimer) { clearTimeout(pendingTimer); pendingTimer = undefined; }
-                    startupTimer = setTimeout(() => finish(false), timeout);
+                    attachTimer = setTimeout(() => finish(false), Math.min(timeout, TERMINAL_ATTACH_TIMEOUT));
                 }
-                checkOwner();
+                if (decision.readyForOwner) { finish(true); }
+                else { checkOwner(); }
             }
+        };
+        const schedulePoll = (delay = 100) => {
+            if (settled) { return; }
+            if (pollTimer) { clearTimeout(pollTimer); pollTimer = undefined; }
+            pollTimer = setTimeout(() => {
+                pollTimer = undefined;
+                beginRead();
+            }, delay);
+        };
+        const readCurrentRecord = async () => {
+            if (settled || !startupFilePath || !startupToken || checkingRecord) { return; }
+            checkingRecord = true;
+            const ownerSnapshotIsCurrent = terminalRegistry.snapshot(terminal);
+            let record: TerminalStartupRecord | undefined;
+            try {
+                record = await readTerminalStartupRecord(startupFilePath, startupToken);
+            } finally {
+                checkingRecord = false;
+            }
+            if (settled) { return; }
+            if (!ownerSnapshotIsCurrent()) {
+                // Ownership changed during the file read. Retry against the
+                // current association before accepting any ready record.
+                latestRecord = undefined;
+                schedulePoll(0);
+                return;
+            }
+            setRecord(record);
+            if (!settled) { checkOwner(); }
+            schedulePoll();
+        };
+        const beginRead = () => {
+            void readCurrentRecord().catch(() => {
+                checkingRecord = false;
+                if (!settled) { latestRecord = undefined; checkOwner(); schedulePoll(); }
+            });
         };
         const check = () => {
             if (settled) { return; }
             if (isClosed()) { finish(false); return; }
-            if (!hasOwner()) { return; }
-            if (!startupFilePath || observedState !== undefined) { checkOwner(); return; }
-            if (checkingOwner) { return; }
-            checkingOwner = true;
-            void readTerminalStartupState(startupFilePath).then(state => {
-                checkingOwner = false;
-                if (settled) { return; }
-                if (state) { setState(state); }
-                if (!settled) { checkOwner(); }
-            }).catch(() => {
-                checkingOwner = false;
-                if (!settled) { checkOwner(); }
-            });
+            if (!startupFilePath || !startupToken) { checkOwner(); return; }
+            beginRead();
         };
         const attached = terminalRegistry.onDidChange(changed => { if (changed === terminal) { check(); } });
         const closed = window.onDidCloseTerminal(changed => { if (changed === terminal) { finish(false); } });
 
-        // A missing or invalid state keeps the ordinary attachment timeout.
+        // Missing or invalid state keeps the ordinary attachment timeout.
         startupTimer = setTimeout(() => finish(false), timeout);
-        // Keep the historical immediate path for terminals without profile setup.
-        // Managed terminals must observe their sidecar before using an existing owner.
-        if (!startupFilePath && hasOwner()) { finish(true); return; }
-        if (startupFilePath) {
-            const poll = async () => {
-                if (settled) { return; }
-                const state = await readTerminalStartupState(startupFilePath);
-                if (settled) { return; }
-                if (state) { setState(state); }
-                if (!settled) { pollTimer = setTimeout(() => { void poll(); }, 100); }
-            };
-            void poll().catch(() => undefined);
+        // Preserve the historical immediate path for terminals without profile setup.
+        if (!startupFilePath) { checkOwner(); }
+        if (startupFilePath && startupToken) {
+            beginRead();
         }
         check();
     });
@@ -603,8 +644,15 @@ export async function createSessionDiscoveryFile(endpoint: string): Promise<stri
     const discoveryDir = getSessionDiscoveryDir();
     await fsp.mkdir(discoveryDir, { recursive: true });
     const filePath = path.join(discoveryDir, `${crypto.randomBytes(16).toString('hex')}.json`);
-    await writeSessionDiscoveryFile(filePath, endpoint);
-    return filePath;
+    try {
+        await writeSessionDiscoveryFile(filePath, endpoint);
+        return filePath;
+    } catch (error) {
+        await fsp.rm(filePath, { recursive: true, force: true }).catch(cleanupError => {
+            console.error('Failed to clean incomplete session discovery file', cleanupError);
+        });
+        throw error;
+    }
 }
 
 async function writeSessionDiscoveryFile(filePath: string, endpoint: string, terminalPid?: number): Promise<void> {
@@ -952,10 +1000,12 @@ function buildAttachSessionScript(pipePath: string, sessPath: string, consentDir
         `  consent_dir <- ${asRStringLiteral(consentDirectory.replace(/\\/g, '/'))}`,
         `  source_helper <- ${asRStringLiteral(extensionContext.asAbsolutePath(path.join('R', 'sess_source.R')).replace(/\\/g, '/'))}`,
         `  installer_helper <- ${asRStringLiteral(extensionContext.asAbsolutePath(path.join('R', 'sess-package-install.R')).replace(/\\/g, '/'))}`,
+        `  startup_helper <- ${asRStringLiteral(extensionContext.asAbsolutePath(path.join('R', 'terminal-startup.R')).replace(/\\/g, '/'))}`,
         `  attach_helper <- ${asRStringLiteral(extensionContext.asAbsolutePath(path.join('R', 'attach_sess.R')).replace(/\\/g, '/'))}`,
         ...(backend === 'native' ? [] : [
             jgdSocket ? `  Sys.setenv(JGD_SOCKET = ${asRStringLiteral(jgdSocket)})` : '  Sys.unsetenv("JGD_SOCKET")',
         ]),
+        '  source(startup_helper, local = TRUE)',
         '  source(attach_helper, local = TRUE)',
         `  vscode_r_attach_sess(endpoint, sess_src, managed_root, consent_dir, source_helper, installer_helper, ${asRStringLiteral(backend)})`,
         '})',

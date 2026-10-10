@@ -5,6 +5,8 @@
 #' @param use_rstudioapi Logical. Enable rstudioapi emulation. Defaults to TRUE.
 #' @param plot_backend Plot backend: `auto`, `jgd`, `httpgd`, `standard`, or
 #'   `native`. NULL also selects `auto`.
+#' @return Invisibly returns `TRUE` when the IPC connection and runtime startup
+#'   succeed, or `FALSE` when the IPC endpoint is unavailable.
 #' @details When SESS_DISCOVERY_FILE describes the connected endpoint, an
 #'   unexpected disconnect waits for a replacement endpoint in that file and
 #'   reconnects with the same runtime options and session identity. The optional
@@ -34,7 +36,7 @@ connect <- function(endpoint = NULL, use_rstudioapi = TRUE,
   endpoint <- .resolve_endpoint(endpoint)
   if (!nzchar(endpoint)) {
     warning("[sess] Connection info not available. Cannot connect to VS Code.")
-    return(invisible(NULL))
+    return(invisible(FALSE))
   }
 
   discovery_file <- Sys.getenv("SESS_DISCOVERY_FILE")
@@ -124,7 +126,7 @@ connect <- function(endpoint = NULL, use_rstudioapi = TRUE,
     )
   }
 
-  invisible(NULL)
+  invisible(isTRUE(connected) && !is.null(.sess_env$con))
 }
 
 # Resolve the direct argument, environment variables, then discovery data.

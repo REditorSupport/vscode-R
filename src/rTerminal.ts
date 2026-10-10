@@ -1,6 +1,7 @@
 'use strict';
 
 import * as path from 'path';
+import * as crypto from 'node:crypto';
 import { getMigratedSetting } from './configuration';
 import { isDeepStrictEqual } from 'util';
 
@@ -31,24 +32,35 @@ export let rTerm: vscode.Terminal | undefined = undefined;
 let rTermResource: vscode.Uri | undefined;
 const terminalStartup = new WeakMap<vscode.Terminal, {
     integrated: boolean;
-    ready: boolean;
-    failed?: boolean;
+    gateComplete: boolean;
     startupFilePath?: string;
+    startupToken?: string;
     pending?: Promise<boolean>;
 }>();
 
 async function prepareTerminalForInput(terminal: vscode.Terminal): Promise<boolean> {
-    const startup = terminalStartup.get(terminal);
-    if (!startup || startup.ready) {
+    let startup = terminalStartup.get(terminal);
+    if (!startup) {
+        const creationOptions = terminal.creationOptions;
+        const env = creationOptions && 'env' in creationOptions ? creationOptions.env : undefined;
+        const startupFilePath = env?.['VSCODE_R_SESS_STARTUP_FILE'];
+        const startupToken = env?.['VSCODE_R_SESS_STARTUP_TOKEN'];
+        // Terminal profile providers bypass createRTerm, so recover the same
+        // startup gate from the options VS Code retained for this terminal.
+        if (typeof startupFilePath === 'string' && typeof startupToken === 'string') {
+            startup = { integrated: true, gateComplete: false, startupFilePath, startupToken };
+            terminalStartup.set(terminal, startup);
+        }
+    }
+    if (!startup || startup.gateComplete) {
         return !isTerminalClosed(terminal) && !terminal.exitStatus;
     }
     if (!startup.pending) {
         startup.pending = (async () => {
             const ready = startup.integrated
-                ? await waitForTerminalReady(terminal, 30000, startup.startupFilePath, startup.failed ?? false)
+                ? await waitForTerminalReady(terminal, 30000, startup.startupFilePath, startup.startupToken)
                 : await delay(200).then(() => !isTerminalClosed(terminal) && !terminal.exitStatus);
-            startup.ready = ready;
-            startup.failed = !ready;
+            startup.gateComplete = ready;
             if (!ready && !isTerminalClosed(terminal) && !terminal.exitStatus) {
                 void vscode.window.showWarningMessage('R session did not attach, so code was not sent. Finish sess setup in the R terminal and retry, or disable r.sessionWatcher and reload VS Code before retrying.');
             }
@@ -256,33 +268,55 @@ export async function makeTerminalOptions(resource?: vscode.Uri): Promise<vscode
         shellArgs: shellArgs,
         cwd: workspaceFolderPath,
     };
-    const newRprofile = extensionContext.asAbsolutePath(path.join('R', 'profile.R'));
-    if (config().get<boolean>('sessionWatcher')) {
-        const pipePath = await getGlobalPipePath();
-        const consentDirectory = await getSessConsentDirectory();
-        const discoveryFile = await createSessionDiscoveryFile(pipePath);
-        const startupFile = `${discoveryFile}.startup`;
-        const backend = resolveBackend();
-        termOptions.env = {
-            R_PROFILE_USER_OLD: process.env.R_PROFILE_USER,
-            R_PROFILE_USER: newRprofile,
-            VSCODE_R_SESS_PKG_PATH: extensionContext.asAbsolutePath(path.join('dist', 'resources', 'sess')),
-            VSCODE_R_SESS_SOURCE_HELPER: extensionContext.asAbsolutePath(path.join('R', 'sess_source.R')),
-            VSCODE_R_SESS_ROOT: path.join(extensionContext.globalStorageUri.fsPath, 'sess'),
-            VSCODE_R_SESS_CONSENT_DIRECTORY: consentDirectory,
-            VSCODE_R_SESS_INSTALLER_HELPER: extensionContext.asAbsolutePath(path.join('R', 'sess-package-install.R')),
-            VSCODE_R_SESS_ATTACH_HELPER: extensionContext.asAbsolutePath(path.join('R', 'attach_sess.R')),
-            VSCODE_R_SESS_STARTUP_FILE: startupFile,
-            // Remove inherited endpoint overrides so the per-terminal discovery file
-            // remains authoritative, including after a VS Code window reload.
-            SESS_ENDPOINT: null,
-            SESS_DISCOVERY_FILE: discoveryFile,
-            SESS_RSTUDIOAPI: config().get<boolean>('session.emulateRStudioAPI') ? 'TRUE' : 'FALSE',
-            SESS_PLOT_BACKEND: backend,
-        };
-        if (jgdEnabled(backend)) {
-            const jgdVars = (globalPlotManager as CommonPlotManager)?.getJgdEnvVars() ?? {};
-            Object.assign(termOptions.env, jgdVars);
+    const skipsProfile = shellArgs.some(arg => arg === '--vanilla' || arg === '--no-init-file');
+    const executableAvailable = Boolean(termPath && fs.existsSync(termPath));
+    if (currentConfig.get<boolean>('sessionWatcher')
+        && !skipsProfile && executableAvailable) {
+        let discoveryFile: string | undefined;
+        try {
+            // Resolve all values that can fail before creating terminal-local files.
+            const backend = resolveBackend();
+            const jgdVars = jgdEnabled(backend)
+                ? (globalPlotManager as CommonPlotManager)?.getJgdEnvVars() ?? {}
+                : {};
+            const pipePath = await getGlobalPipePath();
+            const consentDirectory = await getSessConsentDirectory();
+            discoveryFile = await createSessionDiscoveryFile(pipePath);
+            const startupFile = `${discoveryFile}.startup`;
+            const startupToken = crypto.randomBytes(16).toString('hex');
+            const newRprofile = extensionContext.asAbsolutePath(path.join('R', 'profile.R'));
+            const env: Record<string, string | null | undefined> = {
+                R_PROFILE_USER_OLD: process.env.R_PROFILE_USER,
+                R_PROFILE_USER: newRprofile,
+                VSCODE_R_SESS_PKG_PATH: extensionContext.asAbsolutePath(path.join('dist', 'resources', 'sess')),
+                VSCODE_R_SESS_SOURCE_HELPER: extensionContext.asAbsolutePath(path.join('R', 'sess_source.R')),
+                VSCODE_R_SESS_ROOT: path.join(extensionContext.globalStorageUri.fsPath, 'sess'),
+                VSCODE_R_SESS_CONSENT_DIRECTORY: consentDirectory,
+                VSCODE_R_SESS_INSTALLER_HELPER: extensionContext.asAbsolutePath(path.join('R', 'sess-package-install.R')),
+                VSCODE_R_SESS_ATTACH_HELPER: extensionContext.asAbsolutePath(path.join('R', 'attach_sess.R')),
+                VSCODE_R_SESS_STARTUP_FILE: startupFile,
+                VSCODE_R_SESS_STARTUP_TOKEN: startupToken,
+                VSCODE_R_SESS_STARTUP_ENDPOINT: pipePath,
+                VSCODE_R_SESS_STARTUP_HELPER: extensionContext.asAbsolutePath(path.join('R', 'terminal-startup.R')),
+                // Remove inherited endpoint overrides so the per-terminal discovery file
+                // remains authoritative, including after a VS Code window reload.
+                SESS_ENDPOINT: null,
+                SESS_DISCOVERY_FILE: discoveryFile,
+                SESS_RSTUDIOAPI: config(configResource).get<boolean>('session.emulateRStudioAPI') ? 'TRUE' : 'FALSE',
+                SESS_PLOT_BACKEND: backend,
+            };
+            Object.assign(env, jgdVars);
+            termOptions.env = env;
+        } catch (error) {
+            if (discoveryFile) {
+                for (const filePath of [discoveryFile, `${discoveryFile}.startup`]) {
+                    await fs.promises.rm(filePath, { recursive: true, force: true }).catch(cleanupError => {
+                        console.error('Failed to clean incomplete session watcher files', cleanupError);
+                    });
+                }
+            }
+            void vscode.window.showWarningMessage(
+                `The R session watcher could not be prepared. R will start without session integration. ${String(error)}`);
         }
     }
     return termOptions;
@@ -328,8 +362,10 @@ export async function createRTerm(preserveshow?: boolean, resource?: vscode.Uri)
     const skipsProfile = Array.isArray(args) && args.some(arg => arg === '--vanilla' || arg === '--no-init-file');
     terminalStartup.set(createdTerminal, {
         integrated: typeof discoveryFile === 'string' && !skipsProfile,
-        ready: false,
+        gateComplete: false,
         startupFilePath: typeof startupFile === 'string' ? startupFile : undefined,
+        startupToken: typeof termOptions.env?.['VSCODE_R_SESS_STARTUP_TOKEN'] === 'string'
+            ? termOptions.env['VSCODE_R_SESS_STARTUP_TOKEN'] : undefined,
     });
     createdTerminal.show(preserveshow);
 

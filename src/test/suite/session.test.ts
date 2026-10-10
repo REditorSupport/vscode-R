@@ -639,6 +639,10 @@ suite('Session Communication', () => {
 
         const scriptPath = JSON.parse(commandMatch[1]) as string;
         const scriptContent = await fsp.readFile(scriptPath, 'utf8');
+        const startupSource = scriptContent.indexOf('source(startup_helper, local = TRUE)');
+        const attachSource = scriptContent.indexOf('source(attach_helper, local = TRUE)');
+        assert.ok(startupSource >= 0 && attachSource > startupSource,
+            'the startup helper must be loaded before the generated attach helper');
         assert.match(scriptContent, /vscode_r_attach_sess\(endpoint, sess_src/);
         assert.match(scriptContent, /attach_sess\.R/);
         assert.match(scriptContent, /sess-package-install\.R/);

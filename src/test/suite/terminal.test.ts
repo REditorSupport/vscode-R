@@ -10,6 +10,7 @@ import * as rTerminal from '../../rTerminal';
 import * as util from '../../util';
 import * as session from '../../session';
 import * as executionTarget from '../../interactive/executionTarget';
+import * as extension from '../../extension';
 
 const extension_root: string = path.join(__dirname, '..', '..', '..');
 
@@ -97,7 +98,7 @@ suite('R Terminal', () => {
                 sessionWatcher: watcher, consoleArgs: args, bracketedPaste: true, 'source.focus': 'none'
             }));
             sandbox.stub(util, 'getRterm').resolves(process.execPath);
-            sandbox.stub(session, 'getGlobalPipePath').resolves('unused-test-endpoint');
+            const pipe = sandbox.stub(session, 'getGlobalPipePath').resolves('unused-test-endpoint');
             sandbox.stub(session, 'createSessionDiscoveryFile').resolves('/unused-test-discovery');
             const sent: string[] = [];
             const terminal = {
@@ -122,16 +123,20 @@ suite('R Terminal', () => {
                 assert.deepStrictEqual(sent, []);
                 sinon.assert.calledOnce(create);
                 if (integrated) {
-                    sinon.assert.calledOnceWithExactly(readyStub, terminal, 30000, '/unused-test-discovery.startup', false);
+                    const startupToken = (create.firstCall.args[0] as vscode.TerminalOptions).env?.['VSCODE_R_SESS_STARTUP_TOKEN'];
+                    if (typeof startupToken !== 'string') { throw new Error('managed terminal should receive a startup token'); }
+                    sinon.assert.calledOnceWithExactly(readyStub, terminal, 30000, '/unused-test-discovery.startup', startupToken);
                     sinon.assert.notCalled(delayStub);
+                    sinon.assert.calledOnce(pipe);
                 } else {
                     sinon.assert.notCalled(readyStub);
                     sinon.assert.calledOnceWithExactly(delayStub, 200);
+                    sinon.assert.notCalled(pipe);
                 }
                 resolveReady(true);
                 await Promise.all(commands);
                 assert.deepStrictEqual(sent, ['\x1b[200~first\x1b[201~', '\x1b[200~second\x1b[201~', '\x1b[200~third\x1b[201~']);
-                assert.strictEqual(consentDirectoryStub.called, watcher);
+                assert.strictEqual(consentDirectoryStub.called, integrated);
                 await rTerminal.runTextInTerm('fourth');
                 assert.strictEqual(sent.length, 4);
                 sinon.assert.calledOnce(create);
@@ -158,11 +163,13 @@ suite('R Terminal', () => {
             name: 'R Interactive', processId: Promise.resolve(undefined),
             show: () => undefined, sendText,
         } as unknown as vscode.Terminal;
-        sandbox.stub(vscode.window, 'createTerminal').returns(terminal);
+        const createTerminal = sandbox.stub(vscode.window, 'createTerminal').returns(terminal);
         sandbox.stub(vscode.window, 'terminals').value([terminal]);
         sandbox.stub(vscode.window, 'activeTerminal').value(terminal);
         const warning = sandbox.stub(vscode.window, 'showWarningMessage').resolves(undefined);
         await rTerminal.createRTerm();
+        const startupToken = (createTerminal.firstCall.args[0] as vscode.TerminalOptions).env?.['VSCODE_R_SESS_STARTUP_TOKEN'];
+        if (typeof startupToken !== 'string') { throw new Error('managed terminal should receive a startup token'); }
         await rTerminal.runTextInTerm('first');
         sinon.assert.notCalled(sendText);
         sinon.assert.calledOnce(warning);
@@ -172,8 +179,8 @@ suite('R Terminal', () => {
             'the warning should explain how to apply the setting to an existing terminal');
         await rTerminal.runTextInTerm('retry');
         sinon.assert.calledOnceWithExactly(sendText, '\x1b[200~retry\x1b[201~', true);
-        assert.deepStrictEqual(ready.firstCall.args, [terminal, 30000, '/unused-test-discovery.startup', false]);
-        assert.deepStrictEqual(ready.secondCall.args, [terminal, 30000, '/unused-test-discovery.startup', true]);
+        assert.deepStrictEqual(ready.firstCall.args, [terminal, 30000, '/unused-test-discovery.startup', startupToken]);
+        assert.deepStrictEqual(ready.secondCall.args, [terminal, 30000, '/unused-test-discovery.startup', startupToken]);
         rTerminal.deleteTerminal(terminal);
     });
 
@@ -654,33 +661,81 @@ suite('R Terminal', () => {
         rTerminal.deleteTerminal(terminal);
     });
 
-    test('createRTerm removes its discovery file when the configured executable is invalid', async () => {
-        const createdDiscoveryFiles: string[] = [];
-        const createdStartupFiles: string[] = [];
-        const createDiscoveryFile = session.createSessionDiscoveryFile;
-        sandbox.stub(session, 'createSessionDiscoveryFile').callsFake(async endpoint => {
-            const filePath = await createDiscoveryFile(endpoint);
-            createdDiscoveryFiles.push(filePath);
-            const startupPath = `${filePath}.startup`;
-            createdStartupFiles.push(startupPath);
-            await fsp.writeFile(startupPath, 'pending\n');
-            return filePath;
+    for (const failedResource of ['pipe', 'consent', 'discovery', 'helper-path'] as const) {
+        test(`session watcher ${failedResource} setup failure still starts an ordinary R terminal`, async () => {
+            const failure = new Error(`simulated ${failedResource} setup failure`);
+            const createdFiles: string[] = [];
+            const configStub = configuration({ sessionWatcher: true, 'source.focus': 'none' });
+            sandbox.stub(util, 'config').returns(configStub);
+            sandbox.stub(util, 'getRterm').resolves(process.execPath);
+            const pipe = sandbox.stub(session, 'getGlobalPipePath');
+            if (failedResource === 'pipe') {
+                pipe.rejects(failure);
+            } else {
+                pipe.resolves('unused-test-endpoint');
+            }
+            if (failedResource === 'consent') {
+                consentDirectoryStub.rejects(failure);
+            }
+            const createFile = session.createSessionDiscoveryFile;
+            const createDiscovery = sandbox.stub(session, 'createSessionDiscoveryFile');
+            if (failedResource === 'discovery') {
+                createDiscovery.rejects(failure);
+            } else if (failedResource === 'helper-path') {
+                createDiscovery.callsFake(async endpoint => {
+                    const file = await createFile(endpoint);
+                    createdFiles.push(file);
+                    return file;
+                });
+                const asAbsolutePath = extension.extensionContext.asAbsolutePath.bind(extension.extensionContext);
+                sandbox.stub(extension.extensionContext, 'asAbsolutePath').callsFake(relativePath => {
+                    if (relativePath.startsWith(path.join('dist', 'resources', 'sess'))) {
+                        throw failure;
+                    }
+                    return asAbsolutePath(relativePath);
+                });
+            } else {
+                createDiscovery.resolves('/unused-test-discovery');
+            }
+            const terminal = {
+                name: 'R Interactive', processId: Promise.resolve(undefined),
+                show: sandbox.stub(), dispose: sandbox.stub(),
+            } as unknown as vscode.Terminal;
+            const createTerminal = sandbox.stub(vscode.window, 'createTerminal').returns(terminal);
+            const warning = sandbox.stub(vscode.window, 'showWarningMessage').resolves(undefined);
+
+            try {
+                assert.strictEqual(await rTerminal.createRTerm(), true);
+                sinon.assert.calledOnce(createTerminal);
+                sinon.assert.calledOnce(warning);
+                const options = createTerminal.firstCall.args[0] as vscode.TerminalOptions;
+                assert.strictEqual(options.shellPath, process.execPath);
+                assert.strictEqual(options.env?.['SESS_DISCOVERY_FILE'], undefined);
+                assert.strictEqual(options.env?.['VSCODE_R_SESS_STARTUP_FILE'], undefined);
+                assert.strictEqual(options.env?.['VSCODE_R_SESS_STARTUP_TOKEN'], undefined);
+                assert.strictEqual(options.env?.['R_PROFILE_USER'], undefined);
+                for (const file of createdFiles) {
+                    assert.strictEqual(await pathExists(file), false);
+                    assert.strictEqual(await pathExists(`${file}.startup`), false);
+                }
+            } finally {
+                rTerminal.deleteTerminal(terminal);
+                await Promise.all(createdFiles.map(file => fsp.rm(file, { recursive: true, force: true })));
+                await Promise.all(createdFiles.map(file => fsp.rm(`${file}.startup`, { recursive: true, force: true })));
+            }
         });
+    }
+
+    test('createRTerm skips watcher setup when the configured executable is invalid', async () => {
+        const createDiscoveryFile = sandbox.stub(session, 'createSessionDiscoveryFile');
         const configStub = {
             get: (key: string) => key === 'sessionWatcher' ? true : undefined,
         };
         sandbox.stub(util, 'config').returns(configStub as unknown as vscode.WorkspaceConfiguration);
         sandbox.stub(util, 'getRterm').resolves(`${process.execPath}.does-not-exist`);
 
-        try {
-            assert.strictEqual(await rTerminal.createRTerm(), false);
-            assert.strictEqual(createdDiscoveryFiles.length, 1);
-            assert.strictEqual(await pathExists(createdDiscoveryFiles[0]), false);
-            assert.strictEqual(await pathExists(createdStartupFiles[0]), false);
-        } finally {
-            await Promise.all(createdDiscoveryFiles.map(filePath => fsp.rm(filePath, { recursive: true, force: true })));
-            await Promise.all(createdStartupFiles.map(filePath => fsp.rm(filePath, { recursive: true, force: true })));
-        }
+        assert.strictEqual(await rTerminal.createRTerm(), false);
+        sinon.assert.notCalled(createDiscoveryFile);
     });
 
     test('createRTerm removes its discovery file when VS Code terminal creation throws', async () => {

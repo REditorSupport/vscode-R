@@ -179,12 +179,45 @@ vscode_r_attach_sess <- function(endpoint, pkg_path, managed_root, consent_dir,
                                  source_helper, installer_helper, plot_backend,
                                  timeout_seconds = 180,
                                  setup_timeout_seconds = 300) {
-    ns <- vscode_r_prepare_sess(
-                                pkg_path, managed_root, consent_dir, source_helper, installer_helper,
-                                timeout_seconds, setup_timeout_seconds)
-    if (is.null(ns)) {
-        return(invisible(FALSE))
+    registered <- getOption("vscodeR.terminalStartup")
+    profile_process <- is.list(registered) && identical(registered$pid, Sys.getpid())
+    startup_context <- NULL
+    if (profile_process) {
+        notifier_available <- exists("vscode_r_startup_existing", mode = "function") &&
+            exists("vscode_r_startup_run", mode = "function")
+        if (!notifier_available) {
+            startup_helper <- Sys.getenv("VSCODE_R_SESS_STARTUP_HELPER", unset = "")
+            if (nzchar(startup_helper) && file.exists(startup_helper)) {
+                tryCatch(source(startup_helper, local = TRUE), error = function(error) {
+                    message("vscode-R could not load terminal startup notifier: ", conditionMessage(error))
+                })
+            }
+            notifier_available <- exists("vscode_r_startup_existing", mode = "function") &&
+                exists("vscode_r_startup_run", mode = "function")
+        }
+        if (!notifier_available) {
+            message("vscode-R terminal startup notifier is unavailable; the session watcher was not attached.")
+            return(invisible(FALSE))
+        }
+        startup_context <- vscode_r_startup_existing(endpoint)
+        if (is.null(startup_context)) {
+            message("vscode-R could not validate terminal startup status; the session watcher was not attached.")
+            return(invisible(FALSE))
+        }
     }
-    get("connect", envir = ns, inherits = FALSE)(endpoint = endpoint, plot_backend = plot_backend)
-    invisible(TRUE)
+
+    attach <- function() {
+        ns <- vscode_r_prepare_sess(pkg_path, managed_root, consent_dir, source_helper, installer_helper,
+                                     timeout_seconds, setup_timeout_seconds)
+        if (is.null(ns)) {
+            return(invisible(FALSE))
+        }
+        connect <- get("connect", envir = ns, inherits = FALSE)
+        connect(endpoint = endpoint, plot_backend = plot_backend)
+    }
+
+    if (profile_process) {
+        return(vscode_r_startup_run(startup_context, attach))
+    }
+    attach()
 }

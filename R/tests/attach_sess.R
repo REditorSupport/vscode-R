@@ -16,8 +16,7 @@ writeLines(c(
     paste0("Config/vscode-R/source-revision: ", revision)
 ), file.path(pkg, "DESCRIPTION"))
 writeLines(c(
-    "connect <- function(endpoint=NULL, plot_backend=NULL, ...) list(",
-    "  endpoint=endpoint, plot_backend=plot_backend, ...)",
+    "connect <- function(endpoint=NULL, plot_backend=NULL, ...) TRUE",
     "notify_client <- function(...) NULL", "request_client <- function(...) NULL",
     ".onLoad <- function(libname, pkgname) {",
     "  complete <- Sys.getenv('VSCODE_R_TEST_INSTALL_COMPLETE', '')",
@@ -43,6 +42,7 @@ writeLines(c(
     "role <- if (length(args) >= 6L) args[[6L]] else ''",
     "result_file <- if (length(args) >= 7L) args[[7L]] else ''",
     "source(file.path(getwd(), 'R', 'sess_source.R'))",
+    "source(file.path(getwd(), 'R', 'terminal-startup.R'))",
     "normal <- file.path(root, 'normal library')",
     "dir.create(normal, recursive=TRUE, showWarnings=FALSE)",
     "consent <- file.path(root, 'consent')",
@@ -95,14 +95,26 @@ writeLines(c(
     "ordinary <- .libPaths()",
     "same_paths <- function(x, y) identical(normalizePath(x, winslash='/'),",
     "                                     normalizePath(y, winslash='/'))",
+    "startup_token <- Sys.getenv('VSCODE_R_SESS_STARTUP_TOKEN', '')",
+    "read_startup <- function(expected_state, expected_endpoint='endpoint') {",
+    "  lines <- readLines(startup_status, warn=FALSE)",
+    "  stopifnot(length(lines) == 6L, lines[[1L]] == 'vscode-r-terminal-startup-v1')",
+    "  stopifnot(identical(lines[[2L]], startup_token))",
+    "  stopifnot(grepl('^[A-Za-z0-9_-]{16,64}$', lines[[3L]]))",
+    "  stopifnot(grepl('^[1-9][0-9]*$', lines[[4L]]),",
+    "            identical(lines[[4L]], as.character(Sys.getpid())))",
+    "  stopifnot(identical(lines[[5L]], expected_endpoint),",
+    "            identical(lines[[6L]], expected_state))",
+    "  lines",
+    "}",
     "check_user_profile <- function() {",
     "  baseline <- readRDS(file.path(root, 'profile-libraries.rds'))",
     "  if (!same_paths(.libPaths(), baseline)) stop('user profile library paths changed')",
     "  stopifnot(file.exists(file.path(root, 'user-profile-ran'))) ",
     "  stopifnot(any(normalizePath(.libPaths()) == normalizePath(project_library)))",
     "}",
-    "attach_sess <- function(timeout=180, setup_timeout=8) {",
-    "  vscode_r_attach_sess('endpoint', pkg, managed_root, consent,",
+    "attach_sess <- function(endpoint='endpoint', timeout=180, setup_timeout=8) {",
+    "  vscode_r_attach_sess(endpoint, pkg, managed_root, consent,",
     "    file.path(getwd(), 'R', 'sess_source.R'),",
     "    if (nzchar(install_helper)) install_helper else",
     "      file.path(getwd(), 'R', 'sess-package-install.R'),",
@@ -129,6 +141,13 @@ writeLines(c(
     "    stopifnot(same_paths(actual, file.path(expected, 'sess')))",
     "    if (mode == 'prepared') stopifnot(identical(readLines(ready_path), revision))",
     "    stopifnot(length(list.files(consent, pattern='\\\\.request$')) == 0L)",
+    "    if (mode == 'exact') {",
+    "      blocked_file <- file.path(root, 'missing-directory', 'startup')",
+    "      context <- vscode_r_startup_register(blocked_file, strrep('c', 32), 'endpoint')",
+    "      called <- FALSE",
+    "      result <- vscode_r_startup_run(context, function() { called <<- TRUE; TRUE })",
+    "      stopifnot(identical(result, FALSE), !called, !file.exists(blocked_file))",
+    "    }",
     "  } else if (mode == 'markers') {",
     "    description <- file.path(expected, 'sess', 'DESCRIPTION')",
     "    before <- readLines(description, warn=FALSE)",
@@ -164,7 +183,7 @@ writeLines(c(
     "  stopifnot(same_paths(actual, file.path(expected, 'sess')))",
     "  check_user_profile()",
     "  stopifnot(length(list.files(consent, pattern='\\\\.request$')) == 0L)",
-    "  stopifnot(identical(readLines(startup_status), 'ready'))",
+    "  stopifnot(identical(read_startup('ready')[[2L]], Sys.getenv('VSCODE_R_SESS_STARTUP_TOKEN')))",
     "} else if (mode == 'profile_decline') {",
     "  wrong_library <- file.path(managed_root, 'fixture-other-platform',",
     "                             '99.99', strrep('a', 40), 'library')",
@@ -173,9 +192,33 @@ writeLines(c(
     "  check_user_profile()",
     "  stopifnot(!dir.exists(sess_managed_library(managed_root, revision)))",
     "  stopifnot(!file.exists(ready_path))",
-    "  stopifnot(identical(readLines(startup_status), 'failed'))",
+    "  first_startup <- read_startup('failed')",
     "  stopifnot(file.exists(file.path(wrong_library, 'sess', 'DESCRIPTION')))",
     "  stopifnot(length(list.files(consent, pattern='\\\\.request$')) == 0L)",
+    "  context <- vscode_r_startup_existing('reload-endpoint')",
+    "  stopifnot(!is.null(context), identical(context$endpoint, 'reload-endpoint'))",
+    "  stopifnot(is.null(vscode_r_startup_existing(''))) ",
+    "  saved_existing <- vscode_r_startup_existing",
+    "  saved_run <- vscode_r_startup_run",
+    "  rm(vscode_r_startup_existing, vscode_r_startup_run, envir=.GlobalEnv)",
+    "  Sys.unsetenv('VSCODE_R_SESS_STARTUP_HELPER')",
+    "  result <- attach_sess(timeout=0)",
+    "  assign('vscode_r_startup_existing', saved_existing, envir=.GlobalEnv)",
+    "  assign('vscode_r_startup_run', saved_run, envir=.GlobalEnv)",
+    "  stopifnot(identical(result, FALSE), !('sess' %in% loadedNamespaces()))",
+    "  stopifnot(identical(read_startup('failed')[[3L]], first_startup[[3L]]))",
+    "  stopifnot(!length(list.files(consent, pattern='\\\\.request$'))) ",
+    "  Sys.unsetenv(c('VSCODE_R_SESS_STARTUP_FILE', 'VSCODE_R_SESS_STARTUP_TOKEN',",
+    "                 'VSCODE_R_SESS_STARTUP_ENDPOINT'))",
+    "  result <- attach_sess(endpoint='reload-endpoint', timeout=10)",
+    "  second_startup <- read_startup('ready', 'reload-endpoint')",
+    "  stopifnot(identical(result, TRUE), first_startup[[3L]] != second_startup[[3L]])",
+    "  vscode_r_startup_finish(context, first_startup[[3L]], 'failed')",
+    "  stopifnot(identical(read_startup('ready', 'reload-endpoint')[[3L]], second_startup[[3L]]))",
+    "  stopifnot(identical(sess_loaded_source_revision(), revision))",
+    "  actual <- getNamespaceInfo(asNamespace('sess'), 'path')",
+    "  stopifnot(same_paths(actual, file.path(sess_managed_library(managed_root, revision), 'sess')))",
+    "  stopifnot(identical(readLines(ready_path), revision))",
     "} else if (mode == 'profile_approve') {",
     "  wrong_library <- file.path(managed_root, 'fixture-other-platform',",
     "                             '99.99', strrep('a', 40), 'library')",
@@ -188,7 +231,7 @@ writeLines(c(
     "  stopifnot(same_paths(actual, file.path(library, 'sess')))",
     "  stopifnot(file.exists(file.path(library, 'sess', 'DESCRIPTION')))",
     "  stopifnot(identical(readLines(ready_path), revision))",
-    "  stopifnot(identical(readLines(startup_status), 'ready'))",
+    "  stopifnot(identical(read_startup('ready')[[2L]], Sys.getenv('VSCODE_R_SESS_STARTUP_TOKEN')))",
     "  stopifnot(file.exists(file.path(wrong_library, 'sess', 'DESCRIPTION')))",
     "} else if (mode %in% c('parallel_approve', 'parallel_decline', 'parallel_third',",
     "                       'parallel_failure', 'parallel_retry')) {",
@@ -237,9 +280,16 @@ agent <- file.path(root, "consent-agent.R")
 writeLines(c(
     "args <- commandArgs(TRUE)",
     "directory <- args[[1L]]; count <- as.integer(args[[2L]])",
-    "answer <- args[[3L]]; log <- args[[4L]]; identity_log <- args[[5L]]",
+    "answers <- strsplit(args[[3L]], ',', fixed=TRUE)[[1L]]",
+    "log <- args[[4L]]; identity_log <- args[[5L]]",
     "status_log <- args[[6L]]; wait_marker <- args[[7L]]",
     "tryCatch({",
+    "startup_helper <- Sys.getenv('VSCODE_R_SESS_STARTUP_HELPER', '')",
+    "if (nzchar(startup_helper)) {",
+    "  source(startup_helper)",
+    "  inherited <- vscode_r_startup_existing('endpoint')",
+    "  if (!is.null(inherited)) stop('child reused the parent startup context')",
+    "}",
     "ids <- character(); identities <- character(); deadline <- Sys.time() + 30",
     "while (length(ids) < count && Sys.time() < deadline) {",
     "  requests <- list.files(directory, pattern='\\\\.request$', full.names=TRUE)",
@@ -250,6 +300,7 @@ writeLines(c(
     "    if (nzchar(wait_marker) && !file.exists(wait_marker)) next",
     "    ids <- c(ids, id); temporary <- tempfile(tmpdir=directory)",
     "    identities <- c(identities, lines[[4L]])",
+    "    answer <- answers[[min(length(ids), length(answers))]]",
     "    writeLines(answer, temporary)",
     "    response <- file.path(directory, paste0(id, '.response'))",
     "    if (!file.rename(temporary, response)) stop('response rename failed')",
@@ -335,7 +386,10 @@ run_case <- function(mode) {
                                  VSCODE_R_SESS_INSTALLER_HELPER = file.path(getwd(), "R", "sess-package-install.R"),
                                  VSCODE_R_SESS_ROOT = managed_root,
                                  VSCODE_R_SESS_CONSENT_DIRECTORY = consent,
-                                 VSCODE_R_SESS_STARTUP_FILE = startup_status)
+                                 VSCODE_R_SESS_STARTUP_FILE = startup_status,
+                                 VSCODE_R_SESS_STARTUP_TOKEN = paste0(strrep("c", 32L)),
+                                 VSCODE_R_SESS_STARTUP_ENDPOINT = "endpoint",
+                                 VSCODE_R_SESS_STARTUP_HELPER = file.path(getwd(), "R", "terminal-startup.R"))
         profile_keys <- names(profile_environment)
         previous_environment <- Sys.getenv(profile_keys, unset = NA_character_)
         on.exit({
@@ -351,8 +405,9 @@ run_case <- function(mode) {
         log <- file.path(case_root, "consent-ids")
         identity_log <- file.path(case_root, "runtime-identities")
         status_log <- file.path(case_root, "consent-agent-status")
-        count <- if (mode == "markers") 2L else 1L
-        answer <- if (mode == "profile_approve") "approve" else "decline"
+        count <- if (mode %in% c("markers", "profile_decline")) 2L else 1L
+        answer <- switch(mode, profile_approve = "approve", profile_decline = "decline,approve",
+                         "decline")
         release_marker <- if (mode %in% c("profile_decline", "profile_approve")) {
             file.path(case_root, "release-profile-consent")
         } else {
@@ -390,7 +445,14 @@ run_case <- function(mode) {
             if (!length(requests)) Sys.sleep(0.01)
         }
         if (!length(requests)) stop("profile startup did not publish a consent request")
-        stopifnot(identical(readLines(startup_status, warn = FALSE), "pending"))
+        startup_record <- readLines(startup_status, warn = FALSE)
+        stopifnot(length(startup_record) == 6L,
+                  startup_record[[1L]] == "vscode-r-terminal-startup-v1",
+                  startup_record[[2L]] == Sys.getenv("VSCODE_R_SESS_STARTUP_TOKEN"),
+                  grepl("^[A-Za-z0-9_-]{16,64}$", startup_record[[3L]]),
+                  grepl("^[1-9][0-9]*$", startup_record[[4L]]),
+                  startup_record[[5L]] == "endpoint",
+                  startup_record[[6L]] == "pending")
         file.create(release_marker)
         deadline <- Sys.time() + 30
         while (!file.exists(result_file) && Sys.time() < deadline) Sys.sleep(0.01)
@@ -431,7 +493,7 @@ run_case <- function(mode) {
         }
         log_path <- file.path(case_root, "consent-ids")
         ids <- readLines(log_path, warn = FALSE)
-        expected_count <- if (mode == "markers") 2L else 1L
+        expected_count <- if (mode %in% c("markers", "profile_decline")) 2L else 1L
         stopifnot(length(ids) == expected_count, !anyDuplicated(ids))
         stopifnot(all(grepl("^[A-Za-z0-9_-]{16,64}$", ids)))
         identity_log <- file.path(case_root, "runtime-identities")
