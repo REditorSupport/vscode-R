@@ -5,6 +5,7 @@ import * as path from 'path';
 import * as sinon from 'sinon';
 import * as vscode from 'vscode';
 import * as util from '../../util';
+import { extensionContext } from '../../extension';
 import { mockExtensionContext } from '../common/mockvscode';
 
 const bundledRevision = 'git-tree:' + 'a'.repeat(40);
@@ -26,6 +27,7 @@ suite('Sess installation with real R tasks', () => {
     let extensionRoot: string;
     let projectA: string;
     let projectB: string;
+    let managedLibrary: string;
 
     setup(async () => {
         sandbox = sinon.createSandbox();
@@ -56,6 +58,11 @@ suite('Sess installation with real R tasks', () => {
             await fsp.writeFile(path.join(project, '.Rprofile'), '.libPaths(c(file.path(getwd(), "library"), .libPaths()))\n');
         }
         mockExtensionContext(extensionRoot, sandbox);
+        const identity = await util.getSessRuntimeIdentity(projectA);
+        assert.ok(identity);
+        managedLibrary = util.getSessManagedLibrary(
+            path.join(extensionContext.globalStorageUri.fsPath, 'sess'),
+            identity!, bundledRevision);
         sandbox.stub(vscode.window, 'showWarningMessage').resolves('Yes' as unknown as vscode.MessageItem);
     });
 
@@ -65,11 +72,12 @@ suite('Sess installation with real R tasks', () => {
             await fsp.rm(path.join(project, 'library'), { recursive: true, force: true });
             await fsp.rm(path.join(project, '.Rprofile'), { recursive: true, force: true });
         }
+        await fsp.rm(managedLibrary, { recursive: true, force: true });
         await fsp.rm(extensionRoot, { recursive: true, force: true });
     });
 
     for (const asUri of [false, true]) {
-        test(`installs into the second project's library (URI: ${String(asUri)})`, async () => {
+        test(`installs into the vscode-R library and preserves project libraries (URI: ${String(asUri)})`, async () => {
             const errors = sandbox.stub(vscode.window, 'showErrorMessage').resolves(undefined);
             const settings = { get: () => true } as unknown as vscode.WorkspaceConfiguration;
             assert.strictEqual(await util.getInstalledSessSourceRevision(projectA), oldRevision);
@@ -81,11 +89,13 @@ suite('Sess installation with real R tasks', () => {
 
             assert.strictEqual(ready, true, JSON.stringify(errors.args));
             assert.strictEqual(errors.called, false);
-            assert.strictEqual(await util.getInstalledSessSourceRevision(projectB), bundledRevision);
+            assert.strictEqual(await util.getInstalledSessSourceRevision(projectB), oldRevision);
             assert.strictEqual(await util.getInstalledSessSourceRevision(projectA), oldRevision);
             // R may fold the installed DESCRIPTION field onto a continuation
             // line. The production R query above reads it through read.dcf().
-            assert.strictEqual(await pathExists(path.join(projectB, 'library', 'sess', 'Meta', 'package.rds')), true);
+            assert.strictEqual(await util.getInstalledSessSourceRevision(projectB, bundledRevision, managedLibrary), bundledRevision);
+            assert.strictEqual(await pathExists(path.join(managedLibrary, 'sess', 'Meta', 'package.rds')), true);
+            assert.strictEqual(await pathExists(path.join(projectB, 'library', 'sess', 'Meta')), false);
             assert.strictEqual(await pathExists(path.join(projectA, 'library', 'sess', 'Meta')), false);
         }).timeout(120000);
     }

@@ -260,6 +260,9 @@ export async function makeTerminalOptions(resource?: vscode.Uri): Promise<vscode
         termOptions.env = {
             R_PROFILE_USER_OLD: process.env.R_PROFILE_USER,
             R_PROFILE_USER: newRprofile,
+            VSCODE_R_SESS_PKG_PATH: extensionContext.asAbsolutePath(path.join('dist', 'resources', 'sess')),
+            VSCODE_R_SESS_SOURCE_HELPER: extensionContext.asAbsolutePath(path.join('R', 'sess_source.R')),
+            VSCODE_R_SESS_ROOT: path.join(extensionContext.globalStorageUri.fsPath, 'sess'),
             // Remove inherited endpoint overrides so the per-terminal discovery file
             // remains authoritative, including after a VS Code window reload.
             SESS_ENDPOINT: null,

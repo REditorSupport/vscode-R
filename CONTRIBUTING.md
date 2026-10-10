@@ -42,10 +42,13 @@ it to avoid repeating preparation when installed through remotes.
 `Config/vscode-R/source-revision` controls installation independently of package
 versions and the runtime `protocol_version` handshake. vscode-R installs only
 the bundled snapshot; missing Imports come from the configured repository.
-Missing or different installed metadata requires the bundle, and installation
-verifies the exact source revision and visibility through `.libPaths()`. Run the
-source/bootstrap checks with `pnpm run test:sess-source`, or just the
-base-R identity checks with `pnpm run test:sess-identity`.
+Ordinary terminals and manual attach ask before installing a missing or different
+copy. They install into an extension-managed library, keep normal `.libPaths()`
+unchanged, and explicitly load the matching namespace; exact matches in normal
+libraries remain usable. R Interactive prepares its separate runtime as part of
+starting an Interactive session. Run the source/bootstrap checks with
+`pnpm run test:sess-source`, or just the base-R identity checks with
+`pnpm run test:sess-identity`.
 
 ## Testing R Interactive
 

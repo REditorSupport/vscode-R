@@ -11,7 +11,7 @@ import * as vscode from 'vscode';
 import { commands, Uri, ViewColumn, Webview, window, env } from 'vscode';
 
 import { restartRTerminal } from './rTerminal';
-import { config, readContent, setContext, UriIcon } from './util';
+import { config, readContent, readSessSourceRevision, setContext, UriIcon } from './util';
 import * as rTerminal from './rTerminal';
 import { getProcessAncestors } from './processTree';
 import { TerminalSessionRegistry } from './terminalSessionRegistry';
@@ -27,6 +27,7 @@ import { getListViewerScript, listViewerStyle, ListViewNavigation } from './list
 import { getDataViewerScript, getDataViewerStyle, getDataViewerToolbarHtml } from './dataViewer';
 import { getDataViewerColumnPanelHtml, getDataViewerColumnPanelScript, getDataViewerColumnPanelStyle } from './dataViewerColumnPanel';
 import { formatSessionLabel, getViewerSessionScript } from './viewerSession';
+import { SessConsentService } from './sessConsent';
 
 export interface SessionInfo {
     version: string;
@@ -432,6 +433,9 @@ function queueTerminalDiscoveryOperation(terminal: vscode.Terminal, operation: (
 let globalSessionServer: net.Server | undefined;
 let globalSessionServerStartup: Promise<string> | undefined;
 let attachSessionScriptPath: string | undefined;
+let attachConsentDirectory: string | undefined;
+let attachConsentService: SessConsentService | undefined;
+let attachConsentStartup: Promise<string> | undefined;
 
 interface SessionDiscoveryFile {
     version: 1;
@@ -837,39 +841,80 @@ function getAttachSessionScriptPath(pipePath: string): string {
     return path.join(extensionContext.globalStorageUri.fsPath, 'tmp', 'attach', `${scriptBase}.R`);
 }
 
-function buildAttachSessionScript(pipePath: string, sessPath: string, installSessScriptPath: string): string {
+function buildAttachSessionScript(pipePath: string, sessPath: string, consentDirectory: string): string {
     const backend = resolveBackend();
     const jgdSocket = getSessionJgdSocket();
     return [
         'local({',
         `  endpoint <- ${asRStringLiteral(pipePath)}`,
         `  sess_src <- ${asRStringLiteral(sessPath)}`,
-        `  install_sess_script <- ${asRStringLiteral(installSessScriptPath)}`,
+        `  managed_root <- ${asRStringLiteral(path.join(extensionContext.globalStorageUri.fsPath, 'sess').replace(/\\/g, '/'))}`,
+        `  consent_dir <- ${asRStringLiteral(consentDirectory.replace(/\\/g, '/'))}`,
+        `  source_helper <- ${asRStringLiteral(extensionContext.asAbsolutePath(path.join('R', 'sess_source.R')).replace(/\\/g, '/'))}`,
+        `  installer_helper <- ${asRStringLiteral(extensionContext.asAbsolutePath(path.join('R', 'sess-package-install.R')).replace(/\\/g, '/'))}`,
+        `  attach_helper <- ${asRStringLiteral(extensionContext.asAbsolutePath(path.join('R', 'attach_sess.R')).replace(/\\/g, '/'))}`,
         ...(backend === 'native' ? [] : [
             jgdSocket ? `  Sys.setenv(JGD_SOCKET = ${asRStringLiteral(jgdSocket)})` : '  Sys.unsetenv("JGD_SOCKET")',
         ]),
-        `  source(${asRStringLiteral(extensionContext.asAbsolutePath(path.join('R', 'sess_source.R')).replace(/\\/g, '/'))}, local = TRUE)`,
-        '  if (sess_install_required(sess_src)) {',
-        '    if (!file.exists(install_sess_script)) {',
-        '      stop(sprintf("install_sess.R not found: %s", install_sess_script))',
-        '    }',
-        '    Sys.setenv(VSCODE_R_SESS_PKG_PATH = sess_src)',
-        '    on.exit(Sys.unsetenv(c("VSCODE_R_SESS_PKG_PATH", "VSCODE_R_SESS_REPO")), add = TRUE)',
-        '    source(install_sess_script, local = TRUE)',
-        '  }',
-        `  sess::connect(endpoint = endpoint, plot_backend = ${asRStringLiteral(backend)})`,
+        '  source(attach_helper, local = TRUE)',
+        `  vscode_r_attach_sess(endpoint, sess_src, managed_root, consent_dir, source_helper, installer_helper, ${asRStringLiteral(backend)})`,
         '})',
         '',
     ].join('\n');
 }
 
+async function ensureAttachSessConsentService(): Promise<string> {
+    if (attachConsentStartup) { return attachConsentStartup; }
+    if (attachConsentService && attachConsentDirectory) { return attachConsentDirectory; }
+
+    const startup = (async (): Promise<string> => {
+        const directory = path.join(extensionContext.globalStorageUri.fsPath, 'tmp', 'attach', 'consent', crypto.randomBytes(16).toString('hex'));
+        const sessDescription = await readContent(
+            extensionContext.asAbsolutePath(path.join('dist', 'resources', 'sess', 'DESCRIPTION')), 'utf8');
+        const sourceRevision = readSessSourceRevision(sessDescription);
+        if (!sourceRevision) {
+            throw new Error('The bundled sess package has no valid source revision.');
+        }
+        const service = new SessConsentService({
+            directory,
+            expectedRevision: sourceRevision,
+            isEnabled: () => config().get<boolean>('sessionWatcher') === true,
+            prompt: async request => {
+                const mismatch = request.reason === 'mismatch';
+                const message = mismatch
+                    ? 'The installed sess does not match this build of vscode-R. Install the bundled copy in a vscode-R-managed library? Your existing sess installation will not be modified.'
+                    : 'vscode-R needs bundled sess to attach the session watcher. Install it in a vscode-R-managed library? Your existing sess installation will not be modified.';
+                const choice = await window.showWarningMessage(message, 'Install bundled sess');
+                return choice === 'Install bundled sess';
+            },
+        });
+        try {
+            await service.start();
+            attachConsentDirectory = directory;
+            attachConsentService = service;
+            return directory;
+        } catch (error) {
+            await service.stop();
+            await removePathIfExists(directory);
+            throw error;
+        }
+    })();
+    attachConsentStartup = startup;
+    try {
+        return await startup;
+    } catch (error) {
+        if (attachConsentStartup === startup) { attachConsentStartup = undefined; }
+        throw error;
+    }
+}
+
 export async function getAttachSessionCommand(): Promise<string> {
     const pipePath = await getGlobalPipePath();
     const sessPath = extensionContext.asAbsolutePath(path.join('dist', 'resources', 'sess')).replace(/\\/g, '/');
-    const installSessScriptPath = extensionContext.asAbsolutePath(path.join('R', 'install_sess.R')).replace(/\\/g, '/');
+    const consentDirectory = await ensureAttachSessConsentService();
     const scriptPath = getAttachSessionScriptPath(pipePath);
     await fsp.mkdir(path.dirname(scriptPath), { recursive: true });
-    await fsp.writeFile(scriptPath, buildAttachSessionScript(pipePath, sessPath, installSessScriptPath), { encoding: 'utf-8', mode: 0o600 });
+    await fsp.writeFile(scriptPath, buildAttachSessionScript(pipePath, sessPath, consentDirectory), { encoding: 'utf-8', mode: 0o600 });
     await setOwnerOnlyPermissions(scriptPath);
     attachSessionScriptPath = scriptPath;
 
@@ -887,6 +932,15 @@ async function removePathIfExists(pathLike: string): Promise<void> {
 }
 
 export async function shutdownSessionWatcher(): Promise<void> {
+    const consentStartup = attachConsentStartup;
+    await consentStartup?.catch(() => undefined);
+    await attachConsentService?.stop();
+    attachConsentService = undefined;
+    if (attachConsentDirectory) {
+        await removePathIfExists(attachConsentDirectory);
+        attachConsentDirectory = undefined;
+    }
+    if (attachConsentStartup === consentStartup) { attachConsentStartup = undefined; }
     // Startup publishes the server only after listen and permission setup finish.
     // Wait before capturing it, otherwise it could survive extension shutdown.
     await globalSessionServerStartup?.catch(() => undefined);
@@ -2502,6 +2556,10 @@ export async function sessionRequest(
 }
 
 export async function connectToSession(): Promise<void> {
+    if (!config().get<boolean>('sessionWatcher')) {
+        void window.showInformationMessage('This command requires that r.sessionWatcher be enabled.');
+        return;
+    }
     const command = await getAttachSessionCommand();
     void vscode.env.clipboard.writeText(command);
     void vscode.window.showInformationMessage(`R command copied to clipboard: ${command}`);
