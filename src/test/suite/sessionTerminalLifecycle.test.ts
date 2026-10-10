@@ -154,7 +154,7 @@ suite('Session Terminal Lifecycle', () => {
                 get: (key: string) => ({ sessionWatcher: true, consoleArgs: [], 'source.focus': 'none' })[key],
             } as unknown as vscode.WorkspaceConfiguration);
             sandbox.stub(util, 'getRterm').resolves(process.execPath);
-            sandbox.stub(util, 'promptToInstallSessPackage').resolves(true);
+            sandbox.stub(session, 'getSessConsentDirectory').resolves('/unused-test-consent');
             sandbox.stub(session, 'createSessionDiscoveryFile').resolves('/unused-test-discovery');
             sandbox.stub(session, 'updateTerminalSessionDiscoveryFile').resolves();
             const waitUntilReady = session.waitForTerminalReady;

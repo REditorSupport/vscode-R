@@ -27,9 +27,11 @@ socket on macOS/Linux, named pipe on Windows) using
 > when no installed copy has the exact bundled source revision. Accepted
 > installs and missing dependencies go into a vscode-R-managed library; existing
 > user, project, and package-manager libraries are left unchanged. The extension
-> explicitly loads the matching copy for its session watcher. Manual attach also
-> asks before installation, using the R executable and libraries of the attached
-> session. If a different `sess` is already loaded, restart R before attaching.
+> explicitly loads the matching copy for its session watcher. Preparation and
+> installation use the terminal's R, platform, version, and normal libraries;
+> when needed, that R asks the extension for consent. Manual attach follows the
+> same rule for the attached R. If a different `sess` is already loaded, restart
+> R before attaching.
 
 R Interactive prepares its isolated runtime as part of starting an Interactive
 session; that runtime follows its own lifecycle and does not change ordinary R

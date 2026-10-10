@@ -1,5 +1,6 @@
 # Base-R regression tests; no external packages or editor binary are needed.
 source("R/sess_source.R")
+normalized_paths <- function(paths) normalizePath(paths, winslash = "/", mustWork = TRUE)
 
 field <- "Config/vscode-R/source-revision"
 stable <- paste0("git-tree:", strrep("a", 40))
@@ -31,8 +32,10 @@ original_libs <- .libPaths()
 on.exit(.libPaths(original_libs), add = TRUE)
 .libPaths(c(project_library, user_library, original_libs))
 stopifnot(!sess_install_required(bundled)) # Exact revision in any normal library wins.
-stopifnot(identical(sess_find_source_library(stable), user_library))
-stopifnot(identical(.libPaths()[1:2], c(project_library, user_library)))
+stopifnot(identical(normalized_paths(sess_find_source_library(stable)),
+                    normalized_paths(user_library)))
+stopifnot(identical(normalized_paths(.libPaths()[1:2]),
+                    normalized_paths(c(project_library, user_library))))
 
 write_description(file.path(user_library, "sess"), "99.0.0", pre_release)
 stopifnot(sess_install_required(bundled)) # Mismatch does not count as bundled source.
@@ -64,6 +67,7 @@ stopifnot(identical(identity, expected_identity))
 managed_library <- sess_managed_library(managed_root, stable)
 stopifnot(identical(managed_library, file.path(managed_root, R.version$platform,
                                                runtime_version, strrep("a", 40), "library")))
+stopifnot(!identical(managed_library, sess_managed_library(managed_root, pre_release)))
 
 # Install a dependency-free fixture into the managed library, then verify that
 # explicit namespace loading selects it without changing ordinary .libPaths().
@@ -140,7 +144,7 @@ stopifnot(file.exists(file.path(managed_library, "sess", "DESCRIPTION")))
 stopifnot(!dir.exists(file.path(managed_library, "sessfixturedep")))
 stopifnot(!dir.exists(file.path(inherited_library, "sess")))
 stopifnot(identical(readLines(file.path(user_library, "sess", "DESCRIPTION")), existing_user_sess))
-stopifnot(identical(.libPaths(), ordinary_before))
+stopifnot(identical(normalized_paths(.libPaths()), normalized_paths(ordinary_before)))
 
 # A mismatching namespace already loaded from a project library must survive a
 # managed-load refusal. The profile must also stop before connecting the watcher.
@@ -148,6 +152,8 @@ write_description(pkg, "3.0.1", pre_release, imports = "sessfixturedep")
 utils::install.packages(pkg, repos = NULL, type = "source", lib = project_library, quiet = TRUE)
 write_description(pkg, "3.0.1", stable, imports = "sessfixturedep")
 child <- file.path(root, "check-loaded-mismatch.R")
+profile_consent <- file.path(root, "profile consent")
+dir.create(profile_consent)
 writeLines(c(
     "args <- commandArgs(TRUE)",
     "source(args[1])",
@@ -157,11 +163,17 @@ writeLines(c(
     "expected <- args[3]; mismatch <- args[4]",
     "err <- tryCatch(sess_load_namespace(args[2], expected, normal), error=identity)",
     "stopifnot(inherits(err, 'error'), identical(sess_loaded_source_revision(), mismatch))",
-    "Sys.setenv(VSCODE_R_SESS_PKG_PATH=args[6], VSCODE_R_SESS_SOURCE_HELPER=args[1], VSCODE_R_SESS_ROOT=args[7])",
+    paste0("Sys.setenv(VSCODE_R_SESS_PKG_PATH=args[6], ",
+           "VSCODE_R_SESS_SOURCE_HELPER=args[1], ",
+           "VSCODE_R_SESS_ATTACH_HELPER=file.path(dirname(args[1]), 'attach_sess.R'), ",
+           "VSCODE_R_SESS_INSTALLER_HELPER=file.path(dirname(args[1]), 'sess-package-install.R'), ",
+           "VSCODE_R_SESS_ROOT=args[7], VSCODE_R_SESS_CONSENT_DIRECTORY=args[9])"),
     "messages <- character()",
-    "withCallingHandlers(source(args[8]), message=function(m) { messages <<- c(messages, conditionMessage(m)); invokeRestart('muffleMessage') })",
-    "stopifnot(any(grepl('different sess namespace is already loaded', messages)), identical(sess_loaded_source_revision(), mismatch))",
-    "stopifnot(identical(.libPaths(), normal))"
+    paste0("withCallingHandlers(source(args[8]), message=function(m) { ",
+           "messages <<- c(messages, conditionMessage(m)); invokeRestart('muffleMessage') })"),
+    paste0("stopifnot(any(grepl('different sess namespace is already loaded', messages)), ",
+           "identical(sess_loaded_source_revision(), mismatch))"),
+    "stopifnot(identical(normalizePath(.libPaths(), winslash='/'), normalizePath(normal, winslash='/')))"
 ), child)
 profile <- file.path("R", "profile.R")
 child_output <- suppressWarnings(system2(r_binary, shQuote(c(
@@ -169,7 +181,7 @@ child_output <- suppressWarnings(system2(r_binary, shQuote(c(
     paste0("--file=", child), "--args",
     file.path(getwd(), "R", "sess_source.R"), managed_library, stable, pre_release,
     paste(ordinary_before, collapse = .Platform$path.sep), pkg, managed_root,
-    file.path(getwd(), profile)
+    file.path(getwd(), profile), profile_consent
 )), stdout = TRUE, stderr = TRUE))
 if (!is.null(attr(child_output, "status")) && attr(child_output, "status") != 0L) {
     stop(paste(child_output, collapse = "\n"))
@@ -185,7 +197,7 @@ intended_path <- normalizePath(file.path(managed_library, "sess"), winslash = "/
 stopifnot(identical(loaded_path, intended_path))
 stopifnot(identical(sess_loaded_source_revision(), stable))
 stopifnot(identical(getExportedValue("sess", "connect")(), "normal-library-dependency"))
-stopifnot(identical(.libPaths(), ordinary_before))
+stopifnot(identical(normalized_paths(.libPaths()), normalized_paths(ordinary_before)))
 
 Sys.unsetenv(c("VSCODE_R_SESS_PKG_PATH", "VSCODE_R_SESS_REPO",
                "VSCODE_R_SESS_LIBRARY", "VSCODE_R_SESS_INTERACTIVE"))

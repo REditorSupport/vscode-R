@@ -45,8 +45,10 @@ the bundled snapshot; missing Imports come from the configured repository.
 Ordinary terminals and manual attach ask before installing a missing or different
 copy. They install into an extension-managed library, keep normal `.libPaths()`
 unchanged, and explicitly load the matching namespace; exact matches in normal
-libraries remain usable. R Interactive prepares its separate runtime as part of
-starting an Interactive session. Run the source/bootstrap checks with
+libraries remain usable. Preparation and installation use the target R's
+platform, version, and normal libraries; when needed, R asks the extension for
+consent. R Interactive prepares its separate runtime as part of starting an
+Interactive session. Run the source/bootstrap checks with
 `pnpm run test:sess-source`, or just the base-R identity checks with
 `pnpm run test:sess-identity`.
 

@@ -15,6 +15,7 @@ import {
     createSessionDiscoveryFile,
     deferWorkspaceRefresh,
     getGlobalPipePath,
+    getSessConsentDirectory,
     isTerminalClosed,
     removeTerminalDiscoveryFile,
     updateTerminalSessionDiscoveryFile,
@@ -46,7 +47,7 @@ async function prepareTerminalForInput(terminal: vscode.Terminal): Promise<boole
                 : await delay(200).then(() => !isTerminalClosed(terminal) && !terminal.exitStatus);
             startup.ready = ready;
             if (!ready && !isTerminalClosed(terminal) && !terminal.exitStatus) {
-                void vscode.window.showWarningMessage('R session did not attach, so code was not sent. Install or update sess and restart the R terminal, or disable r.sessionWatcher and reload VS Code before retrying.');
+                void vscode.window.showWarningMessage('R session did not attach, so code was not sent. Finish sess setup in the R terminal and retry, or disable r.sessionWatcher and reload VS Code before retrying.');
             }
             return ready;
         })();
@@ -255,6 +256,7 @@ export async function makeTerminalOptions(resource?: vscode.Uri): Promise<vscode
     const newRprofile = extensionContext.asAbsolutePath(path.join('R', 'profile.R'));
     if (config().get<boolean>('sessionWatcher')) {
         const pipePath = await getGlobalPipePath();
+        const consentDirectory = await getSessConsentDirectory();
         const discoveryFile = await createSessionDiscoveryFile(pipePath);
         const backend = resolveBackend();
         termOptions.env = {
@@ -263,6 +265,9 @@ export async function makeTerminalOptions(resource?: vscode.Uri): Promise<vscode
             VSCODE_R_SESS_PKG_PATH: extensionContext.asAbsolutePath(path.join('dist', 'resources', 'sess')),
             VSCODE_R_SESS_SOURCE_HELPER: extensionContext.asAbsolutePath(path.join('R', 'sess_source.R')),
             VSCODE_R_SESS_ROOT: path.join(extensionContext.globalStorageUri.fsPath, 'sess'),
+            VSCODE_R_SESS_CONSENT_DIRECTORY: consentDirectory,
+            VSCODE_R_SESS_INSTALLER_HELPER: extensionContext.asAbsolutePath(path.join('R', 'sess-package-install.R')),
+            VSCODE_R_SESS_ATTACH_HELPER: extensionContext.asAbsolutePath(path.join('R', 'attach_sess.R')),
             // Remove inherited endpoint overrides so the per-terminal discovery file
             // remains authoritative, including after a VS Code window reload.
             SESS_ENDPOINT: null,
@@ -305,10 +310,6 @@ export async function createRTerm(preserveshow?: boolean, resource?: vscode.Uri)
     }
     let createdTerminal: vscode.Terminal;
     try {
-        if (!await util.promptToInstallSessPackage(termOptions.cwd)) {
-            await discardDiscoveryFile();
-            return false;
-        }
         createdTerminal = vscode.window.createTerminal(termOptions);
     } catch (error) {
         await discardDiscoveryFile();

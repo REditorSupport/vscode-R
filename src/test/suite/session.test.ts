@@ -408,8 +408,6 @@ suite('Session Communication', () => {
         assert.ok(rPath, 'R path should be found');
         sandbox.stub(util, 'getRterm').resolves(rPath);
         
-        sandbox.stub(util, 'promptToInstallSessPackage').resolves(true);
-
         const result = await rTerminal.createRTerm(true);
         assert.ok(result, 'createRTerm should return true');
         assert.ok(rTerminal.rTerm, 'rTerminal.rTerm should be defined');
@@ -511,8 +509,6 @@ suite('Session Communication', () => {
         const rPath = await util.getRterm();
         assert.ok(rPath, 'R path should be found');
         sandbox.stub(util, 'getRterm').resolves(rPath);
-        sandbox.stub(util, 'promptToInstallSessPackage').resolves(true);
-
         const result = await rTerminal.createRTerm(true);
         assert.ok(result);
         await waitFor(() => session.activeSession, 15000, 200);

@@ -908,10 +908,14 @@ async function ensureAttachSessConsentService(): Promise<string> {
     }
 }
 
+export async function getSessConsentDirectory(): Promise<string> {
+    return ensureAttachSessConsentService();
+}
+
 export async function getAttachSessionCommand(): Promise<string> {
     const pipePath = await getGlobalPipePath();
     const sessPath = extensionContext.asAbsolutePath(path.join('dist', 'resources', 'sess')).replace(/\\/g, '/');
-    const consentDirectory = await ensureAttachSessConsentService();
+    const consentDirectory = await getSessConsentDirectory();
     const scriptPath = getAttachSessionScriptPath(pipePath);
     await fsp.mkdir(path.dirname(scriptPath), { recursive: true });
     await fsp.writeFile(scriptPath, buildAttachSessionScript(pipePath, sessPath, consentDirectory), { encoding: 'utf-8', mode: 0o600 });

@@ -34,7 +34,9 @@ sess_installed_source_revision <- function(lib.loc = .libPaths()) {
         pkg <- file.path(library, "sess")
         if (file.exists(file.path(pkg, "DESCRIPTION"))) {
             revision <- sess_source_revision(file.path(pkg, "DESCRIPTION"))
-            if (!is.null(revision)) return(revision)
+            if (!is.null(revision)) {
+                return(revision)
+            }
         }
     }
     NULL
@@ -56,7 +58,9 @@ sess_find_source_library <- function(revision, lib.loc = .libPaths()) {
 }
 
 sess_loaded_source_revision <- function() {
-    if (!("sess" %in% loadedNamespaces())) return(NULL)
+    if (!("sess" %in% loadedNamespaces())) {
+        return(NULL)
+    }
     path <- getNamespaceInfo(asNamespace("sess"), "path")
     sess_source_revision(file.path(path, "DESCRIPTION"))
 }
@@ -67,10 +71,14 @@ sess_load_namespace <- function(library, revision, normal_libraries = .libPaths(
     description <- read.dcf(file.path(library, "sess", "DESCRIPTION"))
     imports <- if ("Imports" %in% colnames(description)) {
         trimws(gsub("\\s*\\(.*\\)", "", unlist(strsplit(description[1L, "Imports"], ","))))
-    } else character()
+    } else {
+        character()
+    }
     # processx may load ps during .onLoad. Load it first so dependencies found
     # only in the managed library remain visible without changing .libPaths().
-    if ("processx" %in% imports) loadNamespace("ps", lib.loc = support_paths)
+    if ("processx" %in% imports) {
+        loadNamespace("ps", lib.loc = support_paths)
+    }
     for (package in intersect(c("jsonlite", "later", "processx", "rstudioapi"), imports)) {
         loadNamespace(package, lib.loc = support_paths)
     }

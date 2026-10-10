@@ -310,49 +310,6 @@ export function readSessSourceRevision(description: string | undefined): string 
     return revision && /^git-tree:(?:[a-f0-9]{40}|[a-f0-9]{64})$/.test(revision) ? revision : undefined;
 }
 
-function rStringLiteral(value: string): string {
-    return `'${value.replace(/\\/g, '/').replace(/'/g, "\\'")}'`;
-}
-
-async function querySessSource(revision: string | undefined, library: string | undefined, cwd?: string | URL): Promise<string | undefined> {
-    const helper = extensionContext.asAbsolutePath(path.join('R', 'sess_source.R'));
-    const helperLiteral = rStringLiteral(helper);
-    const libraryArgument = library ? `, lib.loc = ${rStringLiteral(library)}` : '';
-    const command = [
-        'local({',
-        `source(${helperLiteral}, local = TRUE);`,
-        revision
-            ? `if (sess_has_source_revision(${rStringLiteral(revision)}${libraryArgument})) cat(${rStringLiteral(revision)})`
-            : `revision <- sess_installed_source_revision(${library ? `lib.loc = ${rStringLiteral(library)}` : ''}); if (!is.null(revision)) cat(revision)`,
-        '})'
-    ].join(' ');
-    const result = await executeRCommand(command, cwd);
-    return result || undefined;
-}
-
-export async function getInstalledSessSourceRevision(cwd?: string | URL, expectedRevision?: string, library?: string): Promise<string | undefined> {
-    return querySessSource(expectedRevision, library, cwd);
-}
-
-export interface SessRuntimeIdentity {
-    platform: string;
-    version: string;
-}
-
-export async function getSessRuntimeIdentity(cwd?: string | URL): Promise<SessRuntimeIdentity | undefined> {
-    const identity = await executeRCommand("cat(paste(R.version$platform, paste(R.version$major, strsplit(R.version$minor, '.', fixed=TRUE)[[1]][1], sep='.'), sep='|'))", cwd);
-    const [platform, version, ...rest] = (identity ?? '').split('|');
-    if (!platform || !version || rest.length || !/^[A-Za-z0-9_.-]+$/.test(platform) || !/^\d+\.\d+$/.test(version)) {
-        return undefined;
-    }
-    return { platform, version };
-}
-
-export function getSessManagedLibrary(root: string, identity: SessRuntimeIdentity, revision: string): string {
-    const revisionHash = revision.replace(/^git-tree:/, '');
-    return path.join(root, identity.platform, identity.version, revisionHash, 'library');
-}
-
 export function getRLibPaths(): string | undefined {
     return config().get<string[]>('libPaths')
         ?.map(value => substituteVariables(value))
@@ -601,89 +558,6 @@ export async function promptToInstallRPackage(name: string, section: string, cwd
                 void _config.update(section, false);
             }
         });
-}
-
-/**
- * Prompt to install bundled sess and wait for a requested installation.
- * Return false if setup fails; declining installation still permits starting R.
- */
-export async function promptToInstallSessPackage(
-    cwd?: string | vscode.Uri,
-    _config = config,
-    _getInstalledSessSourceRevision = getInstalledSessSourceRevision,
-    _readFileSyncSafe = readFileSyncSafe,
-    _executeAsTask: (name: string, process: string, args: string[], asProcess: true, cwd?: string) => Promise<void> = executeAsTask,
-    _getRuntimeIdentity = getSessRuntimeIdentity
-): Promise<boolean> {
-    const resource = resourceFromCwd(cwd);
-    const workingDirectory = cwd instanceof vscode.Uri ? cwd.fsPath : cwd;
-    const activeConfig = _config();
-    const sessionWatcher = activeConfig.get<boolean>('sessionWatcher');
-    if (!sessionWatcher) {
-        return true;
-    }
-
-    const sessPath = extensionContext.asAbsolutePath(path.join('dist', 'resources', 'sess')).replace(/\\/g, '/');
-    const descriptionPath = path.join(sessPath, 'DESCRIPTION');
-    const descriptionContent = _readFileSyncSafe(descriptionPath);
-    const bundledRevision = readSessSourceRevision(descriptionContent);
-    if (!bundledRevision) {
-        void vscode.window.showErrorMessage('Bundled sess has no valid source revision. Rebuild or reinstall the vscode-R extension.');
-        return false;
-    }
-
-    if (await _getInstalledSessSourceRevision(workingDirectory, bundledRevision) === bundledRevision) {
-        return true;
-    }
-
-    const identity = await _getRuntimeIdentity(workingDirectory);
-    if (!identity) {
-        void vscode.window.showErrorMessage('Could not determine the R platform and version. The session watcher will not start.');
-        return true;
-    }
-    const managedRoot = path.join(extensionContext.globalStorageUri.fsPath, 'sess');
-    const managedLibrary = getSessManagedLibrary(managedRoot, identity, bundledRevision);
-    if (await _getInstalledSessSourceRevision(workingDirectory, bundledRevision, managedLibrary) === bundledRevision) {
-        return true;
-    }
-
-    const installSessScript = extensionContext.asAbsolutePath(path.join('R', 'install_sess.R')).replace(/\\/g, '/');
-    const installedRevision = await _getInstalledSessSourceRevision(workingDirectory);
-    const installMsg = installedRevision
-        ? 'The installed sess does not match this build of vscode-R. Install the bundled copy in a vscode-R-managed library? Your existing installation will not be modified.'
-        : 'vscode-R needs its bundled sess package for the session watcher. Install it in a vscode-R-managed library? Your existing sess installations will not be modified.';
-
-    const select = await vscode.window.showWarningMessage(installMsg, 'Yes', 'No');
-    if (select !== 'Yes') {
-        return true;
-    }
-    if (!_config().get<boolean>('sessionWatcher')) {
-        return true;
-    }
-    const rPath = await getRpath(false, resource);
-    if (!rPath) {
-        return false;
-    }
-    const repo = await getCranUrl('', workingDirectory);
-    const args = [
-        '--silent',
-        '--no-echo',
-        '--no-save',
-        '--no-restore',
-        `--file=${installSessScript}`,
-        '--args', sessPath, repo, managedLibrary
-    ];
-    try {
-        await _executeAsTask('Install "sess" package', rPath, args, true, workingDirectory);
-        if (await _getInstalledSessSourceRevision(workingDirectory, bundledRevision, managedLibrary) !== bundledRevision) {
-            void vscode.window.showErrorMessage('The bundled "sess" package was not installed successfully. Check the installation task output and try starting R again.');
-            return false;
-        }
-        return true;
-    } catch (error) {
-        void vscode.window.showErrorMessage(`Could not install the bundled "sess" package: ${catchAsError(error).message}`);
-        return false;
-    }
 }
 
 /**
