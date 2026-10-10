@@ -22,6 +22,68 @@ async function focusHtmlViewer(panel: vscode.WebviewPanel): Promise<void> {
 }
 
 suite('HTML widget browser rendering', () => {
+    test('CSP-blocked acknowledgements release navigation after five seconds in a real webview', async () => {
+        const sandbox = sinon.createSandbox();
+        sandbox.stub(vscode.window, 'registerWebviewPanelSerializer').returns({ dispose: sandbox.stub() });
+        const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'vscode-r-widget-csp-'));
+        const panels: vscode.WebviewPanel[] = [];
+        const acknowledgements: number[] = [];
+        const source = session.registerSessionTransport('html-browser-csp', 'widget-test-host', directory, () => Promise.resolve({}));
+        source.pid = '12105'; source.rVer = '4.6.1';
+        try {
+            mockExtensionContext(path.resolve(__dirname, '../../..'), sandbox);
+            const manager = initializeHtmlWidgetViewers(extensionContext, {
+                resolveSession: source => session.getViewerSessionContext(source.sessionId, source)!,
+                getActiveSessionId: () => session.activeSession?.sessionId,
+            });
+            const createPanel = vscode.window.createWebviewPanel.bind(vscode.window);
+            sandbox.stub(vscode.window, 'createWebviewPanel').callsFake((...args) => {
+                const panel = createPanel(...args);
+                panels.push(panel);
+                panel.webview.onDidReceiveMessage((message: { message?: string; generation?: number }) => {
+                    if (message.message === 'widget/loaded' && message.generation !== undefined) {
+                        acknowledgements.push(message.generation);
+                    }
+                });
+                return panel;
+            });
+            const first = path.join(directory, 'first.html');
+            const blocked = path.join(directory, 'blocked.html');
+            fs.writeFileSync(first, '<html><head></head><body>First output</body></html>');
+            fs.writeFileSync(blocked, '<html><head><meta http-equiv="Content-Security-Policy" content="script-src \'none\'"></head><body>Output with scripts disabled</body></html>');
+            const context = session.getViewerSessionContext(source.sessionId);
+            await showWebView(first, 'First', 'Two', context);
+            const entry = [...manager.viewers.values()][0];
+            await waitForValue(() => acknowledgements.includes(entry.revision) ? true : undefined);
+            await showWebView(blocked, 'Blocked', 'Two', context);
+            const blockedGeneration = entry.revision;
+            const html = entry.panel.webview.html;
+            assert.strictEqual(entry.loading, true);
+            await waitForValue(() => !entry.loading ? true : undefined);
+            assert.ok(!acknowledgements.includes(blockedGeneration), 'The authored CSP must block the injected load script');
+            assert.strictEqual(entry.panel.webview.html, html, 'The timeout must preserve the output');
+            await focusHtmlViewer(entry.panel);
+            await runHtmlViewerCommand('back');
+            assert.strictEqual(entry.state.index, 0);
+            await waitForValue(() => acknowledgements.includes(entry.revision) ? true : undefined);
+            assert.ok(entry.panel.webview.html.includes('First output'));
+            await focusHtmlViewer(entry.panel);
+            await runHtmlViewerCommand('forward');
+            assert.strictEqual(entry.state.index, 1);
+            await waitForValue(() => !entry.loading ? true : undefined);
+            await focusHtmlViewer(entry.panel);
+            await runHtmlViewerCommand('remove');
+            assert.strictEqual(entry.state.history.length, 1);
+            await waitForValue(() => acknowledgements.includes(entry.revision) ? true : undefined);
+        } finally {
+            panels.forEach(panel => { panel.dispose(); });
+            await shutdownHtmlWidgetViewers();
+            session.unregisterSessionTransport(source);
+            sandbox.restore();
+            fs.rmSync(directory, { recursive: true, force: true });
+        }
+    });
+
     test('document edits preserve authored titles, SVG accessibility, and tag-shaped script text', async () => {
         const sandbox = sinon.createSandbox();
         sandbox.stub(vscode.window, 'registerWebviewPanelSerializer').returns({ dispose: sandbox.stub() });

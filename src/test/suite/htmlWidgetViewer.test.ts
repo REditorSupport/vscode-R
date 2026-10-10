@@ -28,6 +28,7 @@ suite('Session-aware HTML widget Viewer', () => {
     let trustedWorkspace: boolean;
     let workspaceRoots: string[];
     let autoLoad: boolean;
+    const progressTasks: Array<{ messages: string[]; done: boolean }> = [];
     const viewerSessions: HtmlViewerSessionAccess = {
         resolveSession: source => session.getViewerSessionContext(source.sessionId, source)!,
         getActiveSessionId: () => session.activeSession?.sessionId,
@@ -38,6 +39,17 @@ suite('Session-aware HTML widget Viewer', () => {
         trustedWorkspace = false;
         workspaceRoots = [];
         autoLoad = true;
+        progressTasks.length = 0;
+        sandbox.stub(vscode.window, 'withProgress').callsFake((options, task) => {
+            assert.strictEqual(options.location, vscode.ProgressLocation.Window);
+            const state = { messages: [] as string[], done: false };
+            progressTasks.push(state);
+            return task({ report: update => { if (update.message) { state.messages.push(update.message); } } },
+                { isCancellationRequested: false, onCancellationRequested: sandbox.stub() }).then(result => {
+                state.done = true;
+                return result;
+            });
+        });
         sandbox.stub(vscode.workspace, 'isTrusted').get(() => trustedWorkspace);
         sandbox.stub(vscode.workspace, 'workspaceFolders').get(() => workspaceRoots.map((root, index) => ({
             uri: vscode.Uri.file(path.resolve(root)), name: 'HTML viewer test workspace', index,
@@ -1027,6 +1039,113 @@ suite('Session-aware HTML widget Viewer', () => {
         const generation = Number(/data-generation="(\d+)"/.exec(panels[0].webview.html)?.[1]);
         await receivers.get(panels[0])!({ message: 'widget/loaded', generation });
         assert.strictEqual(contexts.get('r.htmlViewer.canGoForward'), true);
+    });
+
+    test('missing acknowledgements unlock navigation after five seconds and late readiness clears progress', async () => {
+        const clock = sandbox.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+        const source = owner('html-load-timeout');
+        await show('/tmp/a.html', source, 'A');
+        autoLoad = false;
+        read.onCall(1).resolves('<html><head><meta http-equiv="Content-Security-Policy" content="script-src \'none\'"></head><body>Blocked acknowledgement</body></html>');
+        await show('/tmp/b.html', source, 'B');
+        const panel = panels[0];
+        const html = panel.webview.html;
+        const task = progressTasks.at(-1)!;
+        assert.deepStrictEqual(task.messages, ['HTML Viewer: Loading HTML output…']);
+        clock.tick(4999);
+        assert.ok((['back', 'forward', 'remove'] as const).every(button => disabled(panel, button)));
+        clock.tick(1);
+        assert.strictEqual(disabled(panel, 'back'), false);
+        assert.strictEqual(disabled(panel, 'remove'), false);
+        assert.strictEqual(panel.webview.html, html, 'Timeout must preserve the rendered content');
+        assert.strictEqual(task.messages.at(-1), 'HTML Viewer: Still loading. Navigation is available.');
+        assert.strictEqual(task.done, false, 'Timeout releases navigation without claiming loading completed');
+        const generation = Number(/data-generation="(\d+)"/.exec(html)?.[1]);
+        await receivers.get(panel)!({ message: 'widget/loaded', generation });
+        assert.strictEqual(task.done, true, 'Readiness after the timeout must still dismiss progress');
+        assert.strictEqual(clock.countTimers(), 0);
+        await navigate(panel, 'back');
+        clock.tick(5000);
+        assert.strictEqual(disabled(panel, 'forward'), false);
+        autoLoad = true;
+        await navigate(panel, 'forward');
+        assert.strictEqual(position(panel), '2 / 2');
+        await remove(panel);
+        assert.strictEqual(position(panel), '1 / 1');
+    });
+
+    test('a stalled HTML read keeps the previous output and can be superseded after the timeout', async () => {
+        const clock = sandbox.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+        const source = owner('html-read-timeout');
+        await show('/tmp/a.html', source, 'A');
+        const previous = panels[0].webview.html;
+        const slow = deferred<string>();
+        read.onCall(1).returns(slow.promise);
+        const pending = show('/tmp/b.html', source, 'B');
+        const task = progressTasks.at(-1)!;
+        assert.strictEqual(panels[0].webview.html, previous);
+        clock.tick(5000);
+        await navigate(panels[0], 'back');
+        assert.strictEqual(task.done, true);
+        slow.resolve('<div>Obsolete slow output</div>');
+        await pending;
+        assert.strictEqual(outputTitle(panels[0]), 'A');
+        assert.ok(progressTasks.every(task => task.done));
+        assert.strictEqual(clock.countTimers(), 0);
+    });
+
+    test('superseded loads get their own deadline and stale readiness cannot dismiss current progress', async () => {
+        const clock = sandbox.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+        const source = owner('html-timeout-generation');
+        autoLoad = false;
+        await show('/tmp/a.html', source, 'A');
+        const generation = Number(/data-generation="(\d+)"/.exec(panels[0].webview.html)?.[1]);
+        clock.tick(4000);
+        await show('/tmp/b.html', source, 'B');
+        const task = progressTasks.at(-1)!;
+        assert.strictEqual(progressTasks[0].done, true);
+        clock.tick(1000);
+        await receivers.get(panels[0])!({ message: 'widget/loaded', generation });
+        assert.strictEqual(task.done, false);
+        assert.strictEqual(disabled(panels[0], 'back'), true);
+        clock.tick(4000);
+        assert.strictEqual(disabled(panels[0], 'back'), false);
+        panels[0].dispose();
+        await Promise.resolve();
+        assert.strictEqual(task.done, true);
+        assert.strictEqual(clock.countTimers(), 0);
+    });
+
+    test('successful loads and definitive file failures stop progress and cancel the timeout', async () => {
+        const clock = sandbox.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+        const source = owner('html-load-progress');
+        await show('/tmp/a.html', source, 'A');
+        assert.strictEqual(progressTasks[0].done, true);
+        autoLoad = false;
+        read.onCall(1).rejects(new Error('missing file'));
+        await show('/tmp/missing.html', source, 'Missing');
+        assert.ok(widgetDocument(panels[0]).includes('This HTML widget could not be loaded'));
+        assert.strictEqual(disabled(panels[0], 'back'), false);
+        assert.ok(progressTasks.every(task => task.done));
+        assert.strictEqual(clock.countTimers(), 0);
+        read.onCall(2).rejects(new Error('unowned file failure'));
+        await assert.rejects(showWebView('/tmp/unowned.html', 'Unowned', 'Two'), /unowned file failure/);
+        assert.ok(progressTasks.every(task => task.done));
+        assert.strictEqual(clock.countTimers(), 0);
+    });
+
+    test('disposing a viewer or shutting down during loading cancels progress and its timer', async () => {
+        const clock = sandbox.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+        autoLoad = false;
+        await show('/tmp/a.html', owner('html-dispose-progress'), 'A');
+        panels[0].dispose();
+        await Promise.resolve();
+        assert.strictEqual(progressTasks[0].done, true);
+        assert.strictEqual(clock.countTimers(), 0);
+        await show('/tmp/b.html', owner('html-shutdown-progress'), 'B');
+        await shutdownHtmlWidgetViewers(true);
+        assert.ok(progressTasks.every(task => task.done));
+        assert.strictEqual(clock.countTimers(), 0);
     });
 
     test('late load acknowledgements cannot enable navigation for a newer document', async () => {

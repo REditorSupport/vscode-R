@@ -5,7 +5,7 @@ import { randomUUID } from 'crypto';
 import { pathToFileURL } from 'url';
 import { readFile } from 'fs/promises';
 import { load } from 'cheerio';
-import { Disposable, ExtensionContext, Uri, ViewColumn, Webview, WebviewPanel, window, env, commands, workspace } from 'vscode';
+import { Disposable, ExtensionContext, ProgressLocation, Uri, ViewColumn, Webview, WebviewPanel, window, env, commands, workspace } from 'vscode';
 import { ViewerSessionContext, ViewerSessionSource, formatSessionLabel } from '../viewerSession';
 import { WidgetHistory, WidgetHistoryStore, widgetHistoryLimit, widgetSessionIdentity } from './history';
 import type { HtmlViewerPanelReference, HtmlViewerPanelState } from './webviewMessages';
@@ -21,6 +21,7 @@ interface WidgetViewer {
     revision: number;
     disposed: boolean;
     loading: boolean;
+    finishLoading?: () => void;
     showSessionInfo: boolean;
     subscriptions: Array<{ dispose(): void }>;
     resourceRoots: Map<string, Uri[]>;
@@ -241,8 +242,8 @@ class HtmlWidgetViewerManager {
             if (entry.disposed) { return; }
             if (msg.message === 'linkClicked' && msg.href) {
                 void env.openExternal(Uri.parse(msg.href));
-            } else if (msg.message === 'widget/loaded' && msg.generation === entry.revision && entry.loading) {
-                entry.loading = false;
+            } else if (msg.message === 'widget/loaded' && msg.generation === entry.revision) {
+                entry.finishLoading?.();
                 this.updateToolbar();
             } else if (msg.message === 'widget/find' && msg.generation === entry.revision) {
                 panel.reveal(panel.viewColumn, false);
@@ -257,6 +258,7 @@ class HtmlWidgetViewerManager {
     }
 
     private releasePanel(entry: WidgetViewer): void {
+        entry.finishLoading?.();
         entry.subscriptions.splice(0).forEach(subscription => subscription?.dispose());
     }
 
@@ -342,16 +344,38 @@ class HtmlWidgetViewerManager {
         await pending;
     }
 
+    private startLoading(entry: WidgetViewer, generation: number): void {
+        entry.finishLoading?.();
+        entry.loading = true;
+        void window.withProgress({ location: ProgressLocation.Window }, progress => new Promise<void>(resolve => {
+            progress.report({ message: 'HTML Viewer: Loading HTML output…' });
+            // Run in the extension host: the output's CSP may block our script,
+            // or a resource may prevent the window load event from completing.
+            const timeout = setTimeout(() => {
+                if (entry.disposed || entry.revision !== generation) { return; }
+                entry.loading = false;
+                progress.report({ message: 'HTML Viewer: Still loading. Navigation is available.' });
+                this.updateToolbar();
+            }, 5000);
+            entry.finishLoading = () => {
+                clearTimeout(timeout);
+                entry.loading = false;
+                entry.finishLoading = undefined;
+                resolve();
+            };
+        }));
+        this.updateToolbar();
+    }
+
     private async render(entry: WidgetViewer, reveal = true): Promise<void> {
         const { extensionPath } = this.context;
         const generation = ++entry.revision;
-        entry.loading = true;
-        this.updateToolbar();
+        this.startLoading(entry, generation);
         const item = entry.state.history[entry.state.index];
         const dir = item ? path.dirname(item.file) : path.join(extensionPath, 'dist/webviews/webview');
         const { panel } = entry;
         try {
-            const { html, localResourceRoots } = await getWebviewHtml(panel.webview, item?.file, dir, Boolean(entry.session), generation, { id: entry.id });
+            const { html, localResourceRoots, failed } = await getWebviewHtml(panel.webview, item?.file, dir, Boolean(entry.session), generation, { id: entry.id });
             if (!entry.disposed && entry.revision === generation) {
                 if (item) { entry.resourceRoots.set(item.file, localResourceRoots); }
                 const files = new Set(entry.state.history.map(output => output.file));
@@ -374,11 +398,15 @@ class HtmlWidgetViewerManager {
                     panel.webview.options = { ...panel.webview.options, localResourceRoots: resourceRoots };
                 }
                 panel.webview.html = html;
+                if (failed) {
+                    entry.finishLoading?.();
+                    this.updateToolbar();
+                }
                 if (reveal) { panel.reveal(panel.viewColumn, true); }
             }
         } catch (error) {
             if (!entry.disposed && entry.revision === generation) {
-                entry.loading = false;
+                entry.finishLoading?.();
                 this.updateToolbar();
             }
             throw error;
@@ -412,7 +440,7 @@ class HtmlWidgetViewerManager {
 
 async function getWebviewHtml(
     webview: Webview, file: string | undefined, dir: string, sessionOwned = false, generation = 0, state?: HtmlViewerPanelReference,
-): Promise<{ html: string; localResourceRoots: Uri[] }> {
+): Promise<{ html: string; localResourceRoots: Uri[]; failed: boolean }> {
     const { extensionPath } = getManager().context;
     // Resolve webview URIs before awaiting I/O; the panel may close while loading.
     const baseUri = String(webview.asWebviewUri(Uri.file(dir)));
@@ -420,11 +448,13 @@ async function getWebviewHtml(
     const styleUri = webview.asWebviewUri(Uri.file(path.join(extensionPath, 'dist/webviews/webview/style.css')));
     const localResourceRoots = [Uri.file(dir), Uri.file(path.join(extensionPath, 'dist/webviews/webview'))];
     let source = '<p>No HTML outputs in this session. New HTML output will appear here.</p>';
+    let failed = false;
     if (file !== undefined) {
         try {
             source = await readFile(file, 'utf8');
         } catch (error) {
             if (!sessionOwned) { throw error; }
+            failed = true;
             source = `<p role="alert">This HTML widget could not be loaded. Its original file may no longer be available.</p><pre>${escapeHtml(file)}</pre>`;
         }
     }
@@ -492,7 +522,7 @@ async function getWebviewHtml(
     for (const edit of edits.sort((left, right) => right.start - left.start)) {
         html = html.slice(0, edit.start) + edit.text + html.slice(edit.end);
     }
-    return { html, localResourceRoots };
+    return { html, localResourceRoots, failed };
 }
 
 function isAllowedResourceRoot(resourceRoot: Uri, dir: string): boolean {
