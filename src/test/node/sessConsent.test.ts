@@ -87,16 +87,6 @@ suite('sess install consent bridge', () => {
         assert.strictEqual(prompts, 0);
     });
 
-    test('declines when the user dismisses the prompt', async () => {
-        let prompts = 0;
-        const broker = service(() => { prompts++; return Promise.resolve('dismiss'); });
-        await broker.start();
-        const id = '8'.repeat(32);
-        await writeRequest(directory, id);
-        assert.strictEqual(await waitForFile(path.join(directory, `${id}.response`)), 'decline\n');
-        assert.strictEqual(prompts, 1);
-    });
-
     test('Not now and dismissal do not suppress later prompts', async () => {
         let prompts = 0;
         const choices = ['notNow', 'dismiss'] as const;

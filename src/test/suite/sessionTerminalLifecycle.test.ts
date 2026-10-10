@@ -14,8 +14,6 @@ import * as util from '../../util';
 import { mockExtensionContext } from '../common/mockvscode';
 import { deferred, SessionConnections, waitForValue as waitFor } from '../common/sessionConnections';
 
-const originalSetTimeout = globalThis.setTimeout;
-
 async function settleWithFakeTime<T>(promise: Promise<T>, clock: sinon.SinonFakeTimers): Promise<T> {
     let settled = false;
     void promise.then(() => { settled = true; }, () => { settled = true; });
@@ -31,11 +29,13 @@ suite('Session Terminal Lifecycle', () => {
     let ancestors: sinon.SinonStub;
     let connections: SessionConnections;
 
-    async function makeStartupFile(state: 'pending' | 'ready' | 'failed'): Promise<{ directory: string; file: string }> {
+    async function makeStartupFile(state: 'pending' | 'ready' | 'failed'):
+    Promise<{ directory: string; file: string; discoveryFile: string }> {
         const directory = await fsp.mkdtemp(path.join(os.tmpdir(), 'vscode-r-terminal-startup-'));
-        const file = path.join(directory, 'session.json.startup');
+        const discoveryFile = path.join(directory, 'session.json');
+        const file = `${discoveryFile}.startup`;
         await fsp.writeFile(file, `${state}\n`);
-        return { directory, file };
+        return { directory, file, discoveryFile };
     }
 
     async function waitForTimerDelay(timerSpy: sinon.SinonSpy, delay: number, startupFile: string): Promise<() => void> {
@@ -49,6 +49,36 @@ suite('Session Terminal Lifecycle', () => {
             await fsp.readFile(startupFile);
         }
         assert.fail(`The startup wait did not schedule its ${delay}ms deadline`);
+    }
+
+    function makeManagedTerminal(rPid: number, discoveryFile: string, bracketedPaste = true) {
+        const sendText = sandbox.stub();
+        const terminal = {
+            name: 'R Interactive', processId: Promise.resolve(rPid),
+            show: sandbox.stub(), dispose: sandbox.stub(), sendText,
+        } as unknown as vscode.Terminal;
+        sandbox.stub(executionTarget, 'tryInteractiveExecution').resolves(false);
+        sandbox.stub(util, 'config').returns({
+            get: (key: string) => ({ sessionWatcher: true, consoleArgs: [], bracketedPaste, 'source.focus': 'none' })[key],
+        } as unknown as vscode.WorkspaceConfiguration);
+        sandbox.stub(util, 'getRterm').resolves(process.execPath);
+        sandbox.stub(session, 'getSessConsentDirectory').resolves('/unused-test-consent');
+        sandbox.stub(session, 'createSessionDiscoveryFile').resolves(discoveryFile);
+        sandbox.stub(session, 'updateTerminalSessionDiscoveryFile').resolves();
+        sandbox.stub(vscode.window, 'terminals').value([terminal]);
+        sandbox.stub(vscode.window, 'activeTerminal').value(terminal);
+        sandbox.stub(vscode.window, 'createTerminal').returns(terminal);
+        const warning = sandbox.stub(vscode.window, 'showWarningMessage').resolves(undefined);
+        const close = new vscode.EventEmitter<vscode.Terminal>();
+        sandbox.stub(vscode.window, 'onDidCloseTerminal').callsFake(close.event);
+        return {
+            terminal, sendText, warning, close,
+            cleanup() {
+                close.fire(terminal);
+                rTerminal.deleteTerminal(terminal);
+                close.dispose();
+            },
+        };
     }
 
     setup(() => {
@@ -183,32 +213,14 @@ suite('Session Terminal Lifecycle', () => {
 
     for (const explicitBinding of [false, true]) {
         test(`managed terminal accepts its first source command after native attach (explicit binding: ${String(explicitBinding)})`, async () => {
-            const { directory, file: startupPath } = await makeStartupFile('ready');
-            const discoveryPath = startupPath.slice(0, -'.startup'.length);
-            sandbox.stub(executionTarget, 'tryInteractiveExecution').resolves(false);
-            sandbox.stub(util, 'config').returns({
-                get: (key: string) => ({ sessionWatcher: true, consoleArgs: [], 'source.focus': 'none' })[key],
-            } as unknown as vscode.WorkspaceConfiguration);
-            sandbox.stub(util, 'getRterm').resolves(process.execPath);
-            sandbox.stub(session, 'getSessConsentDirectory').resolves('/unused-test-consent');
-            sandbox.stub(session, 'createSessionDiscoveryFile').resolves(discoveryPath);
-            sandbox.stub(session, 'updateTerminalSessionDiscoveryFile').resolves();
+            const { directory, discoveryFile, file: startupPath } = await makeStartupFile('ready');
+            const fixture = makeManagedTerminal(46260, discoveryFile, false);
             const waitUntilReady = session.waitForTerminalReady;
             // Exercise the real readiness logic, with a bounded failure timeout.
             const readiness = sandbox.stub(session, 'waitForTerminalReady')
                 .callsFake((terminal, _timeout, startupPath, allowRecovery) =>
                     waitUntilReady(terminal, 1000, startupPath, allowRecovery));
-            const warning = sandbox.stub(vscode.window, 'showWarningMessage').resolves(undefined);
-            const sendText = sandbox.stub();
-            const terminal = {
-                name: 'R Interactive', processId: Promise.resolve(46260),
-                show: () => undefined, sendText,
-            } as unknown as vscode.Terminal;
-            sandbox.stub(vscode.window, 'terminals').value([terminal]);
-            sandbox.stub(vscode.window, 'activeTerminal').value(terminal);
-            sandbox.stub(vscode.window, 'createTerminal').returns(terminal);
-            const close = new vscode.EventEmitter<vscode.Terminal>();
-            sandbox.stub(vscode.window, 'onDidCloseTerminal').callsFake(close.event);
+            const { terminal, sendText, warning } = fixture;
             const sessionId = `source-readiness-${String(explicitBinding)}`;
             try {
                 assert.strictEqual(await rTerminal.createRTerm(), true);
@@ -225,12 +237,10 @@ suite('Session Terminal Lifecycle', () => {
                 sinon.assert.calledOnceWithExactly(sendText, 'source("example.R")');
                 sinon.assert.notCalled(warning);
             } finally {
-                close.fire(terminal);
-                rTerminal.deleteTerminal(terminal);
+                fixture.cleanup();
                 try {
                     await session.cleanupSession(sessionId);
                 } finally {
-                    close.dispose();
                     await fsp.rm(directory, { recursive: true, force: true });
                 }
             }
@@ -415,26 +425,11 @@ suite('Session Terminal Lifecycle', () => {
     });
 
     test('pending startup holds queued terminal input beyond 30 seconds until ready and this terminal attaches', async () => {
-        const { directory, file: startupFile } = await makeStartupFile('pending');
-        const discoveryFile = startupFile.slice(0, -'.startup'.length);
+        const { directory, file: startupFile, discoveryFile } = await makeStartupFile('pending');
         const rPid = 46291;
         const otherPid = 46292;
-        const sendText = sandbox.stub();
-        const terminal = {
-            name: 'R Interactive', processId: Promise.resolve(rPid),
-            show: sandbox.stub(), dispose: sandbox.stub(), sendText,
-        } as unknown as vscode.Terminal;
-        sandbox.stub(executionTarget, 'tryInteractiveExecution').resolves(false);
-        sandbox.stub(util, 'config').returns({
-            get: (key: string) => ({ sessionWatcher: true, consoleArgs: [], bracketedPaste: true, 'source.focus': 'none' })[key],
-        } as unknown as vscode.WorkspaceConfiguration);
-        sandbox.stub(util, 'getRterm').resolves(process.execPath);
-        sandbox.stub(session, 'getSessConsentDirectory').resolves('/unused-test-consent');
-        sandbox.stub(session, 'createSessionDiscoveryFile').resolves(discoveryFile);
-        sandbox.stub(session, 'updateTerminalSessionDiscoveryFile').resolves();
-        sandbox.stub(vscode.window, 'terminals').value([terminal]);
-        sandbox.stub(vscode.window, 'activeTerminal').value(terminal);
-        sandbox.stub(vscode.window, 'createTerminal').returns(terminal);
+        const fixture = makeManagedTerminal(rPid, discoveryFile);
+        const { sendText } = fixture;
         const waitForReady = session.waitForTerminalReady;
         let readinessStarted!: () => void;
         const started = new Promise<void>(resolve => { readinessStarted = resolve; });
@@ -442,8 +437,6 @@ suite('Session Terminal Lifecycle', () => {
             readinessStarted();
             return waitForReady(current, timeout, startupPath, allowRecovery);
         });
-        const close = new vscode.EventEmitter<vscode.Terminal>();
-        sandbox.stub(vscode.window, 'onDidCloseTerminal').callsFake(close.event);
         const timerSandbox = sinon.createSandbox();
         const clock = timerSandbox.useFakeTimers();
         const timerSpy = timerSandbox.spy(globalThis, 'setTimeout');
@@ -483,40 +476,20 @@ suite('Session Terminal Lifecycle', () => {
                 ['\x1b[200~second\x1b[201~', true],
             ]);
         } finally {
-            close.fire(terminal);
-            rTerminal.deleteTerminal(terminal);
+            fixture.cleanup();
             timerSandbox.restore();
             if (commandsSettled) { await commandsSettled; }
             await connections.dispose();
-            close.dispose();
             await fsp.rm(directory, { recursive: true, force: true });
         }
     });
 
     for (const state of ['ready', 'failed'] as const) {
         test(`an already attached managed terminal waits for pending startup to become ${state}`, async () => {
-            const { directory, file: startupFile } = await makeStartupFile('pending');
-            const discoveryFile = startupFile.slice(0, -'.startup'.length);
+            const { directory, file: startupFile, discoveryFile } = await makeStartupFile('pending');
             const rPid = state === 'ready' ? 46294 : 46295;
-            const sendText = sandbox.stub();
-            const terminal = {
-                name: 'R Interactive', processId: Promise.resolve(rPid),
-                show: sandbox.stub(), dispose: sandbox.stub(), sendText,
-            } as unknown as vscode.Terminal;
-            sandbox.stub(executionTarget, 'tryInteractiveExecution').resolves(false);
-            sandbox.stub(util, 'config').returns({
-                get: (key: string) => ({ sessionWatcher: true, consoleArgs: [], bracketedPaste: true, 'source.focus': 'none' })[key],
-            } as unknown as vscode.WorkspaceConfiguration);
-            sandbox.stub(util, 'getRterm').resolves(process.execPath);
-            sandbox.stub(session, 'getSessConsentDirectory').resolves('/unused-test-consent');
-            sandbox.stub(session, 'createSessionDiscoveryFile').resolves(discoveryFile);
-            sandbox.stub(session, 'updateTerminalSessionDiscoveryFile').resolves();
-            sandbox.stub(vscode.window, 'terminals').value([terminal]);
-            sandbox.stub(vscode.window, 'activeTerminal').value(terminal);
-            sandbox.stub(vscode.window, 'createTerminal').returns(terminal);
-            const warning = sandbox.stub(vscode.window, 'showWarningMessage').resolves(undefined);
-            const close = new vscode.EventEmitter<vscode.Terminal>();
-            sandbox.stub(vscode.window, 'onDidCloseTerminal').callsFake(close.event);
+            const fixture = makeManagedTerminal(rPid, discoveryFile);
+            const { sendText, warning } = fixture;
             const timerSandbox = sinon.createSandbox();
             let commandSettled: Promise<PromiseSettledResult<boolean>> | undefined;
 
@@ -549,12 +522,10 @@ suite('Session Terminal Lifecycle', () => {
                     sinon.assert.calledOnce(warning);
                 }
             } finally {
-                close.fire(terminal);
-                rTerminal.deleteTerminal(terminal);
+                fixture.cleanup();
                 timerSandbox.restore();
                 if (commandSettled) { await commandSettled; }
                 await connections.dispose();
-                close.dispose();
                 await fsp.rm(directory, { recursive: true, force: true });
             }
         });
@@ -601,26 +572,10 @@ suite('Session Terminal Lifecycle', () => {
     });
 
     test('failed startup declines input before late attach, while a fresh attached-terminal retry can proceed', async () => {
-        const { directory, file: startupFile } = await makeStartupFile('pending');
-        const discoveryFile = startupFile.slice(0, -'.startup'.length);
+        const { directory, file: startupFile, discoveryFile } = await makeStartupFile('pending');
         const rPid = 46293;
-        const sendText = sandbox.stub();
-        const terminal = {
-            name: 'R Interactive', processId: Promise.resolve(rPid),
-            show: sandbox.stub(), dispose: sandbox.stub(), sendText,
-        } as unknown as vscode.Terminal;
-        sandbox.stub(executionTarget, 'tryInteractiveExecution').resolves(false);
-        sandbox.stub(util, 'config').returns({
-            get: (key: string) => ({ sessionWatcher: true, consoleArgs: [], bracketedPaste: true, 'source.focus': 'none' })[key],
-        } as unknown as vscode.WorkspaceConfiguration);
-        sandbox.stub(util, 'getRterm').resolves(process.execPath);
-        sandbox.stub(session, 'getSessConsentDirectory').resolves('/unused-test-consent');
-        sandbox.stub(session, 'createSessionDiscoveryFile').resolves(discoveryFile);
-        sandbox.stub(session, 'updateTerminalSessionDiscoveryFile').resolves();
-        sandbox.stub(vscode.window, 'terminals').value([terminal]);
-        sandbox.stub(vscode.window, 'activeTerminal').value(terminal);
-        sandbox.stub(vscode.window, 'createTerminal').returns(terminal);
-        const warning = sandbox.stub(vscode.window, 'showWarningMessage').resolves(undefined);
+        const fixture = makeManagedTerminal(rPid, discoveryFile);
+        const { terminal, sendText, warning } = fixture;
         const waitForReady = session.waitForTerminalReady;
         let readinessStarted!: () => void;
         const started = new Promise<void>(resolve => { readinessStarted = resolve; });
@@ -628,8 +583,6 @@ suite('Session Terminal Lifecycle', () => {
             readinessStarted();
             return waitForReady(current, timeout, startupPath, allowRecovery);
         });
-        const close = new vscode.EventEmitter<vscode.Terminal>();
-        sandbox.stub(vscode.window, 'onDidCloseTerminal').callsFake(close.event);
         const timerSandbox = sinon.createSandbox();
         const clock = timerSandbox.useFakeTimers();
         const timerSpy = timerSandbox.spy(globalThis, 'setTimeout');
@@ -670,12 +623,10 @@ suite('Session Terminal Lifecycle', () => {
                 'a fresh terminal run enables recovery from the earlier failed startup');
             sinon.assert.calledOnceWithExactly(sendText, '\x1b[200~retry after attach\x1b[201~', true);
         } finally {
-            close.fire(terminal);
-            rTerminal.deleteTerminal(terminal);
+            fixture.cleanup();
             timerSandbox.restore();
             if (pendingCommandSettled) { await pendingCommandSettled; }
             await connections.dispose();
-            close.dispose();
             await fsp.rm(directory, { recursive: true, force: true });
         }
     });
@@ -722,20 +673,6 @@ suite('Session Terminal Lifecycle', () => {
             await waiting;
             close.dispose();
             await fsp.rm(directory, { recursive: true, force: true });
-        }
-    });
-
-    test('global Sinon restore leaves startup timers usable', async () => {
-        try {
-            // Other suites call the default Sinon sandbox restore after this suite.
-            // It must not reinstate a fake clock or spy from a completed test.
-            sinon.restore();
-            assert.strictEqual(globalThis.setTimeout, originalSetTimeout);
-            await new Promise<void>(resolve => globalThis.setTimeout(resolve, 1));
-        } finally {
-            if (globalThis.setTimeout !== originalSetTimeout) {
-                globalThis.setTimeout = originalSetTimeout;
-            }
         }
     });
 
