@@ -21,6 +21,7 @@
         identical(registered$token, context$token) &&
         identical(registered$pid, Sys.getpid()) &&
         identical(context$pid, Sys.getpid()) &&
+        is.function(registered$run) && identical(registered$run, context$run) &&
         .vscode_startup_valid_endpoint(context$endpoint)
 }
 
@@ -56,6 +57,13 @@ vscode_r_startup_register <- function(file, token, endpoint) {
         pid = Sys.getpid(),
         attempt = NULL
     )
+    context$run <- function(endpoint, setup) {
+        current <- vscode_r_startup_existing(endpoint)
+        if (is.null(current)) {
+            return(invisible(FALSE))
+        }
+        vscode_r_startup_run(current, setup)
+    }
     options(structure(list(context), names = .vscode_startup_option))
     context
 }
@@ -74,6 +82,9 @@ vscode_r_startup_existing <- function(endpoint) {
         return(NULL)
     }
     if (!identical(registered$pid, Sys.getpid())) {
+        return(NULL)
+    }
+    if (!is.function(registered$run)) {
         return(NULL)
     }
     registered$endpoint <- endpoint

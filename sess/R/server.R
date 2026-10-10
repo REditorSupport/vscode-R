@@ -283,7 +283,9 @@ connect <- function(endpoint = NULL, use_rstudioapi = TRUE,
                                settings$options$plot_backend %in% c("auto", "jgd"))
       .sess_env$reconnecting <- TRUE
       tryCatch(
-        do.call(connect, c(list(endpoint = endpoint), settings$options)),
+        .reconnect_with_startup(endpoint, function() {
+          do.call(connect, c(list(endpoint = endpoint), settings$options))
+        }),
         error = function(e) message("[sess] Reconnection failed: ", conditionMessage(e)),
         finally = {
           .sess_env$reconnecting <- NULL
@@ -301,6 +303,18 @@ connect <- function(endpoint = NULL, use_rstudioapi = TRUE,
     .schedule_reconnect(settings, .sess_env$transport_generation, schedule)
   }, 1)
   invisible(NULL)
+}
+
+.reconnect_with_startup <- function(endpoint, setup) {
+  registration <- getOption("vscodeR.terminalStartup")
+  if (!is.list(registration) || !identical(registration$pid, Sys.getpid())) {
+    return(setup())
+  }
+  if (!is.function(registration$run)) {
+    message("[sess] Terminal startup notifier is unavailable; reconnect was skipped.")
+    return(invisible(FALSE))
+  }
+  registration$run(endpoint, setup)
 }
 
 .transport_disconnect <- function(silent = FALSE, reconnect = FALSE) {
