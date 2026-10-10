@@ -283,7 +283,7 @@
       },
       {
         "command": "r.htmlViewer.info",
-        "title": "Session information",
+        "title": "Toggle Session Information in Tab Title",
         "category": "R HTML Viewer",
         "icon": "$(info)",
         "enablement": "activeWebviewPanelId == 'r.htmlViewer' && r.htmlViewer.canShowInfo"
@@ -1256,12 +1256,12 @@
         {
           "command": "r.htmlViewer.remove",
           "when": "activeWebviewPanelId == 'r.htmlViewer'",
-          "group": "navigation@3"
+          "group": "htmlViewer@1"
         },
         {
           "command": "r.htmlViewer.info",
           "when": "activeWebviewPanelId == 'r.htmlViewer'",
-          "group": "navigation@4"
+          "group": "htmlViewer@2"
         },
         {
           "command": "r.rmarkdown.preview.openExternal",

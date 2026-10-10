@@ -93,6 +93,10 @@ suite('HTML widget browser rendering', () => {
         const sandbox = sinon.createSandbox();
         sandbox.stub(vscode.window, 'registerWebviewPanelSerializer').returns({ dispose: sandbox.stub() });
         const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'vscode-r-widget-base-'));
+        sandbox.stub(vscode.workspace, 'isTrusted').get(() => true);
+        sandbox.stub(vscode.workspace, 'workspaceFolders').get(() => [{
+            uri: vscode.Uri.file(directory), name: 'Trusted HTML output workspace', index: 0,
+        }]);
         const panels: vscode.WebviewPanel[] = [];
         let result: vscode.Uri | undefined;
         try {
@@ -154,6 +158,65 @@ suite('HTML widget browser rendering', () => {
                 assert.strictEqual(normalizeBase(observations.get('base')!), normalizeBase(String(panel.webview.asWebviewUri(vscode.Uri.file(fixture.resources))) + '/'));
                 assert.ok(panel.webview.html.includes('<base href="ignored-second/">'));
                 panel.dispose();
+            }
+        } finally {
+            panels.forEach(panel => { panel.dispose(); });
+            await shutdownHtmlWidgetViewers();
+            sandbox.restore();
+            fs.rmSync(directory, { recursive: true, force: true });
+        }
+    });
+
+    test('authored bases cannot read files outside the output and trusted workspace', async () => {
+        const sandbox = sinon.createSandbox();
+        sandbox.stub(vscode.window, 'registerWebviewPanelSerializer').returns({ dispose: sandbox.stub() });
+        const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'vscode-r-widget-resource-scope-'));
+        const trusted = path.join(directory, 'workspace');
+        const output = path.join(trusted, 'output');
+        const outside = path.join(directory, 'outside');
+        const panels: vscode.WebviewPanel[] = [];
+        let result: vscode.Uri | undefined;
+        try {
+            fs.mkdirSync(output, { recursive: true });
+            fs.mkdirSync(outside);
+            const privateFile = path.join(outside, 'private.json');
+            fs.writeFileSync(privateFile, JSON.stringify({ value: 'outside permitted resources' }));
+            sandbox.stub(vscode.workspace, 'isTrusted').get(() => true);
+            sandbox.stub(vscode.workspace, 'workspaceFolders').get(() => [{
+                uri: vscode.Uri.file(trusted), name: 'Trusted HTML output workspace', index: 0,
+            }]);
+            mockExtensionContext(path.resolve(__dirname, '../../..'), sandbox);
+            initializeHtmlWidgetViewers(extensionContext, {
+                resolveSession: source => session.getViewerSessionContext(source.sessionId, source)!,
+                getActiveSessionId: () => session.activeSession?.sessionId,
+            });
+            const createPanel = vscode.window.createWebviewPanel.bind(vscode.window);
+            sandbox.stub(vscode.window, 'createWebviewPanel').callsFake((...args) => {
+                const panel = createPanel(...args); panels.push(panel); return panel;
+            });
+            sandbox.stub(vscode.env, 'openExternal').callsFake(uri => { result = uri; return Promise.resolve(true); });
+            const rootRelative = path.relative(path.parse(privateFile).root, privateFile).split(path.sep).map(encodeURIComponent).join('/');
+            for (const fixture of [
+                { href: '/', resource: rootRelative },
+                { href: '../../outside/', resource: 'private.json' },
+                { href: vscode.Uri.file(outside).toString() + '/', resource: 'private.json' },
+            ]) {
+                result = undefined;
+                const file = path.join(output, 'index.html');
+                fs.writeFileSync(file, `<!doctype html><html><head><base href="${fixture.href}"></head><body><script>
+                    setTimeout(async () => {
+                        let access = 'blocked';
+                        try { if ((await fetch(${JSON.stringify(fixture.resource)})).ok) access = 'allowed'; } catch {}
+                        const report = document.createElement('a');
+                        report.href = 'https://widget-test.invalid/resource-scope?access=' + access;
+                        document.body.append(report); report.click();
+                    }, 750);
+                    </script></body></html>`);
+                await showWebView(file, 'Resource scope', 'Two');
+                const response = await waitForValue(() => result);
+                assert.strictEqual(new URLSearchParams(response.query).get('access'), 'blocked', fixture.href);
+                assert.strictEqual(panels[panels.length - 1].webview.options.localResourceRoots?.length, 2);
+                panels[panels.length - 1].dispose();
             }
         } finally {
             panels.forEach(panel => { panel.dispose(); });

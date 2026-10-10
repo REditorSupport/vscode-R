@@ -25,6 +25,8 @@ suite('Session-aware HTML widget Viewer', () => {
     const contexts = new Map<string, unknown>();
     const viewEvents = new Map<vscode.WebviewPanel, vscode.EventEmitter<vscode.WebviewPanelOnDidChangeViewStateEvent>>();
     const savedState = new Map<string, unknown>();
+    let trustedWorkspace: boolean;
+    let workspaceRoots: string[];
     const viewerSessions: HtmlViewerSessionAccess = {
         resolveSession: source => session.getViewerSessionContext(source.sessionId, source)!,
         getActiveSessionId: () => session.activeSession?.sessionId,
@@ -32,6 +34,12 @@ suite('Session-aware HTML widget Viewer', () => {
 
     setup(() => {
         sandbox = sinon.createSandbox();
+        trustedWorkspace = false;
+        workspaceRoots = [];
+        sandbox.stub(vscode.workspace, 'isTrusted').get(() => trustedWorkspace);
+        sandbox.stub(vscode.workspace, 'workspaceFolders').get(() => workspaceRoots.map((root, index) => ({
+            uri: vscode.Uri.file(path.resolve(root)), name: 'HTML viewer test workspace', index,
+        })));
         activePanel = undefined;
         contexts.clear();
         execute = sandbox.stub(vscode.commands, 'executeCommand').callThrough();
@@ -845,10 +853,8 @@ suite('Session-aware HTML widget Viewer', () => {
         const file = path.resolve('/tmp/output/index.html');
         for (const fixture of [
             { href: 'assets/', target: '/tmp/output/assets/', root: '/tmp/output/assets' },
-            { href: '../shared%20assets/', target: '/tmp/shared assets/', root: '/tmp/shared assets' },
             { href: '', target: '/tmp/output/index.html', root: '/tmp/output' },
-            { href: vscode.Uri.file(path.resolve('/tmp/external/assets.html')).toString(), target: '/tmp/external/assets.html', root: '/tmp/external' },
-            { href: '/', target: path.parse(file).root.replace(/\\/g, '/'), root: path.parse(file).root },
+            { href: vscode.Uri.file(path.resolve('/tmp/output/assets.html')).toString(), target: '/tmp/output/assets.html', root: '/tmp/output' },
             { href: 'data:text/plain,ignored', target: '/tmp/output/index.html', root: '/tmp/output' },
             { href: 'https://[', target: '/tmp/output/index.html', root: '/tmp/output' },
         ]) {
@@ -865,7 +871,37 @@ suite('Session-aware HTML widget Viewer', () => {
         }
     });
 
+    test('authored bases cannot grant access to the filesystem root or unrelated directories', async () => {
+        const file = path.resolve('/tmp/output/index.html');
+        for (const href of ['/', '../', '../../', '../output-other/', '../shared%20assets/',
+            vscode.Uri.file(path.resolve('/tmp/external/')).toString() + '/']) {
+            read.resolves(`<html><head><base href="${href}"></head><body>Output</body></html>`);
+            await showWebView(file, 'Untrusted base', 'Two');
+            assert.deepStrictEqual(panels[panels.length - 1].webview.options.localResourceRoots?.map(uri => uri.fsPath), [
+                vscode.Uri.file(path.dirname(file)).fsPath,
+                vscode.Uri.file(path.join(extensionContext.extensionPath, 'dist/webviews/webview')).fsPath,
+            ], href);
+        }
+    });
+
+    test('shared authored dependencies require a trusted workspace containing their directory', async () => {
+        workspaceRoots = ['/tmp'];
+        for (const trusted of [false, true]) {
+            trustedWorkspace = trusted;
+            read.resolves('<html><head><base href="../shared%20assets/"></head><body>Output</body></html>');
+            await showWebView(path.resolve('/tmp/output/index.html'), 'Shared dependencies', 'Two');
+            const roots = panels[panels.length - 1].webview.options.localResourceRoots!;
+            assert.strictEqual(roots.some(uri => uri.fsPath === vscode.Uri.file(path.resolve('/tmp/shared assets')).fsPath), trusted);
+        }
+        trustedWorkspace = true;
+        workspaceRoots = ['/tmp/output'];
+        await showWebView(path.resolve('/tmp/output/index.html'), 'Outside trusted workspace', 'Two');
+        assert.strictEqual(panels[panels.length - 1].webview.options.localResourceRoots?.length, 2);
+    });
+
     test('authored local bases use webview URIs while resource roots retain file URIs', async () => {
+        trustedWorkspace = true;
+        workspaceRoots = ['/tmp'];
         const source = owner('html-authored-base-uri');
         const file = path.resolve('/tmp/output/index.html');
         await show(file, source);
@@ -998,10 +1034,10 @@ suite('Session-aware HTML widget Viewer', () => {
         const entries = manifest.contributes.menus['editor/title'].filter(item => item.command?.startsWith('r.htmlViewer.'));
         assert.deepStrictEqual(entries.map(item => item.command),
             ['r.htmlViewer.back', 'r.htmlViewer.forward', 'r.htmlViewer.remove', 'r.htmlViewer.info']);
-        assert.strictEqual(manifest.contributes.commands.find(command => command.command === 'r.htmlViewer.info')?.title, 'Session information');
+        assert.strictEqual(manifest.contributes.commands.find(command => command.command === 'r.htmlViewer.info')?.title, 'Toggle Session Information in Tab Title');
         for (const [index, item] of entries.entries()) {
             assert.strictEqual(item.when, "activeWebviewPanelId == 'r.htmlViewer'");
-            assert.strictEqual(item.group, `navigation@${index + 1}`);
+            assert.strictEqual(item.group, index < 2 ? `navigation@${index + 1}` : `htmlViewer@${index - 1}`);
             const command = manifest.contributes.commands.find(command => command.command === item.command)!;
             if (item.command !== 'r.htmlViewer.info') { assert.ok(command.title.includes('HTML')); }
             assert.ok(['$(arrow-circle-left)', '$(arrow-circle-right)', '$(trash)', '$(info)'].includes(command.icon));

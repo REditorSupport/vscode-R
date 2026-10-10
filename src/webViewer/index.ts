@@ -450,7 +450,17 @@ async function getWebviewHtml(
         } | undefined)?.attrs?.href;
         if (resolvedBase.protocol === 'file:' && hrefLocation) {
             const localBase = Uri.parse(resolvedBase.href);
-            localResourceRoots.push(Uri.joinPath(localBase, localBase.path.endsWith('/') ? '.' : '..').with({ query: '', fragment: '' }));
+            const resourceRoot = Uri.joinPath(localBase, localBase.path.endsWith('/') ? '.' : '..').with({ query: '', fragment: '' });
+            // Authored HTML may select a base URL, but cannot grant itself access
+            // outside the output directory or an independently trusted workspace.
+            const trustedRoots = [Uri.file(dir), ...(workspace.isTrusted ? workspace.workspaceFolders?.map(folder => folder.uri) ?? [] : [])];
+            if (trustedRoots.some(root => {
+                if (root.scheme !== 'file' || root.authority !== resourceRoot.authority) { return false; }
+                const relative = path.relative(root.fsPath, resourceRoot.fsPath);
+                return relative === '' || (!path.isAbsolute(relative) && relative !== '..' && !relative.startsWith(`..${path.sep}`));
+            })) {
+                localResourceRoots.push(resourceRoot);
+            }
             edits.push({ start: hrefLocation.startOffset, end: hrefLocation.endOffset,
                 text: `href="${escapeHtml(String(webview.asWebviewUri(localBase)))}"` });
         }
