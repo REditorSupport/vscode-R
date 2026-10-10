@@ -593,6 +593,7 @@ suite('HTML widget browser rendering', () => {
         const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'vscode-r-native-commands-'));
         const panels: vscode.WebviewPanel[] = [];
         const loaded = new Map<vscode.WebviewPanel, number>();
+        const contexts = new Map<string, unknown>();
         let client: net.Socket | undefined;
         try {
             const extension = vscode.extensions.getExtension<RExtension>('REditorSupport.r');
@@ -600,6 +601,10 @@ suite('HTML widget browser rendering', () => {
             const api = await extension.activate();
             const connection = await api.session.getConnectionInfo();
             assert.ok(connection, 'The activated extension must expose its session endpoint');
+            const executeCommand = vscode.commands.executeCommand.bind(vscode.commands);
+            sandbox.stub(vscode.commands, 'executeCommand').callThrough().withArgs('setContext')
+                .callsFake((_command: string, key: string, value: unknown) =>
+                    executeCommand('setContext', key, value).then(() => { contexts.set(key, value); }));
             const createPanel = vscode.window.createWebviewPanel.bind(vscode.window);
             sandbox.stub(vscode.window, 'createWebviewPanel').callsFake((...args) => {
                 const panel = createPanel(...args);
@@ -645,11 +650,19 @@ suite('HTML widget browser rendering', () => {
             notify('webview', { url: first, title: 'First' });
             const panel = await waitForValue(() => panels[0]?.webview.html.includes('Native first') ? panels[0] : undefined);
             const run = async (viewer: vscode.WebviewPanel, action: 'back' | 'forward' | 'remove' | 'info') => {
+                const generation = () => Number(/data-generation="(\d+)"/.exec(viewer.webview.html)?.[1]);
+                const ready = () => loaded.get(viewer) === generation();
+                await waitForValue(() => ready() ? true : undefined);
                 await focusHtmlViewer(viewer);
-                const ready = () => loaded.get(viewer) === Number(/data-generation="(\d+)"/.exec(viewer.webview.html)?.[1]);
-                await waitForValue(() => ready() ? true : undefined);
+                const key = { back: 'canGoBack', forward: 'canGoForward', remove: 'canRemove', info: 'canShowInfo' }[action];
+                // A browser acknowledgement can precede the workbench's toolbar
+                // update. Wait for the native command to be enabled as well.
+                await waitForValue(() => ready() && viewer.active && contexts.get(`r.htmlViewer.${key}`) === true ? true : undefined);
+                const previousGeneration = generation();
                 await vscode.commands.executeCommand(`r.htmlViewer.${action}`);
-                await waitForValue(() => ready() ? true : undefined);
+                // Navigation must load a new document, rather than accepting the
+                // previous page's acknowledgement if the command was ignored.
+                await waitForValue(() => ready() && (action === 'info' || generation() > previousGeneration) ? true : undefined);
                 // Title changes reach the workbench asynchronously. Navigation
                 // preserves focus, so check the viewer's group even if another
                 // group becomes active before the next action refocuses it.
