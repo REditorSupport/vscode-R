@@ -12,11 +12,15 @@ export interface SessConsentRequest {
     reason: SessConsentReason;
 }
 
+export type SessConsentChoice = 'install' | 'notNow' | 'dontAskAgain' | 'dismiss';
+
 export interface SessConsentServiceOptions {
     directory: string;
     expectedRevision: string;
     isEnabled: () => boolean;
-    prompt: (request: SessConsentRequest) => Promise<boolean>;
+    getDismissedRevision: () => string | undefined;
+    rememberDismissedRevision: (revision: string) => Promise<void>;
+    prompt: (request: SessConsentRequest) => Promise<SessConsentChoice>;
     intervalMs?: number;
 }
 
@@ -88,12 +92,34 @@ export class SessConsentService {
             await this.writeResponse(id, 'decline');
             return;
         }
+        try {
+            if (this.options.getDismissedRevision() === request.revision) {
+                await this.writeResponse(id, 'decline');
+                return;
+            }
+        } catch {
+            // A state read failure cannot grant approval; ask for this request.
+        }
 
-        let approved = false;
-        try { approved = await this.options.prompt(request); }
-        catch { approved = false; }
+        let choice: SessConsentChoice = 'dismiss';
+        try { choice = await this.options.prompt(request); }
+        catch { choice = 'dismiss'; }
         if (this.stopped) { return; }
-        const response = !this.stopped && this.options.isEnabled() && approved ? 'approve' : 'decline';
+        if (!this.options.isEnabled()) {
+            await this.writeResponse(id, 'decline');
+            return;
+        }
+        if (choice === 'dontAskAgain') {
+            try { await this.options.rememberDismissedRevision(request.revision); }
+            catch {
+                if (!this.stopped) { await this.writeResponse(id, 'decline'); }
+                return;
+            }
+            if (this.stopped) { return; }
+            await this.writeResponse(id, 'decline');
+            return;
+        }
+        const response = !this.stopped && this.options.isEnabled() && choice === 'install' ? 'approve' : 'decline';
         await this.writeResponse(id, response);
     }
 

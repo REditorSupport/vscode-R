@@ -27,7 +27,7 @@ import { getListViewerScript, listViewerStyle, ListViewNavigation } from './list
 import { getDataViewerScript, getDataViewerStyle, getDataViewerToolbarHtml } from './dataViewer';
 import { getDataViewerColumnPanelHtml, getDataViewerColumnPanelScript, getDataViewerColumnPanelStyle } from './dataViewerColumnPanel';
 import { formatSessionLabel, getViewerSessionScript } from './viewerSession';
-import { SessConsentService } from './sessConsent';
+import { SessConsentChoice, SessConsentService } from './sessConsent';
 
 export interface SessionInfo {
     version: string;
@@ -436,6 +436,7 @@ let attachSessionScriptPath: string | undefined;
 let attachConsentDirectory: string | undefined;
 let attachConsentService: SessConsentService | undefined;
 let attachConsentStartup: Promise<string> | undefined;
+const SESS_INSTALL_PROMPT_DISMISSED_REVISION = 'sessInstallPromptDismissedRevision';
 
 interface SessionDiscoveryFile {
     version: 1;
@@ -879,13 +880,26 @@ async function ensureAttachSessConsentService(): Promise<string> {
             directory,
             expectedRevision: sourceRevision,
             isEnabled: () => config().get<boolean>('sessionWatcher') === true,
+            getDismissedRevision: () => {
+                const value = extensionContext.globalState.get<unknown>(SESS_INSTALL_PROMPT_DISMISSED_REVISION);
+                return typeof value === 'string' ? value : undefined;
+            },
+            rememberDismissedRevision: async revision => {
+                await Promise.resolve(extensionContext.globalState.update(SESS_INSTALL_PROMPT_DISMISSED_REVISION, revision));
+            },
             prompt: async request => {
                 const mismatch = request.reason === 'mismatch';
                 const message = mismatch
-                    ? 'The installed sess does not match this build of vscode-R. Install the bundled copy in a vscode-R-managed library? Your existing sess installation will not be modified.'
-                    : 'vscode-R needs bundled sess to attach the session watcher. Install it in a vscode-R-managed library? Your existing sess installation will not be modified.';
-                const choice = await window.showWarningMessage(message, 'Install bundled sess');
-                return choice === 'Install bundled sess';
+                    ? 'The installed sess does not match this build of vscode-R. Install the bundled copy in a vscode-R-managed library? Your existing sess installation will not be modified. “Don’t ask again” applies to this bundled sess revision.'
+                    : 'vscode-R needs bundled sess to attach the session watcher. Install it in a vscode-R-managed library? Your existing sess installation will not be modified. “Don’t ask again” applies to this bundled sess revision.';
+                const choice = await window.showWarningMessage(
+                    message, 'Install bundled sess', 'Not now', "Don't ask again");
+                const choices: Record<string, SessConsentChoice> = {
+                    'Install bundled sess': 'install',
+                    'Not now': 'notNow',
+                    "Don't ask again": 'dontAskAgain',
+                };
+                return choices[choice ?? ''] ?? 'dismiss';
             },
         });
         try {
