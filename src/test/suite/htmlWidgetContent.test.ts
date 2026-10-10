@@ -1,6 +1,6 @@
 import * as assert from 'assert';
 import * as vm from 'vm';
-import { initializeWidgetContent, initializeWidgetState } from '../../webViewer/webview/widget';
+import { initializeWidgetContent, initializeWidgetLoad, initializeWidgetState } from '../../webViewer/webview/widget';
 
 suite('HTML output content controls', () => {
     function content(sessionOwned = true) {
@@ -50,5 +50,30 @@ suite('HTML output content controls', () => {
         let saved: unknown;
         initializeWidgetState({ setState: state => { saved = state; }, postMessage: () => {} }, { id: 'original-panel' });
         assert.deepStrictEqual(saved, { id: 'original-panel' });
+    });
+
+    test('readiness waits for document load and a paint, and reports its generation', () => {
+        for (const readyState of ['loading', 'complete']) {
+            const posted: unknown[] = [];
+            const frames: Array<() => void> = [];
+            let load: (() => void) | undefined;
+            vm.runInNewContext(`(${initializeWidgetLoad.toString()})(vscode, 7)`, {
+                document: { readyState },
+                window: { addEventListener: (event: string, callback: () => void, options: { once: boolean }) => {
+                    assert.strictEqual(event, 'load'); assert.strictEqual(options.once, true); load = callback;
+                } },
+                requestAnimationFrame: (callback: () => void) => frames.push(callback),
+                vscode: { postMessage: (message: unknown) => posted.push(JSON.parse(JSON.stringify(message))) },
+            });
+            if (readyState === 'loading') {
+                assert.strictEqual(frames.length, 0, 'Do not acknowledge before resources load');
+                load!();
+            }
+            assert.deepStrictEqual(posted, []);
+            frames.shift()!();
+            assert.deepStrictEqual(posted, [], 'Wait until the browser has had a paint opportunity');
+            frames.shift()!();
+            assert.deepStrictEqual(posted, [{ message: 'widget/loaded', generation: 7 }]);
+        }
     });
 });

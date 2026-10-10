@@ -27,6 +27,7 @@ suite('Session-aware HTML widget Viewer', () => {
     const savedState = new Map<string, unknown>();
     let trustedWorkspace: boolean;
     let workspaceRoots: string[];
+    let autoLoad: boolean;
     const viewerSessions: HtmlViewerSessionAccess = {
         resolveSession: source => session.getViewerSessionContext(source.sessionId, source)!,
         getActiveSessionId: () => session.activeSession?.sessionId,
@@ -36,6 +37,7 @@ suite('Session-aware HTML widget Viewer', () => {
         sandbox = sinon.createSandbox();
         trustedWorkspace = false;
         workspaceRoots = [];
+        autoLoad = true;
         sandbox.stub(vscode.workspace, 'isTrusted').get(() => trustedWorkspace);
         sandbox.stub(vscode.workspace, 'workspaceFolders').get(() => workspaceRoots.map((root, index) => ({
             uri: vscode.Uri.file(path.resolve(root)), name: 'HTML viewer test workspace', index,
@@ -62,8 +64,17 @@ suite('Session-aware HTML widget Viewer', () => {
             const viewState = new vscode.EventEmitter<vscode.WebviewPanelOnDidChangeViewStateEvent>();
             const listeners: Array<(message: unknown) => unknown> = [];
             let closed = false;
+            let html = '';
             const webview = {
-                html: '', options, cspSource: 'webview-test:',
+                get html() { return html; },
+                set html(value: string) {
+                    html = value;
+                    const generation = Number(/data-generation="(\d+)"/.exec(value)?.[1]);
+                    if (autoLoad && generation) {
+                        queueMicrotask(() => { void receivers.get(panel)?.({ message: 'widget/loaded', generation }); });
+                    }
+                },
+                options, cspSource: 'webview-test:',
                 asWebviewUri: (uri: vscode.Uri) => uri,
                 onDidReceiveMessage: (listener: (message: unknown) => unknown) => {
                     listeners.push(listener);
@@ -224,7 +235,7 @@ suite('Session-aware HTML widget Viewer', () => {
         assert.ok(widgetDocument(panels[0]).includes('<base href="file:///tmp/widget-c/">'));
         assert.ok(widgetDocument(panels[0]).includes('src="lib/widget.js"'));
         assert.ok(panels[1].webview.html.includes('/tmp/widget-b/index.html'));
-        assert.strictEqual(panels[0].webview.options.localResourceRoots?.[0].fsPath, vscode.Uri.file('/tmp/widget-c').fsPath);
+        assert.ok(panels[0].webview.options.localResourceRoots?.some(root => root.fsPath === vscode.Uri.file('/tmp/widget-c').fsPath));
         assert.deepStrictEqual((panels[0].reveal as sinon.SinonStub).lastCall.args, [vscode.ViewColumn.Two, true]);
         assert.ok((await info(panels[0])).includes(`R 4.6.1: ${first.pid}`));
         assert.ok((await info(panels[1])).includes(`R 4.6.1: ${second.pid}`));
@@ -244,7 +255,7 @@ suite('Session-aware HTML widget Viewer', () => {
         await pending;
         assert.strictEqual(panels[0].webview.html, latest);
         assert.strictEqual(outputTitle(panels[0]), 'Latest');
-        assert.strictEqual(panels[0].webview.options.localResourceRoots?.[0].fsPath, vscode.Uri.file('/tmp/latest').fsPath);
+        assert.ok(panels[0].webview.options.localResourceRoots?.some(root => root.fsPath === vscode.Uri.file('/tmp/latest').fsPath));
     });
 
     test('closing during a load allows a new panel and discards the old result', async () => {
@@ -363,15 +374,19 @@ suite('Session-aware HTML widget Viewer', () => {
         const other = panels[1].webview.html;
         assert.ok(!disabled(panel, 'back') && disabled(panel, 'forward'));
         assert.strictEqual(position(panel), '2 / 2');
+        const roots = panel.webview.options.localResourceRoots;
+        assert.ok(!roots?.some(root => root.fsPath === vscode.Uri.file('/tmp/other').fsPath));
         await navigate(panel, 'back');
+        assert.strictEqual(panel.webview.options.localResourceRoots, roots, 'Back must not change permissions or reload the previous document');
         assert.strictEqual(outputTitle(panel), 'A');
         assert.ok(widgetDocument(panel).includes('/tmp/a/index.html'));
-        assert.strictEqual(panel.webview.options.localResourceRoots?.[0].fsPath, vscode.Uri.file('/tmp/a').fsPath);
+        assert.ok(panel.webview.options.localResourceRoots?.some(root => root.fsPath === vscode.Uri.file('/tmp/a').fsPath));
         assert.ok(disabled(panel, 'back') && !disabled(panel, 'forward'));
         const firstHtml = panel.webview.html;
         await navigate(panel, 'back');
         assert.strictEqual(panel.webview.html, firstHtml);
         await navigate(panel, 'forward');
+        assert.strictEqual(panel.webview.options.localResourceRoots, roots, 'Forward must not change permissions or reload the previous document');
         assert.strictEqual(outputTitle(panel), 'B');
         assert.ok(!disabled(panel, 'back') && disabled(panel, 'forward'));
         assert.strictEqual(panels.length, 2);
@@ -389,6 +404,21 @@ suite('Session-aware HTML widget Viewer', () => {
         assert.strictEqual(outputTitle(panels[0]), 'B');
         await navigate(panels[0], 'back');
         assert.strictEqual(outputTitle(panels[0]), 'A');
+    });
+
+    test('removing output revokes its resource directory without affecting another session', async () => {
+        const source = owner('html-remove-resource-root');
+        await show('/tmp/a/index.html', source, 'A');
+        await show('/tmp/b/index.html', source, 'B');
+        await show('/tmp/other/index.html', owner('html-resource-other'), 'Other');
+        const otherRoots = panels[1].webview.options.localResourceRoots;
+        await remove(panels[0]);
+        const roots = panels[0].webview.options.localResourceRoots!;
+        assert.ok(roots.some(root => root.fsPath === vscode.Uri.file('/tmp/a').fsPath));
+        assert.ok(!roots.some(root => root.fsPath === vscode.Uri.file('/tmp/b').fsPath));
+        assert.strictEqual(panels[1].webview.options.localResourceRoots, otherRoots);
+        await remove(panels[0]);
+        assert.ok(!panels[0].webview.options.localResourceRoots?.some(root => root.fsPath === vscode.Uri.file('/tmp/a').fsPath));
     });
 
     test('removing a middle output preserves other sessions and remaining Back/Forward history', async () => {
@@ -913,6 +943,22 @@ suite('Session-aware HTML widget Viewer', () => {
         assert.ok(panels[0].webview.options.localResourceRoots?.some(uri => uri.scheme === 'file' && uri.fsPath === vscode.Uri.file(path.resolve('/tmp/shared assets')).fsPath));
     });
 
+    test('retained authored resource roots are rechecked when workspace trust changes', async () => {
+        const source = owner('html-authored-base-trust');
+        trustedWorkspace = true;
+        workspaceRoots = ['/tmp'];
+        read.resolves('<html><head><base href="../shared assets/"></head><body>Output</body></html>');
+        await show('/tmp/output/index.html', source);
+        const shared = vscode.Uri.file(path.resolve('/tmp/shared assets')).fsPath;
+        assert.ok(panels[0].webview.options.localResourceRoots?.some(root => root.fsPath === shared));
+        trustedWorkspace = false;
+        read.resolves('<html><body>Next output</body></html>');
+        await show('/tmp/next/index.html', source);
+        assert.ok(!panels[0].webview.options.localResourceRoots?.some(root => root.fsPath === shared));
+        await navigate(panels[0], 'back');
+        assert.ok(!panels[0].webview.options.localResourceRoots?.some(root => root.fsPath === shared));
+    });
+
     test('absolute web bases and their authored attributes are preserved', async () => {
         const original = "<base HREF='https://cdn.example.test/assets/?v=1&amp;mode=all' target='_self' data-authored='yes'>";
         read.resolves(`<html><head>${original}</head><body>Output</body></html>`);
@@ -959,6 +1005,8 @@ suite('Session-aware HTML widget Viewer', () => {
         await show('/tmp/a.html', source, 'A');
         await show('/tmp/b.html', source, 'B');
         const slow = deferred<string>();
+        autoLoad = false;
+        const previousGeneration = Number(/data-generation="(\d+)"/.exec(panels[0].webview.html)?.[1]);
         read.onCall(2).returns(slow.promise);
         activate(panels[0]);
         const pending = runHtmlViewerCommand('back');
@@ -970,7 +1018,33 @@ suite('Session-aware HTML widget Viewer', () => {
         await pending;
         assert.strictEqual(position(panels[0]), '1 / 2');
         assert.strictEqual(outputTitle(panels[0]), 'A');
+        assert.ok((['back', 'forward', 'remove'] as const).every(button => disabled(panels[0], button)),
+            'Sending HTML does not mean the browser has loaded it');
+        await receivers.get(panels[0])!({ message: 'widget/loaded', generation: previousGeneration });
+        assert.strictEqual(contexts.get('r.htmlViewer.canGoForward'), false, 'Ignore readiness from the previous document');
+        await runHtmlViewerCommand('forward');
+        assert.strictEqual(position(panels[0]), '1 / 2', 'Ignore clicks until the replacement has loaded');
+        const generation = Number(/data-generation="(\d+)"/.exec(panels[0].webview.html)?.[1]);
+        await receivers.get(panels[0])!({ message: 'widget/loaded', generation });
         assert.strictEqual(contexts.get('r.htmlViewer.canGoForward'), true);
+    });
+
+    test('late load acknowledgements cannot enable navigation for a newer document', async () => {
+        const source = owner('html-loading-generation');
+        await show('/tmp/a.html', source, 'A');
+        await show('/tmp/b.html', source, 'B');
+        autoLoad = false;
+        await navigate(panels[0], 'back');
+        const previousGeneration = Number(/data-generation="(\d+)"/.exec(panels[0].webview.html)?.[1]);
+        await show('/tmp/c.html', source, 'C');
+        await receivers.get(panels[0])!({ message: 'widget/loaded', generation: previousGeneration });
+        assert.ok((['back', 'forward', 'remove'] as const).every(button => disabled(panels[0], button)));
+        await navigate(panels[0], 'back');
+        assert.strictEqual(outputTitle(panels[0]), 'C');
+        const generation = Number(/data-generation="(\d+)"/.exec(panels[0].webview.html)?.[1]);
+        await receivers.get(panels[0])!({ message: 'widget/loaded', generation });
+        assert.strictEqual(contexts.get('r.htmlViewer.canGoBack'), true);
+        assert.strictEqual(contexts.get('r.htmlViewer.canGoForward'), false);
     });
 
     test('Info contains only the originating R version and PID without a popup or output reload', async () => {
@@ -1046,8 +1120,10 @@ suite('Session-aware HTML widget Viewer', () => {
 
     test('history is bounded to the latest 50 outputs', async () => {
         const source = owner('html-history-limit');
-        for (let i = 0; i < 51; i++) { await show(`/tmp/widget-${i}.html`, source, `Widget ${i}`); }
+        for (let i = 0; i < 51; i++) { await show(`/tmp/widget-${i}/index.html`, source, `Widget ${i}`); }
         assert.strictEqual(position(panels[0]), '50 / 50');
+        assert.ok(!panels[0].webview.options.localResourceRoots?.some(root => root.fsPath === vscode.Uri.file('/tmp/widget-0').fsPath));
+        assert.strictEqual(panels[0].webview.options.localResourceRoots?.length, 51, 'Only 50 output directories and viewer assets remain');
         for (let i = 0; i < 49; i++) { await navigate(panels[0], 'back'); }
         assert.strictEqual(outputTitle(panels[0]), 'Widget 1');
         assert.ok(disabled(panels[0], 'back'));

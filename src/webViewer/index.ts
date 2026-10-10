@@ -23,6 +23,7 @@ interface WidgetViewer {
     loading: boolean;
     showSessionInfo: boolean;
     subscriptions: Array<{ dispose(): void }>;
+    resourceRoots: Map<string, Uri[]>;
     session?: ViewerSessionContext;
     state: Pick<WidgetHistory, 'history' | 'index' | 'viewColumn'>;
     saved?: WidgetHistory;
@@ -201,7 +202,7 @@ class HtmlWidgetViewerManager {
     private attachPanel(panel: WebviewPanel, session?: ViewerSessionContext, saved?: WidgetHistory, showSessionInfo = false, id: string = randomUUID()): WidgetViewer {
         const identity = session ? widgetSessionIdentity(session.source) : undefined;
         const entry: WidgetViewer = {
-            id, panel, revision: 0, disposed: false, loading: false, showSessionInfo, session, saved, subscriptions: [],
+            id, panel, revision: 0, disposed: false, loading: false, showSessionInfo, session, saved, subscriptions: [], resourceRoots: new Map(),
             state: saved ?? { history: [], index: -1 },
         };
         this.panels.add(entry);
@@ -240,6 +241,9 @@ class HtmlWidgetViewerManager {
             if (entry.disposed) { return; }
             if (msg.message === 'linkClicked' && msg.href) {
                 void env.openExternal(Uri.parse(msg.href));
+            } else if (msg.message === 'widget/loaded' && msg.generation === entry.revision && entry.loading) {
+                entry.loading = false;
+                this.updateToolbar();
             } else if (msg.message === 'widget/find' && msg.generation === entry.revision) {
                 panel.reveal(panel.viewColumn, false);
                 await commands.executeCommand('editor.action.webvieweditor.showFind');
@@ -349,15 +353,35 @@ class HtmlWidgetViewerManager {
         try {
             const { html, localResourceRoots } = await getWebviewHtml(panel.webview, item?.file, dir, Boolean(entry.session), generation, { id: entry.id });
             if (!entry.disposed && entry.revision === generation) {
-                panel.webview.options = { ...panel.webview.options, localResourceRoots };
+                if (item) { entry.resourceRoots.set(item.file, localResourceRoots); }
+                const files = new Set(entry.state.history.map(output => output.file));
+                for (const file of entry.resourceRoots.keys()) {
+                    if (!files.has(file)) { entry.resourceRoots.delete(file); }
+                }
+                // Keep permissions stable while browsing already rendered outputs.
+                // Recheck authored bases against current workspace trust, and forget
+                // directories when their output leaves this viewer's bounded history.
+                const assetRoot = Uri.file(path.join(extensionPath, 'dist/webviews/webview')).toString();
+                const roots = entry.state.history.flatMap(output => (entry.resourceRoots.get(output.file) ?? [])
+                    .filter(root => root.toString() === assetRoot || isAllowedResourceRoot(root, path.dirname(output.file))));
+                const resourceRoots = [...new Map((roots.length ? roots : localResourceRoots).map(root => [root.toString(), root])).values()];
+                const previousRoots = panel.webview.options.localResourceRoots;
+                if (!previousRoots || previousRoots.length !== resourceRoots.length ||
+                    previousRoots.some((root, index) => root.toString() !== resourceRoots[index].toString())) {
+                    // Changing resource roots reloads the current HTML in VS Code.
+                    // Clear only for permission changes, never ordinary Back/Forward.
+                    panel.webview.html = '';
+                    panel.webview.options = { ...panel.webview.options, localResourceRoots: resourceRoots };
+                }
                 panel.webview.html = html;
                 if (reveal) { panel.reveal(panel.viewColumn, true); }
             }
-        } finally {
+        } catch (error) {
             if (!entry.disposed && entry.revision === generation) {
                 entry.loading = false;
                 this.updateToolbar();
             }
+            throw error;
         }
     }
 
@@ -453,12 +477,7 @@ async function getWebviewHtml(
             const resourceRoot = Uri.joinPath(localBase, localBase.path.endsWith('/') ? '.' : '..').with({ query: '', fragment: '' });
             // Authored HTML may select a base URL, but cannot grant itself access
             // outside the output directory or an independently trusted workspace.
-            const trustedRoots = [Uri.file(dir), ...(workspace.isTrusted ? workspace.workspaceFolders?.map(folder => folder.uri) ?? [] : [])];
-            if (trustedRoots.some(root => {
-                if (root.scheme !== 'file' || root.authority !== resourceRoot.authority) { return false; }
-                const relative = path.relative(root.fsPath, resourceRoot.fsPath);
-                return relative === '' || (!path.isAbsolute(relative) && relative !== '..' && !relative.startsWith(`..${path.sep}`));
-            })) {
+            if (isAllowedResourceRoot(resourceRoot, dir)) {
                 localResourceRoots.push(resourceRoot);
             }
             edits.push({ start: hrefLocation.startOffset, end: hrefLocation.endOffset,
@@ -474,6 +493,15 @@ async function getWebviewHtml(
         html = html.slice(0, edit.start) + edit.text + html.slice(edit.end);
     }
     return { html, localResourceRoots };
+}
+
+function isAllowedResourceRoot(resourceRoot: Uri, dir: string): boolean {
+    const trustedRoots = [Uri.file(dir), ...(workspace.isTrusted ? workspace.workspaceFolders?.map(folder => folder.uri) ?? [] : [])];
+    return trustedRoots.some(root => {
+        if (root.scheme !== 'file' || root.authority !== resourceRoot.authority) { return false; }
+        const relative = path.relative(root.fsPath, resourceRoot.fsPath);
+        return relative === '' || (!path.isAbsolute(relative) && relative !== '..' && !relative.startsWith(`..${path.sep}`));
+    });
 }
 
 function parsePanelState(state: unknown): HtmlViewerPanelState | undefined {

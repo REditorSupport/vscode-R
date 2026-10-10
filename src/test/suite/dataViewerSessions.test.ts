@@ -61,10 +61,11 @@ suite('Viewer session ownership', () => {
             get: (_key: string, defaultValue: unknown) => defaultValue,
         } as vscode.WorkspaceConfiguration);
         session.deploySessionWatcher(root);
-        sandbox.stub(vscode.window, 'createWebviewPanel').callsFake((_type, title) => {
+        sandbox.stub(vscode.window, 'createWebviewPanel').callsFake((_type, title, _column, options) => {
             const disposed = new vscode.EventEmitter<void>();
             const listeners: Array<(message: unknown) => unknown> = [];
             let closed = false;
+            let html = '';
             const item: Panel = {
                 panel: undefined as unknown as vscode.WebviewPanel,
                 receive: async message => { await Promise.all(listeners.map(listener => listener(message))); }, replies: [],
@@ -72,7 +73,13 @@ suite('Viewer session ownership', () => {
             item.panel = {
                 title, viewColumn: vscode.ViewColumn.Two, reveal: sandbox.stub(),
                 webview: {
-                    html: '', asWebviewUri: (uri: vscode.Uri) => uri,
+                    get html() { return html; },
+                    set html(value: string) {
+                        html = value;
+                        const generation = Number(/data-generation="(\d+)"/.exec(value)?.[1]);
+                        if (generation) { queueMicrotask(() => { void item.receive({ message: 'widget/loaded', generation }); }); }
+                    },
+                    options: options ?? {}, asWebviewUri: (uri: vscode.Uri) => uri,
                     onDidReceiveMessage: (listener: Panel['receive']) => {
                         listeners.push(listener);
                         return { dispose: () => { listeners.splice(listeners.indexOf(listener), 1); } };

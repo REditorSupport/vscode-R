@@ -173,11 +173,17 @@ suite('HTML widget browser rendering', () => {
         const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'vscode-r-widget-resource-scope-'));
         const trusted = path.join(directory, 'workspace');
         const output = path.join(trusted, 'output');
+        const previous = path.join(trusted, 'previous-output');
         const outside = path.join(directory, 'outside');
         const panels: vscode.WebviewPanel[] = [];
+        const source = session.registerSessionTransport('html-browser-resource-scope', 'widget-test-host', directory, () => Promise.resolve({}));
+        source.pid = '12106'; source.rVer = '4.6.1';
         let result: vscode.Uri | undefined;
         try {
             fs.mkdirSync(output, { recursive: true });
+            fs.mkdirSync(previous);
+            const previousFile = path.join(previous, 'index.html');
+            fs.writeFileSync(previousFile, '<html><body>Previously registered output</body></html>');
             fs.mkdirSync(outside);
             const privateFile = path.join(outside, 'private.json');
             fs.writeFileSync(privateFile, JSON.stringify({ value: 'outside permitted resources' }));
@@ -202,6 +208,7 @@ suite('HTML widget browser rendering', () => {
                 { href: vscode.Uri.file(outside).toString() + '/', resource: 'private.json' },
             ]) {
                 result = undefined;
+                await showWebView(previousFile, 'Previous output', 'Two', session.getViewerSessionContext(source.sessionId));
                 const file = path.join(output, 'index.html');
                 fs.writeFileSync(file, `<!doctype html><html><head><base href="${fixture.href}"></head><body><script>
                     setTimeout(async () => {
@@ -212,15 +219,17 @@ suite('HTML widget browser rendering', () => {
                         document.body.append(report); report.click();
                     }, 750);
                     </script></body></html>`);
-                await showWebView(file, 'Resource scope', 'Two');
+                await showWebView(file, 'Resource scope', 'Two', session.getViewerSessionContext(source.sessionId));
                 const response = await waitForValue(() => result);
                 assert.strictEqual(new URLSearchParams(response.query).get('access'), 'blocked', fixture.href);
-                assert.strictEqual(panels[panels.length - 1].webview.options.localResourceRoots?.length, 2);
+                assert.strictEqual(panels[panels.length - 1].webview.options.localResourceRoots?.length, 3,
+                    'Retain only the two registered output directories and viewer assets');
                 panels[panels.length - 1].dispose();
             }
         } finally {
             panels.forEach(panel => { panel.dispose(); });
             await shutdownHtmlWidgetViewers();
+            session.unregisterSessionTransport(source);
             sandbox.restore();
             fs.rmSync(directory, { recursive: true, force: true });
         }
@@ -372,6 +381,110 @@ suite('HTML widget browser rendering', () => {
         }
     });
 
+    test('history navigation keeps the previous HTML visible without rerunning it', async () => {
+        const sandbox = sinon.createSandbox();
+        sandbox.stub(vscode.window, 'registerWebviewPanelSerializer').returns({ dispose: sandbox.stub() });
+        const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'vscode-r-widget-switch-'));
+        const panels: vscode.WebviewPanel[] = [];
+        const reports: vscode.Uri[] = [];
+        const writes: Array<Promise<void>> = [];
+        let clears = 0;
+        const contexts = new Map<string, unknown>();
+        const source = session.registerSessionTransport('html-browser-switch', 'widget-test-host', directory, () => Promise.resolve({}));
+        source.pid = '12105'; source.rVer = '4.6.1';
+        try {
+            mockExtensionContext(path.resolve(__dirname, '../../..'), sandbox);
+            const viewerManager = initializeHtmlWidgetViewers(extensionContext, {
+                resolveSession: source => session.getViewerSessionContext(source.sessionId, source)!,
+                getActiveSessionId: () => session.activeSession?.sessionId,
+            });
+            const executeCommand = vscode.commands.executeCommand.bind(vscode.commands);
+            sandbox.stub(vscode.commands, 'executeCommand').callThrough().withArgs('setContext')
+                .callsFake((_command: string, key: string, value: unknown) => {
+                    contexts.set(key, value); return executeCommand('setContext', key, value);
+                });
+            const createPanel = vscode.window.createWebviewPanel.bind(vscode.window);
+            sandbox.stub(vscode.window, 'createWebviewPanel').callsFake((...args) => {
+                const panel = createPanel(...args);
+                panels.push(panel);
+                // Delay replacement delivery to exercise the interval between the
+                // options and HTML workbench messages, without delaying a clear.
+                const webview = panel.webview;
+                const descriptor = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(webview), 'html')!;
+                sandbox.stub(webview, 'html').get(() => descriptor.get!.call(webview) as string).set((html: string) => {
+                    if (!html) { clears++; descriptor.set!.call(webview, html); return; }
+                    writes.push(new Promise(resolve => setTimeout(() => {
+                        descriptor.set!.call(webview, html); resolve();
+                    }, 500)));
+                });
+                return panel;
+            });
+            sandbox.stub(vscode.env, 'openExternal').callsFake(uri => { reports.push(uri); return Promise.resolve(true); });
+            const fixture = (name: string) => {
+                const root = path.join(directory, name);
+                fs.mkdirSync(root);
+                fs.writeFileSync(path.join(root, 'style.css'), 'table { width:200px; margin-left:auto; margin-right:auto; }');
+                const file = path.join(root, 'index.html');
+                fs.writeFileSync(file, `<!doctype html><html><head><link rel="stylesheet" href="style.css"></head><body>
+                    ${name === 'table' ? '<table><tr><td>Centered flextable output</td></tr></table>' : '<p>HTML file output</p>'}
+                    <script>window.addEventListener('load', () => setTimeout(() => {
+                        const table = document.querySelector('table');
+                        const centered = !table || Math.abs(table.getBoundingClientRect().left + table.offsetWidth / 2 - innerWidth / 2) < 2;
+                        const report = document.createElement('a');
+                        report.href = 'https://widget-test.invalid/${name}?centered=' + centered;
+                        document.body.append(report); report.click();
+                    }, 50));</script></body></html>`);
+                return file;
+            };
+            const table = fixture('table');
+            const html = fixture('html');
+            const loaded = async (count: number) => {
+                await Promise.all(writes);
+                await waitForValue(() => reports.length >= count &&
+                    [...viewerManager.viewers.values()].some(entry => entry.panel === panels[0] && !entry.loading) ? true : undefined);
+            };
+            const disabled = () => ['canGoBack', 'canGoForward', 'canRemove']
+                .every(key => contexts.get(`r.htmlViewer.${key}`) === false);
+            await showWebView(table, 'Table', 'Two', session.getViewerSessionContext(source.sessionId));
+            await loaded(1);
+            await showWebView(html, 'HTML', 'Two', session.getViewerSessionContext(source.sessionId));
+            await loaded(2);
+            const previousClears = clears;
+            const roots = panels[0].webview.options.localResourceRoots!.map(root => root.toString());
+            await focusHtmlViewer(panels[0]);
+            await runHtmlViewerCommand('back');
+            assert.ok(disabled(), 'Buttons must stay disabled while replacement delivery is pending');
+            assert.ok(panels[0].webview.html.includes('HTML file output'), 'Keep the current output until replacement arrives');
+            assert.strictEqual(clears, previousClears, 'Back must not insert a blank document');
+            assert.deepStrictEqual(panels[0].webview.options.localResourceRoots!.map(root => root.toString()), roots);
+            const pendingBackWrites = writes.length;
+            await runHtmlViewerCommand('forward');
+            assert.strictEqual(writes.length, pendingBackWrites, 'Ignore repeated clicks during the transition');
+            await loaded(3);
+            assert.strictEqual(contexts.get('r.htmlViewer.canGoBack'), false);
+            assert.strictEqual(contexts.get('r.htmlViewer.canGoForward'), true);
+            await focusHtmlViewer(panels[0]);
+            await runHtmlViewerCommand('forward');
+            assert.ok(disabled(), 'Forward must wait for the selected document to load');
+            assert.ok(panels[0].webview.html.includes('Centered flextable output'), 'Keep the current table until replacement arrives');
+            assert.strictEqual(clears, previousClears, 'Forward must not insert a blank document');
+            assert.deepStrictEqual(panels[0].webview.options.localResourceRoots!.map(root => root.toString()), roots);
+            await loaded(4);
+            assert.strictEqual(contexts.get('r.htmlViewer.canGoBack'), true);
+            assert.strictEqual(contexts.get('r.htmlViewer.canGoForward'), false);
+            assert.deepStrictEqual(reports.map(uri => uri.path), ['/table', '/html', '/table', '/html']);
+            assert.ok(reports.every(uri => new URLSearchParams(uri.query).get('centered') === 'true'),
+                'The table must retain its authored centering on every load');
+        } finally {
+            await Promise.all(writes);
+            panels.forEach(panel => { panel.dispose(); });
+            await shutdownHtmlWidgetViewers();
+            session.unregisterSessionTransport(source);
+            sandbox.restore();
+            fs.rmSync(directory, { recursive: true, force: true });
+        }
+    });
+
     test('native actions navigate, remove, and restore full documents with relative resources', async () => {
         const sandbox = sinon.createSandbox();
         sandbox.stub(vscode.window, 'registerWebviewPanelSerializer').returns({ dispose: sandbox.stub() });
@@ -382,7 +495,7 @@ suite('HTML widget browser rendering', () => {
         source.pid = '12101'; source.rVer = '4.6.1';
         try {
             mockExtensionContext(path.resolve(__dirname, '../../..'), sandbox);
-            initializeHtmlWidgetViewers(extensionContext, {
+            const viewerManager = initializeHtmlWidgetViewers(extensionContext, {
                 resolveSession: source => session.getViewerSessionContext(source.sessionId, source)!,
                 getActiveSessionId: () => session.activeSession?.sessionId,
             });
@@ -423,7 +536,8 @@ suite('HTML widget browser rendering', () => {
                     const reports = urls.filter(uri => uri.path === `/${name}`);
                     const latest = reports.at(-1);
                     const params = new URLSearchParams(latest?.query);
-                    return reports.length > previous && ['css', 'image', 'fetch', 'direct'].every(key => params.get(key) === 'true') ? latest : undefined;
+                    return reports.length > previous && ['css', 'image', 'fetch', 'direct'].every(key => params.get(key) === 'true') &&
+                        [...viewerManager.viewers.values()].some(entry => entry.panel === panels.at(-1) && !entry.loading) ? latest : undefined;
                 });
                 const dimensions = new URLSearchParams(uri.query);
                 assert.ok(Number(dimensions.get('width')) > 0 && Number(dimensions.get('height')) > 0);
@@ -478,6 +592,7 @@ suite('HTML widget browser rendering', () => {
         sandbox.stub(vscode.window, 'registerWebviewPanelSerializer').returns({ dispose: sandbox.stub() });
         const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'vscode-r-native-commands-'));
         const panels: vscode.WebviewPanel[] = [];
+        const loaded = new Map<vscode.WebviewPanel, number>();
         let client: net.Socket | undefined;
         try {
             const extension = vscode.extensions.getExtension<RExtension>('REditorSupport.r');
@@ -488,7 +603,14 @@ suite('HTML widget browser rendering', () => {
             const createPanel = vscode.window.createWebviewPanel.bind(vscode.window);
             sandbox.stub(vscode.window, 'createWebviewPanel').callsFake((...args) => {
                 const panel = createPanel(...args);
-                if (panel.viewType === 'r.htmlViewer') { panels.push(panel); }
+                if (panel.viewType === 'r.htmlViewer') {
+                    panels.push(panel);
+                    panel.webview.onDidReceiveMessage((message: { message?: string; generation?: number }) => {
+                        if (message.message === 'widget/loaded' && typeof message.generation === 'number') {
+                            loaded.set(panel, message.generation);
+                        }
+                    });
+                }
                 return panel;
             });
             const information = sandbox.stub(vscode.window, 'showInformationMessage').resolves();
@@ -524,7 +646,10 @@ suite('HTML widget browser rendering', () => {
             const panel = await waitForValue(() => panels[0]?.webview.html.includes('Native first') ? panels[0] : undefined);
             const run = async (viewer: vscode.WebviewPanel, action: 'back' | 'forward' | 'remove' | 'info') => {
                 await focusHtmlViewer(viewer);
+                const ready = () => loaded.get(viewer) === Number(/data-generation="(\d+)"/.exec(viewer.webview.html)?.[1]);
+                await waitForValue(() => ready() ? true : undefined);
                 await vscode.commands.executeCommand(`r.htmlViewer.${action}`);
+                await waitForValue(() => ready() ? true : undefined);
                 // Title changes reach the workbench asynchronously. Navigation
                 // preserves focus, so check the viewer's group even if another
                 // group becomes active before the next action refocuses it.

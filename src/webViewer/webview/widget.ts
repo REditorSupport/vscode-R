@@ -4,6 +4,16 @@ export function initializeWidgetState(vscode: VsCode, state: HtmlViewerPanelRefe
     vscode.setState(state);
 }
 
+export function initializeWidgetLoad(vscode: VsCode, generation: number): void {
+    // The webview HTML setter only queues a document replacement. Wait for
+    // its resources and a paint before enabling navigation in the host.
+    const loaded = () => requestAnimationFrame(() => requestAnimationFrame(() => {
+        vscode.postMessage({ message: 'widget/loaded', generation });
+    }));
+    if (document.readyState === 'complete') { loaded(); }
+    else { window.addEventListener('load', loaded, { once: true }); }
+}
+
 export function initializeWidgetContent(vscode: VsCode, generation: number, sessionOwned: boolean): void {
     document.addEventListener('click', event => {
         if (event.defaultPrevented) { return; }

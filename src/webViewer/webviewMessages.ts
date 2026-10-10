@@ -27,5 +27,6 @@ export interface LinkClickedMessage {
 }
 
 export type OutMessage = LinkClickedMessage
+    | { message: 'widget/loaded'; generation: number }
     | { message: 'widget/navigate'; direction: 'back' | 'forward'; generation: number }
     | { message: 'widget/find'; generation: number };
