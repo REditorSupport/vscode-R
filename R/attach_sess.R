@@ -32,7 +32,8 @@ vscode_r_prepare_sess <- function(pkg_path, managed_root, consent_dir,
             lock_path <- file.path(lock_parent, ".setup-lock")
             # Keep lock ownership rules in sync with src/interactive/backends/sessPreparation.ts:
             # mkdir claims atomically; only the owner releases via on.exit; timeout never clears a stale lock.
-            # Scope differs: this revision lock covers consent, install, and load; an empty follower does not prompt.
+            # This revision lock covers consent, install, and load; a follower without a ready copy does not prompt.
+            # Publish .ready with the source revision only after the exact namespace has loaded successfully.
             lock_deadline <- Sys.time() + setup_timeout_seconds
             lock_timeout_message <- paste(
                 "Timed out waiting for another sess setup. Its owner may have crashed;",
@@ -66,8 +67,15 @@ vscode_r_prepare_sess <- function(pkg_path, managed_root, consent_dir,
                 Sys.sleep(0.1)
             }
 
+            ready_path <- file.path(lock_parent, ".ready")
+            ready_revision <- tryCatch(
+                readLines(ready_path, warn = FALSE, n = 2L),
+                warning = function(e) character(),
+                error = function(e) character()
+            )
             installed <- sess_find_source_library(expected, managed_library)
-            if (!is.null(installed)) {
+            if (length(ready_revision) == 1L && identical(ready_revision, expected) &&
+                    !is.null(installed)) {
                 ns <- sess_load_namespace(installed, expected)
             } else if (followed_setup) {
                 return(NULL)
@@ -126,6 +134,12 @@ vscode_r_prepare_sess <- function(pkg_path, managed_root, consent_dir,
                     return(NULL)
                 }
 
+                unlink(ready_path, force = TRUE)
+                ready_link <- Sys.readlink(ready_path)
+                if (file.exists(ready_path) || dir.exists(ready_path) ||
+                        (length(ready_link) && !is.na(ready_link) && nzchar(ready_link))) {
+                    stop("Could not clear the previous vscode-R managed sess completion marker.")
+                }
                 configured <- getOption("repos")
                 repo <- if ("CRAN" %in% names(configured)) {
                     configured[["CRAN"]]
@@ -145,6 +159,15 @@ vscode_r_prepare_sess <- function(pkg_path, managed_root, consent_dir,
                 sys.source(installer_helper, envir = installer)
                 installer$sess_install(pkg_path, managed_library, repo)
                 ns <- sess_load_namespace(managed_library, expected)
+                ready_temporary <- tempfile(pattern = ".ready-", tmpdir = lock_parent)
+                on.exit(unlink(ready_temporary), add = TRUE)
+                writeLines(expected, ready_temporary, useBytes = TRUE)
+                if (.Platform$OS.type == "unix") {
+                    Sys.chmod(ready_temporary, "0600")
+                }
+                if (!file.rename(ready_temporary, ready_path)) {
+                    stop("Could not publish the vscode-R managed sess completion marker.")
+                }
             }
         }
     }

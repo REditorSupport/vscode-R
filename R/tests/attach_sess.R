@@ -48,6 +48,7 @@ writeLines(c(
     "dir.create(consent, recursive=TRUE, showWarnings=FALSE)",
     "managed_root <- file.path(root, 'vscode-R')",
     "managed_library <- sess_managed_library(managed_root, revision)",
+    "ready_path <- file.path(dirname(managed_library), '.ready')",
     "lock_path <- file.path(dirname(managed_library), '.setup-lock')",
     "owner_file <- file.path(lock_path, 'fixture-owner')",
     "owner_ready <- file.path(root, 'owner-lock-ready')",
@@ -99,17 +100,32 @@ writeLines(c(
     "      file.path(getwd(), 'R', 'sess-package-install.R'),",
     "    'standard', timeout_seconds=timeout, setup_timeout_seconds=setup_timeout)",
     "}",
-    "if (mode %in% c('exact', 'prepared')) {",
+    "if (mode %in% c('exact', 'prepared', 'unready', 'wrong_ready')) {",
     "  expected <- if (mode == 'exact') normal else",
     "    sess_managed_library(managed_root, revision)",
-    "  dir.create(expected, recursive=TRUE, showWarnings=FALSE)",
-    "  utils::install.packages(pkg, repos=NULL, type='source', lib=expected, quiet=TRUE)",
-    "  result <- attach_sess(timeout=0)",
-    "  stopifnot(identical(result, TRUE), same_paths(.libPaths(), ordinary))",
-    "  stopifnot(identical(sess_loaded_source_revision(), revision))",
-    "  actual <- getNamespaceInfo(asNamespace('sess'), 'path')",
-    "  stopifnot(same_paths(actual, file.path(expected, 'sess')))",
-    "  stopifnot(length(list.files(consent, pattern='\\\\.request$')) == 0L)",
+    "  if (!mode %in% c('unready', 'wrong_ready')) {",
+    "    dir.create(expected, recursive=TRUE, showWarnings=FALSE)",
+    "    utils::install.packages(pkg, repos=NULL, type='source', lib=expected, quiet=TRUE)",
+    "  }",
+    "  if (mode == 'prepared') writeLines(revision, ready_path)",
+    "  if (mode == 'wrong_ready') writeLines(mismatch, ready_path)",
+    "  if (mode %in% c('exact', 'prepared')) {",
+    "    result <- attach_sess(timeout=0)",
+    "    stopifnot(identical(result, TRUE), same_paths(.libPaths(), ordinary))",
+    "    stopifnot(identical(sess_loaded_source_revision(), revision))",
+    "    actual <- getNamespaceInfo(asNamespace('sess'), 'path')",
+    "    stopifnot(same_paths(actual, file.path(expected, 'sess')))",
+    "    if (mode == 'prepared') stopifnot(identical(readLines(ready_path), revision))",
+    "    stopifnot(length(list.files(consent, pattern='\\\\.request$')) == 0L)",
+    "  } else {",
+    "    description <- file.path(expected, 'sess', 'DESCRIPTION')",
+    "    before <- readLines(description, warn=FALSE)",
+    "    result <- attach_sess(timeout=8)",
+    "    stopifnot(identical(result, FALSE), !('sess' %in% loadedNamespaces()))",
+    "    stopifnot(same_paths(.libPaths(), ordinary), identical(readLines(description), before))",
+    "    if (mode == 'wrong_ready') stopifnot(identical(readLines(ready_path), mismatch))",
+    "    else stopifnot(!file.exists(ready_path))",
+    "  }",
     "} else if (mode == 'twice') {",
     "  for (iteration in 1:2) {",
     "    set.seed(8841); seed <- .Random.seed",
@@ -146,6 +162,7 @@ writeLines(c(
     "  stopifnot(file.exists(file.path(root, 'user-profile-ran')))",
     "  stopifnot(any(normalizePath(.libPaths()) == normalizePath(project_library)))",
     "  stopifnot(length(list.files(consent, pattern='\\\\.request$')) == 0L)",
+    "  if (mode == 'profile_prepared') stopifnot(identical(readLines(ready_path), revision))",
     "} else if (mode == 'profile_decline') {",
     "  wrong_library <- file.path(managed_root, 'fixture-other-platform',",
     "                             '99.99', strrep('a', 40), 'library')",
@@ -157,6 +174,7 @@ writeLines(c(
     "    paste(normalizePath(.libPaths()), collapse=';')))",
     "  stopifnot(file.exists(file.path(root, 'user-profile-ran')))",
     "  stopifnot(!dir.exists(sess_managed_library(managed_root, revision)))",
+    "  stopifnot(!file.exists(ready_path))",
     "  stopifnot(file.exists(file.path(wrong_library, 'sess', 'DESCRIPTION')))",
     "  stopifnot(length(list.files(consent, pattern='\\\\.request$')) == 0L)",
     "} else if (mode == 'profile_approve') {",
@@ -174,6 +192,7 @@ writeLines(c(
     "  actual <- getNamespaceInfo(asNamespace('sess'), 'path')",
     "  stopifnot(same_paths(actual, file.path(library, 'sess')))",
     "  stopifnot(file.exists(file.path(library, 'sess', 'DESCRIPTION')))",
+    "  stopifnot(identical(readLines(ready_path), revision))",
     "  stopifnot(file.exists(file.path(wrong_library, 'sess', 'DESCRIPTION')))",
     "} else if (mode == 'timeout') {",
     "  set.seed(8841); seed <- .Random.seed",
@@ -201,18 +220,29 @@ writeLines(c(
     "  wrong_desc <- file.path(wrong_library, 'sess', 'DESCRIPTION')",
     "  stopifnot(file.exists(wrong_desc))",
     "  stopifnot(identical(sess_source_revision(wrong_desc), revision))",
-    "} else if (mode %in% c('parallel_approve', 'parallel_decline', 'parallel_third')) {",
+    "  stopifnot(identical(readLines(ready_path), revision))",
+    "} else if (mode %in% c('parallel_approve', 'parallel_decline', 'parallel_third',",
+    "                       'parallel_failure', 'parallel_retry')) {",
     "  timeout <- 10",
-    "  result <- attach_sess(timeout=timeout, setup_timeout=20)",
     "  if (mode == 'parallel_approve') {",
+    "    result <- attach_sess(timeout=timeout, setup_timeout=20)",
     "    stopifnot(identical(result, TRUE), 'sess' %in% loadedNamespaces())",
     "    stopifnot(identical(sess_loaded_source_revision(), revision))",
     "    actual <- getNamespaceInfo(asNamespace('sess'), 'path')",
     "    stopifnot(same_paths(actual, file.path(managed_library, 'sess')))",
     "    stopifnot(same_paths(.libPaths(), ordinary))",
+    "  } else if (mode == 'parallel_failure') {",
+    "    result <- tryCatch(attach_sess(timeout=10), error=identity)",
+    "    stopifnot(inherits(result, 'error'), !('sess' %in% loadedNamespaces()))",
+    "    stopifnot(file.exists(file.path(managed_library, 'sess', 'DESCRIPTION')))",
+    "    stopifnot(!file.exists(ready_path), !dir.exists(lock_path))",
+    "    stopifnot(same_paths(.libPaths(), ordinary))",
     "  } else {",
+    "    result <- attach_sess(timeout=timeout, setup_timeout=20)",
     "    stopifnot(identical(result, FALSE), !('sess' %in% loadedNamespaces()))",
-    "    stopifnot(!dir.exists(file.path(managed_library, 'sess')))",
+    "    if (mode == 'parallel_retry') stopifnot(file.exists(file.path(managed_library, 'sess', 'DESCRIPTION')))",
+    "    else stopifnot(!file.exists(file.path(managed_library, 'sess', 'DESCRIPTION'))) ",
+    "    stopifnot(!file.exists(ready_path))",
     "    stopifnot(same_paths(.libPaths(), ordinary))",
     "  }",
     "} else if (mode == 'lock_timeout') {",
@@ -224,6 +254,7 @@ writeLines(c(
     "                                                conditionMessage(result), fixed=TRUE))",
     "  stopifnot(dir.exists(lock), file.exists(lock_marker))",
     "  stopifnot(length(list.files(consent, pattern='\\\\.request$')) == 0L)",
+    "  stopifnot(!file.exists(ready_path))",
     "} else stop('unknown case')",
     "cat('manual attach case passed:', mode, '\\n')",
     "if (nzchar(result_file)) writeLines('ok', result_file)"
@@ -309,6 +340,9 @@ run_case <- function(mode) {
         } else {
             utils::install.packages(pkg, repos = NULL, type = "source", lib = install_library,
                                     quiet = TRUE)
+            if (mode == "profile_prepared") {
+                writeLines(revision, file.path(dirname(install_library), ".ready"))
+            }
         }
         if (mode %in% c("profile_exact", "profile_prepared")) {
             unlink(consent, recursive = TRUE)
@@ -334,7 +368,14 @@ run_case <- function(mode) {
         }, add = TRUE)
         do.call(Sys.setenv, as.list(profile_environment))
     }
-    consent_modes <- c("approve", "twice", "mismatch", "profile_decline", "profile_approve")
+    consent_modes <- c("approve", "twice", "mismatch", "profile_decline", "profile_approve",
+                       "unready", "wrong_ready")
+    if (mode %in% c("unready", "wrong_ready")) {
+        managed_root <- file.path(case_root, "vscode-R")
+        managed_library <- sess_managed_library(managed_root, revision)
+        dir.create(managed_library, recursive = TRUE)
+        utils::install.packages(pkg, repos = NULL, type = "source", lib = managed_library, quiet = TRUE)
+    }
     if (mode %in% consent_modes) {
         log <- file.path(case_root, "consent-ids")
         identity_log <- file.path(case_root, "runtime-identities")
@@ -383,7 +424,7 @@ run_case <- function(mode) {
 }
 
 for (mode in c(
-    "twice", "mismatch", "exact", "prepared", "timeout", "approve",
+    "twice", "mismatch", "exact", "prepared", "unready", "wrong_ready", "timeout", "approve",
     "profile_exact", "profile_prepared", "profile_decline", "profile_approve"
 )) run_case(mode)
 
@@ -489,6 +530,7 @@ run_parallel_setup <- function(approve) {
     managed_root <- file.path(case_root, "vscode-R")
     managed_library <- sess_managed_library(managed_root, revision)
     lock_path <- file.path(dirname(managed_library), ".setup-lock")
+    ready_path <- file.path(dirname(managed_library), ".ready")
     owner_ready <- file.path(case_root, "owner-lock-ready")
     follower_observed <- file.path(case_root, "follower-observed-lock")
     install_complete <- file.path(case_root, "install-complete")
@@ -534,7 +576,7 @@ run_parallel_setup <- function(approve) {
     if (approve) {
         wait_for_file(description_visible, 10, "installed package metadata while owner holds lock")
         stopifnot(dir.exists(lock_path), file.exists(file.path(managed_library, "sess", "DESCRIPTION")))
-        stopifnot(!file.exists(load_log))
+        stopifnot(!file.exists(load_log), !file.exists(ready_path))
         file.create(install_release)
         wait_for_file(install_complete, 10, "installer verification completion")
     }
@@ -548,13 +590,14 @@ run_parallel_setup <- function(approve) {
     if (approve) {
         stopifnot(length(readLines(install_log, warn = FALSE)) == 1L)
         stopifnot(file.exists(install_complete), file.exists(load_log))
+        stopifnot(identical(readLines(ready_path, warn = FALSE), revision))
         loads <- readLines(load_log, warn = FALSE)
         if (!identical(sort(loads), c("follower", "owner"))) {
             stop(paste("unexpected package load sequence:", paste(loads, collapse = ", ")))
         }
     } else {
         stopifnot(!file.exists(install_log), !dir.exists(managed_library))
-        stopifnot(!file.exists(load_log))
+        stopifnot(!file.exists(load_log), !file.exists(ready_path))
 
         third_agent <- start_consent_agent(case_root, "decline", label = "third-consent")
         third_result <- file.path(case_root, "third-result")
@@ -566,12 +609,79 @@ run_parallel_setup <- function(approve) {
         stopifnot(length(published_requests) == 2L)
         stopifnot(length(list.files(consent, pattern = "\\.(request|response)$")) == 0L)
         stopifnot(!dir.exists(lock_path), !dir.exists(managed_library))
-        stopifnot(!file.exists(install_log), !file.exists(load_log))
+        stopifnot(!file.exists(install_log), !file.exists(load_log), !file.exists(ready_path))
     }
 }
 
 run_parallel_setup(TRUE)
 run_parallel_setup(FALSE)
+
+run_failed_install <- function() {
+    case_root <- file.path(root, "parallel-failed-install")
+    dir.create(case_root)
+    dir.create(file.path(case_root, "consent"))
+    managed_library <- sess_managed_library(file.path(case_root, "vscode-R"), revision)
+    lock_path <- file.path(dirname(managed_library), ".setup-lock")
+    ready_path <- file.path(dirname(managed_library), ".ready")
+    request_log <- file.path(case_root, "published-requests")
+    failure_helper <- file.path(case_root, "failing-installer.R")
+    dir.create(managed_library, recursive = TRUE)
+    utils::install.packages(pkg, repos = NULL, type = "source", lib = managed_library, quiet = TRUE)
+    existing_description <- file.path(managed_library, "sess", "DESCRIPTION")
+    description <- read.dcf(existing_description)
+    description[1L, "Config/vscode-R/source-revision"] <- mismatch
+    write.dcf(description, existing_description)
+    writeLines(revision, ready_path)
+    writeLines(c(
+        "sess_install <- function(pkg_path, library, repo) {",
+        "  test_vars <- c('VSCODE_R_TEST_ROLE', 'VSCODE_R_TEST_LOCK_OWNER',",
+        "                 'VSCODE_R_TEST_LOAD_LOG', 'VSCODE_R_TEST_INSTALL_COMPLETE')",
+        "  previous <- Sys.getenv(test_vars, unset=NA_character_)",
+        "  Sys.unsetenv(test_vars)",
+        "  on.exit({",
+        "    Sys.unsetenv(test_vars)",
+        "    if (any(!is.na(previous))) do.call(Sys.setenv, as.list(previous[!is.na(previous)]))",
+        "  }, add=TRUE)",
+        "  utils::install.packages(pkg_path, repos=NULL, type='source', lib=library, quiet=TRUE)",
+        "  if (!file.exists(file.path(library, 'sess', 'DESCRIPTION'))) stop('install failed')",
+        "  stop('injected verification failure')",
+        "}"
+    ), failure_helper)
+
+    first_agent <- start_consent_agent(case_root, "approve", label = "failure-consent")
+    first_result <- file.path(case_root, "failure-result")
+    first <- start_parallel_child(
+        case_root,
+        "parallel_failure",
+        "failure-owner",
+        first_result,
+        failure_helper
+    )
+    wait_for_child(first, "failed sess setup")
+    first_id <- wait_for_agent(first_agent)
+    stopifnot(file.exists(file.path(managed_library, "sess", "DESCRIPTION")))
+    stopifnot(identical(sess_source_revision(file.path(managed_library, "sess", "DESCRIPTION")), revision))
+    stopifnot(!file.exists(ready_path), !dir.exists(lock_path))
+    stopifnot(length(readLines(request_log, warn = FALSE)) == 1L)
+
+    retry_agent <- start_consent_agent(case_root, "decline", label = "retry-consent")
+    retry_result <- file.path(case_root, "retry-result")
+    retry <- start_parallel_child(
+        case_root,
+        "parallel_retry",
+        "retry",
+        retry_result
+    )
+    wait_for_child(retry, "retry after failed sess setup")
+    retry_id <- wait_for_agent(retry_agent)
+    stopifnot(!identical(first_id, retry_id))
+    stopifnot(length(readLines(request_log, warn = FALSE)) == 2L)
+    stopifnot(file.exists(file.path(managed_library, "sess", "DESCRIPTION")))
+    stopifnot(!file.exists(ready_path), !dir.exists(lock_path))
+    stopifnot(!file.exists(file.path(case_root, "load-log")))
+}
+
+run_failed_install()
 
 timeout_root <- file.path(root, "foreign-lock-timeout")
 dir.create(timeout_root)
@@ -599,5 +709,6 @@ if (!is.null(attr(timeout_output, "status")) && attr(timeout_output, "status") !
 }
 stopifnot(identical(readLines(timeout_result, warn = FALSE), "ok"))
 stopifnot(dir.exists(timeout_lock), identical(readLines(foreign_marker, warn = FALSE), "preserve"))
+stopifnot(!file.exists(file.path(dirname(timeout_lock), ".ready")))
 unlink(root, recursive = TRUE)
 cat("manual attach consent bridge tests passed\n")
