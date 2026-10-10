@@ -45,7 +45,7 @@ local({
         }
         source(attach_helper, local = TRUE)
         ns <- vscode_r_prepare_sess(
-            bundled_path, managed_root, consent_directory, helper, installer_helper)
+                                    bundled_path, managed_root, consent_directory, helper, installer_helper)
         if (is.null(ns)) {
             return(invisible(NULL))
         }

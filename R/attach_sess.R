@@ -47,7 +47,7 @@ vscode_r_prepare_sess <- function(pkg_path, managed_root, consent_dir,
                     stop("Could not create a unique sess installation request.")
                 }
                 request <- paste(
-                    "vscode-r-sess-consent-v1", id, expected, runtime, reason, sep = "\n")
+                                 "vscode-r-sess-consent-v1", id, expected, runtime, reason, sep = "\n")
                 request_path <- file.path(consent_dir, paste0(id, ".request"))
                 response_path <- file.path(consent_dir, paste0(id, ".response"))
                 temporary_path <- tempfile(pattern = paste0(id, "-"), tmpdir = consent_dir)
@@ -65,8 +65,8 @@ vscode_r_prepare_sess <- function(pkg_path, managed_root, consent_dir,
                 while (Sys.time() < deadline && dir.exists(consent_dir) && !nzchar(response)) {
                     if (file.exists(response_path)) {
                         lines <- tryCatch(
-                            readLines(response_path, warn = FALSE, n = 2L),
-                            error = function(e) character())
+                                          readLines(response_path, warn = FALSE, n = 2L),
+                                          error = function(e) character())
                         if (length(lines) == 1L && lines %in% c("approve", "decline")) {
                             response <- lines
                         } else {
@@ -111,7 +111,7 @@ vscode_r_attach_sess <- function(endpoint, pkg_path, managed_root, consent_dir,
                                  source_helper, installer_helper, plot_backend,
                                  timeout_seconds = 180) {
     ns <- vscode_r_prepare_sess(
-        pkg_path, managed_root, consent_dir, source_helper, installer_helper, timeout_seconds)
+                                pkg_path, managed_root, consent_dir, source_helper, installer_helper, timeout_seconds)
     if (is.null(ns)) {
         return(invisible(FALSE))
     }

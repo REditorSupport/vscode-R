@@ -192,7 +192,7 @@ run_case <- function(mode) {
     consent <- file.path(case_root, "consent")
     dir.create(consent)
     profile_modes <- c(
-        "profile_exact", "profile_prepared", "profile_decline", "profile_approve")
+                       "profile_exact", "profile_prepared", "profile_decline", "profile_approve")
     startup <- mode %in% profile_modes
     if (startup) {
         normal <- file.path(case_root, "normal library")
@@ -217,10 +217,11 @@ run_case <- function(mode) {
         ), startup_profile)
         managed_library <- sess_managed_library(managed_root, revision)
         install_library <- switch(
-            mode,
-            profile_exact = normal,
-            profile_prepared = managed_library,
-            file.path(managed_root, "fixture-other-platform", "99.99", strrep("a", 40), "library"))
+                                  mode,
+                                  profile_exact = normal,
+                                  profile_prepared = managed_library,
+                                  file.path(managed_root,
+                                            "fixture-other-platform", "99.99", strrep("a", 40), "library"))
         dir.create(install_library, recursive = TRUE, showWarnings = FALSE)
         if (mode %in% c("profile_decline", "profile_approve")) {
             wrong_sess <- file.path(install_library, "sess")
@@ -236,16 +237,16 @@ run_case <- function(mode) {
             unlink(consent, recursive = TRUE)
         }
         profile_environment <- c(
-            R_PROFILE_USER = startup_profile,
-            VSCODE_R_TEST_USER_PROFILE = user_profile,
-            VSCODE_R_TEST_NORMAL_LIBRARY = normal,
-            VSCODE_R_TEST_PROFILE = production_profile,
-            VSCODE_R_SESS_PKG_PATH = pkg,
-            VSCODE_R_SESS_SOURCE_HELPER = file.path(getwd(), "R", "sess_source.R"),
-            VSCODE_R_SESS_ATTACH_HELPER = file.path(getwd(), "R", "attach_sess.R"),
-            VSCODE_R_SESS_INSTALLER_HELPER = file.path(getwd(), "R", "sess-package-install.R"),
-            VSCODE_R_SESS_ROOT = managed_root,
-            VSCODE_R_SESS_CONSENT_DIRECTORY = consent)
+                                 R_PROFILE_USER = startup_profile,
+                                 VSCODE_R_TEST_USER_PROFILE = user_profile,
+                                 VSCODE_R_TEST_NORMAL_LIBRARY = normal,
+                                 VSCODE_R_TEST_PROFILE = production_profile,
+                                 VSCODE_R_SESS_PKG_PATH = pkg,
+                                 VSCODE_R_SESS_SOURCE_HELPER = file.path(getwd(), "R", "sess_source.R"),
+                                 VSCODE_R_SESS_ATTACH_HELPER = file.path(getwd(), "R", "attach_sess.R"),
+                                 VSCODE_R_SESS_INSTALLER_HELPER = file.path(getwd(), "R", "sess-package-install.R"),
+                                 VSCODE_R_SESS_ROOT = managed_root,
+                                 VSCODE_R_SESS_CONSENT_DIRECTORY = consent)
         profile_keys <- names(profile_environment)
         previous_environment <- Sys.getenv(profile_keys, unset = NA_character_)
         on.exit({
