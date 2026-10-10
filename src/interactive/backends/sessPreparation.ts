@@ -27,6 +27,10 @@ export async function installSessRuntime(extensionPath: string, root: string, rP
     const resources = path.join(runtime, 'R');
     if (fs.existsSync(path.join(runtime, 'ready'))) { return { library, resources }; }
     const lock = `${runtime}.lock`;
+    // Keep lock ownership rules in sync with R/attach_sess.R: mkdir claims atomically,
+    // only the owner releases in finally, and timeout never clears a stale lock.
+    // This TS lock spans resource setup through ready; the R revision lock spans consent,
+    // package setup, and namespace load, with followers never prompting after contention.
     const deadline = Date.now() + 120000;
     for (;;) {
         try { fs.mkdirSync(lock, { mode: 0o700 }); break; }

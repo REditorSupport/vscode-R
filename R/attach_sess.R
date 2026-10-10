@@ -2,7 +2,8 @@
 # single-use grant from the extension process; .libPaths() is never changed.
 vscode_r_prepare_sess <- function(pkg_path, managed_root, consent_dir,
                                   source_helper, installer_helper,
-                                  timeout_seconds = 180) {
+                                  timeout_seconds = 180,
+                                  setup_timeout_seconds = 300) {
     source(source_helper, local = TRUE)
     expected <- sess_source_revision(file.path(pkg_path, "DESCRIPTION"))
     if (is.null(expected)) {
@@ -23,9 +24,53 @@ vscode_r_prepare_sess <- function(pkg_path, managed_root, consent_dir,
         if (!is.null(library)) {
             ns <- sess_load_namespace(library, expected)
         } else {
+            lock_parent <- dirname(managed_library)
+            dir.create(lock_parent, recursive = TRUE, showWarnings = FALSE)
+            if (!dir.exists(lock_parent) || file.access(lock_parent, 2L) != 0L) {
+                stop("The vscode-R managed sess setup directory is not writable.")
+            }
+            lock_path <- file.path(lock_parent, ".setup-lock")
+            # Keep lock ownership rules in sync with src/interactive/backends/sessPreparation.ts:
+            # mkdir claims atomically; only the owner releases via on.exit; timeout never clears a stale lock.
+            # Scope differs: this revision lock covers consent, install, and load; an empty follower does not prompt.
+            lock_deadline <- Sys.time() + setup_timeout_seconds
+            lock_timeout_message <- paste(
+                "Timed out waiting for another sess setup. Its owner may have crashed;",
+                "retrying alone will not clear the stale lock. Remove",
+                shQuote(lock_path), "only if its owner has exited, then retry."
+            )
+            followed_setup <- FALSE
+            repeat {
+                acquired <- dir.create(lock_path, showWarnings = FALSE, mode = "0700")
+                if (isTRUE(acquired)) {
+                    on.exit(unlink(lock_path, recursive = TRUE, force = TRUE), add = TRUE)
+                    break
+                }
+                followed_setup <- TRUE
+                if (!file.exists(lock_path)) {
+                    if (file.access(lock_parent, 2L) != 0L) {
+                        stop("The vscode-R managed sess setup directory is not writable.")
+                    }
+                    if (Sys.time() >= lock_deadline) {
+                        stop(lock_timeout_message)
+                    }
+                    Sys.sleep(0.1)
+                    next
+                }
+                if (!dir.exists(lock_path)) {
+                    stop("A file is blocking the vscode-R managed sess setup lock.")
+                }
+                if (Sys.time() >= lock_deadline) {
+                    stop(lock_timeout_message)
+                }
+                Sys.sleep(0.1)
+            }
+
             installed <- sess_find_source_library(expected, managed_library)
             if (!is.null(installed)) {
                 ns <- sess_load_namespace(installed, expected)
+            } else if (followed_setup) {
+                return(NULL)
             } else {
                 existing <- any(vapply(.libPaths(), function(library) {
                     file.exists(file.path(library, "sess", "DESCRIPTION"))
@@ -109,9 +154,11 @@ vscode_r_prepare_sess <- function(pkg_path, managed_root, consent_dir,
 
 vscode_r_attach_sess <- function(endpoint, pkg_path, managed_root, consent_dir,
                                  source_helper, installer_helper, plot_backend,
-                                 timeout_seconds = 180) {
+                                 timeout_seconds = 180,
+                                 setup_timeout_seconds = 300) {
     ns <- vscode_r_prepare_sess(
-                                pkg_path, managed_root, consent_dir, source_helper, installer_helper, timeout_seconds)
+                                pkg_path, managed_root, consent_dir, source_helper, installer_helper,
+                                timeout_seconds, setup_timeout_seconds)
     if (is.null(ns)) {
         return(invisible(FALSE))
     }
