@@ -14,6 +14,8 @@ import * as util from '../../util';
 import { mockExtensionContext } from '../common/mockvscode';
 import { deferred, SessionConnections, waitForValue as waitFor } from '../common/sessionConnections';
 
+const originalSetTimeout = globalThis.setTimeout;
+
 async function settleWithFakeTime<T>(promise: Promise<T>, clock: sinon.SinonFakeTimers): Promise<T> {
     let settled = false;
     void promise.then(() => { settled = true; }, () => { settled = true; });
@@ -383,8 +385,9 @@ suite('Session Terminal Lifecycle', () => {
         const terminal = { processId: new Promise<number>(() => undefined) } as unknown as vscode.Terminal;
         const close = new vscode.EventEmitter<vscode.Terminal>();
         sandbox.stub(vscode.window, 'onDidCloseTerminal').callsFake(close.event);
-        const clock = sandbox.useFakeTimers();
-        const timerSpy = sinon.spy(globalThis, 'setTimeout');
+        const timerSandbox = sinon.createSandbox();
+        const clock = timerSandbox.useFakeTimers();
+        const timerSpy = timerSandbox.spy(globalThis, 'setTimeout');
         const waiting = session.waitForTerminalReady(terminal, 30000, file);
         try {
             await waitForTimerDelay(timerSpy, 600000, file);
@@ -392,9 +395,10 @@ suite('Session Terminal Lifecycle', () => {
             assert.strictEqual(await waiting, false);
             assert.strictEqual(clock.countTimers(), 0, 'closing the terminal removes the pending startup deadline and poll');
         } finally {
+            close.fire(terminal);
+            timerSandbox.restore();
+            await waiting;
             close.dispose();
-            timerSpy.restore();
-            clock.restore();
             await fsp.rm(directory, { recursive: true, force: true });
         }
     });
@@ -427,21 +431,19 @@ suite('Session Terminal Lifecycle', () => {
             readinessStarted();
             return waitForReady(current, timeout, startupPath);
         });
-        const clock = sandbox.useFakeTimers();
-        const timerSpy = sinon.spy(globalThis, 'setTimeout');
-        let fakeClockRestored = false;
-        const restoreFakeClock = () => {
-            if (!fakeClockRestored) {
-                timerSpy.restore();
-                clock.restore();
-                fakeClockRestored = true;
-            }
-        };
+        const close = new vscode.EventEmitter<vscode.Terminal>();
+        sandbox.stub(vscode.window, 'onDidCloseTerminal').callsFake(close.event);
+        const timerSandbox = sinon.createSandbox();
+        const clock = timerSandbox.useFakeTimers();
+        const timerSpy = timerSandbox.spy(globalThis, 'setTimeout');
+        let commandsSettled: Promise<PromiseSettledResult<boolean>[]> | undefined;
 
         try {
             assert.strictEqual(await rTerminal.createRTerm(), true);
             const first = rTerminal.runTextInTerm('first');
             const second = rTerminal.runTextInTerm('second');
+            const commands = [first, second];
+            commandsSettled = Promise.allSettled(commands);
             let firstSettled = false;
             const firstResult = first.then(value => { firstSettled = true; return value; });
             await started;
@@ -469,9 +471,12 @@ suite('Session Terminal Lifecycle', () => {
                 ['\x1b[200~second\x1b[201~', true],
             ]);
         } finally {
+            close.fire(terminal);
             rTerminal.deleteTerminal(terminal);
+            timerSandbox.restore();
+            if (commandsSettled) { await commandsSettled; }
             await connections.dispose();
-            restoreFakeClock();
+            close.dispose();
             await fsp.rm(directory, { recursive: true, force: true });
         }
     });
@@ -504,24 +509,22 @@ suite('Session Terminal Lifecycle', () => {
             readinessStarted();
             return waitForReady(current, timeout, startupPath);
         });
-        const clock = sandbox.useFakeTimers();
-        const timerSpy = sinon.spy(globalThis, 'setTimeout');
-        let fakeClockRestored = false;
-        const restoreFakeClock = () => {
-            if (!fakeClockRestored) {
-                timerSpy.restore();
-                clock.restore();
-                fakeClockRestored = true;
-            }
-        };
+        const close = new vscode.EventEmitter<vscode.Terminal>();
+        sandbox.stub(vscode.window, 'onDidCloseTerminal').callsFake(close.event);
+        const timerSandbox = sinon.createSandbox();
+        const clock = timerSandbox.useFakeTimers();
+        const timerSpy = timerSandbox.spy(globalThis, 'setTimeout');
 
+        let pendingCommand: Promise<boolean> | undefined;
+        let pendingCommandSettled: Promise<PromiseSettledResult<boolean>> | undefined;
         try {
             assert.strictEqual(await rTerminal.createRTerm(), true);
             let rejectionSettled = false;
-            const rejected = rTerminal.runTextInTerm('must not send').then(result => {
+            pendingCommand = rTerminal.runTextInTerm('must not send').then(result => {
                 rejectionSettled = true;
                 return result;
             });
+            pendingCommandSettled = Promise.allSettled([pendingCommand]).then(results => results[0]);
             await started;
             assert.strictEqual(readyStub.firstCall.args[2], startupFile);
             await waitForTimerDelay(timerSpy, 600000, startupFile);
@@ -532,12 +535,12 @@ suite('Session Terminal Lifecycle', () => {
                 // Await the command state through a short fake-time turn after each poll.
             }
             assert.strictEqual(rejectionSettled, true, 'failed startup status should settle the pending input promptly');
-            assert.strictEqual(await rejected, false);
+            assert.strictEqual(await pendingCommand, false);
             sinon.assert.notCalled(sendText);
             sinon.assert.calledOnce(warning);
             assert.strictEqual(clock.countTimers(), 0, 'failed startup clears its bounded wait and poll');
 
-            restoreFakeClock();
+            timerSandbox.restore();
             await connections.attach('startup-late-attach', rPid);
             assert.strictEqual(sendText.called, false, 'late attach cannot release the already failed input');
             assert.strictEqual(await session.waitForTerminalReady(terminal, 1, startupFile), true,
@@ -545,30 +548,46 @@ suite('Session Terminal Lifecycle', () => {
             assert.strictEqual(await rTerminal.runTextInTerm('retry after attach'), true);
             sinon.assert.calledOnceWithExactly(sendText, '\x1b[200~retry after attach\x1b[201~', true);
         } finally {
+            close.fire(terminal);
             rTerminal.deleteTerminal(terminal);
+            timerSandbox.restore();
+            if (pendingCommandSettled) { await pendingCommandSettled; }
             await connections.dispose();
-            restoreFakeClock();
+            close.dispose();
             await fsp.rm(directory, { recursive: true, force: true });
         }
     });
 
     test('terminal readiness timeout does not declare the terminal ready', async () => {
         const terminal = { processId: new Promise<number>(() => undefined) } as unknown as vscode.Terminal;
-        const clock = sandbox.useFakeTimers();
+        const timerSandbox = sinon.createSandbox();
+        const clock = timerSandbox.useFakeTimers();
         let settled = false;
         const waiting = session.waitForTerminalReady(terminal).then(result => { settled = true; return result; });
-        await clock.tickAsync(29999);
-        assert.strictEqual(settled, false, 'absence of startup state keeps the default 30 second timeout');
-        await clock.tickAsync(1);
-        assert.strictEqual(await waiting, false);
-        assert.strictEqual(clock.countTimers(), 0);
+        try {
+            await clock.tickAsync(29999);
+            assert.strictEqual(settled, false, 'absence of startup state keeps the default 30 second timeout');
+            await clock.tickAsync(1);
+            assert.strictEqual(await waiting, false);
+            assert.strictEqual(clock.countTimers(), 0);
+        } finally {
+            try {
+                await clock.tickAsync(30000);
+                await waiting;
+            } finally {
+                timerSandbox.restore();
+            }
+        }
     });
 
     test('pending startup has a finite 10 minute deadline', async () => {
         const { directory, file } = await makeStartupFile('pending');
         const terminal = { processId: new Promise<number>(() => undefined) } as unknown as vscode.Terminal;
-        const clock = sandbox.useFakeTimers();
-        const timerSpy = sinon.spy(globalThis, 'setTimeout');
+        const timerSandbox = sinon.createSandbox();
+        const clock = timerSandbox.useFakeTimers();
+        const timerSpy = timerSandbox.spy(globalThis, 'setTimeout');
+        const close = new vscode.EventEmitter<vscode.Terminal>();
+        sandbox.stub(vscode.window, 'onDidCloseTerminal').callsFake(close.event);
         const waiting = session.waitForTerminalReady(terminal, 30000, file);
         try {
             const expire = await waitForTimerDelay(timerSpy, 600000, file);
@@ -576,9 +595,25 @@ suite('Session Terminal Lifecycle', () => {
             assert.strictEqual(await waiting, false);
             assert.strictEqual(clock.countTimers(), 0);
         } finally {
-            timerSpy.restore();
-            clock.restore();
+            close.fire(terminal);
+            timerSandbox.restore();
+            await waiting;
+            close.dispose();
             await fsp.rm(directory, { recursive: true, force: true });
+        }
+    });
+
+    test('global Sinon restore leaves startup timers usable', async () => {
+        try {
+            // Other suites call the default Sinon sandbox restore after this suite.
+            // It must not reinstate a fake clock or spy from a completed test.
+            sinon.restore();
+            assert.strictEqual(globalThis.setTimeout, originalSetTimeout);
+            await new Promise<void>(resolve => globalThis.setTimeout(resolve, 1));
+        } finally {
+            if (globalThis.setTimeout !== originalSetTimeout) {
+                globalThis.setTimeout = originalSetTimeout;
+            }
         }
     });
 

@@ -110,31 +110,38 @@ suite('R Terminal', () => {
             sandbox.stub(vscode.window, 'activeTerminal').value(terminal);
             const first = rTerminal.runTextInTerm('first');
             const second = rTerminal.runTextInTerm('second');
-            // Let both commands reach the shared wait, then expose the terminal
-            // as VS Code would before a third Ctrl+Enter.
-            await waiting;
-            terminals.value([terminal]);
-            const third = rTerminal.runTextInTerm('third');
-            for (let i = 0; i < 20; i++) { await Promise.resolve(); }
-            assert.deepStrictEqual(sent, []);
-            sinon.assert.calledOnce(create);
-            if (integrated) {
-                sinon.assert.calledOnceWithExactly(readyStub, terminal);
-                sinon.assert.notCalled(delayStub);
-            } else {
-                sinon.assert.notCalled(readyStub);
-                sinon.assert.calledOnceWithExactly(delayStub, 200);
+            const commands: Promise<boolean>[] = [first, second];
+            try {
+                // Let both commands reach the shared wait, then expose the terminal
+                // as VS Code would before a third Ctrl+Enter.
+                await waiting;
+                terminals.value([terminal]);
+                const third = rTerminal.runTextInTerm('third');
+                commands.push(third);
+                for (let i = 0; i < 20; i++) { await Promise.resolve(); }
+                assert.deepStrictEqual(sent, []);
+                sinon.assert.calledOnce(create);
+                if (integrated) {
+                    sinon.assert.calledOnceWithExactly(readyStub, terminal, 30000, '/unused-test-discovery.startup');
+                    sinon.assert.notCalled(delayStub);
+                } else {
+                    sinon.assert.notCalled(readyStub);
+                    sinon.assert.calledOnceWithExactly(delayStub, 200);
+                }
+                resolveReady(true);
+                await Promise.all(commands);
+                assert.deepStrictEqual(sent, ['\x1b[200~first\x1b[201~', '\x1b[200~second\x1b[201~', '\x1b[200~third\x1b[201~']);
+                assert.strictEqual(consentDirectoryStub.called, watcher);
+                await rTerminal.runTextInTerm('fourth');
+                assert.strictEqual(sent.length, 4);
+                sinon.assert.calledOnce(create);
+                assert.strictEqual(target.thirdCall.args[3], false);
+                assert.strictEqual(target.lastCall.args[3], false);
+            } finally {
+                resolveReady(true);
+                await Promise.allSettled(commands);
+                rTerminal.deleteTerminal(terminal);
             }
-            resolveReady(true);
-            await Promise.all([first, second, third]);
-            assert.deepStrictEqual(sent, ['\x1b[200~first\x1b[201~', '\x1b[200~second\x1b[201~', '\x1b[200~third\x1b[201~']);
-            assert.strictEqual(consentDirectoryStub.called, watcher);
-            await rTerminal.runTextInTerm('fourth');
-            assert.strictEqual(sent.length, 4);
-            sinon.assert.calledOnce(create);
-            assert.strictEqual(target.thirdCall.args[3], false);
-            assert.strictEqual(target.lastCall.args[3], false);
-            rTerminal.deleteTerminal(terminal);
         });
     }
 
