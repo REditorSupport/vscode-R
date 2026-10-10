@@ -183,13 +183,15 @@ suite('Session Terminal Lifecycle', () => {
 
     for (const explicitBinding of [false, true]) {
         test(`managed terminal accepts its first source command after native attach (explicit binding: ${String(explicitBinding)})`, async () => {
+            const { directory, file: startupPath } = await makeStartupFile('ready');
+            const discoveryPath = startupPath.slice(0, -'.startup'.length);
             sandbox.stub(executionTarget, 'tryInteractiveExecution').resolves(false);
             sandbox.stub(util, 'config').returns({
                 get: (key: string) => ({ sessionWatcher: true, consoleArgs: [], 'source.focus': 'none' })[key],
             } as unknown as vscode.WorkspaceConfiguration);
             sandbox.stub(util, 'getRterm').resolves(process.execPath);
             sandbox.stub(session, 'getSessConsentDirectory').resolves('/unused-test-consent');
-            sandbox.stub(session, 'createSessionDiscoveryFile').resolves('/unused-test-discovery');
+            sandbox.stub(session, 'createSessionDiscoveryFile').resolves(discoveryPath);
             sandbox.stub(session, 'updateTerminalSessionDiscoveryFile').resolves();
             const waitUntilReady = session.waitForTerminalReady;
             // Exercise the real readiness logic, with a bounded failure timeout.
@@ -205,6 +207,8 @@ suite('Session Terminal Lifecycle', () => {
             sandbox.stub(vscode.window, 'terminals').value([terminal]);
             sandbox.stub(vscode.window, 'activeTerminal').value(terminal);
             sandbox.stub(vscode.window, 'createTerminal').returns(terminal);
+            const close = new vscode.EventEmitter<vscode.Terminal>();
+            sandbox.stub(vscode.window, 'onDidCloseTerminal').callsFake(close.event);
             const sessionId = `source-readiness-${String(explicitBinding)}`;
             try {
                 assert.strictEqual(await rTerminal.createRTerm(), true);
@@ -217,12 +221,18 @@ suite('Session Terminal Lifecycle', () => {
                     assert.strictEqual(await api.activate(owner.sessionId, { terminal }), true);
                 }
                 assert.strictEqual(await rTerminal.runTextInTerm('source("example.R")'), true);
-                sinon.assert.calledOnceWithExactly(readiness, terminal, 30000, '/unused-test-discovery.startup', false);
+                sinon.assert.calledOnceWithExactly(readiness, terminal, 30000, startupPath, false);
                 sinon.assert.calledOnceWithExactly(sendText, 'source("example.R")');
                 sinon.assert.notCalled(warning);
             } finally {
+                close.fire(terminal);
                 rTerminal.deleteTerminal(terminal);
-                await session.cleanupSession(sessionId);
+                try {
+                    await session.cleanupSession(sessionId);
+                } finally {
+                    close.dispose();
+                    await fsp.rm(directory, { recursive: true, force: true });
+                }
             }
         });
     }
