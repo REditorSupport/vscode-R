@@ -428,6 +428,7 @@ suite('Session Terminal Lifecycle', () => {
     test('terminal readiness aborts on close even before processId resolves', async () => {
         const { directory, file, token } = await makeStartupFile('pending');
         const terminal = { processId: new Promise<number>(() => undefined) } as unknown as vscode.Terminal;
+        sandbox.stub(vscode.window, 'terminals').value([terminal]);
         const close = new vscode.EventEmitter<vscode.Terminal>();
         sandbox.stub(vscode.window, 'onDidCloseTerminal').callsFake(close.event);
         const timerSandbox = sinon.createSandbox();
@@ -732,6 +733,7 @@ suite('Session Terminal Lifecycle', () => {
     test('pending startup has a finite 10 minute deadline', async () => {
         const { directory, file, token } = await makeStartupFile('pending');
         const terminal = { processId: new Promise<number>(() => undefined) } as unknown as vscode.Terminal;
+        sandbox.stub(vscode.window, 'terminals').value([terminal]);
         const timerSandbox = sinon.createSandbox();
         const clock = timerSandbox.useFakeTimers();
         const timerSpy = timerSandbox.spy(globalThis, 'setTimeout');

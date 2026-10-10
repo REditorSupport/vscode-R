@@ -16,6 +16,7 @@ import { AssetStorageStats, exportedAssetName, readAsset } from '../../interacti
 import { resolveExecutable } from '../../interactive/executable';
 import { shellQuote } from '../../interactive/launcher';
 import type { InteractiveManager } from '../../interactive/manager';
+import * as session from '../../session';
 import type { GlobalEnvItem, WorkspaceDataProvider } from '../../workspaceViewer';
 import type { WorkspaceData } from '../../session';
 import type { LanguageClient } from 'vscode-languageclient/node';
@@ -82,10 +83,10 @@ function treeTooltip(item: vscode.TreeItem): string {
         fs.rmSync(root, { recursive: true, force: true });
         sourceDirectories.forEach(directory => fs.rmSync(directory, { recursive: true, force: true }));
     });
-    const until = async (predicate: () => boolean): Promise<void> => {
+    const until = async (predicate: () => boolean, timeoutMessage = 'Timed out waiting for notebook execution'): Promise<void> => {
         const deadline = Date.now() + 20000;
         while (!predicate()) {
-            if (Date.now() > deadline) { throw new Error('Timed out waiting for notebook execution'); }
+            if (Date.now() > deadline) { throw new Error(timeoutMessage); }
             await new Promise(resolve => setTimeout(resolve, 50));
         }
     };
@@ -638,6 +639,9 @@ function treeTooltip(item: vscode.TreeItem): string {
         await vscode.workspace.applyEdit(edit);
         await vscode.commands.executeCommand('notebook.cell.execute', { ranges: [{ start: index, end: index + 1 }], document: notebook.uri });
         await until(() => notebook.cellAt(index).executionSummary?.success === true);
+        await until(() => session.activeSession?.sessionId === `${manifests[0].id}:${manifests[0].generation}`
+            && session.activeSession.workspaceData.globalenv.interactive_signature?.type === 'closure',
+        'Timed out waiting for the Interactive workspace snapshot');
         const result = await vscode.commands.executeCommand<{ inputUri: vscode.Uri }>('interactive.open', { preserveFocus: true }, notebook.uri);
         const input = await vscode.workspace.openTextDocument(result.inputUri);
         const previous = input.getText();
