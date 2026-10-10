@@ -1074,25 +1074,40 @@ suite('Session-aware HTML widget Viewer', () => {
         assert.strictEqual(position(panel), '1 / 1');
     });
 
-    test('a stalled HTML read keeps the previous output and can be superseded after the timeout', async () => {
-        const clock = sandbox.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
-        const source = owner('html-read-timeout');
-        await show('/tmp/a.html', source, 'A');
-        const previous = panels[0].webview.html;
-        const slow = deferred<string>();
-        read.onCall(1).returns(slow.promise);
-        const pending = show('/tmp/b.html', source, 'B');
-        const task = progressTasks.at(-1)!;
-        assert.strictEqual(panels[0].webview.html, previous);
-        clock.tick(5000);
-        await navigate(panels[0], 'back');
-        assert.strictEqual(task.done, true);
-        slow.resolve('<div>Obsolete slow output</div>');
-        await pending;
-        assert.strictEqual(outputTitle(panels[0]), 'A');
-        assert.ok(progressTasks.every(task => task.done));
-        assert.strictEqual(clock.countTimers(), 0);
-    });
+    for (const preparationTime of [4500, 10000]) {
+        test(`a ${preparationTime}ms HTML read keeps navigation disabled and leaves five seconds for browser loading`, async () => {
+            const clock = sandbox.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+            const source = owner('html-read-timeout');
+            await show('/tmp/a.html', source, 'A');
+            const previous = panels[0].webview.html;
+            const slow = deferred<string>();
+            autoLoad = false;
+            read.onCall(1).returns(slow.promise);
+            const pending = show('/tmp/b.html', source, 'B');
+            const task = progressTasks.at(-1)!;
+            clock.tick(preparationTime);
+            assert.strictEqual(panels[0].webview.html, previous);
+            assert.ok((['back', 'forward', 'remove'] as const).every(button => disabled(panels[0], button)));
+            assert.deepStrictEqual(task.messages, ['HTML Viewer: Loading HTML output…']);
+            assert.strictEqual(clock.countTimers(), 0, 'Preparation must not start the browser timeout');
+            await navigate(panels[0], 'back');
+            await remove(panels[0]);
+            assert.strictEqual(position(panels[0]), '2 / 2');
+            slow.resolve('<div>/tmp/b.html</div>');
+            await pending;
+            assert.strictEqual(outputTitle(panels[0]), 'B');
+            clock.tick(4999);
+            assert.ok((['back', 'forward', 'remove'] as const).every(button => disabled(panels[0], button)));
+            clock.tick(1);
+            assert.strictEqual(disabled(panels[0], 'back'), false);
+            assert.strictEqual(task.messages.at(-1), 'HTML Viewer: Still loading. Navigation is available.');
+            autoLoad = true;
+            await navigate(panels[0], 'back');
+            assert.strictEqual(outputTitle(panels[0]), 'A');
+            assert.ok(progressTasks.every(task => task.done));
+            assert.strictEqual(clock.countTimers(), 0);
+        });
+    }
 
     test('superseded loads get their own deadline and stale readiness cannot dismiss current progress', async () => {
         const clock = sandbox.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });

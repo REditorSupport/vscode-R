@@ -344,19 +344,25 @@ class HtmlWidgetViewerManager {
         await pending;
     }
 
-    private startLoading(entry: WidgetViewer, generation: number): void {
+    private startLoading(entry: WidgetViewer, generation: number): () => void {
         entry.finishLoading?.();
         entry.loading = true;
+        let startBrowserTimeout!: () => void;
         void window.withProgress({ location: ProgressLocation.Window }, progress => new Promise<void>(resolve => {
             progress.report({ message: 'HTML Viewer: Loading HTML output…' });
+            let timeout: ReturnType<typeof setTimeout> | undefined;
             // Run in the extension host: the output's CSP may block our script,
             // or a resource may prevent the window load event from completing.
-            const timeout = setTimeout(() => {
-                if (entry.disposed || entry.revision !== generation) { return; }
-                entry.loading = false;
-                progress.report({ message: 'HTML Viewer: Still loading. Navigation is available.' });
-                this.updateToolbar();
-            }, 5000);
+            // Preparation keeps navigation disabled; give the browser its full
+            // five seconds only after the new document has been assigned.
+            startBrowserTimeout = () => {
+                timeout = setTimeout(() => {
+                    if (entry.disposed || entry.revision !== generation) { return; }
+                    entry.loading = false;
+                    progress.report({ message: 'HTML Viewer: Still loading. Navigation is available.' });
+                    this.updateToolbar();
+                }, 5000);
+            };
             entry.finishLoading = () => {
                 clearTimeout(timeout);
                 entry.loading = false;
@@ -365,12 +371,13 @@ class HtmlWidgetViewerManager {
             };
         }));
         this.updateToolbar();
+        return startBrowserTimeout;
     }
 
     private async render(entry: WidgetViewer, reveal = true): Promise<void> {
         const { extensionPath } = this.context;
         const generation = ++entry.revision;
-        this.startLoading(entry, generation);
+        const startBrowserTimeout = this.startLoading(entry, generation);
         const item = entry.state.history[entry.state.index];
         const dir = item ? path.dirname(item.file) : path.join(extensionPath, 'dist/webviews/webview');
         const { panel } = entry;
@@ -401,6 +408,8 @@ class HtmlWidgetViewerManager {
                 if (failed) {
                     entry.finishLoading?.();
                     this.updateToolbar();
+                } else {
+                    startBrowserTimeout();
                 }
                 if (reveal) { panel.reveal(panel.viewColumn, true); }
             }
