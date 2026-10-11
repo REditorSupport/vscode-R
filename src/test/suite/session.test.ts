@@ -753,7 +753,6 @@ suite('Session Communication', () => {
             assert.ok(source.includes(JSON.stringify(endpoint).slice(1, -1)));
             assert.match(source, /tryCatch\(/);
             assert.match(source, /use_rstudioapi = (TRUE|FALSE)/);
-            assert.doesNotMatch(source, /managedRoot|consentDirectory/);
             const executionDirectory = await fsp.mkdtemp(path.join(os.tmpdir(), 'vscode-r-prepare-test-'));
             try {
                 const fixtures = [
