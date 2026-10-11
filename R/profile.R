@@ -24,7 +24,7 @@ local({
     invisible()
 })
 
-local({
+invisible(local({
     initialize_sess <- function() {
         bundled_path <- Sys.getenv("VSCODE_R_SESS_PKG_PATH", unset = "")
         if (!nzchar(bundled_path)) {
@@ -95,4 +95,4 @@ local({
             invisible(FALSE)
         })
     }
-})
+}))
