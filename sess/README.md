@@ -43,10 +43,9 @@ from the configured CRAN repository before installing its bundled copy. The
 extension does not substitute a separately published `sess` package if the
 bundled installation fails.
 
-> [!NOTE]
+> [!CAUTION]
 >
-> ### Known limitation: isolated libraries
->
+> **Known limitation: isolated libraries.**
 > A vscode-R-managed `sess` copy is reused across projects. Dependencies found in
 > ordinary R libraries during initial preparation are not copied into that managed
 > library. If an isolated project's `.libPaths()` cannot see them, `sess` may fail
