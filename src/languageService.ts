@@ -12,7 +12,6 @@ import { extensionContext } from './extension';
 import { CommonOptions } from 'child_process';
 import { boundSessionForDocument, onDidBindSessionDocument, Session } from './session';
 import { SessionSignatureHelpProvider } from './signatureHelp';
-import { InteractiveInputFeatures } from './interactive/inputFeatures';
 
 export class LanguageService implements Disposable {
     private readonly clients: Map<string, LanguageClient> = new Map();
@@ -27,7 +26,6 @@ export class LanguageService implements Disposable {
     constructor() {
         this.outputChannel = window.createOutputChannel('R Language Server', { log: true });
         this.config = workspace.getConfiguration('r');
-        this.listeners.push(new InteractiveInputFeatures(editor => this.clients.get(this.getKey(editor.document.uri))));
         void this.startLanguageService();
     }
 

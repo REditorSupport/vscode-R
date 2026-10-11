@@ -55,6 +55,8 @@ function treeTooltip(item: vscode.TreeItem): string {
         fs.cpSync(path.join(process.cwd(), 'sess'), path.join(root, 'sess'), { recursive: true });
         await promisify(execFile)('R', ['CMD', 'INSTALL', '--clean', `--library=${path.join(root, 'library')}`, path.join(root, 'sess')]);
         await vscode.extensions.getExtension('REditorSupport.r')?.activate();
+        await until(() => [...languageService().clients.values()].some(client => client.isRunning()),
+            'Timed out starting the R language server for Interactive language-service integration tests');
         originalLanguageClients = new Set(languageService().clients.values());
         // Startup restoration may activate R before this suite configures its private
         // registry. Recreate only the manager, just as a host reload would do.
@@ -749,6 +751,8 @@ function treeTooltip(item: vscode.TreeItem): string {
             const editor = vscode.window.activeTextEditor!;
             const document = editor.document, original = document.getText(), originalOptions = editor.options;
             editor.options = { tabSize: 2, insertSpaces: true };
+            // This integration case intentionally verifies languageserver;
+            // independent-provider behavior is tested with the built-in LSP off.
             await until(() => languageService().clients.get(opened.inputUri.toString())?.isRunning() === true);
             assert.ok(languageService().clients.get(opened.inputUri.toString())?.initializeResult?.capabilities.documentOnTypeFormattingProvider,
                 'languageserver must advertise on-type formatting');
@@ -792,106 +796,6 @@ function treeTooltip(item: vscode.TreeItem): string {
         } finally {
             await settings.update('formatOnType', previous, vscode.ConfigurationTarget.Global, true);
             await vscode.commands.executeCommand('r.interactive.open', manifests[0]);
-        }
-    });
-    test('Interactive on-type formatting respects its setting and ignores delayed replies after input clears', async () => {
-        await vscode.commands.executeCommand('r.interactive.open', manifests[0]);
-        const notebook = vscode.workspace.notebookDocuments.find(doc => doc.metadata.rSessionId === manifests[0].id);
-        assert.ok(notebook);
-        const opened = await vscode.commands.executeCommand<{ inputUri: vscode.Uri }>('interactive.open', { preserveFocus: false }, notebook.uri);
-        await vscode.commands.executeCommand('interactive.input.focus');
-        await until(() => vscode.window.activeTextEditor?.document.uri.toString() === opened.inputUri.toString());
-        const editor = vscode.window.activeTextEditor!;
-        const document = editor.document, original = document.getText();
-        await until(() => languageService().clients.get(opened.inputUri.toString())?.isRunning() === true);
-        const settings = vscode.workspace.getConfiguration('editor', document);
-        const previous = settings.inspect<boolean>('formatOnType')?.globalLanguageValue;
-        const execute = vscode.commands.executeCommand.bind(vscode.commands);
-        const commands = sinon.stub(vscode.commands, 'executeCommand').callThrough();
-        let reply: ((edits: vscode.TextEdit[]) => void) | undefined;
-        commands.withArgs('vscode.executeFormatOnTypeProvider').callsFake(() => new Promise<vscode.TextEdit[]>(resolve => { reply = resolve; }));
-        try {
-            await settings.update('formatOnType', false, vscode.ConfigurationTarget.Global, true);
-            await editor.edit(builder => builder.replace(new vscode.Range(0, 0, document.lineCount, 0), 'typed_value<-1'));
-            const end = document.positionAt(document.getText().length);
-            editor.selection = new vscode.Selection(end, end);
-            await execute('type', { text: '\n' });
-            await new Promise(resolve => setTimeout(resolve, 100));
-            assert.strictEqual(document.getText(), 'typed_value<-1\n');
-            assert.strictEqual(reply, undefined, 'Disabled formatting does not request edits');
-            await settings.update('formatOnType', true, vscode.ConfigurationTarget.Global, true);
-            await editor.edit(builder => builder.replace(new vscode.Range(0, 0, document.lineCount, 0), 'typed_value<-sum(1,2'));
-            const position = document.positionAt(document.getText().length);
-            editor.selection = new vscode.Selection(position, position);
-            await execute('type', { text: ')' });
-            await until(() => reply !== undefined);
-            const edits = [vscode.TextEdit.replace(new vscode.Range(0, 0, 0, document.getText().length), 'typed_value <- sum(1, 2)')];
-            await editor.edit(builder => builder.delete(new vscode.Range(0, 0, document.lineCount, 0)));
-            reply!(edits);
-            await new Promise(resolve => setTimeout(resolve, 100));
-            assert.strictEqual(document.getText(), '', 'A late formatting reply must not repopulate the cleared input');
-        } finally {
-            reply?.([]); commands.restore();
-            await editor.edit(builder => builder.replace(new vscode.Range(0, 0, document.lineCount, 0), original));
-            await settings.update('formatOnType', previous, vscode.ConfigurationTarget.Global, true);
-        }
-    });
-    test('Interactive input formats pasted text, preserves undo, and leaves source paste behavior intact', async () => {
-        await vscode.commands.executeCommand('r.interactive.open', manifests[0]);
-        const notebook = vscode.workspace.notebookDocuments.find(doc => doc.metadata.rSessionId === manifests[0].id);
-        assert.ok(notebook);
-        const opened = await vscode.commands.executeCommand<{ inputUri: vscode.Uri }>('interactive.open', { preserveFocus: false }, notebook.uri);
-        await vscode.commands.executeCommand('interactive.input.focus');
-        await until(() => vscode.window.activeTextEditor?.document.uri.toString() === opened.inputUri.toString());
-        const editor = vscode.window.activeTextEditor!, document = editor.document, original = document.getText();
-        await until(() => languageService().clients.get(opened.inputUri.toString())?.isRunning() === true);
-        const settings = vscode.workspace.getConfiguration('editor', document);
-        const previous = settings.inspect<boolean>('formatOnPaste')?.globalLanguageValue;
-        const previousOnType = settings.inspect<boolean>('formatOnType')?.globalLanguageValue;
-        try {
-            await settings.update('formatOnPaste', true, vscode.ConfigurationTarget.Global, true);
-            await settings.update('formatOnType', false, vscode.ConfigurationTarget.Global, true);
-            await editor.edit(builder => builder.replace(new vscode.Range(0, 0, document.lineCount, 0), ''));
-            editor.selection = new vscode.Selection(0, 0, 0, 0);
-            await vscode.commands.executeCommand('paste', { text: '(1+1)' });
-            assert.strictEqual(document.getText(), '(1 + 1)');
-            assert.strictEqual(document.offsetAt(editor.selection.active), document.getText().length);
-            await vscode.commands.executeCommand('undo');
-            await until(() => document.getText() === '(1+1)', () => `Undo formatting produced ${JSON.stringify(document.getText())}`);
-            await vscode.commands.executeCommand('undo');
-            await until(() => document.getText() === '', () => `Undo paste produced ${JSON.stringify(document.getText())}`);
-            await settings.update('formatOnPaste', false, vscode.ConfigurationTarget.Global, true);
-            await vscode.commands.executeCommand('paste', { text: '(1+1)' });
-            assert.strictEqual(document.getText(), '(1+1)');
-            await settings.update('formatOnPaste', true, vscode.ConfigurationTarget.Global, true);
-            const execute = vscode.commands.executeCommand.bind(vscode.commands);
-            const commands = sinon.stub(vscode.commands, 'executeCommand').callThrough();
-            let reply: ((edits: vscode.TextEdit[]) => void) | undefined;
-            commands.withArgs('vscode.executeFormatRangeProvider').callsFake(() => new Promise<vscode.TextEdit[]>(resolve => { reply = resolve; }));
-            try {
-                await editor.edit(builder => builder.replace(new vscode.Range(0, 0, document.lineCount, 0), ''));
-                editor.selection = new vscode.Selection(0, 0, 0, 0);
-                const pasted = execute('paste', { text: '(1+1)' });
-                await until(() => reply !== undefined);
-                await editor.edit(builder => builder.delete(new vscode.Range(0, 0, document.lineCount, 0)));
-                reply!([vscode.TextEdit.insert(new vscode.Position(0, 2), ' ')]);
-                await pasted;
-                assert.strictEqual(document.getText(), '', 'Delayed formatting cannot restore a cleared input');
-            } finally {
-                reply?.([]); commands.restore();
-            }
-            const source = await vscode.workspace.openTextDocument({ language: 'plaintext', content: '' });
-            await vscode.window.showTextDocument(source);
-            await vscode.commands.executeCommand('paste', { text: '(1+1)' });
-            assert.strictEqual(source.getText(), '(1+1)');
-        } finally {
-            await settings.update('formatOnPaste', previous, vscode.ConfigurationTarget.Global, true);
-            await settings.update('formatOnType', previousOnType, vscode.ConfigurationTarget.Global, true);
-            await vscode.commands.executeCommand('interactive.open', { preserveFocus: false }, notebook.uri);
-            await vscode.commands.executeCommand('interactive.input.focus');
-            const restore = new vscode.WorkspaceEdit();
-            restore.replace(document.uri, new vscode.Range(0, 0, document.lineCount, 0), original);
-            await vscode.workspace.applyEdit(restore);
         }
     });
     test('provides live function hover in Interactive inputs as well as source documents', async () => {
