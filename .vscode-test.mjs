@@ -19,9 +19,6 @@ const common = {
 		ui: 'tdd',
 		color: true,
 		timeout: 20000
-	},
-	desktop: {
-		installExtensions: ['REditorSupport.r-syntax']
 	}
 };
 

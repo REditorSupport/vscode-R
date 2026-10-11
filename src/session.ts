@@ -16,6 +16,7 @@ import * as rTerminal from './rTerminal';
 import { getProcessAncestors } from './processTree';
 import { TerminalSessionRegistry } from './terminalSessionRegistry';
 import { SessionProcessMonitor } from './sessionProcessMonitor';
+import { sessionProcessIdentity } from './sessionIdentity';
 import { purgeAddinPickerItems, RSEditOperation, RSRange } from './rstudioapi';
 
 import { extensionContext, rWorkspace, globalRHelp, globalPlotManager, sessionStatusBarItem, enableSessionWatcher } from './extension';
@@ -26,7 +27,7 @@ import { showWebView } from './webViewer';
 import { getListViewerScript, listViewerStyle, ListViewNavigation } from './listViewer';
 import { getDataViewerScript, getDataViewerStyle, getDataViewerToolbarHtml } from './dataViewer';
 import { getDataViewerColumnPanelHtml, getDataViewerColumnPanelScript, getDataViewerColumnPanelStyle } from './dataViewerColumnPanel';
-import { formatSessionLabel, getViewerSessionScript } from './viewerSession';
+import { createViewerSessionContext, formatSessionLabel, getViewerSessionScript, ViewerSessionContext, ViewerSessionSource } from './viewerSession';
 
 export interface SessionInfo {
     version: string;
@@ -115,7 +116,7 @@ export let workspaceFile: string;
 const SESS_PROTOCOL_VERSION = 2;
 
 const sessions = new Map<string, Session>();
-const sessionProcessMonitor = new SessionProcessMonitor<Session>(isLocalHost);
+const sessionProcessMonitor = new SessionProcessMonitor<ViewerSessionSource>(isLocalHost);
 // Only the newest handshake for a stable ID may commit after terminal discovery.
 const pendingSessionAttachments = new Map<string, IpcSocket>();
 const terminalRegistry = new TerminalSessionRegistry<Session, vscode.Terminal>(
@@ -1240,33 +1241,19 @@ export async function showDataView(
 }
 
 function getViewerSessionHtml(sessionId: string | null): string {
-    const owner = sessions.get(sessionId ?? '');
-    if (!owner) { return ''; }
-    const exited = sessionProcessMonitor.hasExited(owner);
-    if (!exited && (!owner.pid || !owner.rVer)) { return ''; }
-    const info = escapeHtml(exited ? 'R: (not attached)' : formatSessionLabel(owner.rVer, owner.pid));
-    return `<span class="viewer-session" role="img" tabindex="0" aria-label="${info}" aria-describedby="viewer-session-tooltip"><span class="codicon codicon-info" aria-hidden="true"></span><span id="viewer-session-tooltip" class="viewer-session-tooltip" role="tooltip">${info}</span></span>`;
+    return getViewerSessionContext(sessionId)?.getHtml() ?? '';
 }
 
 function attachViewerSessionBridge(panel: vscode.WebviewPanel, sessionId: string | null): void {
-    const owner = sessions.get(sessionId ?? '');
-    if (!owner || (!sessionProcessMonitor.hasExited(owner) && (!owner.pid || !owner.rVer))) { return; }
-    // Keep the original process identity after detaching, reconnecting or restarting.
-    const sourcePid = owner.pid;
-    const attachedLabel = formatSessionLabel(owner.rVer, sourcePid);
-    const refresh = (force = false) => {
-        const text = source.exited ? 'R: (not attached)' : attachedLabel;
-        if (force || text !== lastLabel) {
-            lastLabel = text;
-            void panel.webview.postMessage({ message: 'viewer-session/update', text });
-        }
-    };
-    const source = sessionProcessMonitor.observe(owner, refresh);
-    let lastLabel = source.exited ? 'R: (not attached)' : attachedLabel;
-    const received = panel.webview.onDidReceiveMessage((message: { message?: string }) => {
-        if (message?.message === 'viewer-session/ready') { refresh(true); }
-    });
-    panel.onDidDispose(() => { source.dispose(); received?.dispose(); });
+    getViewerSessionContext(sessionId)?.attach(panel);
+}
+
+export function getViewerSessionContext(sessionId: string | null, saved?: ViewerSessionSource): ViewerSessionContext | undefined {
+    const attached = sessions.get(sessionId ?? '');
+    // A saved Viewer belongs to its original process, never a replacement.
+    const owner = saved && (saved.processExited || !attached || sessionProcessIdentity(attached) !== sessionProcessIdentity(saved))
+        ? saved : attached;
+    return owner ? createViewerSessionContext(owner, sessionProcessMonitor) : undefined;
 }
 
 export async function getTableHtml(
@@ -2287,7 +2274,10 @@ async function handleNotification(message: Record<string, unknown>, socket: IpcS
                     }
                 } else {
                     if (url.toLowerCase().endsWith('.html') || url.toLowerCase().endsWith('.htm')) {
-                        await showWebView(url, title, viewColumn);
+                        // Standalone HTML can arrive through page_viewer (e.g. profvis)
+                        // or browseURL as well as viewer; all belong to the source session.
+                        await showWebView(url, title, viewColumn,
+                            getViewerSessionContext(socket._sessionId ?? null));
                     } else {
                         await showDataView('object', 'txt', title, url, String(viewColumn));
                     }
