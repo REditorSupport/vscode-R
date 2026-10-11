@@ -20,8 +20,7 @@ socket on macOS/Linux, named pipe on Windows) using
 
 > [!NOTE]
 >
-> ### Bundled install for VS Code
->
+> **Bundled install for VS Code. **
 > Users of the VS Code R extension (>=v3.0.0) do not need to install `sess`
 > manually. The extension bundles its own copy and asks before installing it
 > when no installed copy has the exact bundled source revision. Accepted
