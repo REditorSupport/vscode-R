@@ -23,7 +23,11 @@ const common = {
 };
 
 export default defineConfig([
-	{ ...common, files: 'out/test/suite/**/*.test.js' },
+	{
+		...common,
+		files: 'out/test/suite/**/*.test.js',
+		mocha: { ...common.mocha, require: './out/test/common/extensionSetup.js' }
+	},
 	{
 		...common,
 		label: 'sess-install-tasks',
