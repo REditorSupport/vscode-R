@@ -37,8 +37,9 @@ export interface RSessionPreparationOptions {
     /**
      * A local sess IPC endpoint on the current R host, such as a proxy socket.
      * When omitted, vscode-R's endpoint is used. Only sess IPC is supported.
-     * On Windows, only a local `\\.\pipe\...` named pipe is accepted; other
-     * hosts require an absolute local socket path.
+     * On Windows, only a local `\\.\pipe\...` named pipe with a non-empty
+     * name containing ASCII letters, digits, underscore, period, or hyphen is
+     * accepted. On other platforms, an absolute local socket path is required.
      */
     connection?: {
         transport: 'sess';
