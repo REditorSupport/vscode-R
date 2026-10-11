@@ -10,7 +10,14 @@ export async function mochaGlobalSetup(): Promise<void> {
     // Startup activation and the initial language client otherwise race tests
     // that temporarily replace VS Code's configuration and workspace APIs.
     await extension.activate();
-    const { extensionContext } = createRequire(__filename)(path.join(extension.extensionPath, 'dist/extension')) as {
+    const bundleRequire = createRequire(__filename);
+    const bundlePath = bundleRequire.resolve(path.join(extension.extensionPath, 'dist/extension'));
+    // VS Code and Node can use different drive-letter casing on Windows.
+    // Reuse the activated module instead of loading another copy of the bundle.
+    const cacheKey = Object.keys(bundleRequire.cache).find(filename => process.platform === 'win32'
+        ? filename.toLowerCase() === bundlePath.toLowerCase() : filename === bundlePath);
+    assert.ok(cacheKey, 'Activated extension bundle must be cached before extension tests');
+    const { extensionContext } = bundleRequire.cache[cacheKey]!.exports as {
         extensionContext: vscode.ExtensionContext;
     };
     const service = extensionContext.subscriptions.find(item =>
