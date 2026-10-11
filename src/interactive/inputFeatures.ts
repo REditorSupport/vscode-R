@@ -16,6 +16,7 @@ function formattingOptions(editor: vscode.TextEditor): vscode.FormattingOptions 
 export class InteractiveInputFeatures implements vscode.Disposable {
     private readonly listeners: vscode.Disposable[];
     private disposed = false;
+    private pasteDepth = 0;
 
     constructor(private readonly contextForEditor: (editor: vscode.TextEditor) => unknown) {
         this.listeners = [
@@ -30,7 +31,7 @@ export class InteractiveInputFeatures implements vscode.Disposable {
 
     private async formatOnType(event: vscode.TextDocumentChangeEvent): Promise<void> {
         const document = event.document, editor = vscode.window.activeTextEditor;
-        if (this.disposed || !isInteractiveInput(editor) || editor.document !== document || event.reason !== undefined
+        if (this.disposed || this.pasteDepth > 0 || !isInteractiveInput(editor) || editor.document !== document || event.reason !== undefined
             || event.contentChanges.length !== 1 || editor.selections.length !== 1
             || !vscode.workspace.getConfiguration('editor', document).get<boolean>('formatOnType')) { return; }
         const change = event.contentChanges[0];
@@ -53,17 +54,25 @@ export class InteractiveInputFeatures implements vscode.Disposable {
             { undoStopBefore: false, undoStopAfter: false });
     }
 
+    private async nativePaste(args: unknown): Promise<void> {
+        // Single-character pastes emit the same document changes as typing.
+        // Suppress them even when format-on-paste is disabled.
+        this.pasteDepth++;
+        try { await vscode.commands.executeCommand('default:paste', args); }
+        finally { this.pasteDepth--; }
+    }
+
     private async paste(args: unknown): Promise<void> {
         const editor = vscode.window.activeTextEditor;
         if (!isInteractiveInput(editor) || !vscode.workspace.getConfiguration('editor', editor.document).get<boolean>('formatOnPaste')) {
-            await vscode.commands.executeCommand('default:paste', args); return;
+            await this.nativePaste(args); return;
         }
         const context = this.contextForEditor(editor), document = editor.document;
         const changes: vscode.TextDocumentContentChangeEvent[] = [];
         const listener = vscode.workspace.onDidChangeTextDocument(event => {
             if (event.document === document && event.reason === undefined) { changes.push(...event.contentChanges); }
         });
-        try { await vscode.commands.executeCommand('default:paste', args); }
+        try { await this.nativePaste(args); }
         finally { listener.dispose(); }
         if (this.disposed || document.isClosed || vscode.window.activeTextEditor !== editor || editor.selections.length !== 1
             || changes.length !== 1 || !changes[0].text || this.contextForEditor(editor) !== context) { return; }

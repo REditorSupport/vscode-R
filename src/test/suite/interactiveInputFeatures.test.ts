@@ -117,6 +117,32 @@ suite('Interactive input formatting with independent providers', () => {
         assert.strictEqual(calls, 0);
     });
 
+    test('single-character paste only uses format-on-paste even when format-on-type is enabled', async () => {
+        let typeCalls = 0;
+        const ranges: vscode.Range[] = [];
+        providers.push(vscode.languages.registerOnTypeFormattingEditProvider(selector, {
+            provideOnTypeFormattingEdits(document) { typeCalls++; return formatExpression(document); },
+        }, ')'));
+        providers.push(vscode.languages.registerDocumentRangeFormattingEditProvider(selector, {
+            provideDocumentRangeFormattingEdits(document, range) { ranges.push(range); return formatExpression(document); },
+        }));
+        for (const enabled of [false, true]) {
+            await settings().update('formatOnPaste', enabled, vscode.ConfigurationTarget.Global, true);
+            await replaceInput('(1+1');
+            await vscode.commands.executeCommand('paste', { text: ')' });
+            // On-type formatting runs asynchronously from document-change events.
+            await new Promise(resolve => setTimeout(resolve, 100));
+            assert.strictEqual(typeCalls, 0, 'Pasting a trigger character must not invoke the on-type provider');
+            assert.strictEqual(editor.document.getText(), enabled ? '(1 + 1)' : '(1+1)');
+            assert.strictEqual(ranges.length, enabled ? 1 : 0);
+        }
+        assert.deepStrictEqual(ranges[0], new vscode.Range(0, 4, 0, 5));
+        await replaceInput('(1+1');
+        await vscode.commands.executeCommand('type', { text: ')' });
+        await until(() => editor.document.getText() === '(1 + 1)');
+        assert.strictEqual(typeCalls, 1, 'Typing still invokes the on-type provider after paste');
+    });
+
     test('formats pasted ranges and keeps separate undo steps for formatting and paste', async () => {
         const ranges: vscode.Range[] = [];
         providers.push(vscode.languages.registerDocumentRangeFormattingEditProvider(selector, {
@@ -136,6 +162,7 @@ suite('Interactive input formatting with independent providers', () => {
         assert.strictEqual(ranges.length, 1);
         const source = await vscode.workspace.openTextDocument({ language: 'plaintext', content: '' });
         await vscode.window.showTextDocument(source);
+        await until(() => vscode.window.activeTextEditor?.document === source);
         await vscode.commands.executeCommand('paste', { text: '(1+1)' });
         assert.strictEqual(source.getText(), '(1+1)');
         await focusInput();
