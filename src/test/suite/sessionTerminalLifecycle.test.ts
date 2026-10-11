@@ -31,6 +31,7 @@ suite('Session Terminal Lifecycle', () => {
 
     const testStartupToken = '0123456789abcdef0123456789abcdef';
     const testStartupAttempt = 'attempt_000000000000';
+    const extensionRoot = path.join(__dirname, '..', '..', '..');
 
     function startupRecord(
         state: 'pending' | 'ready' | 'failed',
@@ -103,19 +104,23 @@ suite('Session Terminal Lifecycle', () => {
         };
     }
 
-    setup(() => {
+    setup(async () => {
+        await session.shutdownSessionWatcher();
         sandbox = sinon.createSandbox();
         connections = new SessionConnections();
-        mockExtensionContext(path.join(__dirname, '..', '..', '..'), sandbox);
+        mockExtensionContext(extensionRoot, sandbox);
         sandbox.stub(extension, 'enableSessionWatcher').value(true);
         sandbox.stub(extension, 'rWorkspace').value(undefined);
         sandbox.stub(vscode.commands, 'executeCommand').resolves();
         ancestors = sandbox.stub(processTree, 'getProcessAncestors').resolves([]);
+        session.deploySessionWatcher(extensionRoot);
+        await session.getGlobalPipePath();
     });
 
     teardown(async () => {
         await connections.dispose();
         session.deferWorkspaceRefresh();
+        await session.shutdownSessionWatcher();
         sandbox.restore();
     });
 
@@ -634,6 +639,7 @@ suite('Session Terminal Lifecycle', () => {
             assert.strictEqual(await session.waitForTerminalReady(terminal, 1000, file, token), false,
                 'retrying the same failed attempt cannot turn its result into ready');
             await session.shutdownSessionWatcher();
+            session.deploySessionWatcher(extensionRoot);
             const reloadedEndpoint = await session.getGlobalPipePath();
             assert.notStrictEqual(reloadedEndpoint, endpoint, 'a window reload may create a new IPC endpoint');
             await connections.attach('startup-recovery-after-reload', rPid);

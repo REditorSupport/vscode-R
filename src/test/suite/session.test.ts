@@ -81,6 +81,7 @@ suite('Session Communication', () => {
             await fsp.rm(commandMarkerPath, { recursive: true, force: true });
             commandMarkerPath = undefined;
         }
+        await session.shutdownSessionWatcher();
         sandbox.restore();
     });
 
@@ -167,9 +168,9 @@ suite('Session Communication', () => {
 
     test('concurrent server initialization and public API calls share one endpoint', async () => {
         await session.shutdownSessionWatcher();
-        session.deploySessionWatcher(extension_root);
         sandbox.stub(extension, 'enableSessionWatcher').value(true);
         const listen = sandbox.spy(net.Server.prototype, 'listen');
+        session.deploySessionWatcher(extension_root);
         const api: RSessionApi = {
             getConnectionInfo: session.getConnectionInfo,
             prepareAttachment: session.prepareAttachment,
@@ -204,9 +205,9 @@ suite('Session Communication', () => {
 
     test('server initialization can retry after a shared startup failure', async () => {
         await session.shutdownSessionWatcher();
-        session.deploySessionWatcher(extension_root);
         const failure = new Error('Simulated listen failure');
         const listen = sandbox.stub(net.Server.prototype, 'listen').throws(failure);
+        session.deploySessionWatcher(extension_root);
         const first = session.getGlobalPipePath();
         const second = session.getGlobalPipePath();
         await Promise.all([
@@ -226,7 +227,6 @@ suite('Session Communication', () => {
 
     test('post-listen initialization failure closes the unpublished server before retry', async () => {
         await session.shutdownSessionWatcher();
-        session.deploySessionWatcher(extension_root);
         const failure = new Error('Simulated post-listen failure');
         const listen = sandbox.spy(net.Server.prototype, 'listen');
         const close = sandbox.spy(net.Server.prototype, 'close');
@@ -241,6 +241,7 @@ suite('Session Communication', () => {
                 }
                 return result;
             });
+        session.deploySessionWatcher(extension_root);
         await assert.rejects(session.getGlobalPipePath(), error => error === failure);
         const endpoint = listen.firstCall.args[0] as unknown as string;
         const server = listen.firstCall.thisValue as net.Server;
@@ -263,6 +264,7 @@ suite('Session Communication', () => {
         assert.strictEqual(close.callCount, 0, 'failed server must not be published for shutdown');
         fail.restore();
         try {
+            session.deploySessionWatcher(extension_root);
             assert.ok(await session.getGlobalPipePath());
         } finally {
             await session.shutdownSessionWatcher();
@@ -271,11 +273,13 @@ suite('Session Communication', () => {
 
     test('shutdown waits for an in-progress server startup and permits a fresh start', async () => {
         await session.shutdownSessionWatcher();
+        const listen = sandbox.spy(net.Server.prototype, 'listen');
         session.deploySessionWatcher(extension_root);
         const startup = session.getGlobalPipePath();
+        const startupRejected = assert.rejects(startup, /session watcher shut down while starting its IPC server/);
         const shutdown = session.shutdownSessionWatcher();
-        const endpoint = await startup;
-        await shutdown;
+        const endpoint = listen.firstCall.args[0] as unknown as string;
+        await Promise.all([startupRejected, shutdown]);
         assert.strictEqual(session.globalPipePath, undefined);
         if (process.platform !== 'win32') {
             assert.strictEqual(await pathExists(endpoint), false);
@@ -991,7 +995,7 @@ suite('Session Communication', () => {
         assert.ok(commandMatch);
         const scriptPath = JSON.parse(commandMatch[1]) as string;
         const scriptContent = await fsp.readFile(scriptPath, 'utf8');
-        assert.match(scriptContent, /vscode_r_attach_sess\(endpoint, sess_src.*"native"\)/);
+        assert.match(scriptContent, /vscode_r_attach_sess\(endpoint, sess_src, managed_root, consent_dir, source_helper, installer_helper, "native", use_rstudioapi = (?:TRUE|FALSE)\)/);
         assert.doesNotMatch(scriptContent, /Sys\.(?:setenv|unsetenv)\(JGD_SOCKET/);
     });
 

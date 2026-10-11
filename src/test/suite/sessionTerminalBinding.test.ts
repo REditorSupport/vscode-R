@@ -24,12 +24,15 @@ suite('Session Terminal Binding', () => {
     let sendText: sinon.SinonStub;
     let otherSendText: sinon.SinonStub;
     let show: sinon.SinonStub;
+    const extensionRoot = path.join(__dirname, '..', '..', '..');
     const api: RSessionApi = { getConnectionInfo: session.getConnectionInfo, prepareAttachment: session.prepareAttachment, activate: session.activateSessionById };
 
-    setup(() => {
+    setup(async () => {
+        await session.shutdownSessionWatcher();
         sandbox = sinon.createSandbox();
-        mockExtensionContext(path.join(__dirname, '..', '..', '..'), sandbox);
+        mockExtensionContext(extensionRoot, sandbox);
         sandbox.stub(vscode.commands, 'executeCommand').resolves();
+        sandbox.stub(extension, 'enableSessionWatcher').value(true);
         sandbox.stub(extension, 'rWorkspace').value(undefined);
         configuration = sandbox.stub(util, 'config').returns({
             get: (key: string) => key === 'source.focus' ? 'none' : undefined,
@@ -42,12 +45,15 @@ suite('Session Terminal Binding', () => {
         other = { processId: Promise.resolve(99999), sendText: otherSendText, show: sandbox.stub() } as unknown as vscode.Terminal;
         terminals = sandbox.stub(vscode.window, 'terminals').value([terminal, other]);
         activeTerminal = sandbox.stub(vscode.window, 'activeTerminal').value(other);
+        session.deploySessionWatcher(extensionRoot);
+        await session.getGlobalPipePath();
     });
 
-    teardown(() => {
+    teardown(async () => {
         session.unregisterSessionTransport(first);
         session.unregisterSessionTransport(second);
         session.deferWorkspaceRefresh();
+        await session.shutdownSessionWatcher();
         sandbox.restore();
     });
 
@@ -287,7 +293,6 @@ suite('Session Terminal Binding', () => {
 
     test('a native attach preserves the selected terminal explicit owner', async () => {
         const connections = new SessionConnections();
-        sandbox.stub(extension, 'enableSessionWatcher').value(true);
         terminal = { ...terminal, processId: Promise.resolve(12345) } as vscode.Terminal;
         other = { ...other, processId: Promise.resolve(23456) } as vscode.Terminal;
         terminals.value([terminal, other]);
