@@ -102,6 +102,9 @@ export class RMarkdownCodeLensProvider implements vscode.CodeLensProvider {
                         ),
                     );
                     editor.setDecorations(this.currentCellBottom, [currentChunkEnd]);
+                } else {
+                    editor.setDecorations(this.currentCellTop, []);
+                    editor.setDecorations(this.currentCellBottom, []);
                 }
             }
         }
