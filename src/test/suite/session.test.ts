@@ -825,7 +825,8 @@ suite('Session Communication', () => {
         const command = session.getAttachSessionCommand();
         try {
             await Promise.all([
-                assert.rejects(command, /shut down while publishing attach command/),
+                assert.rejects(command, error => error instanceof Error
+                    && error.message === 'The session watcher shut down before returning the attach command.'),
                 shutdownStarted,
             ]);
             assert.ok(shutdown, 'the publication-boundary callback should start shutdown');

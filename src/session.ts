@@ -1233,6 +1233,7 @@ async function getAttachSessionCommandCore(): Promise<string> {
             await fsp.rename(temporaryPath, scriptPath);
             published = true;
             if (!isAttachmentLifecycleCurrent(generation)) { throw new Error('The session watcher shut down while publishing attach command.'); }
+            // Keep this check and ownership registration synchronous so shutdown cannot miss the script.
             attachSessionScriptPath = scriptPath;
         } catch (error) {
             await removePathIfExists(temporaryPath);
@@ -1243,7 +1244,7 @@ async function getAttachSessionCommandCore(): Promise<string> {
     attachScriptPublication = publish;
     await publish;
     if (!isAttachmentLifecycleCurrent(generation)) {
-        throw new Error('The session watcher shut down while publishing attach command.');
+        throw new Error('The session watcher shut down before returning the attach command.');
     }
 
     return `source(${asRStringLiteral(scriptPath)})`;
