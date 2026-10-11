@@ -770,8 +770,9 @@ function treeTooltip(item: vscode.TreeItem): string {
                     await vscode.commands.executeCommand('type', { text: ch });
                     await until(() => document.getText() === expected,
                         () => `Expected ${JSON.stringify(expected)}, got ${JSON.stringify(document.getText())}`);
-                    assert.ok(editor.selection.isEmpty);
-                    assert.strictEqual(document.offsetAt(editor.selection.active), expected.length, 'Formatting keeps the cursor at the insertion point');
+                    // VS Code sends selection updates after the document change.
+                    await until(() => editor.selection.isEmpty && document.offsetAt(editor.selection.active) === expected.length,
+                        () => `Expected cursor at ${expected.length} after formatting, got ${document.offsetAt(editor.selection.active)}`);
                     if (ch === ')') {
                         await vscode.commands.executeCommand('undo');
                         await until(() => document.getText() === text);
@@ -786,8 +787,8 @@ function treeTooltip(item: vscode.TreeItem): string {
                     for (const ch of text) { await vscode.commands.executeCommand('type', { text: ch }); }
                     await until(() => document.getText() === expected,
                         () => `Typing with auto-closing brackets produced ${JSON.stringify(document.getText())}`);
-                    assert.ok(editor.selection.isEmpty);
-                    assert.strictEqual(document.offsetAt(editor.selection.active), expected.length);
+                    await until(() => editor.selection.isEmpty && document.offsetAt(editor.selection.active) === expected.length,
+                        () => `Expected cursor at ${expected.length} after formatting, got ${document.offsetAt(editor.selection.active)}`);
                 }
             } finally {
                 await editor.edit(builder => builder.replace(new vscode.Range(0, 0, document.lineCount, 0), original));

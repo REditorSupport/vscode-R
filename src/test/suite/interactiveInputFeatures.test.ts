@@ -88,8 +88,9 @@ suite('Interactive input formatting with independent providers', () => {
             for (const ch of text) { await vscode.commands.executeCommand('type', { text: ch }); }
             await until(() => editor.document.getText() === text.replace('1+1', '1 + 1'));
             assert.ok(calls.length > before);
-            assert.ok(editor.selection.isEmpty);
-            assert.strictEqual(editor.document.offsetAt(editor.selection.active), editor.document.getText().length);
+            // Formatting's document change can arrive before its selection update.
+            await until(() => editor.selection.isEmpty
+                && editor.document.offsetAt(editor.selection.active) === editor.document.getText().length);
         }
         assert.ok(calls.some(call => call.ch === '!'), 'VS Code uses the independent provider’s triggers');
         assert.deepStrictEqual(calls[0].options, { tabSize: 2, insertSpaces: true });
