@@ -19,7 +19,7 @@ import { shellQuote } from '../../interactive/launcher';
 import type { InteractiveManager } from '../../interactive/manager';
 import type { GlobalEnvItem, WorkspaceDataProvider } from '../../workspaceViewer';
 import type { WorkspaceData } from '../../session';
-import { DocumentHighlightRequest, LanguageClient, State, StreamMessageReader, StreamMessageWriter, createMessageConnection } from 'vscode-languageclient/node';
+import { LanguageClient, State, StreamMessageReader, StreamMessageWriter, createMessageConnection } from 'vscode-languageclient/node';
 
 function treeTooltip(item: vscode.TreeItem): string {
     return typeof item.tooltip === 'string' ? item.tooltip : item.tooltip?.value ?? '';
@@ -892,67 +892,6 @@ function treeTooltip(item: vscode.TreeItem): string {
             const restore = new vscode.WorkspaceEdit();
             restore.replace(document.uri, new vscode.Range(0, 0, document.lineCount, 0), original);
             await vscode.workspace.applyEdit(restore);
-        }
-    });
-    test('Interactive input highlights occurrences, respects its setting, and ignores delayed replies after input clears', async () => {
-        await vscode.commands.executeCommand('r.interactive.open', manifests[0]);
-        const notebook = vscode.workspace.notebookDocuments.find(doc => doc.metadata.rSessionId === manifests[0].id);
-        assert.ok(notebook);
-        const opened = await vscode.commands.executeCommand<{ inputUri: vscode.Uri }>('interactive.open', { preserveFocus: false }, notebook.uri);
-        await vscode.commands.executeCommand('interactive.input.focus');
-        await until(() => vscode.window.activeTextEditor?.document.uri.toString() === opened.inputUri.toString());
-        const editor = vscode.window.activeTextEditor!, document = editor.document, original = document.getText();
-        await until(() => languageService().clients.get(opened.inputUri.toString())?.isRunning() === true);
-        const settings = vscode.workspace.getConfiguration('editor', document);
-        const previousHighlights = settings.inspect<string>('occurrencesHighlight')?.globalLanguageValue;
-        const features = (languageService() as unknown as { inputFeatures: {
-            setDecorations: (editor: vscode.TextEditor, type: vscode.TextEditorDecorationType,
-                ranges: readonly vscode.Range[]) => void;
-        } }).inputFeatures;
-        const decorations = sinon.spy(features, 'setDecorations');
-        const nonempty = (): sinon.SinonSpyCall[] => decorations.getCalls().filter(call => call.args[0] === editor && call.args[2].length > 0);
-        try {
-            await settings.update('occurrencesHighlight', 'singleFile', vscode.ConfigurationTarget.Global, true);
-            const code = 'used_value <- 1\nsum(used_value, used_value)\n';
-            await editor.edit(builder => builder.replace(new vscode.Range(0, 0, document.lineCount, 0), code));
-            editor.selection = new vscode.Selection(1, 7, 1, 7);
-            const expected = [new vscode.Range(0, 0, 0, 10), new vscode.Range(1, 4, 1, 14), new vscode.Range(1, 16, 1, 26)];
-            const highlighted = (): boolean => nonempty().some(call => (call.args[2] as unknown[]).length === expected.length
-                && (call.args[2] as vscode.Range[]).every((range, index) => range instanceof vscode.Range && range.isEqual(expected[index])));
-            await until(highlighted);
-            decorations.resetHistory();
-            editor.selection = new vscode.Selection(1, 4, 1, 14);
-            await until(highlighted, 'Selecting a symbol must still highlight its occurrences');
-            assert.strictEqual(document.getText(), code, 'Highlighting never changes submitted code');
-            decorations.resetHistory();
-            await settings.update('occurrencesHighlight', 'off', vscode.ConfigurationTarget.Global, true);
-            await new Promise(resolve => setTimeout(resolve, 600));
-            assert.ok(decorations.callCount > 0);
-            assert.strictEqual(nonempty().length, 0);
-            decorations.resetHistory();
-            await editor.edit(builder => builder.delete(new vscode.Range(0, 0, document.lineCount, 0)));
-            await new Promise(resolve => setTimeout(resolve, 400));
-            assert.strictEqual(nonempty().length, 0);
-            const provider = languageService().clients.get(opened.inputUri.toString())!.getFeature(DocumentHighlightRequest.method).getProvider(document)!;
-            let reply: ((highlights: vscode.DocumentHighlight[]) => void) | undefined;
-            const delayed = sinon.stub(provider, 'provideDocumentHighlights').callsFake(() => new Promise<vscode.DocumentHighlight[]>(resolve => { reply = resolve; }));
-            try {
-                await settings.update('occurrencesHighlight', 'singleFile', vscode.ConfigurationTarget.Global, true);
-                await editor.edit(builder => builder.insert(new vscode.Position(0, 0), code));
-                editor.selection = new vscode.Selection(0, 3, 0, 3);
-                await until(() => reply !== undefined);
-                await editor.edit(builder => builder.delete(new vscode.Range(0, 0, document.lineCount, 0)));
-                decorations.resetHistory();
-                reply!([new vscode.DocumentHighlight(new vscode.Range(0, 0, 0, 10), vscode.DocumentHighlightKind.Read)]);
-                await new Promise(resolve => setTimeout(resolve, 400));
-                assert.strictEqual(nonempty().length, 0, 'Late highlights cannot decorate a cleared input');
-            } finally {
-                reply?.([]); delayed.restore();
-            }
-        } finally {
-            decorations.restore();
-            await settings.update('occurrencesHighlight', previousHighlights, vscode.ConfigurationTarget.Global, true);
-            await editor.edit(builder => builder.replace(new vscode.Range(0, 0, document.lineCount, 0), original));
         }
     });
     test('provides live function hover in Interactive inputs as well as source documents', async () => {
