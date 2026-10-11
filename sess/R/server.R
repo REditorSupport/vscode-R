@@ -5,6 +5,8 @@
 #' @param use_rstudioapi Logical. Enable rstudioapi emulation. Defaults to TRUE.
 #' @param plot_backend Plot backend: `auto`, `jgd`, `httpgd`, `standard`, or
 #'   `native`. NULL also selects `auto`.
+#' @return Invisibly returns `TRUE` when the IPC connection and runtime startup
+#'   succeed, or `FALSE` when the IPC endpoint is unavailable.
 #' @details When SESS_DISCOVERY_FILE describes the connected endpoint, an
 #'   unexpected disconnect waits for a replacement endpoint in that file and
 #'   reconnects with the same runtime options and session identity. The optional
@@ -34,7 +36,7 @@ connect <- function(endpoint = NULL, use_rstudioapi = TRUE,
   endpoint <- .resolve_endpoint(endpoint)
   if (!nzchar(endpoint)) {
     warning("[sess] Connection info not available. Cannot connect to VS Code.")
-    return(invisible(NULL))
+    return(invisible(FALSE))
   }
 
   discovery_file <- Sys.getenv("SESS_DISCOVERY_FILE")
@@ -124,7 +126,7 @@ connect <- function(endpoint = NULL, use_rstudioapi = TRUE,
     )
   }
 
-  invisible(NULL)
+  invisible(isTRUE(connected) && !is.null(.sess_env$con))
 }
 
 # Resolve the direct argument, environment variables, then discovery data.
@@ -281,7 +283,9 @@ connect <- function(endpoint = NULL, use_rstudioapi = TRUE,
                                settings$options$plot_backend %in% c("auto", "jgd"))
       .sess_env$reconnecting <- TRUE
       tryCatch(
-        do.call(connect, c(list(endpoint = endpoint), settings$options)),
+        .reconnect_with_startup(endpoint, function() {
+          do.call(connect, c(list(endpoint = endpoint), settings$options))
+        }),
         error = function(e) message("[sess] Reconnection failed: ", conditionMessage(e)),
         finally = {
           .sess_env$reconnecting <- NULL
@@ -299,6 +303,18 @@ connect <- function(endpoint = NULL, use_rstudioapi = TRUE,
     .schedule_reconnect(settings, .sess_env$transport_generation, schedule)
   }, 1)
   invisible(NULL)
+}
+
+.reconnect_with_startup <- function(endpoint, setup) {
+  registration <- getOption("vscodeR.terminalStartup")
+  if (!is.list(registration) || !identical(registration$pid, Sys.getpid())) {
+    return(setup())
+  }
+  if (!is.function(registration$run)) {
+    message("[sess] Terminal startup notifier is unavailable; reconnect was skipped.")
+    return(invisible(FALSE))
+  }
+  registration$run(endpoint, setup)
 }
 
 .transport_disconnect <- function(silent = FALSE, reconnect = FALSE) {

@@ -415,8 +415,6 @@ suite('Session Communication', () => {
         assert.ok(rPath, 'R path should be found');
         sandbox.stub(util, 'getRterm').resolves(rPath);
         
-        sandbox.stub(util, 'promptToInstallSessPackage').resolves(true);
-
         const result = await rTerminal.createRTerm(true);
         assert.ok(result, 'createRTerm should return true');
         assert.ok(rTerminal.rTerm, 'rTerminal.rTerm should be defined');
@@ -518,8 +516,6 @@ suite('Session Communication', () => {
         const rPath = await util.getRterm();
         assert.ok(rPath, 'R path should be found');
         sandbox.stub(util, 'getRterm').resolves(rPath);
-        sandbox.stub(util, 'promptToInstallSessPackage').resolves(true);
-
         const result = await rTerminal.createRTerm(true);
         assert.ok(result);
         await waitFor(() => session.activeSession, 15000, 200);
@@ -650,9 +646,14 @@ suite('Session Communication', () => {
 
         const scriptPath = JSON.parse(commandMatch[1]) as string;
         const scriptContent = await fsp.readFile(scriptPath, 'utf8');
-        assert.match(scriptContent, /sess::connect\(endpoint = endpoint/);
-        assert.match(scriptContent, /sess_install_required\(sess_src\)/);
-        assert.match(scriptContent, /sess_source\.R/);
+        const startupSource = scriptContent.indexOf('source(startup_helper, local = TRUE)');
+        const attachSource = scriptContent.indexOf('source(attach_helper, local = TRUE)');
+        assert.ok(startupSource >= 0 && attachSource > startupSource,
+            'the startup helper must be loaded before the generated attach helper');
+        assert.match(scriptContent, /vscode_r_attach_sess\(endpoint, sess_src/);
+        assert.match(scriptContent, /attach_sess\.R/);
+        assert.match(scriptContent, /sess-package-install\.R/);
+        assert.doesNotMatch(scriptContent, /install_sess\.R|sess::connect|sess_install_required/);
         assert.ok(scriptContent.includes(extension.extensionContext.asAbsolutePath(
             path.join('dist', 'resources', 'sess')).replace(/\\/g, '/')));
         assert.doesNotMatch(scriptContent, /packageVersion|compareVersion/);
@@ -686,6 +687,19 @@ suite('Session Communication', () => {
 
         await session.shutdownSessionWatcher();
     }).timeout(15000);
+
+    test('connectToSession does not create attach artifacts when the watcher is disabled', async () => {
+        await session.shutdownSessionWatcher();
+        sandbox.stub(util, 'config').returns({
+            get: (key: string) => key === 'sessionWatcher' ? false : undefined,
+        } as unknown as vscode.WorkspaceConfiguration);
+        const information = sandbox.stub(vscode.window, 'showInformationMessage').resolves(undefined);
+        const before = session.globalPipePath;
+        await session.connectToSession();
+        assert.strictEqual(session.globalPipePath, before);
+        assert.strictEqual(information.callCount, 1);
+        assert.deepStrictEqual(information.firstCall.args, ['This command requires that r.sessionWatcher be enabled.']);
+    });
 
     test('reconnecting terminals preserve the selected terminal in either attach order', async () => {
         const endpoint = await session.getGlobalPipePath();
@@ -741,7 +755,7 @@ suite('Session Communication', () => {
         assert.ok(commandMatch);
         const scriptPath = JSON.parse(commandMatch[1]) as string;
         const scriptContent = await fsp.readFile(scriptPath, 'utf8');
-        assert.match(scriptContent, /sess::connect\(endpoint = endpoint, plot_backend = "native"\)/);
+        assert.match(scriptContent, /vscode_r_attach_sess\(endpoint, sess_src.*"native"\)/);
         assert.doesNotMatch(scriptContent, /Sys\.(?:setenv|unsetenv)\(JGD_SOCKET/);
     });
 

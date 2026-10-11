@@ -5,6 +5,8 @@ local({
   env$.sess_env$transport_generation <- 1L
   env$.schedule_reconnect <- sess:::.schedule_reconnect
   environment(env$.schedule_reconnect) <- env
+  env$.reconnect_with_startup <- sess:::.reconnect_with_startup
+  environment(env$.reconnect_with_startup) <- env
   env$.transport_disconnect <- function(silent) {
     env$.sess_env$con <- NULL
     env$.sess_env$transport_generation <- env$.sess_env$transport_generation + 1L
@@ -31,7 +33,12 @@ local({
     seen_jgd <<- c(seen_jgd, Sys.getenv("JGD_SOCKET", unset = "<unset>"))
     attempts[[length(attempts) + 1L]] <<- list(...)
     env$.sess_env$transport_generation <- env$.sess_env$transport_generation + 1L
-    if (succeed) env$.sess_env$con <- "new connection"
+    if (succeed) {
+      env$.sess_env$con <- "new connection"
+      TRUE
+    } else {
+      FALSE
+    }
   }
   path <- tempfile()
   on.exit(unlink(path), add = TRUE)
@@ -122,6 +129,40 @@ local({
   expect_equal(tail(attempts, 1L)[[1L]],
                c(list(endpoint = "new"), native_options))
   expect_equal(Sys.getenv("JGD_SOCKET"), "external-jgd")
+  expect_equal(length(callbacks), 0L)
+
+  # A registered notifier receives the replacement endpoint and owns the
+  # setup callback. A same-process registration without a notifier fails closed.
+  startup_option <- "vscodeR.terminalStartup"
+  original_startup <- getOption(startup_option)
+  on.exit(options(structure(list(original_startup), names = startup_option)), add = TRUE)
+  notified_endpoint <- character()
+  registration <- list(
+    pid = Sys.getpid(),
+    run = function(endpoint, setup) {
+      notified_endpoint <<- c(notified_endpoint, endpoint)
+      setup()
+    }
+  )
+  options(structure(list(registration), names = startup_option))
+  env$.sess_env$con <- NULL
+  succeed <- TRUE
+  env$.schedule_reconnect(native_settings, schedule = schedule)
+  tick()
+  expect_equal(notified_endpoint, "new")
+  expect_equal(tail(attempts, 1L)[[1L]], c(list(endpoint = "new"), native_options))
+  expect_equal(length(callbacks), 0L)
+
+  registration$run <- NULL
+  options(structure(list(registration), names = startup_option))
+  env$.sess_env$con <- NULL
+  attempts_before <- length(attempts)
+  env$.schedule_reconnect(native_settings, schedule = schedule)
+  tick() # A same-process registration without its notifier must not connect.
+  expect_equal(length(attempts), attempts_before)
+  expect_equal(length(callbacks), 1L)
+  env$.sess_env$transport_generation <- env$.sess_env$transport_generation + 1L
+  tick() # Invalidate the retry without invoking setup.
   expect_equal(length(callbacks), 0L)
 
 })

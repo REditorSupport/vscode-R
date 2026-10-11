@@ -10,6 +10,7 @@ import * as rTerminal from '../../rTerminal';
 import * as util from '../../util';
 import * as session from '../../session';
 import * as executionTarget from '../../interactive/executionTarget';
+import * as extension from '../../extension';
 
 const extension_root: string = path.join(__dirname, '..', '..', '..');
 
@@ -26,6 +27,7 @@ async function waitForDiscoveryRemoval(filePath: string): Promise<void> {
 
 suite('R Terminal', () => {
     let sandbox: sinon.SinonSandbox;
+    let consentDirectoryStub: sinon.SinonStub;
 
     function configuration(values: Record<string, unknown> = {}, defaults: Record<string, unknown> = {}, workspaceFolderScope = false): vscode.WorkspaceConfiguration {
         return {
@@ -59,6 +61,7 @@ suite('R Terminal', () => {
     setup(() => {
         sandbox = sinon.createSandbox();
         mockExtensionContext(extension_root, sandbox);
+        consentDirectoryStub = sandbox.stub(session, 'getSessConsentDirectory').resolves('/unused-test-consent');
     });
 
     teardown(() => {
@@ -95,8 +98,7 @@ suite('R Terminal', () => {
                 sessionWatcher: watcher, consoleArgs: args, bracketedPaste: true, 'source.focus': 'none'
             }));
             sandbox.stub(util, 'getRterm').resolves(process.execPath);
-            sandbox.stub(util, 'promptToInstallSessPackage').resolves(true);
-            sandbox.stub(session, 'getGlobalPipePath').resolves('unused-test-endpoint');
+            const pipe = sandbox.stub(session, 'getGlobalPipePath').resolves('unused-test-endpoint');
             sandbox.stub(session, 'createSessionDiscoveryFile').resolves('/unused-test-discovery');
             const sent: string[] = [];
             const terminal = {
@@ -109,37 +111,48 @@ suite('R Terminal', () => {
             sandbox.stub(vscode.window, 'activeTerminal').value(terminal);
             const first = rTerminal.runTextInTerm('first');
             const second = rTerminal.runTextInTerm('second');
-            // Let both commands reach the shared wait, then expose the terminal
-            // as VS Code would before a third Ctrl+Enter.
-            await waiting;
-            terminals.value([terminal]);
-            const third = rTerminal.runTextInTerm('third');
-            for (let i = 0; i < 20; i++) { await Promise.resolve(); }
-            assert.deepStrictEqual(sent, []);
-            sinon.assert.calledOnce(create);
-            if (integrated) {
-                sinon.assert.calledOnceWithExactly(readyStub, terminal);
-                sinon.assert.notCalled(delayStub);
-            } else {
-                sinon.assert.notCalled(readyStub);
-                sinon.assert.calledOnceWithExactly(delayStub, 200);
+            const commands: Promise<boolean>[] = [first, second];
+            try {
+                // Let both commands reach the shared wait, then expose the terminal
+                // as VS Code would before a third Ctrl+Enter.
+                await waiting;
+                terminals.value([terminal]);
+                const third = rTerminal.runTextInTerm('third');
+                commands.push(third);
+                for (let i = 0; i < 20; i++) { await Promise.resolve(); }
+                assert.deepStrictEqual(sent, []);
+                sinon.assert.calledOnce(create);
+                if (integrated) {
+                    const startupToken = (create.firstCall.args[0] as vscode.TerminalOptions).env?.['VSCODE_R_SESS_STARTUP_TOKEN'];
+                    if (typeof startupToken !== 'string') { throw new Error('managed terminal should receive a startup token'); }
+                    sinon.assert.calledOnceWithExactly(readyStub, terminal, 30000, '/unused-test-discovery.startup', startupToken);
+                    sinon.assert.notCalled(delayStub);
+                    sinon.assert.calledOnce(pipe);
+                } else {
+                    sinon.assert.notCalled(readyStub);
+                    sinon.assert.calledOnceWithExactly(delayStub, 200);
+                    sinon.assert.notCalled(pipe);
+                }
+                resolveReady(true);
+                await Promise.all(commands);
+                assert.deepStrictEqual(sent, ['\x1b[200~first\x1b[201~', '\x1b[200~second\x1b[201~', '\x1b[200~third\x1b[201~']);
+                assert.strictEqual(consentDirectoryStub.called, integrated);
+                await rTerminal.runTextInTerm('fourth');
+                assert.strictEqual(sent.length, 4);
+                sinon.assert.calledOnce(create);
+                assert.strictEqual(target.thirdCall.args[3], false);
+                assert.strictEqual(target.lastCall.args[3], false);
+            } finally {
+                resolveReady(true);
+                await Promise.allSettled(commands);
+                rTerminal.deleteTerminal(terminal);
             }
-            resolveReady(true);
-            await Promise.all([first, second, third]);
-            assert.deepStrictEqual(sent, ['\x1b[200~first\x1b[201~', '\x1b[200~second\x1b[201~', '\x1b[200~third\x1b[201~']);
-            await rTerminal.runTextInTerm('fourth');
-            assert.strictEqual(sent.length, 4);
-            sinon.assert.calledOnce(create);
-            assert.strictEqual(target.thirdCall.args[3], false);
-            assert.strictEqual(target.lastCall.args[3], false);
-            rTerminal.deleteTerminal(terminal);
         });
     }
 
     test('failed readiness does not send code and allows retry', async () => {
         sandbox.stub(util, 'config').returns(configuration({ sessionWatcher: true, bracketedPaste: true, 'source.focus': 'none' }));
         sandbox.stub(util, 'getRterm').resolves(process.execPath);
-        sandbox.stub(util, 'promptToInstallSessPackage').resolves(true);
         sandbox.stub(session, 'getGlobalPipePath').resolves('unused-test-endpoint');
         sandbox.stub(session, 'createSessionDiscoveryFile').resolves('/unused-test-discovery');
         const ready = sandbox.stub(session, 'waitForTerminalReady');
@@ -150,11 +163,13 @@ suite('R Terminal', () => {
             name: 'R Interactive', processId: Promise.resolve(undefined),
             show: () => undefined, sendText,
         } as unknown as vscode.Terminal;
-        sandbox.stub(vscode.window, 'createTerminal').returns(terminal);
+        const createTerminal = sandbox.stub(vscode.window, 'createTerminal').returns(terminal);
         sandbox.stub(vscode.window, 'terminals').value([terminal]);
         sandbox.stub(vscode.window, 'activeTerminal').value(terminal);
         const warning = sandbox.stub(vscode.window, 'showWarningMessage').resolves(undefined);
         await rTerminal.createRTerm();
+        const startupToken = (createTerminal.firstCall.args[0] as vscode.TerminalOptions).env?.['VSCODE_R_SESS_STARTUP_TOKEN'];
+        if (typeof startupToken !== 'string') { throw new Error('managed terminal should receive a startup token'); }
         await rTerminal.runTextInTerm('first');
         sinon.assert.notCalled(sendText);
         sinon.assert.calledOnce(warning);
@@ -164,6 +179,8 @@ suite('R Terminal', () => {
             'the warning should explain how to apply the setting to an existing terminal');
         await rTerminal.runTextInTerm('retry');
         sinon.assert.calledOnceWithExactly(sendText, '\x1b[200~retry\x1b[201~', true);
+        assert.deepStrictEqual(ready.firstCall.args, [terminal, 30000, '/unused-test-discovery.startup', startupToken]);
+        assert.deepStrictEqual(ready.secondCall.args, [terminal, 30000, '/unused-test-discovery.startup', startupToken]);
         rTerminal.deleteTerminal(terminal);
     });
 
@@ -203,7 +220,6 @@ suite('R Terminal', () => {
         };
         sandbox.stub(util, 'config').returns(configStub as unknown as vscode.WorkspaceConfiguration);
         sandbox.stub(util, 'getRterm').resolves(process.execPath);
-        sandbox.stub(util, 'promptToInstallSessPackage').resolves(true);
 
         const options = await rTerminal.makeTerminalOptions();
         const discoveryFile = options.env?.['SESS_DISCOVERY_FILE'];
@@ -231,13 +247,15 @@ suite('R Terminal', () => {
     test('deleteTerminal removes only its discovery file after an explicit terminal close', async () => {
         const endpoint = await session.getGlobalPipePath();
         const discoveryFile = await session.createSessionDiscoveryFile(endpoint);
+        const startupFile = `${discoveryFile}.startup`;
+        await fsp.writeFile(startupFile, 'pending\n');
         const unrelatedFile = await session.createSessionDiscoveryFile(endpoint);
         const terminal = {
             name: 'R Interactive',
             processId: Promise.resolve(45239),
             creationOptions: {
                 name: 'R Interactive',
-                env: { SESS_DISCOVERY_FILE: discoveryFile },
+                env: { SESS_DISCOVERY_FILE: discoveryFile, VSCODE_R_SESS_STARTUP_FILE: startupFile },
             },
             exitStatus: { code: undefined, reason: vscode.TerminalExitReason.User },
         } as unknown as vscode.Terminal;
@@ -245,9 +263,11 @@ suite('R Terminal', () => {
         try {
             rTerminal.deleteTerminal(terminal);
             await waitForDiscoveryRemoval(discoveryFile);
+            await waitForDiscoveryRemoval(startupFile);
             assert.strictEqual(await pathExists(unrelatedFile), true);
         } finally {
             await fsp.rm(discoveryFile, { recursive: true, force: true });
+            await fsp.rm(startupFile, { recursive: true, force: true });
             await fsp.rm(unrelatedFile, { recursive: true, force: true });
         }
     });
@@ -256,16 +276,20 @@ suite('R Terminal', () => {
         const endpoint = await session.getGlobalPipePath();
         const shutdownFile = await session.createSessionDiscoveryFile(endpoint);
         const unknownFile = await session.createSessionDiscoveryFile(endpoint);
+        const shutdownStartupFile = `${shutdownFile}.startup`;
+        const unknownStartupFile = `${unknownFile}.startup`;
+        await fsp.writeFile(shutdownStartupFile, 'pending\n');
+        await fsp.writeFile(unknownStartupFile, 'pending\n');
         const shutdownTerminal = {
             name: 'R Interactive',
             processId: Promise.resolve(45241),
-            creationOptions: { name: 'R Interactive', env: { SESS_DISCOVERY_FILE: shutdownFile } },
+            creationOptions: { name: 'R Interactive', env: { SESS_DISCOVERY_FILE: shutdownFile, VSCODE_R_SESS_STARTUP_FILE: shutdownStartupFile } },
             exitStatus: { code: undefined, reason: vscode.TerminalExitReason.Shutdown },
         } as unknown as vscode.Terminal;
         const unknownTerminal = {
             name: 'R Interactive',
             processId: Promise.resolve(45243),
-            creationOptions: { name: 'R Interactive', env: { SESS_DISCOVERY_FILE: unknownFile } },
+            creationOptions: { name: 'R Interactive', env: { SESS_DISCOVERY_FILE: unknownFile, VSCODE_R_SESS_STARTUP_FILE: unknownStartupFile } },
             exitStatus: { code: undefined, reason: vscode.TerminalExitReason.Unknown },
         } as unknown as vscode.Terminal;
 
@@ -275,9 +299,13 @@ suite('R Terminal', () => {
             await new Promise(resolve => setTimeout(resolve, 10));
             assert.strictEqual(await pathExists(shutdownFile), true);
             assert.strictEqual(await pathExists(unknownFile), true);
+            assert.strictEqual(await pathExists(shutdownStartupFile), true);
+            assert.strictEqual(await pathExists(unknownStartupFile), true);
         } finally {
             await fsp.rm(shutdownFile, { recursive: true, force: true });
             await fsp.rm(unknownFile, { recursive: true, force: true });
+            await fsp.rm(shutdownStartupFile, { recursive: true, force: true });
+            await fsp.rm(unknownStartupFile, { recursive: true, force: true });
         }
     });
 
@@ -318,7 +346,6 @@ suite('R Terminal', () => {
         };
         sandbox.stub(util, 'config').returns(configStub as unknown as vscode.WorkspaceConfiguration);
         sandbox.stub(util, 'getRterm').resolves(process.execPath);
-        sandbox.stub(util, 'promptToInstallSessPackage').resolves(true);
 
         const options = await rTerminal.makeTerminalOptions();
 
@@ -356,7 +383,6 @@ suite('R Terminal', () => {
         };
         sandbox.stub(util, 'config').returns(configStub as unknown as vscode.WorkspaceConfiguration);
         sandbox.stub(util, 'getRterm').resolves(process.execPath);
-        sandbox.stub(util, 'promptToInstallSessPackage').resolves(true);
 
         const options = await rTerminal.makeTerminalOptions();
 
@@ -369,7 +395,6 @@ suite('R Terminal', () => {
             'rterm.option': ['--no-save']
         }));
         sandbox.stub(util, 'getRterm').resolves(process.execPath);
-        sandbox.stub(util, 'promptToInstallSessPackage').resolves(true);
 
         const options = await rTerminal.makeTerminalOptions();
 
@@ -381,7 +406,6 @@ suite('R Terminal', () => {
             consoleArgs: ['--no-save', '--no-restore']
         }));
         sandbox.stub(util, 'getRterm').resolves(process.execPath);
-        sandbox.stub(util, 'promptToInstallSessPackage').resolves(true);
 
         const options = await rTerminal.makeTerminalOptions();
 
@@ -403,7 +427,6 @@ suite('R Terminal', () => {
     test('makeTerminalOptions keeps existing console args defaults when neither setting is explicit', async () => {
         sandbox.stub(util, 'config').returns(configuration({}, { consoleArgs: ['--no-save', '--no-restore'] }));
         sandbox.stub(util, 'getRterm').resolves(process.execPath);
-        sandbox.stub(util, 'promptToInstallSessPackage').resolves(true);
 
         const options = await rTerminal.makeTerminalOptions();
 
@@ -475,7 +498,6 @@ suite('R Terminal', () => {
             get: (key: string) => key === 'sessionWatcher' ? false : settings[key]
         };
         sandbox.stub(vscode.workspace, 'getConfiguration').returns(configStub as unknown as vscode.WorkspaceConfiguration);
-        sandbox.stub(util, 'promptToInstallSessPackage').resolves(true);
         const errorStub = sandbox.stub(vscode.window, 'showErrorMessage').resolves(undefined);
 
         assert.strictEqual(await rTerminal.createRTerm(), false);
@@ -522,7 +544,6 @@ suite('R Terminal', () => {
             assert.strictEqual(requestedResource, resource);
             return value.replace('${workspaceFolder}', resource.fsPath);
         });
-        sandbox.stub(util, 'promptToInstallSessPackage').resolves(true);
         const sent: string[] = [];
         const fakeTerminal = {
             name: 'R Interactive',
@@ -585,69 +606,148 @@ suite('R Terminal', () => {
         });
     }
 
-    test('createRTerm and restartRTerminal integration test', async () => {
+    test('createRTerm uses the configured arf/radian console R and waits for consent without background R work', async () => {
+        const backgroundRPath = '/background/R';
+        const consoleRPath = '/target/radian';
         const configStub = {
-            get: (key: string) => {
-                if (key === 'sessionWatcher') {
-                    return true;
-                }
-                return undefined;
-            }
+            get: (key: string) => ({
+                sessionWatcher: true,
+                executablePath: backgroundRPath,
+                consolePath: consoleRPath,
+                'source.focus': 'none',
+            })[key],
         };
         sandbox.stub(util, 'config').returns(configStub as unknown as vscode.WorkspaceConfiguration);
-        sandbox.stub(util, 'getRterm').resolves(process.execPath);
-        let finishSetup!: (result: boolean) => void;
-        const setupFinished = new Promise<boolean>(resolve => { finishSetup = resolve; });
+        const getConsoleR = sandbox.stub(util, 'getRterm').callsFake(() => {
+            assert.strictEqual(configStub.get('consolePath'), consoleRPath);
+            assert.notStrictEqual(configStub.get('consolePath'), configStub.get('executablePath'));
+            return Promise.resolve(process.execPath);
+        });
+        const getRpath = sandbox.spy(util, 'getRpath');
+        const queryR = sandbox.spy(util, 'executeRCommand');
+        const installTask = sandbox.spy(util, 'executeAsTask');
+        let finishSetup!: (result: string) => void;
+        const setupFinished = new Promise<string>(resolve => { finishSetup = resolve; });
         let setupStarted!: () => void;
         const started = new Promise<void>(resolve => { setupStarted = resolve; });
-        sandbox.stub(util, 'promptToInstallSessPackage').callsFake(() => {
+        consentDirectoryStub.callsFake(() => {
             setupStarted();
             return setupFinished;
         });
-        const createTerminal = sandbox.spy(vscode.window, 'createTerminal');
+        sandbox.stub(session, 'getGlobalPipePath').resolves('unused-test-endpoint');
+        sandbox.stub(session, 'createSessionDiscoveryFile').resolves('/unused-test-discovery');
+        const terminal = {
+            name: 'R Interactive', processId: Promise.resolve(undefined),
+            show: sandbox.stub(), dispose: sandbox.stub(),
+        } as unknown as vscode.Terminal;
+        const createTerminal = sandbox.stub(vscode.window, 'createTerminal').returns(terminal);
 
         const creation = rTerminal.createRTerm(true);
         await started;
-        assert.strictEqual(createTerminal.called, false, 'terminal must wait for sess setup');
-        finishSetup(true);
+        assert.strictEqual(createTerminal.called, false, 'terminal must wait for consent setup');
+        finishSetup('/target-R-consent');
         const result = await creation;
         assert.ok(result, 'createRTerm should return true');
         assert.ok(rTerminal.rTerm, 'rTerminal.rTerm should be defined');
+        sinon.assert.calledOnce(getConsoleR);
+        sinon.assert.calledOnce(consentDirectoryStub);
+        const options = createTerminal.firstCall.args[0] as vscode.TerminalOptions;
+        assert.strictEqual(options.shellPath, process.execPath);
+        assert.strictEqual(options.env?.['VSCODE_R_SESS_CONSENT_DIRECTORY'], '/target-R-consent');
+        sinon.assert.notCalled(getRpath);
+        sinon.assert.notCalled(queryR);
+        sinon.assert.notCalled(installTask);
 
-        // Clean up
-        rTerminal.rTerm?.dispose();
+        rTerminal.deleteTerminal(terminal);
     });
 
-    test('createRTerm removes its discovery file when the configured executable is invalid', async () => {
-        const createdDiscoveryFiles: string[] = [];
-        const createDiscoveryFile = session.createSessionDiscoveryFile;
-        sandbox.stub(session, 'createSessionDiscoveryFile').callsFake(async endpoint => {
-            const filePath = await createDiscoveryFile(endpoint);
-            createdDiscoveryFiles.push(filePath);
-            return filePath;
+    for (const failedResource of ['pipe', 'consent', 'discovery', 'helper-path'] as const) {
+        test(`session watcher ${failedResource} setup failure still starts an ordinary R terminal`, async () => {
+            const failure = new Error(`simulated ${failedResource} setup failure`);
+            const createdFiles: string[] = [];
+            const configStub = configuration({ sessionWatcher: true, 'source.focus': 'none' });
+            sandbox.stub(util, 'config').returns(configStub);
+            sandbox.stub(util, 'getRterm').resolves(process.execPath);
+            const pipe = sandbox.stub(session, 'getGlobalPipePath');
+            if (failedResource === 'pipe') {
+                pipe.rejects(failure);
+            } else {
+                pipe.resolves('unused-test-endpoint');
+            }
+            if (failedResource === 'consent') {
+                consentDirectoryStub.rejects(failure);
+            }
+            const createFile = session.createSessionDiscoveryFile;
+            const createDiscovery = sandbox.stub(session, 'createSessionDiscoveryFile');
+            if (failedResource === 'discovery') {
+                createDiscovery.rejects(failure);
+            } else if (failedResource === 'helper-path') {
+                createDiscovery.callsFake(async endpoint => {
+                    const file = await createFile(endpoint);
+                    createdFiles.push(file);
+                    return file;
+                });
+                const asAbsolutePath = extension.extensionContext.asAbsolutePath.bind(extension.extensionContext);
+                sandbox.stub(extension.extensionContext, 'asAbsolutePath').callsFake(relativePath => {
+                    if (relativePath.startsWith(path.join('dist', 'resources', 'sess'))) {
+                        throw failure;
+                    }
+                    return asAbsolutePath(relativePath);
+                });
+            } else {
+                createDiscovery.resolves('/unused-test-discovery');
+            }
+            const terminal = {
+                name: 'R Interactive', processId: Promise.resolve(undefined),
+                show: sandbox.stub(), dispose: sandbox.stub(),
+            } as unknown as vscode.Terminal;
+            const createTerminal = sandbox.stub(vscode.window, 'createTerminal').returns(terminal);
+            const warning = sandbox.stub(vscode.window, 'showWarningMessage').resolves(undefined);
+
+            try {
+                assert.strictEqual(await rTerminal.createRTerm(), true);
+                sinon.assert.calledOnce(createTerminal);
+                sinon.assert.calledOnce(warning);
+                const options = createTerminal.firstCall.args[0] as vscode.TerminalOptions;
+                assert.strictEqual(options.shellPath, process.execPath);
+                assert.strictEqual(options.env?.['SESS_DISCOVERY_FILE'], undefined);
+                assert.strictEqual(options.env?.['VSCODE_R_SESS_STARTUP_FILE'], undefined);
+                assert.strictEqual(options.env?.['VSCODE_R_SESS_STARTUP_TOKEN'], undefined);
+                assert.strictEqual(options.env?.['R_PROFILE_USER'], undefined);
+                for (const file of createdFiles) {
+                    assert.strictEqual(await pathExists(file), false);
+                    assert.strictEqual(await pathExists(`${file}.startup`), false);
+                }
+            } finally {
+                rTerminal.deleteTerminal(terminal);
+                await Promise.all(createdFiles.map(file => fsp.rm(file, { recursive: true, force: true })));
+                await Promise.all(createdFiles.map(file => fsp.rm(`${file}.startup`, { recursive: true, force: true })));
+            }
         });
+    }
+
+    test('createRTerm skips watcher setup when the configured executable is invalid', async () => {
+        const createDiscoveryFile = sandbox.stub(session, 'createSessionDiscoveryFile');
         const configStub = {
             get: (key: string) => key === 'sessionWatcher' ? true : undefined,
         };
         sandbox.stub(util, 'config').returns(configStub as unknown as vscode.WorkspaceConfiguration);
         sandbox.stub(util, 'getRterm').resolves(`${process.execPath}.does-not-exist`);
-        sandbox.stub(util, 'promptToInstallSessPackage').resolves(true);
 
-        try {
-            assert.strictEqual(await rTerminal.createRTerm(), false);
-            assert.strictEqual(createdDiscoveryFiles.length, 1);
-            assert.strictEqual(await pathExists(createdDiscoveryFiles[0]), false);
-        } finally {
-            await Promise.all(createdDiscoveryFiles.map(filePath => fsp.rm(filePath, { recursive: true, force: true })));
-        }
+        assert.strictEqual(await rTerminal.createRTerm(), false);
+        sinon.assert.notCalled(createDiscoveryFile);
     });
 
     test('createRTerm removes its discovery file when VS Code terminal creation throws', async () => {
         const createdDiscoveryFiles: string[] = [];
+        const createdStartupFiles: string[] = [];
         const createDiscoveryFile = session.createSessionDiscoveryFile;
         sandbox.stub(session, 'createSessionDiscoveryFile').callsFake(async endpoint => {
             const filePath = await createDiscoveryFile(endpoint);
             createdDiscoveryFiles.push(filePath);
+            const startupPath = `${filePath}.startup`;
+            createdStartupFiles.push(startupPath);
+            await fsp.writeFile(startupPath, 'pending\n');
             return filePath;
         });
         const configStub = {
@@ -655,39 +755,16 @@ suite('R Terminal', () => {
         };
         sandbox.stub(util, 'config').returns(configStub as unknown as vscode.WorkspaceConfiguration);
         sandbox.stub(util, 'getRterm').resolves(process.execPath);
-        sandbox.stub(util, 'promptToInstallSessPackage').resolves(true);
         sandbox.stub(vscode.window, 'createTerminal').throws(new Error('terminal creation failed'));
 
         try {
             await assert.rejects(rTerminal.createRTerm(), /terminal creation failed/);
             assert.strictEqual(createdDiscoveryFiles.length, 1);
             assert.strictEqual(await pathExists(createdDiscoveryFiles[0]), false);
+            assert.strictEqual(await pathExists(createdStartupFiles[0]), false);
         } finally {
             await Promise.all(createdDiscoveryFiles.map(filePath => fsp.rm(filePath, { recursive: true, force: true })));
-        }
-    });
-
-    test('createRTerm removes its discovery file when sess installation fails', async () => {
-        const createdDiscoveryFiles: string[] = [];
-        const createDiscoveryFile = session.createSessionDiscoveryFile;
-        sandbox.stub(session, 'createSessionDiscoveryFile').callsFake(async endpoint => {
-            const filePath = await createDiscoveryFile(endpoint);
-            createdDiscoveryFiles.push(filePath);
-            return filePath;
-        });
-        sandbox.stub(util, 'config').returns({
-            get: (key: string) => key === 'sessionWatcher' ? true : undefined,
-        } as unknown as vscode.WorkspaceConfiguration);
-        sandbox.stub(util, 'getRterm').resolves(process.execPath);
-        sandbox.stub(util, 'promptToInstallSessPackage').resolves(false);
-        const createTerminal = sandbox.stub(vscode.window, 'createTerminal');
-        try {
-            assert.strictEqual(await rTerminal.createRTerm(), false);
-            assert.strictEqual(createTerminal.called, false);
-            assert.strictEqual(createdDiscoveryFiles.length, 1);
-            assert.strictEqual(await pathExists(createdDiscoveryFiles[0]), false);
-        } finally {
-            await Promise.all(createdDiscoveryFiles.map(filePath => fsp.rm(filePath, { recursive: true, force: true })));
+            await Promise.all(createdStartupFiles.map(filePath => fsp.rm(filePath, { recursive: true, force: true })));
         }
     });
 
@@ -733,7 +810,6 @@ suite('R Terminal', () => {
         };
         sandbox.stub(util, 'config').returns(configStub as unknown as vscode.WorkspaceConfiguration);
         sandbox.stub(util, 'getRterm').resolves(process.execPath);
-        sandbox.stub(util, 'promptToInstallSessPackage').resolves(true);
         const createTerminalStub = sandbox.stub(vscode.window, 'createTerminal');
         createTerminalStub.onFirstCall().returns(firstTerminal);
         createTerminalStub.onSecondCall().returns(secondTerminal);
@@ -793,7 +869,6 @@ suite('R Terminal', () => {
         };
         sandbox.stub(util, 'config').returns(configStub as unknown as vscode.WorkspaceConfiguration);
         sandbox.stub(util, 'getRterm').resolves(process.execPath);
-        sandbox.stub(util, 'promptToInstallSessPackage').resolves(true);
 
         // We need to mock the terminal and its processId
         const fakeTerminal = {

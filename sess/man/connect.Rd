@@ -19,6 +19,10 @@ If NULL, uses SESS_ENDPOINT, then SESS_DISCOVERY_FILE.}
 \item{plot_backend}{Plot backend: \code{auto}, \code{jgd}, \code{httpgd}, \code{standard}, or
 \code{native}. NULL also selects \code{auto}.}
 }
+\value{
+Invisibly returns \code{TRUE} when the IPC connection and runtime startup
+succeed, or \code{FALSE} when the IPC endpoint is unavailable.
+}
 \description{
 Connect to the VS Code IPC server
 }
