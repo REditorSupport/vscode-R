@@ -2162,7 +2162,9 @@ par(mfrow=c(1,1))`);
 
 async function stopLanguageClient(client: LanguageClient): Promise<void> {
     try {
-        await client.stop();
+        // The integration suite stops many R servers together. Allow busy CI
+        // runners more than the client's default two seconds to drain work.
+        await client.stop(10000);
     } catch (error) {
         // R's language server can close on shutdown before the client's exit
         // notification is written. The client has already completed cleanup.
@@ -2172,7 +2174,7 @@ async function stopLanguageClient(client: LanguageClient): Promise<void> {
 }
 
 suite('Interactive language client cleanup', () => {
-    test('accepts a completed shutdown when the server closes before the exit notification', async () => {
+    test('waits for a slow shutdown and accepts the server closing before the exit notification', async () => {
         const connections: Array<{ dispose(): void }> = [];
         let serverSocket: net.Socket | undefined;
         const server = net.createServer(socket => {
@@ -2180,7 +2182,10 @@ suite('Interactive language client cleanup', () => {
             const connection = createMessageConnection(new StreamMessageReader(socket), new StreamMessageWriter(socket));
             connections.push(connection);
             connection.onRequest('initialize', () => ({ capabilities: {} }));
-            connection.onRequest('shutdown', () => null);
+            connection.onRequest('shutdown', async () => {
+                await new Promise(resolve => setTimeout(resolve, 2500));
+                return null;
+            });
             connection.listen();
         });
         await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
@@ -2222,7 +2227,8 @@ suite('Interactive language client cleanup', () => {
 
     test('does not suppress unrelated shutdown failures or an unstopped client', async () => {
         const error = Object.assign(new Error('Socket shutdown failed'), { code: 'EPIPE' });
-        for (const [state, failure] of [[State.Running, error], [State.Stopped, new Error('Unexpected shutdown failure')]] as const) {
+        for (const [state, failure] of [[State.Running, error], [State.Stopped, new Error('Unexpected shutdown failure')],
+            [State.Stopped, new Error('Stopping the server timed out')]] as const) {
             const client = { state, stop: () => Promise.reject(failure) } as unknown as LanguageClient;
             await assert.rejects(stopLanguageClient(client), thrown => thrown === failure);
         }
