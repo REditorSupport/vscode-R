@@ -792,6 +792,54 @@ suite('Session Communication', () => {
         }
     }).timeout(20000);
 
+    test('manual attach rejects after shutdown starts at the publication boundary and shutdown removes the script', async () => {
+        await session.shutdownSessionWatcher();
+        sandbox.stub(extension, 'enableSessionWatcher').value(true);
+        session.deploySessionWatcher(extension_root);
+        const endpoint = await session.getGlobalPipePath();
+        const scriptBase = path.basename(endpoint).replace(/[^a-zA-Z0-9_.-]/g, '_') || 'attach_session';
+        const scriptPath = path.join(
+            extension.extensionContext.globalStorageUri.fsPath, 'tmp', 'attach', `${scriptBase}.R`,
+        );
+        const originalRename = Object.getOwnPropertyDescriptor(fsp, 'rename')?.value as
+            ((oldPath: PathLike, newPath: PathLike) => Promise<void>) | undefined;
+        assert.ok(originalRename);
+        let startShutdown!: () => void;
+        let shutdown: Promise<void> | undefined;
+        let shutdownScheduled = false;
+        const shutdownStarted = new Promise<void>(resolve => { startShutdown = resolve; });
+        sandbox.stub(fsp, 'rename').callsFake(async (oldPath, newPath) => {
+            const result = await originalRename!.call(fsp, oldPath, newPath);
+            if (String(newPath) === scriptPath) {
+                shutdownScheduled = true;
+                // Queue shutdown after the publication callback's final generation
+                // check but before the caller resumes from `await publish`.
+                queueMicrotask(() => queueMicrotask(() => {
+                    shutdown = session.shutdownSessionWatcher();
+                    startShutdown();
+                }));
+            }
+            return result;
+        });
+
+        const command = session.getAttachSessionCommand();
+        try {
+            await Promise.all([
+                assert.rejects(command, /shut down while publishing attach command/),
+                shutdownStarted,
+            ]);
+            assert.ok(shutdown, 'the publication-boundary callback should start shutdown');
+            await shutdown;
+            assert.strictEqual(await pathExists(scriptPath), false, 'shutdown must remove the just-published manual script');
+        } finally {
+            if (shutdownScheduled) {
+                await shutdownStarted;
+                await shutdown;
+            }
+            await fsp.rm(scriptPath, { force: true });
+        }
+    }).timeout(20000);
+
     test('prepareAttachment removes a script published during shutdown', async () => {
         await session.shutdownSessionWatcher();
         session.deploySessionWatcher(extension_root);
