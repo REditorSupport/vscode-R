@@ -156,7 +156,7 @@ suite('Session Communication', () => {
         } finally { session.unregisterSessionTransport(target); status.dispose(); }
     });
 
-    test('concurrent server initialization and public API calls share one endpoint', async () => {
+    test('concurrent server initialization and public API calls share one endpoint and consent directory', async () => {
         await session.shutdownSessionWatcher();
         sandbox.stub(extension, 'enableSessionWatcher').value(true);
         const listen = sandbox.spy(net.Server.prototype, 'listen');
@@ -166,14 +166,17 @@ suite('Session Communication', () => {
         };
 
         try {
-            const [first, second, info] = await Promise.all([
+            const [first, second, info, secondInfo] = await Promise.all([
                 session.getGlobalPipePath(),
                 session.getGlobalPipePath(),
+                api.getConnectionInfo(),
                 api.getConnectionInfo(),
             ]);
             assert.strictEqual(listen.callCount, 1);
             assert.strictEqual(first, second);
             assert.strictEqual(first, info?.endpoint);
+            assert.ok(info?.consentDirectory);
+            assert.strictEqual(info.consentDirectory, secondInfo?.consentDirectory);
 
             const client = net.createConnection(first);
             try {
@@ -303,6 +306,9 @@ suite('Session Communication', () => {
         assert.ok(connection);
         assert.strictEqual(connection.protocolVersion, 2);
         assert.strictEqual(connection.endpoint, session.globalPipePath);
+        assert.strictEqual(connection.managedRoot, path.join(extension.extensionContext.globalStorageUri.fsPath, 'sess'));
+        assert.strictEqual(connection.consentDirectory, await session.getSessConsentDirectory());
+        assert.ok((await fsp.stat(connection.consentDirectory)).isDirectory());
         assert.strictEqual(connection.plotBackend, 'standard');
         assert.ok(!('socket' in connection), 'connection info should contain plain contract data only');
 
@@ -310,6 +316,51 @@ suite('Session Communication', () => {
         const nativeConnection = await api.getConnectionInfo();
         assert.strictEqual(nativeConnection?.plotBackend, 'native');
         assert.strictEqual(nativeConnection?.jgdSocket, undefined);
+    });
+
+    test('public connection paths share manual attach consent and refresh after shutdown', async () => {
+        await session.shutdownSessionWatcher();
+        sandbox.stub(extension, 'enableSessionWatcher').value(true);
+        sandbox.stub(util, 'config').returns({
+            get: (key: string) => key === 'sessionWatcher' ? true : undefined,
+        } as unknown as vscode.WorkspaceConfiguration);
+        const prompt = sandbox.stub(vscode.window, 'showWarningMessage').resolves(undefined);
+
+        try {
+            const connection = await session.getConnectionInfo();
+            assert.ok(connection);
+            const command = await session.getAttachSessionCommand();
+            const scriptPath = JSON.parse(command.slice('source('.length, -1)) as string;
+            const script = await fsp.readFile(scriptPath, 'utf8');
+            for (const [name, value] of [
+                ['managed_root', connection.managedRoot],
+                ['consent_dir', connection.consentDirectory],
+            ]) {
+                assert.ok(script.includes(`  ${name} <- ${JSON.stringify(value.replace(/\\/g, '/'))}`));
+            }
+
+            const description = await fsp.readFile(extension.extensionContext.asAbsolutePath(
+                path.join('dist', 'resources', 'sess', 'DESCRIPTION')), 'utf8');
+            const revision = util.readSessSourceRevision(description);
+            assert.ok(revision);
+            const id = 'public-api-consent';
+            await fsp.writeFile(path.join(connection.consentDirectory, `${id}.request`),
+                `vscode-r-sess-consent-v1\n${id}\n${revision}\nx86_64-test|4.6\nmissing\n`);
+            const response = await waitFor(() => fsp.readFile(
+                path.join(connection.consentDirectory, `${id}.response`), 'utf8').catch(() => undefined));
+            assert.strictEqual(response, 'decline\n');
+            sinon.assert.calledOnce(prompt);
+
+            await session.shutdownSessionWatcher();
+            assert.strictEqual(await pathExists(connection.consentDirectory), false);
+            const refreshed = await session.getConnectionInfo();
+            assert.ok(refreshed);
+            assert.strictEqual(refreshed.managedRoot, connection.managedRoot);
+            assert.notStrictEqual(refreshed.consentDirectory, connection.consentDirectory);
+            assert.ok((await fsp.stat(refreshed.consentDirectory)).isDirectory());
+        } finally {
+            await session.shutdownSessionWatcher();
+        }
     });
 
     test('public session API activates a connected session by id and rejects missing or disconnected sessions', async () => {

@@ -971,11 +971,14 @@ export async function getConnectionInfo(): Promise<RSessionConnectionInfo | unde
     }
 
     const endpoint = await getGlobalPipePath();
+    const consentDirectory = await getSessConsentDirectory();
     const plotBackend = resolveBackend();
     const jgdSocket = getSessionJgdSocket();
     return {
         protocolVersion: SESS_PROTOCOL_VERSION,
         endpoint,
+        managedRoot: path.join(extensionContext.globalStorageUri.fsPath, 'sess'),
+        consentDirectory,
         plotBackend,
         ...(jgdSocket ? { jgdSocket } : {}),
     };

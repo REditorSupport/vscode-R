@@ -14,6 +14,10 @@ export declare class RExtension {
 export interface RSessionConnectionInfo {
     protocolVersion: number;
     endpoint: string;
+    /** Absolute root for managed sess libraries; pass as managed_root to R/attach_sess.R. */
+    managedRoot: string;
+    /** Active consent directory; pass as consent_dir to R/attach_sess.R and refresh after reload. */
+    consentDirectory: string;
     /** The configured, compatibility-resolved plot backend preference. */
     plotBackend: 'auto' | 'standard' | 'httpgd' | 'jgd' | 'native';
     /** Present when plotBackend is jgd or auto and the JGD socket is available. */
@@ -34,7 +38,7 @@ export interface RSessionActivationOptions {
 }
 
 export interface RSessionApi {
-    /** Returns connection details, or undefined when the session watcher is disabled. */
+    /** Returns connection details with consent ready, or undefined when the watcher is disabled. */
     getConnectionInfo(): Promise<RSessionConnectionInfo | undefined>;
     /**
      * Activates a connected session, optionally binding its execution terminal.
