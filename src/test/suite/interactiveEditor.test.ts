@@ -1827,7 +1827,10 @@ par(mfrow=c(1,1))`);
         } finally { confirmation.restore(); picker.restore(); info.restore(); }
     });
 
-    test('restart keeps the window, drafts, transcript, bindings and kernel through multiple R processes', async () => {
+    test('restart keeps the window, drafts, transcript, bindings and kernel through multiple R processes', async function () {
+        // Cold runtime installation, failed preflights and two R restarts can
+        // together exceed the suite timeout on CI; individual waits stay bounded.
+        this.timeout(120000);
         const original = manifests[1];
         await vscode.commands.executeCommand('r.interactive.detach', original);
         const created = sinon.spy(vscode.notebooks, 'createNotebookController');
