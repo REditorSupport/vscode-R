@@ -37,6 +37,8 @@ export interface RSessionPreparationOptions {
     /**
      * A local sess IPC endpoint on the current R host, such as a proxy socket.
      * When omitted, vscode-R's endpoint is used. Only sess IPC is supported.
+     * On Windows, only a local `\\.\pipe\...` named pipe is accepted; other
+     * hosts require an absolute local socket path.
      */
     connection?: {
         transport: 'sess';
@@ -64,6 +66,12 @@ export interface RSessionApi {
      * lifetime. Keep the resource until source execution finishes, then dispose it. If the
      * consumer cannot observe completion, retain it for the R process lifetime. Disposing
      * removes only this script; it does not stop the R process or disconnect sess.
+     *
+     * Attaching follows vscode-R's current automatic-selection rules and may change the UI's
+     * selected session. After connection, call `activate(sessionId, { terminal })` to register
+     * the consumer's execution terminal; connection replacement clears that registration.
+     * During script execution, R may wait up to 180 seconds for install consent or 300 seconds
+     * for another setup's lock. These are R-side waits, not a total startup timeout.
      */
     prepareAttachment(options?: RSessionPreparationOptions): Promise<RSessionPreparation | undefined>;
     /**

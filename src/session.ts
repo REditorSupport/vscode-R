@@ -1052,7 +1052,6 @@ function buildAttachSessionScript(pipePath: string, sessPath: string, consentDir
         '    invisible(isTRUE(attached))',
         '  }, error = function(error) {',
         '    message("vscode-R could not prepare the session watcher: ", conditionMessage(error))',
-        '    message("If sess was already loaded from another vscode-R revision, close this R session and start a new one.")',
         '    invisible(FALSE)',
         '  }, interrupt = function(error) {',
         '    message("vscode-R session watcher preparation was interrupted; you can continue using this R session.")',
@@ -1141,8 +1140,11 @@ function validateAttachmentEndpoint(endpoint: unknown): asserts endpoint is stri
     if (typeof endpoint !== 'string' || endpoint.length === 0 || endpoint.includes('\0')) {
         throw new TypeError('A non-empty local sess IPC endpoint is required.');
     }
-    const localNamedPipe = process.platform === 'win32' && /^\\\\\.\\pipe\\[A-Za-z0-9_.-]+$/i.test(endpoint);
-    if (!path.isAbsolute(endpoint) && !localNamedPipe) {
+    const localNamedPipe = /^\\\\\.\\pipe\\[A-Za-z0-9_.-]+$/i.test(endpoint);
+    const valid = process.platform === 'win32'
+        ? localNamedPipe
+        : path.isAbsolute(endpoint);
+    if (!valid) {
         throw new TypeError('The sess IPC endpoint must be a local absolute path or Windows named pipe.');
     }
 }

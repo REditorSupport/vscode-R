@@ -23,6 +23,12 @@ import type { RSessionApi } from '../../api';
 
 const extension_root: string = path.join(__dirname, '..', '..', '..');
 
+function localSessEndpoint(name: string): string {
+    return process.platform === 'win32'
+        ? String.raw`\\.\pipe\vscode-r-${name}`
+        : path.join(os.tmpdir(), `vscode-r-${name}.sock`);
+}
+
 async function waitFor<T>(condition: () => T | Promise<T>, timeout = 10000, interval = 100): Promise<T> {
     const start = Date.now();
     while (Date.now() - start < timeout) {
@@ -706,18 +712,26 @@ suite('Session Communication', () => {
             prepareAttachment: session.prepareAttachment,
             activate: session.activateSessionById,
         };
-        const endpoint = path.join(os.tmpdir(), 'proxy "quoted" \\ endpoint.sock');
+        const endpoint = process.platform === 'win32'
+            ? localSessEndpoint('proxy')
+            : path.join(os.tmpdir(), 'proxy "quoted" \\ endpoint.sock');
         await assert.rejects(
             api.prepareAttachment({ connection: { transport: 'sess', endpoint: 'tcp://remote/endpoint' } }),
             /local absolute path or Windows named pipe/,
         );
+        for (const invalidEndpoint of [String.raw`\\remote\pipe\x`, String.raw`\\server\share\x`, String.raw`C:\socket`]) {
+            await assert.rejects(
+                api.prepareAttachment({ connection: { transport: 'sess', endpoint: invalidEndpoint } }),
+                /local absolute path or Windows named pipe/,
+            );
+        }
         await assert.rejects(
             session.prepareAttachment({ connection: { transport: 'sess', endpoint: undefined as unknown as string } }),
             /non-empty local sess IPC endpoint/,
         );
         const [preparation, parallelPreparation] = await Promise.all([
             api.prepareAttachment({ connection: { transport: 'sess', endpoint } }),
-            api.prepareAttachment({ connection: { transport: 'sess', endpoint: path.join(os.tmpdir(), 'parallel.sock') } }),
+            api.prepareAttachment({ connection: { transport: 'sess', endpoint: localSessEndpoint('parallel') } }),
         ]);
         assert.ok(preparation);
         assert.ok(parallelPreparation);
@@ -757,6 +771,10 @@ suite('Session Communication', () => {
                     if (fixture.message) {
                         assert.ok(execution.stderr.includes(fixture.message) || execution.stdout.includes(fixture.message));
                     }
+                    if (fixture.name === 'error') {
+                        assert.ok(!execution.stderr.includes('close this R session and start a new one')
+                            && !execution.stdout.includes('close this R session and start a new one'));
+                    }
                 }
             } finally {
                 await fsp.rm(executionDirectory, { recursive: true, force: true });
@@ -790,7 +808,7 @@ suite('Session Communication', () => {
             return originalRename!.call(fsp, oldPath, newPath);
         });
         const preparation = session.prepareAttachment({
-            connection: { transport: 'sess', endpoint: path.join(os.tmpdir(), 'rename-race.sock') },
+            connection: { transport: 'sess', endpoint: localSessEndpoint('rename-race') },
         });
         await renameEntered;
         const shutdown = session.shutdownSessionWatcher();
@@ -805,7 +823,7 @@ suite('Session Communication', () => {
     test('shutdown waits for a preparation dispose cleanup already in progress', async () => {
         sandbox.stub(extension, 'enableSessionWatcher').value(true);
         const preparation = await session.prepareAttachment({
-            connection: { transport: 'sess', endpoint: path.join(os.tmpdir(), 'dispose-race.sock') },
+            connection: { transport: 'sess', endpoint: localSessEndpoint('dispose-race') },
         });
         assert.ok(preparation);
         if (!preparation) { return; }
@@ -840,7 +858,7 @@ suite('Session Communication', () => {
         session.deploySessionWatcher(extension_root);
         sandbox.stub(extension, 'enableSessionWatcher').value(true);
         const oldPreparation = await session.prepareAttachment({
-            connection: { transport: 'sess', endpoint: path.join(os.tmpdir(), 'old-lifecycle.sock') },
+            connection: { transport: 'sess', endpoint: localSessEndpoint('old-lifecycle') },
         });
         assert.ok(oldPreparation);
         if (!oldPreparation) { return; }
@@ -866,7 +884,7 @@ suite('Session Communication', () => {
         await stopEntered;
         session.deploySessionWatcher(extension_root);
         const newPreparation = await session.prepareAttachment({
-            connection: { transport: 'sess', endpoint: path.join(os.tmpdir(), 'new-lifecycle.sock') },
+            connection: { transport: 'sess', endpoint: localSessEndpoint('new-lifecycle') },
         });
         assert.ok(newPreparation);
         if (!newPreparation) { releaseStop(); await oldShutdown; return; }
@@ -892,7 +910,7 @@ suite('Session Communication', () => {
             await originalStart!.call(this);
         });
         const preparation = session.prepareAttachment({
-            connection: { transport: 'sess', endpoint: path.join(os.tmpdir(), 'race.sock') },
+            connection: { transport: 'sess', endpoint: localSessEndpoint('race') },
         });
         await waitFor(() => start.calledOnce);
         const shutdown = session.shutdownSessionWatcher();
