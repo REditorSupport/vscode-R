@@ -18,19 +18,18 @@ socket on macOS/Linux, named pipe on Windows) using
 
 ## Installation
 
-> [!NOTE]
->
-> **Bundled install for VS Code.**
-> Users of the VS Code R extension (>=v3.0.0) do not need to install `sess`
-> manually. The extension bundles its own copy and asks before installing it
-> when no installed copy has the exact bundled source revision. Accepted
-> installs and missing dependencies go into a vscode-R-managed library; existing
-> user, project, and package-manager libraries are left unchanged. The extension
-> explicitly loads the matching copy for its session watcher. Preparation and
-> installation use the terminal's R, platform, version, and normal libraries;
-> when needed, that R asks the extension for consent. Manual attach follows the
-> same rule for the attached R. If a different `sess` is already loaded, restart
-> R before attaching.
+### Bundled install for VS Code
+
+Users of the VS Code R extension (>=v3.0.0) do not need to install `sess`
+manually. The extension bundles its own copy and asks before installing it
+when no installed copy has the exact bundled source revision. Accepted
+installs and missing dependencies go into a vscode-R-managed library; existing
+user, project, and package-manager libraries are left unchanged. The extension
+explicitly loads the matching copy for its session watcher. Preparation and
+installation use the terminal's R, platform, version, and normal libraries;
+when needed, that R asks the extension for consent. Manual attach follows the
+same rule for the attached R. If a different `sess` is already loaded, restart
+R before attaching.
 
 R Interactive prepares its isolated runtime as part of starting an Interactive
 session; that runtime follows its own lifecycle and does not change ordinary R
@@ -59,11 +58,7 @@ bundled installation fails.
 > files, so editor-only dependencies may be omitted; see
 > [snapshot types](https://pkgs.rstudio.com/renv/reference/snapshot.html#snapshot-types).
 
-R Interactive requires arf on the R host. Managed headless arf sessions stream
-console output and retain rich tables, HTML, and plots. Attached arf sessions
-return notebook console output on completion; arbitrary terminal console output
-has no subscription in the current arf IPC. Notebook console input and debugger
-prompts are unavailable. Ordinary R terminals remain available without arf.
+### Manual install
 
 `sess` is not yet on CRAN. But you can install the development version from R-universe:
 
@@ -75,6 +70,14 @@ install.packages(
 ```
 
 ## Usage
+
+> [!NOTE]
+> R Interactive requires [arf](https://github.com/eitsupi/arf) on the R host.
+> Managed headless `arf` sessions stream console output and retain rich tables, HTML, and
+> plots. Attached `arf` sessions return notebook console output on completion; arbitrary
+> terminal console output has no subscription in the current arf IPC. Notebook console
+> input and debugger prompts are unavailable. Ordinary R terminals remain available
+> without `arf`.
 
 When you start an R terminal from VS Code, the extension's R profile calls
 `sess::connect()` for you. To connect a session yourself:
