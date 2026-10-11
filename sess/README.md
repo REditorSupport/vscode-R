@@ -31,10 +31,6 @@ when needed, that R asks the extension for consent. Manual attach follows the
 same rule for the attached R. If a different `sess` is already loaded, restart
 R before attaching.
 
-R Interactive prepares its isolated runtime as part of starting an Interactive
-session; that runtime follows its own lifecycle and does not change ordinary R
-libraries.
-
 The bundled `sess` is a pure R package and needs no compiler to install from
 source. Its dependencies, including `processx`, `later`, and `jsonlite`, contain
 native code; during initial preparation, the extension installs missing Imports
@@ -72,6 +68,9 @@ install.packages(
 ## Usage
 
 > [!NOTE]
+> [R Interactive](https://github.com/REditorSupport/vscode-R/wiki/R-Interactive)
+> prepares its isolated runtime as part of starting an Interactive session; that
+> runtime follows its own lifecycle and does not change ordinary R libraries.
 > R Interactive requires [arf](https://github.com/eitsupi/arf) on the R host.
 > Managed headless `arf` sessions stream console output and retain rich tables, HTML, and
 > plots. Attached `arf` sessions return notebook console output on completion; arbitrary
