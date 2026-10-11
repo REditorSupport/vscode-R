@@ -22,8 +22,29 @@ const common = {
 	}
 };
 
+// Keep mock/provider tests independent of R language-server startup. The real
+// Interactive integration suite has its own window with the built-in LSP enabled.
+function testProfile(name, lspEnabled) {
+	const directory = path.resolve('.vscode-test/user-data', name);
+	mkdirSync(path.join(directory, 'User'), { recursive: true });
+	writeFileSync(path.join(directory, 'User/settings.json'), JSON.stringify({ 'r.lsp.enabled': lspEnabled }));
+	return ['--user-data-dir', directory];
+}
+
 export default defineConfig([
-	{ ...common, files: 'out/test/suite/**/*.test.js' },
+	{
+		...common,
+		label: 'provider-tests',
+		files: 'out/test/suite/**/!(interactiveEditor).test.js',
+		mocha: { ...common.mocha, require: './out/test/common/extensionSetup.js' },
+		launchArgs: testProfile('provider-tests', false)
+	},
+	{
+		...common,
+		label: 'interactive-integration',
+		files: 'out/test/suite/interactiveEditor.test.js',
+		launchArgs: testProfile('interactive-tests', true)
+	},
 	{
 		...common,
 		label: 'sess-install-tasks',

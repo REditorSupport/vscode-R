@@ -25,6 +25,7 @@ import { HistoryPage, searchHistory } from './history';
 import { readExecutionRecords, readPreviousJournal } from './journal';
 import { sessionAge, sessionPresentation } from './sessionPresentation';
 import { runningSessions, stopSession } from './sessionLifecycle';
+import { InteractiveInputFeatures } from './inputFeatures';
 
 interface InteractiveView {
     client: AgentClient;
@@ -72,6 +73,9 @@ export class InteractiveManager implements vscode.Disposable, vscode.TreeDataPro
     private status = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 20);
 
     constructor(private context: vscode.ExtensionContext) {
+        // A restart replaces the transcript, invalidating pending formatting edits.
+        this.disposables.push(new InteractiveInputFeatures(editor => [...this.views.values()].find(view =>
+            !view.disposed && view.inputUri?.toString() === editor.document.uri.toString())?.model));
         this.root = util.config().get<string>('interactive.storagePath') || defaultStorage();
         this.clientId = randomUUID();
         // Native Interactive tabs restore their URI, but discard notebook metadata.

@@ -55,6 +55,8 @@ function treeTooltip(item: vscode.TreeItem): string {
         fs.cpSync(path.join(process.cwd(), 'sess'), path.join(root, 'sess'), { recursive: true });
         await promisify(execFile)('R', ['CMD', 'INSTALL', '--clean', `--library=${path.join(root, 'library')}`, path.join(root, 'sess')]);
         await vscode.extensions.getExtension('REditorSupport.r')?.activate();
+        await until(() => [...languageService().clients.values()].some(client => client.isRunning()),
+            'Timed out starting the R language server for Interactive language-service integration tests');
         originalLanguageClients = new Set(languageService().clients.values());
         // Startup restoration may activate R before this suite configures its private
         // registry. Recreate only the manager, just as a host reload would do.
@@ -733,6 +735,69 @@ function treeTooltip(item: vscode.TreeItem): string {
         const reset = new vscode.WorkspaceEdit();
         reset.delete(document.uri, new vscode.Range(0, 0, document.lineCount, 0));
         await vscode.workspace.applyEdit(reset);
+    });
+    test('formats typed Interactive input with its language server and preserves the cursor', async () => {
+        const settings = vscode.workspace.getConfiguration('editor', { languageId: 'r' });
+        const previous = settings.inspect<boolean>('formatOnType')?.globalLanguageValue;
+        await settings.update('formatOnType', true, vscode.ConfigurationTarget.Global, true);
+        try {
+            const manifest = manifests[0];
+            await vscode.commands.executeCommand('r.interactive.open', manifest);
+            const notebook = vscode.workspace.notebookDocuments.find(doc => doc.metadata.rSessionId === manifest.id);
+            assert.ok(notebook);
+            const opened = await vscode.commands.executeCommand<{ inputUri: vscode.Uri }>('interactive.open', { preserveFocus: false }, notebook.uri);
+            await vscode.commands.executeCommand('interactive.input.focus');
+            await until(() => vscode.window.activeTextEditor?.document.uri.toString() === opened.inputUri.toString());
+            const editor = vscode.window.activeTextEditor!;
+            const document = editor.document, original = document.getText(), originalOptions = editor.options;
+            editor.options = { tabSize: 2, insertSpaces: true };
+            // This integration case intentionally verifies languageserver;
+            // independent-provider behavior is tested with the built-in LSP off.
+            await until(() => languageService().clients.get(opened.inputUri.toString())?.isRunning() === true);
+            assert.ok(languageService().clients.get(opened.inputUri.toString())?.initializeResult?.capabilities.documentOnTypeFormattingProvider,
+                'languageserver must advertise on-type formatting');
+            try {
+                for (const [text, ch, expected] of [
+                    ['typed_value<-sum(1,2', ')', 'typed_value <- sum(1, 2)'],
+                    ['typed_value<-x[1', ']', 'typed_value <- x[1]'],
+                    ['if(TRUE){typed_value<-1', '}', 'if (TRUE) {\n  typed_value <- 1\n}'],
+                    ['typed_value<-1', '\n', 'typed_value <- 1\n'],
+                    ['if(TRUE){', '\n', 'if (TRUE) {\n  '],
+                ]) {
+                    await editor.edit(builder => builder.replace(new vscode.Range(0, 0, document.lineCount, 0), text));
+                    const end = document.positionAt(document.getText().length);
+                    editor.selection = new vscode.Selection(end, end);
+                    await vscode.commands.executeCommand('type', { text: ch });
+                    await until(() => document.getText() === expected,
+                        () => `Expected ${JSON.stringify(expected)}, got ${JSON.stringify(document.getText())}`);
+                    // VS Code sends selection updates after the document change.
+                    await until(() => editor.selection.isEmpty && document.offsetAt(editor.selection.active) === expected.length,
+                        () => `Expected cursor at ${expected.length} after formatting, got ${document.offsetAt(editor.selection.active)}`);
+                    if (ch === ')') {
+                        await vscode.commands.executeCommand('undo');
+                        await until(() => document.getText() === text);
+                    }
+                }
+                for (const [text, expected] of [
+                    ['(1+1)', '(1 + 1)'],
+                    ['typed_value<-sum(1,2)', 'typed_value <- sum(1, 2)'],
+                ]) {
+                    await editor.edit(builder => builder.replace(new vscode.Range(0, 0, document.lineCount, 0), ''));
+                    editor.selection = new vscode.Selection(0, 0, 0, 0);
+                    for (const ch of text) { await vscode.commands.executeCommand('type', { text: ch }); }
+                    await until(() => document.getText() === expected,
+                        () => `Typing with auto-closing brackets produced ${JSON.stringify(document.getText())}`);
+                    await until(() => editor.selection.isEmpty && document.offsetAt(editor.selection.active) === expected.length,
+                        () => `Expected cursor at ${expected.length} after formatting, got ${document.offsetAt(editor.selection.active)}`);
+                }
+            } finally {
+                await editor.edit(builder => builder.replace(new vscode.Range(0, 0, document.lineCount, 0), original));
+                editor.options = originalOptions;
+            }
+        } finally {
+            await settings.update('formatOnType', previous, vscode.ConfigurationTarget.Global, true);
+            await vscode.commands.executeCommand('r.interactive.open', manifests[0]);
+        }
     });
     test('provides live function hover in Interactive inputs as well as source documents', async () => {
         await vscode.commands.executeCommand('r.interactive.open', manifests[0]);
@@ -1763,7 +1828,10 @@ par(mfrow=c(1,1))`);
         } finally { confirmation.restore(); picker.restore(); info.restore(); }
     });
 
-    test('restart keeps the window, drafts, transcript, bindings and kernel through multiple R processes', async () => {
+    test('restart keeps the window, drafts, transcript, bindings and kernel through multiple R processes', async function () {
+        // Cold runtime installation, failed preflights and two R restarts can
+        // together exceed the suite timeout on CI; individual waits stay bounded.
+        this.timeout(120000);
         const original = manifests[1];
         await vscode.commands.executeCommand('r.interactive.detach', original);
         const created = sinon.spy(vscode.notebooks, 'createNotebookController');

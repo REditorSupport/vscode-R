@@ -94,8 +94,8 @@ jobs:
         with:
           name: extension-test-logs-${{ runner.os }}
           path: |
-            .vscode-test/user-data/logs/**/exthost/exthost.log
-            .vscode-test/user-data/logs/**/exthost/output_logging_*/*.log
+            .vscode-test/user-data/**/logs/**/exthost/exthost.log
+            .vscode-test/user-data/**/logs/**/exthost/output_logging_*/*.log
           retention-days: 7
   build:
     runs-on: ubuntu-latest
