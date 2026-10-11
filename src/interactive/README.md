@@ -19,12 +19,13 @@ R Interactive keeps R execution independent of the VS Code extension host. Each 
 
 ## Input formatting
 
-Each R input has a language client bound to its session. The input bridge uses
-that client's providers for on-type formatting and format-on-paste. It respects
-the corresponding `editor` settings, including R language overrides, and
-discards replies after the input changes or its language client is replaced.
-Paste keeps native insertion behavior and the normal separate undo steps for
-formatting and insertion.
+`InteractiveManager` owns the input bridge, which requests on-type formatting
+and format-on-paste from VS Code's registered providers. It works independently
+of the built-in language service and respects the corresponding `editor`
+settings, including R language overrides. Pending replies are discarded after
+the input changes, the session is replaced, or the manager is disposed. Paste
+keeps native insertion behavior and separate undo steps for formatting and
+insertion.
 
 ## Current backend
 

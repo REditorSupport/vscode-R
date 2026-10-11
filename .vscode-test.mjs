@@ -43,7 +43,6 @@ export default defineConfig([
 		...common,
 		label: 'interactive-integration',
 		files: 'out/test/suite/interactiveEditor.test.js',
-		mocha: { ...common.mocha, require: './out/test/common/extensionSetup.js' },
 		launchArgs: testProfile('interactive-tests', true)
 	},
 	{
