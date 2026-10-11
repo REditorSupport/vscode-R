@@ -5,7 +5,7 @@ import { randomUUID } from 'crypto';
 import { pathToFileURL } from 'url';
 import { readFile } from 'fs/promises';
 import { load } from 'cheerio';
-import { Disposable, ExtensionContext, ProgressLocation, Uri, ViewColumn, Webview, WebviewPanel, window, env, commands, workspace } from 'vscode';
+import { Disposable, ExtensionContext, StatusBarAlignment, StatusBarItem, Uri, ViewColumn, Webview, WebviewPanel, window, env, commands, workspace } from 'vscode';
 import { ViewerSessionContext, ViewerSessionSource, formatSessionLabel } from '../viewerSession';
 import { WidgetHistory, WidgetHistoryStore, widgetHistoryLimit, widgetSessionIdentity } from './history';
 import type { HtmlViewerPanelReference, HtmlViewerPanelState } from './webviewMessages';
@@ -21,6 +21,7 @@ interface WidgetViewer {
     revision: number;
     disposed: boolean;
     loading: boolean;
+    loadStatus?: 'loading' | 'slow' | 'unconfirmed';
     finishLoading?: () => void;
     showSessionInfo: boolean;
     subscriptions: Array<{ dispose(): void }>;
@@ -88,6 +89,7 @@ class HtmlWidgetViewerManager {
     disposed = false;
     private readonly panels = new Set<WidgetViewer>();
     private readonly serializer: Disposable;
+    private readonly loadingStatus: StatusBarItem;
     private readonly panelStates = new Map<string, HtmlViewerPanelState>();
     private panelWrites: Promise<void> = Promise.resolve();
 
@@ -101,6 +103,8 @@ class HtmlWidgetViewerManager {
             }
         }
         this.serializer = window.registerWebviewPanelSerializer('r.htmlViewer', this);
+        this.loadingStatus = window.createStatusBarItem('r.htmlViewer.loading', StatusBarAlignment.Right, 10);
+        this.loadingStatus.name = 'R HTML Viewer Loading';
     }
 
     async deserializeWebviewPanel(panel: WebviewPanel, state: unknown): Promise<void> {
@@ -294,6 +298,7 @@ class HtmlWidgetViewerManager {
 
     private updateToolbar(): void {
         const entry = this.activeViewer();
+        this.updateLoadingStatus(entry);
         const session = entry?.session;
         const ready = Boolean(entry?.session && !entry.loading);
         void Promise.all([
@@ -303,6 +308,25 @@ class HtmlWidgetViewerManager {
             commands.executeCommand('setContext', 'r.htmlViewer.canShowInfo', Boolean(session &&
                 (session.hasExited || (session.source.rVer && session.source.pid)))),
         ]).catch(error => console.warn('[HTML Viewer] Could not update toolbar', error));
+    }
+
+    private updateLoadingStatus(entry?: WidgetViewer): void {
+        if (this.disposed) { return; }
+        const item = entry?.state.history[entry.state.index];
+        if (!entry?.loadStatus || !item) {
+            this.loadingStatus.hide();
+            return;
+        }
+        this.loadingStatus.text = {
+            loading: '$(loading~spin) HTML Viewer: Loading HTML output…',
+            slow: '$(loading~spin) HTML Viewer: Still loading. Please wait.',
+            unconfirmed: 'HTML Viewer: Load not confirmed. Please wait or retry.',
+        }[entry.loadStatus];
+        // Plain text only: output titles must not become trusted Markdown or commands.
+        this.loadingStatus.tooltip = [item.title, item.file,
+            entry.session ? `${formatSessionLabel(entry.session.source.rVer, entry.session.source.pid)} · ${entry.session.source.host}` : '',
+        ].filter(Boolean).join('\n');
+        this.loadingStatus.show();
     }
 
     private updateTitle(entry: WidgetViewer): void {
@@ -347,31 +371,37 @@ class HtmlWidgetViewerManager {
     private startLoading(entry: WidgetViewer, generation: number): () => void {
         entry.finishLoading?.();
         entry.loading = true;
-        let startBrowserTimeout!: () => void;
-        void window.withProgress({ location: ProgressLocation.Window }, progress => new Promise<void>(resolve => {
-            progress.report({ message: 'HTML Viewer: Loading HTML output…' });
-            let timeout: ReturnType<typeof setTimeout> | undefined;
-            // Run in the extension host: the output's CSP may block our script,
-            // or a resource may prevent the window load event from completing.
-            // Preparation keeps navigation disabled; give the browser its full
-            // five seconds only after the new document has been assigned.
-            startBrowserTimeout = () => {
-                timeout = setTimeout(() => {
-                    if (entry.disposed || entry.revision !== generation) { return; }
-                    entry.loading = false;
-                    progress.report({ message: 'HTML Viewer: Still loading. Navigation is available.' });
-                    this.updateToolbar();
-                }, 5000);
-            };
-            entry.finishLoading = () => {
-                clearTimeout(timeout);
-                entry.loading = false;
-                entry.finishLoading = undefined;
-                resolve();
-            };
-        }));
+        entry.loadStatus = 'loading';
+        let navigationTimeout: ReturnType<typeof setTimeout> | undefined;
+        let confirmationTimeout: ReturnType<typeof setTimeout> | undefined;
+        entry.finishLoading = () => {
+            clearTimeout(navigationTimeout);
+            clearTimeout(confirmationTimeout);
+            entry.loading = false;
+            entry.loadStatus = undefined;
+            entry.finishLoading = undefined;
+        };
         this.updateToolbar();
-        return startBrowserTimeout;
+        // Both deadlines run in the host and start after HTML assignment, so
+        // blocked scripts cannot leave navigation or the spinner stuck forever.
+        return () => {
+            navigationTimeout = setTimeout(() => {
+                if (entry.disposed || entry.revision !== generation) { return; }
+                entry.loading = false;
+                entry.loadStatus = 'slow';
+                this.updateToolbar();
+            }, 5000);
+            confirmationTimeout = setTimeout(() => {
+                if (entry.disposed || entry.revision !== generation) { return; }
+                // Keep this static message for the current output until loading is acknowledged.
+                // Navigating away, removing this output, rendering it again, or closing the
+                // viewer clears this output's loading state and message. Switching editor
+                // tabs only hides the message; returning shows it again if this output
+                // remains unconfirmed.
+                entry.loadStatus = 'unconfirmed';
+                this.updateToolbar();
+            }, 10000);
+        };
     }
 
     private async render(entry: WidgetViewer, reveal = true): Promise<void> {
@@ -435,6 +465,7 @@ class HtmlWidgetViewerManager {
         this.panels.forEach(entry => { void this.save(entry); });
         this.disposed = true;
         this.serializer.dispose();
+        this.loadingStatus.dispose();
         this.panels.forEach(entry => {
             if (preservePanels) { entry.disposed = true; this.releasePanel(entry); }
             else { entry.panel.dispose(); }

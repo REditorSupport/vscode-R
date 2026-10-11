@@ -28,7 +28,9 @@ suite('Session-aware HTML widget Viewer', () => {
     let trustedWorkspace: boolean;
     let workspaceRoots: string[];
     let autoLoad: boolean;
-    const progressTasks: Array<{ messages: string[]; done: boolean }> = [];
+    let loadingStatus: vscode.StatusBarItem;
+    let disposeLoadingStatus: sinon.SinonStub;
+    let statusVisible: boolean;
     const viewerSessions: HtmlViewerSessionAccess = {
         resolveSession: source => session.getViewerSessionContext(source.sessionId, source)!,
         getActiveSessionId: () => session.activeSession?.sessionId,
@@ -39,16 +41,18 @@ suite('Session-aware HTML widget Viewer', () => {
         trustedWorkspace = false;
         workspaceRoots = [];
         autoLoad = true;
-        progressTasks.length = 0;
-        sandbox.stub(vscode.window, 'withProgress').callsFake((options, task) => {
-            assert.strictEqual(options.location, vscode.ProgressLocation.Window);
-            const state = { messages: [] as string[], done: false };
-            progressTasks.push(state);
-            return task({ report: update => { if (update.message) { state.messages.push(update.message); } } },
-                { isCancellationRequested: false, onCancellationRequested: sandbox.stub() }).then(result => {
-                state.done = true;
-                return result;
-            });
+        statusVisible = false;
+        sandbox.stub(vscode.window, 'createStatusBarItem').callThrough().withArgs(sinon.match.same('r.htmlViewer.loading')).callsFake((id, alignment) => {
+            assert.strictEqual(id, 'r.htmlViewer.loading');
+            assert.strictEqual(alignment, vscode.StatusBarAlignment.Right);
+            disposeLoadingStatus = sandbox.stub().callsFake(() => { statusVisible = false; });
+            loadingStatus = {
+                text: '', tooltip: undefined, command: undefined,
+                show: sandbox.stub().callsFake(() => { statusVisible = true; }),
+                hide: sandbox.stub().callsFake(() => { statusVisible = false; }),
+                dispose: disposeLoadingStatus,
+            } as unknown as vscode.StatusBarItem;
+            return loadingStatus;
         });
         sandbox.stub(vscode.workspace, 'isTrusted').get(() => trustedWorkspace);
         sandbox.stub(vscode.workspace, 'workspaceFolders').get(() => workspaceRoots.map((root, index) => ({
@@ -92,7 +96,6 @@ suite('Session-aware HTML widget Viewer', () => {
                     listeners.push(listener);
                     return { dispose: () => { listeners.splice(listeners.indexOf(listener), 1); } };
                 },
-                postMessage: sandbox.stub().resolves(true),
             };
             const panel = {
                 title, viewType: 'r.htmlViewer', viewColumn: vscode.ViewColumn.Two,
@@ -565,7 +568,6 @@ suite('Session-aware HTML widget Viewer', () => {
         await show('/tmp/a.html', source, 'A');
         await show('/tmp/b.html', source, 'B');
         await navigate(panels[0], 'back');
-        const webview = panels[0].webview;
         panels[0].dispose();
         await restoreHtmlViewer(source.sessionId);
         assert.strictEqual(panels.length, 2);
@@ -573,7 +575,6 @@ suite('Session-aware HTML widget Viewer', () => {
         assert.strictEqual(position(panels[1]), '1 / 2');
         await navigate(panels[1], 'forward');
         assert.strictEqual(outputTitle(panels[1]), 'B');
-        assert.strictEqual((webview.postMessage as sinon.SinonStub).callCount, 0);
         await restoreHtmlViewer(source.sessionId);
         assert.strictEqual(panels.length, 2, 'Restoration must reuse an open Viewer');
     });
@@ -1050,19 +1051,18 @@ suite('Session-aware HTML widget Viewer', () => {
         await show('/tmp/b.html', source, 'B');
         const panel = panels[0];
         const html = panel.webview.html;
-        const task = progressTasks.at(-1)!;
-        assert.deepStrictEqual(task.messages, ['HTML Viewer: Loading HTML output…']);
+        assert.strictEqual(loadingStatus.text, '$(loading~spin) HTML Viewer: Loading HTML output…');
         clock.tick(4999);
         assert.ok((['back', 'forward', 'remove'] as const).every(button => disabled(panel, button)));
         clock.tick(1);
         assert.strictEqual(disabled(panel, 'back'), false);
         assert.strictEqual(disabled(panel, 'remove'), false);
         assert.strictEqual(panel.webview.html, html, 'Timeout must preserve the rendered content');
-        assert.strictEqual(task.messages.at(-1), 'HTML Viewer: Still loading. Navigation is available.');
-        assert.strictEqual(task.done, false, 'Timeout releases navigation without claiming loading completed');
+        assert.strictEqual(loadingStatus.text, '$(loading~spin) HTML Viewer: Still loading. Please wait.');
+        assert.strictEqual(statusVisible, true, 'Timeout releases navigation without claiming loading completed');
         const generation = Number(/data-generation="(\d+)"/.exec(html)?.[1]);
         await receivers.get(panel)!({ message: 'widget/loaded', generation });
-        assert.strictEqual(task.done, true, 'Readiness after the timeout must still dismiss progress');
+        assert.strictEqual(statusVisible, false, 'Readiness after the timeout must still dismiss progress');
         assert.strictEqual(clock.countTimers(), 0);
         await navigate(panel, 'back');
         clock.tick(5000);
@@ -1072,6 +1072,56 @@ suite('Session-aware HTML widget Viewer', () => {
         assert.strictEqual(position(panel), '2 / 2');
         await remove(panel);
         assert.strictEqual(position(panel), '1 / 1');
+    });
+
+    test('ten seconds replaces the spinner with a static message until late readiness or closing', async () => {
+        const clock = sandbox.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+        autoLoad = false;
+        await show('/tmp/a.html', owner('html-unconfirmed'), 'A');
+        const panel = panels[0];
+        const html = panel.webview.html;
+        clock.tick(9999);
+        assert.strictEqual(loadingStatus.text, '$(loading~spin) HTML Viewer: Still loading. Please wait.');
+        clock.tick(1);
+        assert.strictEqual(loadingStatus.text, 'HTML Viewer: Load not confirmed. Please wait or retry.');
+        assert.strictEqual(loadingStatus.command, undefined);
+        assert.strictEqual(statusVisible, true);
+        assert.strictEqual(panel.webview.html, html);
+        assert.strictEqual(disabled(panel, 'remove'), false);
+        clock.tick(60000);
+        assert.strictEqual(clock.countTimers(), 0);
+        assert.strictEqual(loadingStatus.text, 'HTML Viewer: Load not confirmed. Please wait or retry.');
+        const generation = Number(/data-generation="(\d+)"/.exec(html)?.[1]);
+        await receivers.get(panel)!({ message: 'widget/loaded', generation });
+        assert.strictEqual(statusVisible, false);
+        await show('/tmp/b.html', owners[0], 'B');
+        clock.tick(10000);
+        panel.dispose();
+        assert.strictEqual(statusVisible, false);
+    });
+
+    test('only the active viewer shows status and output metadata remains plain text', async () => {
+        const clock = sandbox.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+        autoLoad = false;
+        const first = owner('html-status-first');
+        await show('/tmp/a.html', first, '[run](command:evil)');
+        clock.tick(10000);
+        const firstTooltip = loadingStatus.tooltip;
+        assert.strictEqual(typeof firstTooltip, 'string');
+        assert.ok((firstTooltip as string).includes(first.pid));
+        assert.ok((firstTooltip as string).includes('[run](command:evil)'));
+        assert.strictEqual(loadingStatus.command, undefined);
+        await show('/tmp/b.html', owner('html-status-second'), 'B');
+        const secondTooltip = loadingStatus.tooltip;
+        assert.ok((secondTooltip as string).includes('/tmp/b.html'));
+        clock.tick(10000);
+        activate(panels[0]);
+        assert.strictEqual(loadingStatus.tooltip, firstTooltip);
+        activate();
+        assert.strictEqual(statusVisible, false);
+        activate(panels[1]);
+        assert.strictEqual(loadingStatus.tooltip, secondTooltip);
+        assert.strictEqual(statusVisible, true);
     });
 
     for (const preparationTime of [4500, 10000]) {
@@ -1084,11 +1134,10 @@ suite('Session-aware HTML widget Viewer', () => {
             autoLoad = false;
             read.onCall(1).returns(slow.promise);
             const pending = show('/tmp/b.html', source, 'B');
-            const task = progressTasks.at(-1)!;
             clock.tick(preparationTime);
             assert.strictEqual(panels[0].webview.html, previous);
             assert.ok((['back', 'forward', 'remove'] as const).every(button => disabled(panels[0], button)));
-            assert.deepStrictEqual(task.messages, ['HTML Viewer: Loading HTML output…']);
+            assert.strictEqual(loadingStatus.text, '$(loading~spin) HTML Viewer: Loading HTML output…');
             assert.strictEqual(clock.countTimers(), 0, 'Preparation must not start the browser timeout');
             await navigate(panels[0], 'back');
             await remove(panels[0]);
@@ -1100,11 +1149,11 @@ suite('Session-aware HTML widget Viewer', () => {
             assert.ok((['back', 'forward', 'remove'] as const).every(button => disabled(panels[0], button)));
             clock.tick(1);
             assert.strictEqual(disabled(panels[0], 'back'), false);
-            assert.strictEqual(task.messages.at(-1), 'HTML Viewer: Still loading. Navigation is available.');
+            assert.strictEqual(loadingStatus.text, '$(loading~spin) HTML Viewer: Still loading. Please wait.');
             autoLoad = true;
             await navigate(panels[0], 'back');
             assert.strictEqual(outputTitle(panels[0]), 'A');
-            assert.ok(progressTasks.every(task => task.done));
+            assert.strictEqual(statusVisible, false);
             assert.strictEqual(clock.countTimers(), 0);
         });
     }
@@ -1117,17 +1166,14 @@ suite('Session-aware HTML widget Viewer', () => {
         const generation = Number(/data-generation="(\d+)"/.exec(panels[0].webview.html)?.[1]);
         clock.tick(4000);
         await show('/tmp/b.html', source, 'B');
-        const task = progressTasks.at(-1)!;
-        assert.strictEqual(progressTasks[0].done, true);
         clock.tick(1000);
         await receivers.get(panels[0])!({ message: 'widget/loaded', generation });
-        assert.strictEqual(task.done, false);
+        assert.strictEqual(loadingStatus.text, '$(loading~spin) HTML Viewer: Loading HTML output…');
         assert.strictEqual(disabled(panels[0], 'back'), true);
         clock.tick(4000);
         assert.strictEqual(disabled(panels[0], 'back'), false);
         panels[0].dispose();
-        await Promise.resolve();
-        assert.strictEqual(task.done, true);
+        assert.strictEqual(statusVisible, false);
         assert.strictEqual(clock.countTimers(), 0);
     });
 
@@ -1135,17 +1181,17 @@ suite('Session-aware HTML widget Viewer', () => {
         const clock = sandbox.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
         const source = owner('html-load-progress');
         await show('/tmp/a.html', source, 'A');
-        assert.strictEqual(progressTasks[0].done, true);
+        assert.strictEqual(statusVisible, false);
         autoLoad = false;
         read.onCall(1).rejects(new Error('missing file'));
         await show('/tmp/missing.html', source, 'Missing');
         assert.ok(widgetDocument(panels[0]).includes('This HTML widget could not be loaded'));
         assert.strictEqual(disabled(panels[0], 'back'), false);
-        assert.ok(progressTasks.every(task => task.done));
+        assert.strictEqual(statusVisible, false);
         assert.strictEqual(clock.countTimers(), 0);
         read.onCall(2).rejects(new Error('unowned file failure'));
         await assert.rejects(showWebView('/tmp/unowned.html', 'Unowned', 'Two'), /unowned file failure/);
-        assert.ok(progressTasks.every(task => task.done));
+        assert.strictEqual(statusVisible, false);
         assert.strictEqual(clock.countTimers(), 0);
     });
 
@@ -1154,12 +1200,12 @@ suite('Session-aware HTML widget Viewer', () => {
         autoLoad = false;
         await show('/tmp/a.html', owner('html-dispose-progress'), 'A');
         panels[0].dispose();
-        await Promise.resolve();
-        assert.strictEqual(progressTasks[0].done, true);
+        assert.strictEqual(statusVisible, false);
         assert.strictEqual(clock.countTimers(), 0);
         await show('/tmp/b.html', owner('html-shutdown-progress'), 'B');
         await shutdownHtmlWidgetViewers(true);
-        assert.ok(progressTasks.every(task => task.done));
+        assert.strictEqual(statusVisible, false);
+        sinon.assert.calledOnce(disposeLoadingStatus);
         assert.strictEqual(clock.countTimers(), 0);
     });
 

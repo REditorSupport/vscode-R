@@ -22,8 +22,10 @@ async function focusHtmlViewer(panel: vscode.WebviewPanel): Promise<void> {
 }
 
 suite('HTML widget browser rendering', () => {
-    test('CSP-blocked acknowledgements release navigation after five seconds in a real webview', async () => {
+    test('CSP-blocked acknowledgements unlock navigation and stop the spinner after ten seconds in a real webview', async function () {
+        this.timeout(30000);
         const sandbox = sinon.createSandbox();
+        const statusItems = sandbox.spy(vscode.window, 'createStatusBarItem');
         sandbox.stub(vscode.window, 'registerWebviewPanelSerializer').returns({ dispose: sandbox.stub() });
         const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'vscode-r-widget-csp-'));
         const panels: vscode.WebviewPanel[] = [];
@@ -36,6 +38,7 @@ suite('HTML widget browser rendering', () => {
                 resolveSession: source => session.getViewerSessionContext(source.sessionId, source)!,
                 getActiveSessionId: () => session.activeSession?.sessionId,
             });
+            const loadingStatus = statusItems.lastCall.returnValue as vscode.StatusBarItem;
             const createPanel = vscode.window.createWebviewPanel.bind(vscode.window);
             sandbox.stub(vscode.window, 'createWebviewPanel').callsFake((...args) => {
                 const panel = createPanel(...args);
@@ -60,6 +63,9 @@ suite('HTML widget browser rendering', () => {
             const html = entry.panel.webview.html;
             assert.strictEqual(entry.loading, true);
             await waitForValue(() => !entry.loading ? true : undefined);
+            await waitForValue(() => entry.loadStatus === 'unconfirmed' ? true : undefined);
+            assert.strictEqual(loadingStatus.text, 'HTML Viewer: Load not confirmed. Please wait or retry.');
+            assert.strictEqual(loadingStatus.command, undefined);
             assert.ok(!acknowledgements.includes(blockedGeneration), 'The authored CSP must block the injected load script');
             assert.strictEqual(entry.panel.webview.html, html, 'The timeout must preserve the output');
             await focusHtmlViewer(entry.panel);
