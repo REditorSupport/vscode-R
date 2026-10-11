@@ -1,4 +1,5 @@
 import * as assert from 'assert';
+import fs from 'fs/promises';
 import * as net from 'net';
 import * as os from 'os';
 import * as path from 'path';
@@ -7,6 +8,7 @@ import * as vscode from 'vscode';
 import * as extension from '../../extension';
 import * as session from '../../session';
 import * as util from '../../util';
+import { initializeHtmlWidgetViewers, restoreHtmlViewer, runHtmlViewerCommand, shutdownHtmlWidgetViewers } from '../../webViewer';
 import { mockExtensionContext } from '../common/mockvscode';
 
 interface Request {
@@ -39,22 +41,31 @@ async function waitFor(condition: () => boolean): Promise<void> {
 
 suite('Viewer session ownership', () => {
     let sandbox: sinon.SinonSandbox;
+    let htmlViewers: ReturnType<typeof initializeHtmlWidgetViewers>;
+    let information: sinon.SinonStub;
     const clients: Client[] = [];
     const panels: Panel[] = [];
 
     setup(() => {
         sandbox = sinon.createSandbox();
+        information = sandbox.stub(vscode.window, 'showInformationMessage').resolves();
+        sandbox.stub(vscode.window, 'registerWebviewPanelSerializer').returns({ dispose: sandbox.stub() });
         const root = path.join(__dirname, '..', '..', '..');
         mockExtensionContext(root, sandbox);
+        htmlViewers = initializeHtmlWidgetViewers(extension.extensionContext, {
+            resolveSession: source => session.getViewerSessionContext(source.sessionId, source)!,
+            getActiveSessionId: () => session.activeSession?.sessionId,
+        });
         sandbox.stub(extension, 'enableSessionWatcher').value(true);
         sandbox.stub(util, 'config').returns({
             get: (_key: string, defaultValue: unknown) => defaultValue,
         } as vscode.WorkspaceConfiguration);
         session.deploySessionWatcher(root);
-        sandbox.stub(vscode.window, 'createWebviewPanel').callsFake((_type, title) => {
+        sandbox.stub(vscode.window, 'createWebviewPanel').callsFake((_type, title, _column, options) => {
             const disposed = new vscode.EventEmitter<void>();
             const listeners: Array<(message: unknown) => unknown> = [];
             let closed = false;
+            let html = '';
             const item: Panel = {
                 panel: undefined as unknown as vscode.WebviewPanel,
                 receive: async message => { await Promise.all(listeners.map(listener => listener(message))); }, replies: [],
@@ -62,7 +73,13 @@ suite('Viewer session ownership', () => {
             item.panel = {
                 title, viewColumn: vscode.ViewColumn.Two, reveal: sandbox.stub(),
                 webview: {
-                    html: '', asWebviewUri: (uri: vscode.Uri) => uri,
+                    get html() { return html; },
+                    set html(value: string) {
+                        html = value;
+                        const generation = Number(/data-generation="(\d+)"/.exec(value)?.[1]);
+                        if (generation) { queueMicrotask(() => { void item.receive({ message: 'widget/loaded', generation }); }); }
+                    },
+                    options: options ?? {}, asWebviewUri: (uri: vscode.Uri) => uri,
                     onDidReceiveMessage: (listener: Panel['receive']) => {
                         listeners.push(listener);
                         return { dispose: () => { listeners.splice(listeners.indexOf(listener), 1); } };
@@ -73,6 +90,7 @@ suite('Viewer session ownership', () => {
                     },
                 },
                 onDidDispose: disposed.event,
+                onDidChangeViewState: sandbox.stub(),
                 dispose: () => {
                     if (!closed) {
                         closed = true;
@@ -88,9 +106,19 @@ suite('Viewer session ownership', () => {
 
     teardown(async () => {
         panels.splice(0).forEach(item => { item.panel.dispose(); });
+        await shutdownHtmlWidgetViewers();
+        session.deferWorkspaceRefresh();
         for (const client of clients.splice(0)) {
+            // Finish queued replies before closing the server side; destroying
+            // it first can leave the mock client writing to a broken Unix pipe.
+            if (!client.socket.destroyed) {
+                await new Promise<void>((resolve, reject) => {
+                    client.socket.once('close', () => resolve());
+                    client.socket.once('error', reject);
+                    client.socket.end();
+                });
+            }
             await session.cleanupSession(client.id);
-            client.socket.destroy();
         }
         await session.shutdownSessionWatcher();
         sandbox.restore();
@@ -124,7 +152,9 @@ suite('Viewer session ownership', () => {
                         result = { title: 'x$child', path: [1], breadcrumbs: [{ label: 'x', path: [] }] };
                         break;
                 }
-                socket.write(JSON.stringify({ jsonrpc: '2.0', id: request.id, result }) + '\n');
+                if (socket.writable) {
+                    socket.write(JSON.stringify({ jsonrpc: '2.0', id: request.id, result }) + '\n');
+                }
             }
         });
         await new Promise<void>((resolve, reject) => {
@@ -141,6 +171,143 @@ suite('Viewer session ownership', () => {
         await session.sessionRequest({ method: 'workspace' }, id);
         return client;
     }
+
+    async function htmlSessionInfo(panel: vscode.WebviewPanel): Promise<string> {
+        for (const viewer of panels) {
+            Object.defineProperty(viewer.panel, 'active', { value: viewer.panel === panel, configurable: true });
+        }
+        await runHtmlViewerCommand('info');
+        const label = panel.title.slice('HTML Viewer · '.length);
+        await runHtmlViewerCommand('info');
+        sinon.assert.notCalled(information);
+        return label;
+    }
+
+    function htmlPosition(panel: vscode.WebviewPanel): string {
+        const entry = [...htmlViewers.viewers.values()].find(entry => entry.panel === panel)!;
+        return `${entry.state.index + 1} / ${entry.state.history.length}`;
+    }
+
+    test('HTML widget notifications use their source session while another session is active', async () => {
+        const read: sinon.SinonStub = sandbox.stub(fs, 'readFile');
+        read.callsFake(file => Promise.resolve(`<div>${String(file)}</div>`));
+        const first = await attach('html-source', '12101', '4.6.1');
+        const second = await attach('html-active', '12102', '4.6.2');
+        assert.strictEqual(session.activeSession?.sessionId, second.id);
+
+        notify(first, 'webview', { url: '/tmp/first-widget.html' });
+        await waitFor(() => panels.length === 1 && panels[0].panel.webview.html.includes('first-widget.html'));
+        const original = panels[0].panel;
+        assert.ok((await htmlSessionInfo(original)).includes('R 4.6.1: 12101'));
+        notify(first, 'webview', { url: '/tmp/updated-widget.html' });
+        await waitFor(() => original.webview.html.includes('updated-widget.html'));
+        assert.strictEqual(panels.length, 1);
+
+        notify(second, 'webview', { url: '/tmp/second-widget.html' });
+        await waitFor(() => panels.length === 2 && panels[1].panel.webview.html.includes('second-widget.html'));
+        assert.ok((await htmlSessionInfo(panels[1].panel)).includes('R 4.6.2: 12102'));
+        assert.ok(original.webview.html.includes('updated-widget.html'));
+        assert.strictEqual(session.activeSession?.sessionId, second.id);
+    });
+
+    function outputTitle(panel: vscode.WebviewPanel): string | undefined {
+        assert.strictEqual(panel.title, 'HTML Viewer');
+        const viewer = [...htmlViewers.viewers.values()].find(viewer => viewer.panel === panel)!;
+        const item = viewer.state.history[viewer.state.index];
+        assert.ok(panel.webview.html.includes(`<div>${item.file}</div>`));
+        return item.title;
+    }
+
+    test('page_viewer and browser HTML share widget history, source ownership, and restoration', async () => {
+        const read: sinon.SinonStub = sandbox.stub(fs, 'readFile');
+        read.callsFake(file => Promise.resolve(`<div>${String(file)}</div>`));
+        const source = await attach('html-mixed-source', '12101', '4.6.1');
+        const other = await attach('html-mixed-active', '12102', '4.6.2');
+        notify(source, 'webview', { url: '/tmp/widget.html', title: 'Widget' });
+        await waitFor(() => panels.length === 1 && panels[0].panel.webview.html.includes('widget.html'));
+        const viewer = panels[0];
+        // htmlwidgets::print.suppress_viewer sends profvis through page_viewer.
+        notify(source, 'page_viewer', { url: '/tmp/profvis/index.html' });
+        await waitFor(() => viewer.panel.webview.html.includes('/tmp/profvis'));
+        assert.strictEqual(panels.length, 1);
+        assert.strictEqual(outputTitle(viewer.panel), 'Page Viewer');
+        assert.strictEqual(htmlPosition(viewer.panel), '2 / 2');
+        assert.ok((await htmlSessionInfo(viewer.panel)).includes('R 4.6.1: 12101'));
+
+        notify(source, 'browser', { url: '/tmp/report.HTM', title: 'Report' });
+        await waitFor(() => viewer.panel.webview.html.includes('<div>/tmp/report.HTM</div>'));
+        assert.strictEqual(panels.length, 1);
+        assert.strictEqual(htmlPosition(viewer.panel), '3 / 3');
+        assert.strictEqual(outputTitle(viewer.panel), 'Report');
+        assert.strictEqual(session.activeSession?.sessionId, other.id);
+        const navigate = (direction: 'back' | 'forward') => viewer.receive({
+            message: 'widget/navigate', direction,
+            generation: Number(/data-generation="(\d+)"/.exec(viewer.panel.webview.html)?.[1]),
+        });
+        await navigate('back');
+        assert.strictEqual(outputTitle(viewer.panel), 'Page Viewer');
+        assert.ok(viewer.panel.webview.html.includes('/tmp/profvis'));
+        await navigate('back');
+        assert.strictEqual(outputTitle(viewer.panel), 'Widget');
+        await navigate('forward');
+        viewer.panel.dispose();
+        await restoreHtmlViewer(source.id);
+        assert.strictEqual(panels.length, 2);
+        assert.strictEqual(outputTitle(panels[1].panel), 'Page Viewer');
+        assert.strictEqual(htmlPosition(panels[1].panel), '2 / 3');
+        assert.ok((await htmlSessionInfo(panels[1].panel)).includes('R 4.6.1: 12101'));
+
+        notify(other, 'page_viewer', { url: '/tmp/other-profvis.html', title: 'Other profile' });
+        await waitFor(() => panels.length === 3 && panels[2].panel.webview.html.includes('<div>/tmp/other-profvis.html</div>'));
+        assert.strictEqual(htmlPosition(panels[2].panel), '1 / 1');
+        assert.strictEqual(outputTitle(panels[2].panel), 'Other profile');
+        assert.ok((await htmlSessionInfo(panels[2].panel)).includes('R 4.6.2: 12102'));
+    });
+
+    test('server URLs from every HTML route use Simple Browser and stay outside widget history', async () => {
+        const read: sinon.SinonStub = sandbox.stub(fs, 'readFile');
+        read.resolves('<div>Widget</div>');
+        const source = await attach('html-server-source', '12101', '4.6.1');
+        notify(source, 'webview', { url: '/tmp/widget.html' });
+        await waitFor(() => panels.length === 1 && panels[0].panel.webview.html.includes('data-generation='));
+        const html = panels[0].panel.webview.html;
+        const commands = sandbox.stub(vscode.commands, 'executeCommand').resolves();
+        const externalUri = sandbox.stub(vscode.env, 'asExternalUri').resolves(vscode.Uri.parse('https://forwarded.invalid/shiny'));
+        const routes = ['webview', 'page_viewer', 'browser'];
+        for (const [index, method] of routes.entries()) {
+            notify(source, method, { url: 'http://localhost:4321' });
+            await waitFor(() => commands.withArgs('simpleBrowser.show').callCount === index + 1);
+        }
+        sinon.assert.calledThrice(externalUri);
+        sinon.assert.calledWith(commands, 'simpleBrowser.show', 'https://forwarded.invalid/shiny');
+        notify(source, 'page_viewer', { url: 'https://example.com/report' });
+        await waitFor(() => commands.withArgs('simpleBrowser.show').callCount === 4);
+        sinon.assert.calledWith(commands, 'simpleBrowser.show', 'https://example.com/report');
+        assert.strictEqual(panels.length, 1);
+        assert.strictEqual(panels[0].panel.webview.html, html);
+    });
+
+    test('disabled Page Viewer and Browser settings open local HTML externally without adding history', async () => {
+        (util.config as sinon.SinonStub).returns({
+            get: (key: string, fallback: unknown) => key === 'session.viewers.viewColumn'
+                ? { viewer: 'Two', pageViewer: 'Disable', browser: 'Disable' } : fallback,
+        });
+        const read: sinon.SinonStub = sandbox.stub(fs, 'readFile');
+        read.resolves('<div>Widget</div>');
+        const external = sandbox.stub(vscode.env, 'openExternal').resolves(true);
+        const source = await attach('html-disabled-routes', '12101', '4.6.1');
+        notify(source, 'webview', { url: '/tmp/widget.html' });
+        await waitFor(() => panels.length === 1 && panels[0].panel.webview.html.includes('data-generation='));
+        const html = panels[0].panel.webview.html;
+        notify(source, 'page_viewer', { url: '/tmp/profvis.html' });
+        await waitFor(() => external.callCount === 1);
+        assert.strictEqual((external.lastCall.args[0] as vscode.Uri).fsPath, vscode.Uri.file('/tmp/profvis.html').fsPath);
+        notify(source, 'browser', { url: '/tmp/report.htm' });
+        await waitFor(() => external.callCount === 2);
+        assert.strictEqual((external.lastCall.args[0] as vscode.Uri).fsPath, vscode.Uri.file('/tmp/report.htm').fsPath);
+        assert.strictEqual(panels.length, 1);
+        assert.strictEqual(panels[0].panel.webview.html, html);
+    });
 
     async function open(
         client: Client, source: 'list' | 'table', existing?: Panel, stateGeneration = 1,
@@ -305,6 +472,18 @@ suite('Viewer session ownership', () => {
             owner.pid = ''; owner.rVer = '';
             await panels[1].receive({ message: 'viewer-session/ready' });
             assert.strictEqual(panels[1].replies.at(-1)?.text, 'R: (not attached)');
+        } finally { session.unregisterSessionTransport(owner); }
+    });
+
+    test('a saved confirmed exit remains authoritative when a matching transport still has stale metadata', () => {
+        const owner = session.registerSessionTransport('saved-exited-viewer', 'foreign-host', '/tmp', sandbox.stub().resolves({}));
+        owner.pid = '12103'; owner.rVer = '4.6.2';
+        try {
+            const context = session.getViewerSessionContext(owner.sessionId, {
+                sessionId: owner.sessionId, host: owner.host, pid: owner.pid, rVer: owner.rVer, processExited: true,
+            })!;
+            assert.strictEqual(context.hasExited, true);
+            assert.ok(context.getHtml().includes('R: (not attached)'));
         } finally { session.unregisterSessionTransport(owner); }
     });
 

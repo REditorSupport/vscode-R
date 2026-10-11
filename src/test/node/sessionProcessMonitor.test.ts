@@ -137,4 +137,49 @@ suite('Session process monitor', () => {
         viewer.dispose();
         assert.strictEqual(clock.countTimers(), 0);
     });
+
+    test('reusing a session ID with a different PID keeps process watches and exits separate', () => {
+        const original = owner('reused', '12345');
+        const replacement = owner('reused', '23456');
+        const firstCallback = sandbox.stub();
+        const secondCallback = sandbox.stub();
+        const first = monitor.observe(original, firstCallback);
+        const second = monitor.observe(replacement, secondCallback);
+        clock.tick(1000);
+        sinon.assert.calledWithExactly(kill, 12345, 0);
+        sinon.assert.calledWithExactly(kill, 23456, 0);
+        original.pid = '';
+        original.processExited = true;
+        monitor.markExited(original);
+        sinon.assert.calledOnce(firstCallback);
+        sinon.assert.notCalled(secondCallback);
+        assert.strictEqual(first.exited, true);
+        assert.strictEqual(second.exited, false);
+        assert.strictEqual(monitor.hasExited(replacement), false);
+        first.dispose(); second.dispose();
+    });
+
+    test('an exit without PID metadata cannot select between reused session IDs', () => {
+        const firstCallback = sandbox.stub();
+        const secondCallback = sandbox.stub();
+        const first = monitor.observe(owner('ambiguous', '12345'), firstCallback);
+        const second = monitor.observe(owner('ambiguous', '23456'), secondCallback);
+        monitor.markExited({ ...owner('ambiguous', ''), processExited: true });
+        sinon.assert.notCalled(firstCallback);
+        sinon.assert.notCalled(secondCallback);
+        first.dispose(); second.dispose();
+    });
+
+    test('a captured source can confirm exit after its viewers are restored through a new owner object', () => {
+        const original = owner('restored');
+        monitor.observe(original, sandbox.stub()).dispose();
+        const callback = sandbox.stub();
+        const restored = monitor.observe({ ...original }, callback);
+        original.pid = '';
+        original.processExited = true;
+        monitor.markExited(original);
+        sinon.assert.calledOnce(callback);
+        assert.strictEqual(restored.exited, true);
+        restored.dispose();
+    });
 });

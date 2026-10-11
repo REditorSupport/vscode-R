@@ -55,6 +55,10 @@ function copyWebviewAssets() {
 }
 
 async function main() {
+    // Remove the former standalone iframe bridge left by incremental builds.
+    for (const file of ['widget.js', 'widget.js.map']) {
+        fs.rmSync(path.join(__dirname, 'dist', 'webviews', 'webview', file), { force: true });
+    }
     require('./scripts/prepare-sess').prepareBundledSess();
     copyResources();
     copyWebviewAssets();
