@@ -80,6 +80,9 @@ export class RMarkdownCodeLensProvider implements vscode.CodeLensProvider {
                         new vscode.Position(currentChunk.endLine, lines[currentChunk.endLine].length)
                     );
                     editor.setDecorations(this.currentCellBottom, [currentChunkEnd]);
+                } else {
+                    editor.setDecorations(this.currentCellTop, []);
+                    editor.setDecorations(this.currentCellBottom, []);
                 }
             }
         }
