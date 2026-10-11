@@ -829,30 +829,6 @@ export class InteractiveManager implements vscode.Disposable, vscode.TreeDataPro
         view.base = snapshot.manifest.assetBase ? (await vscode.env.asExternalUri(vscode.Uri.parse(snapshot.manifest.assetBase))).toString(true) : '';
         view.model.restore(snapshot);
         const metadata = new Map(previousCells.map(cell => [cell, restoredCellMetadata(cell.metadata)]));
-        // Older native backups lost all custom execution metadata. Match each
-        // retained command once, in transcript order, rather than appending the
-        // backed-up history as drafts. Repeated commands remain separate cells.
-        if (view.notebook.notebookType === 'interactive' && !view.notebook.metadata.rSessionId
-            && ![...metadata.values()].some(data => data.rExecutionId)) {
-            const commands = new Map<string, TranscriptCell[]>();
-            for (const cell of this.transcriptCells(view)) {
-                const matching = commands.get(cell.record.code) ?? [];
-                matching.push(cell); commands.set(cell.record.code, matching);
-            }
-            // Output or an execution count identifies executed cells ahead of
-            // same-code drafts that may occur earlier in the notebook.
-            const executed = previousCells.filter(cell => cell.outputs.length || cell.executionSummary?.executionOrder);
-            const remaining = previousCells.filter(cell => !cell.outputs.length && !cell.executionSummary?.executionOrder);
-            for (const cell of [...executed, ...remaining]) {
-                const data = metadata.get(cell)!;
-                if (cell.kind !== vscode.NotebookCellKind.Code || data.rExecutionId) { continue; }
-                const matching = commands.get(cell.document.getText())?.shift();
-                if (matching) { data.rExecutionId = matching.record.id; }
-            }
-        }
-        const drafts = previousCells.filter(cell => cell.kind === vscode.NotebookCellKind.Code && !metadata.get(cell)!.rExecutionId)
-            .map(cell => new vscode.NotebookCellData(cell.kind, cell.document.getText(),
-                view.notebook.notebookType === 'interactive' ? 'r' : cell.document.languageId));
         const edited = new Map(previousCells.map(cell => [metadata.get(cell)!.rExecutionId as string, cell.document.getText()]));
         const previousNotice = previousCells.find(cell => metadata.get(cell)!.rSessionNotice === snapshot.manifest.generation);
         if (snapshot.workspace) { view.target.workspaceData = snapshot.workspace as unknown as session.WorkspaceData; }
@@ -872,23 +848,30 @@ export class InteractiveManager implements vscode.Disposable, vscode.TreeDataPro
             const notice = new vscode.NotebookCellData(vscode.NotebookCellKind.Markup, previousNotice.document.getText(), 'markdown');
             notice.metadata = persistentCellMetadata(metadata.get(previousNotice)!, 'markdown'); cells.push(notice);
         }
-        // Keep drafts beside their original neighbours, including drafts between
-        // executed cells. A reload must not move them to the end of the notebook.
-        let draftIndex = drafts.length;
-        let nextIndex = cells.length;
-        for (const cell of previousCells.slice().reverse()) {
+        // Group drafts by their next retained execution or notice, then merge
+        // once. Identity lookups avoid source matching and repeated array edits.
+        const executions = new Map(cells.map(cell => [cell.metadata?.rExecutionId, cell]));
+        const notices = new Map(cells.map(cell => [cell.metadata?.rSessionNotice, cell]));
+        const draftsBefore = new Map<vscode.NotebookCellData, vscode.NotebookCellData[]>();
+        let pendingDrafts: vscode.NotebookCellData[] = [];
+        let draftCount = 0;
+        for (const cell of previousCells) {
             const data = metadata.get(cell)!;
             if (cell.kind === vscode.NotebookCellKind.Code && !data.rExecutionId) {
-                cells.splice(nextIndex, 0, drafts[--draftIndex]);
+                pendingDrafts.push(new vscode.NotebookCellData(cell.kind, cell.document.getText(), cell.document.languageId));
+                draftCount++;
             } else {
-                const index = cells.findIndex(cell => data.rExecutionId ? cell.metadata?.rExecutionId === data.rExecutionId
-                    : data.rSessionNotice ? cell.metadata?.rSessionNotice === data.rSessionNotice : false);
-                if (index >= 0) { nextIndex = index; }
+                const anchor = data.rExecutionId ? executions.get(data.rExecutionId)
+                    : data.rSessionNotice ? notices.get(data.rSessionNotice) : undefined;
+                if (anchor && pendingDrafts.length) {
+                    draftsBefore.set(anchor, pendingDrafts); pendingDrafts = [];
+                }
             }
         }
-        if (view.notebook.notebookType === 'r-interactive' && !drafts.length) { cells.push(new vscode.NotebookCellData(vscode.NotebookCellKind.Code, '', 'r')); }
+        const restoredCells = cells.flatMap(cell => [...draftsBefore.get(cell) ?? [], cell]).concat(pendingDrafts);
+        if (view.notebook.notebookType === 'r-interactive' && !draftCount) { restoredCells.push(new vscode.NotebookCellData(vscode.NotebookCellKind.Code, '', 'r')); }
         const edit = new vscode.WorkspaceEdit();
-        edit.set(view.notebook.uri, [vscode.NotebookEdit.replaceCells(new vscode.NotebookRange(0, view.notebook.cellCount), cells),
+        edit.set(view.notebook.uri, [vscode.NotebookEdit.replaceCells(new vscode.NotebookRange(0, view.notebook.cellCount), restoredCells),
             vscode.NotebookEdit.updateNotebookMetadata(persistentNotebookMetadata(view.notebook.metadata, snapshot.manifest.id, snapshot.manifest.generation))]);
         await vscode.workspace.applyEdit(edit);
         for (const cell of view.notebook.getCells()) { session.bindSessionDocument(cell.document.uri, view.target); }
