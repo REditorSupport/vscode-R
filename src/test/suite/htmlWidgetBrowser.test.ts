@@ -64,11 +64,13 @@ suite('HTML widget browser rendering', () => {
             assert.strictEqual(entry.loading, true);
             await waitForValue(() => !entry.loading ? true : undefined);
             await waitForValue(() => entry.loadStatus === 'unconfirmed' ? true : undefined);
+            // Only the active viewer updates the status item; hidden items retain their text.
+            await focusHtmlViewer(entry.panel);
+            await waitForValue(() => loadingStatus.text === 'HTML Viewer: Load not confirmed. Please wait or retry.' ? true : undefined);
             assert.strictEqual(loadingStatus.text, 'HTML Viewer: Load not confirmed. Please wait or retry.');
             assert.strictEqual(loadingStatus.command, undefined);
             assert.ok(!acknowledgements.includes(blockedGeneration), 'The authored CSP must block the injected load script');
             assert.strictEqual(entry.panel.webview.html, html, 'The timeout must preserve the output');
-            await focusHtmlViewer(entry.panel);
             await runHtmlViewerCommand('back');
             assert.strictEqual(entry.state.index, 0);
             await waitForValue(() => acknowledgements.includes(entry.revision) ? true : undefined);
