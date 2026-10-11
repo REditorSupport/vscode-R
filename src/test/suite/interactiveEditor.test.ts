@@ -428,7 +428,7 @@ function treeTooltip(item: vscode.TreeItem): string {
             await vscode.commands.executeCommand('r.interactive.open', manifests[0]);
         }
     });
-    test('restores multiple native tabs without metadata and keeps R alive across manager disposal', async () => {
+    for (const legacy of [false, true]) { test(`restores ${legacy ? 'legacy' : 'current'} native tabs without metadata and keeps R alive across manager disposal`, async () => {
         // Load the activated bundle's context/constructor, so execution routing and
         // command registration use the same module instances as the real extension.
         const context = bundleContext();
@@ -448,13 +448,60 @@ function treeTooltip(item: vscode.TreeItem): string {
         }
         await vscode.commands.executeCommand('r.runSelection', 'survives_editor_reload <- 73');
         await until(() => notebooks[1].getCells().some(cell => cell.document.getText() === 'survives_editor_reload <- 73' && cell.executionSummary?.success));
+        const inputResult = await vscode.commands.executeCommand<{ inputUri: vscode.Uri }>('interactive.open', { preserveFocus: true }, notebooks[0].uri);
+        const originalInput = await vscode.workspace.openTextDocument(inputResult.inputUri);
+        // Include invisible assignments and repeated commands: neither output presence
+        // nor a set of source strings is enough to distinguish executions from drafts.
+        for (const code of ['1:10', 'mtcars', 'reload_list <- list(a = 1, b = rnorm(10))', 'reload_list',
+            'reload_model <- lm(mpg ~ wt + hp, data = mtcars)', 'summary(reload_model)', '1:10', 'plot(reload_model)']) {
+            const index = notebooks[0].cellCount;
+            const edit = new vscode.WorkspaceEdit();
+            edit.replace(originalInput.uri, new vscode.Range(0, 0, originalInput.lineCount, 0), code);
+            await vscode.workspace.applyEdit(edit);
+            await vscode.commands.executeCommand('interactive.execute', notebooks[0].uri);
+            await until(() => notebooks[0].cellCount > index && notebooks[0].cellAt(index).executionSummary?.success === true);
+        }
+        if (!legacy) {
+            const cell = notebooks[0].getCells().find(cell => cell.document.getText() === 'mtcars'); assert.ok(cell);
+            const edit = new vscode.WorkspaceEdit();
+            edit.replace(cell.document.uri, new vscode.Range(0, 0, cell.document.lineCount, 0), 'mtcars # edited after execution');
+            await vscode.workspace.applyEdit(edit);
+        }
+        const draft = new vscode.WorkspaceEdit();
+        draft.set(notebooks[0].uri, [vscode.NotebookEdit.insertCells(notebooks[0].cellCount, [
+            new vscode.NotebookCellData(vscode.NotebookCellKind.Code, '1:10', 'r'),
+            new vscode.NotebookCellData(vscode.NotebookCellKind.Code, '# unfinished notebook draft', 'r'),
+        ])]);
+        draft.replace(originalInput.uri, new vscode.Range(0, 0, originalInput.lineCount, 0), '# unfinished input');
+        await vscode.workspace.applyEdit(draft);
+        const contents = (notebook: vscode.NotebookDocument): unknown => notebook.getCells().map(cell => ({
+            kind: cell.kind, value: cell.document.getText(), language: cell.document.languageId,
+            summary: { executionOrder: cell.executionSummary?.executionOrder, success: cell.executionSummary?.success },
+            outputs: cell.outputs.map(output => output.items.map(item => ({ mime: item.mime, data: Buffer.from(item.data).toString('base64') }))),
+        }));
+        const before = notebooks.map(contents);
         manager.dispose();
         context.subscriptions.splice(context.subscriptions.indexOf(manager), 1);
         assert.deepStrictEqual(context.workspaceState.get('r.interactive.connections'), saved, 'Shutdown must retain saved connections');
-        // Native VS Code reload restores the tabs/URIs, but drops their metadata.
+        // Round-trip through VS Code's actual native serializer, which drops
+        // top-level custom metadata (and preserves only IPython metadata).
         const reset = new vscode.WorkspaceEdit();
         for (const notebook of notebooks) {
-            reset.set(notebook.uri, [vscode.NotebookEdit.updateNotebookMetadata({ rSessionId: null, rGeneration: null })]);
+            const data = new vscode.NotebookData(notebook.getCells().map(cell => {
+                const data = new vscode.NotebookCellData(cell.kind, cell.document.getText(), cell.document.languageId);
+                data.metadata = legacy ? { ...cell.metadata, metadata: undefined, execution_count: undefined } : cell.metadata;
+                data.executionSummary = cell.executionSummary; data.outputs = [...cell.outputs];
+                return data;
+            }));
+            data.metadata = legacy ? { ...notebook.metadata, metadata: undefined } : notebook.metadata;
+            const ipynb = await vscode.extensions.getExtension<{ exportNotebook(data: vscode.NotebookData): Promise<string> }>('vscode.ipynb')?.activate();
+            assert.ok(ipynb);
+            const bytes = Buffer.from(await ipynb.exportNotebook(data));
+            const restored = await vscode.commands.executeCommand<vscode.NotebookData>('vscode.executeDataToNotebook', 'interactive', bytes);
+            assert.ok(restored.cells.every(cell => !cell.metadata?.rExecutionId));
+            if (!legacy) { assert.ok(restored.cells.every(cell => cell.languageId === 'r')); }
+            reset.set(notebook.uri, [vscode.NotebookEdit.replaceCells(new vscode.NotebookRange(0, notebook.cellCount), restored.cells),
+                vscode.NotebookEdit.updateNotebookMetadata({ ...restored.metadata, rSessionId: null, rGeneration: null })]);
         }
         await vscode.workspace.applyEdit(reset);
         await until(() => notebooks.every(notebook => !notebook.metadata.rSessionId));
@@ -464,6 +511,9 @@ function treeTooltip(item: vscode.TreeItem): string {
             const restoredManager = new Manager(context);
             context.subscriptions.push(restoredManager);
             await until(() => notebooks.every((notebook, i) => notebook.metadata.rSessionId === manifests[i].id));
+            await Promise.all(manifests.map(manifest => restoredManager.open(manifest)));
+            assert.deepStrictEqual(notebooks.map(contents), before, 'Reload must preserve cell order, code, language, execution summaries and outputs');
+            assert.strictEqual(originalInput.getText(), '# unfinished input');
             const native = created.returnValues.find(item => item.notebookType === 'interactive' && item.id.includes(manifests[0].id));
             assert.ok(native); controller = native;
             await vscode.commands.executeCommand('r.interactive.open', manifests[1]);
@@ -491,8 +541,14 @@ function treeTooltip(item: vscode.TreeItem): string {
         } finally {
             created.restore(); errors.restore();
             await vscode.commands.executeCommand('r.interactive.open', manifests[0]);
+            if (!legacy) {
+                const cell = notebooks[0].getCells().find(cell => cell.document.getText() === 'mtcars # edited after execution'); assert.ok(cell);
+                const edit = new vscode.WorkspaceEdit();
+                edit.replace(cell.document.uri, new vscode.Range(0, 0, cell.document.lineCount, 0), 'mtcars');
+                await vscode.workspace.applyEdit(edit);
+            }
         }
-    });
+    }); }
     test('refreshes session tree connection and control details after reconnect and Take Control', async () => {
         const manager = bundleContext().subscriptions.find(item => typeof (item as InteractiveManager).open === 'function') as InteractiveManager;
         const view = (manager as unknown as { views: Map<string, { client: AgentClient }> }).views.get(`${manifests[0].id}:${manifests[0].generation}`);
