@@ -12,6 +12,7 @@ import { extensionContext } from './extension';
 import { CommonOptions } from 'child_process';
 import { boundSessionForDocument, onDidBindSessionDocument, Session } from './session';
 import { SessionSignatureHelpProvider } from './signatureHelp';
+import { InteractiveInputFeatures } from './interactive/inputFeatures';
 
 export class LanguageService implements Disposable {
     private readonly clients: Map<string, LanguageClient> = new Map();
@@ -22,10 +23,13 @@ export class LanguageService implements Disposable {
     private readonly clientUpdates = new Map<string, Promise<void>>();
     private readonly listeners: Disposable[] = [];
     private disposed = false;
+    private readonly inputFeatures: InteractiveInputFeatures;
 
     constructor() {
         this.outputChannel = window.createOutputChannel('R Language Server', { log: true });
         this.config = workspace.getConfiguration('r');
+        this.inputFeatures = new InteractiveInputFeatures(editor => this.clients.get(this.getKey(editor.document.uri)));
+        this.listeners.push(this.inputFeatures);
         void this.startLanguageService();
     }
 
@@ -276,6 +280,7 @@ export class LanguageService implements Disposable {
                     const selector = [{ scheme: 'vscode-interactive-input', language: 'r', pattern: document.uri.fsPath }];
                     const client = await this.createClient(selector, target?.workingDir ?? folder?.uri.fsPath ?? os.homedir(), folder, this.outputChannel, folder?.uri, target);
                     this.clients.set(key, client); this.initSet.delete(key);
+                    this.inputFeatures.refresh(document);
                 }
                 return;
             }
@@ -390,6 +395,7 @@ export class LanguageService implements Disposable {
                 if (restart && clientTargets.get(key) !== target) {
                     const client = this.clients.get(key);
                     this.clients.delete(key); this.initSet.delete(key);
+                    this.inputFeatures.refresh(document);
                     await client?.stop();
                 }
                 await didOpenTextDocument(document);

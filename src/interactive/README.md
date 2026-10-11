@@ -13,8 +13,20 @@ R Interactive keeps R execution independent of the VS Code extension host. Each 
 | [backendRegistry.ts](backendRegistry.ts), [agentMain.ts](agentMain.ts) | Fixed backend definitions, preflight/preparation, and composition of the agent with its backend |
 | [launcher.ts](launcher.ts), [supervisor.ts](supervisor.ts), [nodeExecutable.ts](nodeExecutable.ts) | Agent bundle preparation, runtime selection, and independent process supervision |
 | [renderer.ts](renderer.ts) | Browser-side rich output and controls; live requests return through the editor to the owning session |
+| [inputFeatures.ts](inputFeatures.ts) | Language feature controls omitted by VS Code's native Interactive input editor |
 
 `SessionAgent` receives a backend factory. It does not import sess, arf, R-process launch helpers, or JGD wire types. Backend definitions are internal; there is no public plugin registration API.
+
+## Input language features
+
+Each R input has a language client bound to its session. The input bridge uses
+that client's providers for on-type formatting, format-on-paste, and occurrence
+highlighting. It respects the corresponding `editor` settings,
+including R language overrides, and discards replies after the input changes or
+its language client is replaced. Paste keeps native insertion behavior and the
+normal separate undo steps for formatting and insertion.
+
+Occurrence ranges use theme colors and the server's text/read/write kinds.
 
 ## Current backend
 
