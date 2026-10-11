@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Added the extension API's `session.prepareAttachment()` for extensions that own an R process and need vscode-R's managed `sess` setup. R errors and interrupts during manual attachment are now reported as messages while leaving the R prompt usable.
 - The httpgd plot backend now requires the `httpgd` R package version 2.0.1 or later. Older versions are treated as unavailable when choosing the plot backend. (#1855)
 
 ## 3.0.1 - 2026-09-28

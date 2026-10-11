@@ -21,7 +21,7 @@ import { purgeAddinPickerItems, RSEditOperation, RSRange } from './rstudioapi';
 
 import { extensionContext, rWorkspace, globalRHelp, globalPlotManager, sessionStatusBarItem, enableSessionWatcher } from './extension';
 import { resolveBackend, jgdEnabled, CommonPlotManager } from './plotViewer';
-import type { RSessionActivationOptions, RSessionConnectionInfo } from './api';
+import type { RSessionActivationOptions, RSessionConnectionInfo, RSessionPreparation, RSessionPreparationOptions } from './api';
 
 import { showWebView } from './webViewer';
 import { getListViewerScript, listViewerStyle, ListViewNavigation } from './listViewer';
@@ -526,6 +526,18 @@ function attachDynamicDataViewBridge(panel: vscode.WebviewPanel, viewId: string,
 }
 
 export function deploySessionWatcher(extensionPath: string): void {
+    if (attachmentLifecycleStopping) {
+        // A new activation must not inherit endpoints being torn down by the prior host lifecycle.
+        globalSessionServer = undefined;
+        globalSessionServerStartup = undefined;
+        globalPipePath = undefined;
+        attachConsentService = undefined;
+        attachConsentDirectory = undefined;
+        attachConsentStartup = undefined;
+        attachSessionScriptPath = undefined;
+    }
+    attachmentLifecycleGeneration++;
+    attachmentLifecycleStopping = false;
     console.info(`[deploySessionWatcher] extensionPath: ${extensionPath}`);
     resDir = path.join(extensionPath, 'dist', 'resources');
 
@@ -574,6 +586,11 @@ let attachSessionScriptPath: string | undefined;
 let attachConsentDirectory: string | undefined;
 let attachConsentService: SessConsentService | undefined;
 let attachConsentStartup: Promise<string> | undefined;
+let attachmentLifecycleGeneration = 0;
+let attachmentLifecycleStopping = false;
+let attachScriptPublication: Promise<void> = Promise.resolve();
+const preparedAttachmentScripts = new Set<string>();
+const pendingAttachmentPreparations = new Set<Promise<unknown>>();
 const SESS_INSTALL_PROMPT_DISMISSED_REVISION = 'sessInstallPromptDismissedRevision';
 
 interface SessionDiscoveryFile {
@@ -781,20 +798,25 @@ function makePipePath(): string {
 }
 
 export async function getGlobalPipePath(): Promise<string> {
+    const generation = attachmentLifecycleGeneration;
+    if (!isAttachmentLifecycleCurrent(generation)) { throw new Error('The session watcher is shutting down.'); }
     if (globalPipePath) {
         return globalPipePath;
     }
 
     if (!globalSessionServerStartup) {
-        globalSessionServerStartup = startGlobalSessionServer().catch((err: unknown) => {
-            globalSessionServerStartup = undefined;
+        const startup = startGlobalSessionServer(generation).catch((err: unknown) => {
+            if (globalSessionServerStartup === startup) { globalSessionServerStartup = undefined; }
             throw err;
         });
+        globalSessionServerStartup = startup;
     }
-    return globalSessionServerStartup;
+    const endpoint = await globalSessionServerStartup;
+    if (!isAttachmentLifecycleCurrent(generation)) { throw new Error('The session watcher shut down while starting its IPC server.'); }
+    return endpoint;
 }
 
-function startGlobalSessionServer(): Promise<string> {
+function startGlobalSessionServer(generation: number): Promise<string> {
     return new Promise((resolve, reject) => {
         const pipePath = makePipePath();
         let listening = false;
@@ -943,6 +965,10 @@ function startGlobalSessionServer(): Promise<string> {
                     if (settled) {
                         return;
                     }
+                    if (!isAttachmentLifecycleCurrent(generation)) {
+                        failStartup(new Error('The session watcher shut down while starting its IPC server.'));
+                        return;
+                    }
                     settled = true;
                     initialized = true;
                     globalPipePath = pipePath;
@@ -982,7 +1008,18 @@ export async function getConnectionInfo(): Promise<RSessionConnectionInfo | unde
 }
 
 function asRStringLiteral(value: string): string {
-    return `"${value.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
+    let escaped = '';
+    for (const character of value) {
+        const code = character.codePointAt(0)!;
+        if (character === '\\') { escaped += '\\\\'; }
+        else if (character === '"') { escaped += '\\"'; }
+        else if (character === '\n') { escaped += '\\n'; }
+        else if (character === '\r') { escaped += '\\r'; }
+        else if (character === '\t') { escaped += '\\t'; }
+        else if (code < 0x20 || code === 0x7f) { escaped += `\\${code.toString(8).padStart(3, '0')}`; }
+        else { escaped += character; }
+    }
+    return `"${escaped}"`;
 }
 
 function getAttachSessionScriptPath(pipePath: string): string {
@@ -995,6 +1032,8 @@ function buildAttachSessionScript(pipePath: string, sessPath: string, consentDir
     const jgdSocket = getSessionJgdSocket();
     return [
         'local({',
+        '  tryCatch({',
+        '    attached <- local({',
         `  endpoint <- ${asRStringLiteral(pipePath)}`,
         `  sess_src <- ${asRStringLiteral(sessPath)}`,
         `  managed_root <- ${asRStringLiteral(path.join(extensionContext.globalStorageUri.fsPath, 'sess').replace(/\\/g, '/'))}`,
@@ -1008,13 +1047,29 @@ function buildAttachSessionScript(pipePath: string, sessPath: string, consentDir
         ]),
         '  source(startup_helper, local = TRUE)',
         '  source(attach_helper, local = TRUE)',
-        `  vscode_r_attach_sess(endpoint, sess_src, managed_root, consent_dir, source_helper, installer_helper, ${asRStringLiteral(backend)})`,
+        `  vscode_r_attach_sess(endpoint, sess_src, managed_root, consent_dir, source_helper, installer_helper, ${asRStringLiteral(backend)}, use_rstudioapi = ${config().get<boolean>('session.emulateRStudioAPI') ? 'TRUE' : 'FALSE'})`,
+        '    })',
+        '    invisible(isTRUE(attached))',
+        '  }, error = function(error) {',
+        '    message("vscode-R could not prepare the session watcher: ", conditionMessage(error))',
+        '    invisible(FALSE)',
+        '  }, interrupt = function(error) {',
+        '    message("vscode-R session watcher preparation was interrupted; you can continue using this R session.")',
+        '    invisible(FALSE)',
+        '  })',
         '})',
         '',
     ].join('\n');
 }
 
-async function ensureAttachSessConsentService(): Promise<string> {
+function isAttachmentLifecycleCurrent(generation: number): boolean {
+    return !attachmentLifecycleStopping && generation === attachmentLifecycleGeneration;
+}
+
+async function ensureAttachSessConsentService(generation = attachmentLifecycleGeneration): Promise<string> {
+    if (!isAttachmentLifecycleCurrent(generation)) {
+        throw new Error('The session watcher is shutting down.');
+    }
     if (attachConsentStartup) { return attachConsentStartup; }
     if (attachConsentService && attachConsentDirectory) { return attachConsentDirectory; }
 
@@ -1054,6 +1109,11 @@ async function ensureAttachSessConsentService(): Promise<string> {
         });
         try {
             await service.start();
+            if (!isAttachmentLifecycleCurrent(generation)) {
+                await service.stop();
+                await removePathIfExists(directory);
+                throw new Error('The session watcher shut down while preparing sess consent.');
+            }
             attachConsentDirectory = directory;
             attachConsentService = service;
             return directory;
@@ -1076,17 +1136,125 @@ export async function getSessConsentDirectory(): Promise<string> {
     return ensureAttachSessConsentService();
 }
 
-export async function getAttachSessionCommand(): Promise<string> {
+function validateAttachmentEndpoint(endpoint: unknown): asserts endpoint is string {
+    if (typeof endpoint !== 'string' || endpoint.length === 0 || endpoint.includes('\0')) {
+        throw new TypeError('A non-empty local sess IPC endpoint is required.');
+    }
+    const localNamedPipe = /^\\\\\.\\pipe\\[A-Za-z0-9_.-]+$/i.test(endpoint);
+    const valid = process.platform === 'win32'
+        ? localNamedPipe
+        : path.isAbsolute(endpoint);
+    if (!valid) {
+        throw new TypeError('The sess IPC endpoint must be a local absolute path or Windows named pipe.');
+    }
+}
+
+function makeAttachmentScriptPath(): string {
+    return path.join(extensionContext.globalStorageUri.fsPath, 'tmp', 'attach', `consumer-${crypto.randomBytes(16).toString('hex')}.R`);
+}
+
+/** Prepare the managed sess bootstrap for an R process owned by a downstream consumer. */
+async function prepareAttachmentCore(options?: RSessionPreparationOptions): Promise<RSessionPreparation | undefined> {
+    if (!enableSessionWatcher) { return undefined; }
+    const connection = options?.connection;
+    if (connection && connection.transport !== 'sess') {
+        throw new TypeError('Only the sess transport is supported.');
+    }
+    const generation = attachmentLifecycleGeneration;
+    if (!isAttachmentLifecycleCurrent(generation)) {
+        throw new Error('The session watcher is shutting down.');
+    }
+    const endpoint = connection ? connection.endpoint : await getGlobalPipePath();
+    validateAttachmentEndpoint(endpoint);
+    const sessPath = extensionContext.asAbsolutePath(path.join('dist', 'resources', 'sess')).replace(/\\/g, '/');
+    const consentDirectory = await ensureAttachSessConsentService(generation);
+    if (!isAttachmentLifecycleCurrent(generation)) {
+        throw new Error('The session watcher shut down while preparing sess attachment.');
+    }
+    const scriptPath = makeAttachmentScriptPath();
+    await fsp.mkdir(path.dirname(scriptPath), { recursive: true });
+    const temporaryPath = `${scriptPath}.${crypto.randomBytes(8).toString('hex')}.tmp`;
+    try {
+        await fsp.writeFile(temporaryPath, buildAttachSessionScript(endpoint, sessPath, consentDirectory), { encoding: 'utf-8', mode: 0o600, flag: 'wx' });
+        await setOwnerOnlyPermissions(temporaryPath);
+        if (!isAttachmentLifecycleCurrent(generation)) {
+            throw new Error('The session watcher shut down while publishing sess attachment.');
+        }
+        await fsp.rename(temporaryPath, scriptPath);
+        if (!isAttachmentLifecycleCurrent(generation)) {
+            await removePathIfExists(scriptPath);
+            throw new Error('The session watcher shut down while publishing sess attachment.');
+        }
+        preparedAttachmentScripts.add(scriptPath);
+        let disposed = false;
+        return Object.freeze({
+            scriptPath,
+            command: `source(${asRStringLiteral(scriptPath)})`,
+            dispose: () => {
+                if (disposed) { return; }
+                disposed = true;
+                preparedAttachmentScripts.delete(scriptPath);
+                const cleanup = removePathIfExists(scriptPath);
+                pendingAttachmentPreparations.add(cleanup);
+                void cleanup.finally(() => pendingAttachmentPreparations.delete(cleanup)).catch(() => undefined);
+            },
+        });
+    } catch (error) {
+        await removePathIfExists(temporaryPath);
+        await removePathIfExists(scriptPath);
+        throw error;
+    }
+}
+
+export function prepareAttachment(options?: RSessionPreparationOptions): Promise<RSessionPreparation | undefined> {
+    const preparation = prepareAttachmentCore(options);
+    pendingAttachmentPreparations.add(preparation);
+    void preparation.finally(() => pendingAttachmentPreparations.delete(preparation)).catch(() => undefined);
+    return preparation;
+}
+
+async function getAttachSessionCommandCore(): Promise<string> {
+    const generation = attachmentLifecycleGeneration;
+    if (!isAttachmentLifecycleCurrent(generation)) { throw new Error('The session watcher is shutting down.'); }
     const pipePath = await getGlobalPipePath();
     const sessPath = extensionContext.asAbsolutePath(path.join('dist', 'resources', 'sess')).replace(/\\/g, '/');
-    const consentDirectory = await getSessConsentDirectory();
+    const consentDirectory = await ensureAttachSessConsentService(generation);
+    if (!isAttachmentLifecycleCurrent(generation)) { throw new Error('The session watcher is shutting down.'); }
     const scriptPath = getAttachSessionScriptPath(pipePath);
     await fsp.mkdir(path.dirname(scriptPath), { recursive: true });
-    await fsp.writeFile(scriptPath, buildAttachSessionScript(pipePath, sessPath, consentDirectory), { encoding: 'utf-8', mode: 0o600 });
-    await setOwnerOnlyPermissions(scriptPath);
-    attachSessionScriptPath = scriptPath;
+    const publish = attachScriptPublication.catch(() => undefined).then(async () => {
+        if (!isAttachmentLifecycleCurrent(generation)) { throw new Error('The session watcher is shutting down.'); }
+        const temporaryPath = `${scriptPath}.${crypto.randomBytes(8).toString('hex')}.tmp`;
+        let published = false;
+        try {
+            await fsp.writeFile(temporaryPath, buildAttachSessionScript(pipePath, sessPath, consentDirectory), { encoding: 'utf-8', mode: 0o600, flag: 'wx' });
+            await setOwnerOnlyPermissions(temporaryPath);
+            if (!isAttachmentLifecycleCurrent(generation)) { throw new Error('The session watcher is shutting down.'); }
+            await fsp.rename(temporaryPath, scriptPath);
+            published = true;
+            if (!isAttachmentLifecycleCurrent(generation)) { throw new Error('The session watcher shut down while publishing attach command.'); }
+            // Keep this check and ownership registration synchronous so shutdown cannot miss the script.
+            attachSessionScriptPath = scriptPath;
+        } catch (error) {
+            await removePathIfExists(temporaryPath);
+            if (published && !isAttachmentLifecycleCurrent(generation)) { await removePathIfExists(scriptPath); }
+            throw error;
+        }
+    });
+    attachScriptPublication = publish;
+    await publish;
+    if (!isAttachmentLifecycleCurrent(generation)) {
+        throw new Error('The session watcher shut down before returning the attach command.');
+    }
 
     return `source(${asRStringLiteral(scriptPath)})`;
+}
+
+export function getAttachSessionCommand(): Promise<string> {
+    const operation = getAttachSessionCommandCore();
+    pendingAttachmentPreparations.add(operation);
+    void operation.finally(() => pendingAttachmentPreparations.delete(operation)).catch(() => undefined);
+    return operation;
 }
 
 async function removePathIfExists(pathLike: string): Promise<void> {
@@ -1100,49 +1268,74 @@ async function removePathIfExists(pathLike: string): Promise<void> {
 }
 
 export async function shutdownSessionWatcher(): Promise<void> {
+    attachmentLifecycleGeneration++;
+    attachmentLifecycleStopping = true;
+    const shutdownGeneration = attachmentLifecycleGeneration;
     const consentStartup = attachConsentStartup;
+    const consentService = attachConsentService;
+    const consentDirectory = attachConsentDirectory;
+    const serverStartup = globalSessionServerStartup;
+    const pipePathAtShutdown = globalPipePath;
+    const serverAtShutdown = globalSessionServer;
+    const manualScriptPath = attachSessionScriptPath;
+    const preparationScripts = [...preparedAttachmentScripts];
+    const pendingOperations = [...pendingAttachmentPreparations];
+    // Queue removal of the fixed manual-attach path before a redeployed lifecycle
+    // can publish a replacement at the same path.
+    const manualCleanup = attachScriptPublication.catch(() => undefined).then(async () => {
+        if (manualScriptPath) { await removePathIfExists(manualScriptPath); }
+    });
+    attachScriptPublication = manualCleanup;
+    await Promise.allSettled(pendingOperations);
+    await manualCleanup.catch(() => undefined);
     await consentStartup?.catch(() => undefined);
-    await attachConsentService?.stop();
-    attachConsentService = undefined;
-    if (attachConsentDirectory) {
-        await removePathIfExists(attachConsentDirectory);
-        attachConsentDirectory = undefined;
+    await consentService?.stop();
+    if (attachConsentService === consentService) { attachConsentService = undefined; }
+    if (consentDirectory) {
+        await removePathIfExists(consentDirectory);
+        if (attachConsentDirectory === consentDirectory) { attachConsentDirectory = undefined; }
     }
     if (attachConsentStartup === consentStartup) { attachConsentStartup = undefined; }
-    // Startup publishes the server only after listen and permission setup finish.
-    // Wait before capturing it, otherwise it could survive extension shutdown.
-    await globalSessionServerStartup?.catch(() => undefined);
-    const pipePath = globalPipePath;
+    // Await the startup snapshot so a server published by it can be closed below.
+    await serverStartup?.catch(() => undefined);
+    const pipePath = pipePathAtShutdown;
+    const server = serverAtShutdown;
 
-    for (const socket of activeConnections) {
+    const oldSockets = [...activeConnections].filter(socket => socket._pipePath === pipePath);
+    for (const socket of oldSockets) {
         socket.destroy();
+        for (const [sessionId, pending] of pendingSessionAttachments) {
+            if (pending === socket) { pendingSessionAttachments.delete(sessionId); }
+        }
     }
-    activeConnections.clear();
-    pendingSessionAttachments.clear();
-    pipeClient = undefined;
+    if (pipeClient?._pipePath === pipePath) { pipeClient = undefined; }
 
-    if (globalSessionServer) {
+    if (server) {
         await new Promise<void>((resolve) => {
             try {
-                globalSessionServer?.close(() => resolve());
+                server.close(() => resolve());
             } catch {
                 resolve();
             }
         });
-        globalSessionServer = undefined;
+        if (globalSessionServer === server) { globalSessionServer = undefined; }
     }
 
-    if (attachSessionScriptPath) {
-        await removePathIfExists(attachSessionScriptPath);
-        attachSessionScriptPath = undefined;
+    for (const scriptPath of preparationScripts) {
+        await removePathIfExists(scriptPath);
+        preparedAttachmentScripts.delete(scriptPath);
     }
 
     if (pipePath && pipePath.endsWith('.sock')) {
         await removePathIfExists(pipePath);
     }
 
-    globalPipePath = undefined;
-    globalSessionServerStartup = undefined;
+    if (attachmentLifecycleGeneration === shutdownGeneration) {
+        if (globalPipePath === pipePath) { globalPipePath = undefined; }
+        if (globalSessionServerStartup === serverStartup) { globalSessionServerStartup = undefined; }
+        if (attachSessionScriptPath === manualScriptPath) { attachSessionScriptPath = undefined; }
+        attachScriptPublication = Promise.resolve();
+    }
 }
 
 export async function activateRSession(): Promise<void> {

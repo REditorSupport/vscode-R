@@ -58,13 +58,17 @@ suite('R Terminal', () => {
         return delayStub.firstCall.args[0];
     }
 
-    setup(() => {
+    setup(async () => {
+        await session.shutdownSessionWatcher();
         sandbox = sinon.createSandbox();
         mockExtensionContext(extension_root, sandbox);
         consentDirectoryStub = sandbox.stub(session, 'getSessConsentDirectory').resolves('/unused-test-consent');
+        session.deploySessionWatcher(extension_root);
+        await session.getGlobalPipePath();
     });
 
-    teardown(() => {
+    teardown(async () => {
+        await session.shutdownSessionWatcher();
         sandbox.restore();
     });
 
