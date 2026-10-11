@@ -11,6 +11,24 @@ interface SavedCell {
 
 export const DISPLAY_MIME = 'application/vnd.vscode-r.display+json';
 
+/** Native Interactive uses the IPython serializer, which retains only metadata.metadata. */
+export function persistentCellMetadata(metadata: Record<string, unknown>, languageId: string): Record<string, unknown> {
+    const saved = metadata.metadata as Record<string, unknown> | undefined;
+    return { ...metadata, metadata: { ...saved,
+        ...Object.fromEntries(Object.entries(metadata).filter(([key]) => key.startsWith('r'))),
+        vscode: { ...saved?.vscode as Record<string, unknown> | undefined, languageId } } };
+}
+
+export function restoredCellMetadata(metadata: Record<string, unknown>): Record<string, unknown> {
+    return { ...metadata.metadata as Record<string, unknown> | undefined, ...metadata };
+}
+
+export function persistentNotebookMetadata(metadata: Record<string, unknown>, sessionId: string, generation: string): Record<string, unknown> {
+    const saved = metadata.metadata as Record<string, unknown> | undefined;
+    return { ...metadata, rSessionId: sessionId, rGeneration: generation,
+        metadata: { ...saved, language_info: { ...saved?.language_info as Record<string, unknown> | undefined, name: 'r' } } };
+}
+
 export class InteractiveSerializer implements vscode.NotebookSerializer {
     exportIpynb(data: vscode.NotebookData): Uint8Array {
         const cells = data.cells.map(cell => ({
