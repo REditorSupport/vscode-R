@@ -1062,7 +1062,9 @@ lockBinding(".interactive_plot_context", ns)
             await completed('stopifnot(kept_before_adoption == 73)');
 
             const running = randomUUID();
-            await connection.request('submit', { submission: { id: running, code: 'kept_during_adoption <- 81; cat("before interrupt"); sess::display("interrupt ready", "text/plain"); for (i in seq_len(300)) Sys.sleep(0.1)' } });
+            // Keep readiness and sleep in one expression, without plot hooks
+            // between them: headless arf only interrupts R during blocking calls.
+            await connection.request('submit', { submission: { id: running, code: '{ kept_during_adoption <- 81; cat("before interrupt"); sess::display("interrupt ready", "text/plain"); for (i in seq_len(300)) Sys.sleep(0.1) }' } });
             await waitFor(() => observed.some(event => event.executionId === running && event.type === 'display' && event.data.text === 'interrupt ready'));
             await connection.request('interrupt', { id: running });
             await waitFor(() => observed.some(event => event.executionId === running && event.type === 'finished'));
