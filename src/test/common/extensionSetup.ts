@@ -10,7 +10,7 @@ export async function mochaGlobalSetup(): Promise<void> {
     // Startup activation and the initial language client otherwise race tests
     // that temporarily replace VS Code's configuration and workspace APIs.
     await extension.activate();
-    const { extensionContext } = createRequire(__filename)(path.join(process.cwd(), 'dist/extension')) as {
+    const { extensionContext } = createRequire(__filename)(path.join(extension.extensionPath, 'dist/extension')) as {
         extensionContext: vscode.ExtensionContext;
     };
     const service = extensionContext.subscriptions.find(item =>
