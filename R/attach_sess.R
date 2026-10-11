@@ -16,7 +16,11 @@ vscode_r_prepare_sess <- function(pkg_path, managed_root, consent_dir,
     if (loaded) {
         loaded_revision <- sess_loaded_source_revision()
         if (!identical(loaded_revision, expected)) {
-            stop("A different sess namespace is already loaded. Restart R before attaching the session watcher.")
+            stop(paste(
+                "A different sess namespace is already loaded.",
+                "Close this R session and start a new one before attaching the session watcher.",
+                "Reloading VS Code does not restart a persistent R session."
+            ))
         }
         ns <- asNamespace("sess")
     } else {
@@ -178,7 +182,8 @@ vscode_r_prepare_sess <- function(pkg_path, managed_root, consent_dir,
 vscode_r_attach_sess <- function(endpoint, pkg_path, managed_root, consent_dir,
                                  source_helper, installer_helper, plot_backend,
                                  timeout_seconds = 180,
-                                 setup_timeout_seconds = 300) {
+                                 setup_timeout_seconds = 300,
+                                 use_rstudioapi = TRUE) {
     registered <- getOption("vscodeR.terminalStartup")
     profile_process <- is.list(registered) && identical(registered$pid, Sys.getpid())
     startup_context <- NULL
@@ -213,7 +218,8 @@ vscode_r_attach_sess <- function(endpoint, pkg_path, managed_root, consent_dir,
             return(invisible(FALSE))
         }
         connect <- get("connect", envir = ns, inherits = FALSE)
-        connect(endpoint = endpoint, plot_backend = plot_backend)
+        connect(endpoint = endpoint, plot_backend = plot_backend,
+                use_rstudioapi = use_rstudioapi)
     }
 
     if (profile_process) {

@@ -3,6 +3,8 @@ import * as sinon from 'sinon';
 import * as assert from 'assert';
 import * as path from 'path';
 import * as os from 'os';
+import type { PathLike } from 'node:fs';
+import { spawnSync } from 'node:child_process';
 import fsp from 'node:fs/promises';
 import { pathExists, readJson } from '../../fileSystem';
 import * as net from 'net';
@@ -15,6 +17,7 @@ import * as session from '../../session';
 import * as processTree from '../../processTree';
 import * as extension from '../../extension';
 import * as plotViewer from '../../plotViewer';
+import { SessConsentService } from '../../sessConsent';
 import { initializeHtmlWidgetViewers, shutdownHtmlWidgetViewers } from '../../webViewer';
 import type { RSessionApi } from '../../api';
 
@@ -158,10 +161,12 @@ suite('Session Communication', () => {
 
     test('concurrent server initialization and public API calls share one endpoint', async () => {
         await session.shutdownSessionWatcher();
+        session.deploySessionWatcher(extension_root);
         sandbox.stub(extension, 'enableSessionWatcher').value(true);
         const listen = sandbox.spy(net.Server.prototype, 'listen');
         const api: RSessionApi = {
             getConnectionInfo: session.getConnectionInfo,
+            prepareAttachment: session.prepareAttachment,
             activate: session.activateSessionById,
         };
 
@@ -193,6 +198,7 @@ suite('Session Communication', () => {
 
     test('server initialization can retry after a shared startup failure', async () => {
         await session.shutdownSessionWatcher();
+        session.deploySessionWatcher(extension_root);
         const failure = new Error('Simulated listen failure');
         const listen = sandbox.stub(net.Server.prototype, 'listen').throws(failure);
         const first = session.getGlobalPipePath();
@@ -214,6 +220,7 @@ suite('Session Communication', () => {
 
     test('post-listen initialization failure closes the unpublished server before retry', async () => {
         await session.shutdownSessionWatcher();
+        session.deploySessionWatcher(extension_root);
         const failure = new Error('Simulated post-listen failure');
         const listen = sandbox.spy(net.Server.prototype, 'listen');
         const close = sandbox.spy(net.Server.prototype, 'close');
@@ -258,6 +265,7 @@ suite('Session Communication', () => {
 
     test('shutdown waits for an in-progress server startup and permits a fresh start', async () => {
         await session.shutdownSessionWatcher();
+        session.deploySessionWatcher(extension_root);
         const startup = session.getGlobalPipePath();
         const shutdown = session.shutdownSessionWatcher();
         const endpoint = await startup;
@@ -277,6 +285,7 @@ suite('Session Communication', () => {
         }
 
         try {
+            session.deploySessionWatcher(extension_root);
             assert.notStrictEqual(await session.getGlobalPipePath(), endpoint);
         } finally {
             await session.shutdownSessionWatcher();
@@ -287,6 +296,7 @@ suite('Session Communication', () => {
         const watcher = sandbox.stub(extension, 'enableSessionWatcher').value(false);
         const api: RSessionApi = {
             getConnectionInfo: session.getConnectionInfo,
+            prepareAttachment: session.prepareAttachment,
             activate: session.activateSessionById,
         };
         assert.strictEqual(await api.getConnectionInfo(), undefined);
@@ -316,6 +326,7 @@ suite('Session Communication', () => {
         sandbox.stub(extension, 'enableSessionWatcher').value(true);
         const api: RSessionApi = {
             getConnectionInfo: session.getConnectionInfo,
+            prepareAttachment: session.prepareAttachment,
             activate: session.activateSessionById,
         };
         const endpoint = await waitFor(() => session.globalPipePath);
@@ -688,11 +699,218 @@ suite('Session Communication', () => {
         await session.shutdownSessionWatcher();
     }).timeout(15000);
 
+    test('prepareAttachment returns an opaque consumer script with independent disposable lifetime', async function(this: Mocha.Context) {
+        sandbox.stub(extension, 'enableSessionWatcher').value(true);
+        const api: RSessionApi = {
+            getConnectionInfo: session.getConnectionInfo,
+            prepareAttachment: session.prepareAttachment,
+            activate: session.activateSessionById,
+        };
+        const endpoint = path.join(os.tmpdir(), 'proxy "quoted" \\ endpoint.sock');
+        await assert.rejects(
+            api.prepareAttachment({ connection: { transport: 'sess', endpoint: 'tcp://remote/endpoint' } }),
+            /local absolute path or Windows named pipe/,
+        );
+        await assert.rejects(
+            session.prepareAttachment({ connection: { transport: 'sess', endpoint: undefined as unknown as string } }),
+            /non-empty local sess IPC endpoint/,
+        );
+        const [preparation, parallelPreparation] = await Promise.all([
+            api.prepareAttachment({ connection: { transport: 'sess', endpoint } }),
+            api.prepareAttachment({ connection: { transport: 'sess', endpoint: path.join(os.tmpdir(), 'parallel.sock') } }),
+        ]);
+        assert.ok(preparation);
+        assert.ok(parallelPreparation);
+        if (!preparation || !parallelPreparation) { return; }
+        try {
+            const rscript = process.platform === 'win32' ? 'Rscript.exe' : 'Rscript';
+            const rAvailable = spawnSync(rscript, ['--version'], { encoding: 'utf8' });
+            if (rAvailable.error) { this.skip(); }
+            assert.ok(Object.isFrozen(preparation), 'preparation metadata should be immutable');
+            assert.notStrictEqual(preparation.scriptPath, parallelPreparation.scriptPath);
+            assert.ok(await pathExists(preparation.scriptPath));
+            assert.ok(await pathExists(parallelPreparation.scriptPath));
+            assert.strictEqual(preparation.command, `source(${JSON.stringify(preparation.scriptPath)})`);
+            const source = await fsp.readFile(preparation.scriptPath, 'utf8');
+            assert.ok(source.includes(JSON.stringify(endpoint).slice(1, -1)));
+            assert.match(source, /tryCatch\(/);
+            assert.match(source, /use_rstudioapi = (TRUE|FALSE)/);
+            assert.doesNotMatch(source, /managedRoot|consentDirectory/);
+            const executionDirectory = await fsp.mkdtemp(path.join(os.tmpdir(), 'vscode-r-prepare-test-'));
+            try {
+                const fixtures = [
+                    { name: 'error', replacement: 'stop("generated fixture failure")', expected: 'FALSE', message: 'generated fixture failure' },
+                    { name: 'interrupt', replacement: 'stop(structure(list(message="generated fixture interrupt", call=NULL), class=c("interrupt", "condition")))', expected: 'FALSE', message: 'was interrupted' },
+                    { name: 'success', replacement: 'vscode_r_attach_sess <- function(...) TRUE', expected: 'TRUE' },
+                ];
+                for (const fixture of fixtures) {
+                    const executionPath = path.join(executionDirectory, `${fixture.name}.R`);
+                    const executionScript = source.replace('source(attach_helper, local = TRUE)', fixture.replacement);
+                    await fsp.writeFile(executionPath, executionScript);
+                    const execution = spawnSync(rscript, [
+                        '--vanilla', '-e',
+                        `result <- source(commandArgs(TRUE)[[1L]]); cat(identical(result$value, ${fixture.expected}) && identical(result$visible, FALSE) && !exists("endpoint", envir=.GlobalEnv) && !exists("sess_src", envir=.GlobalEnv) && !exists("attach_helper", envir=.GlobalEnv))`,
+                        executionPath,
+                    ], { encoding: 'utf8', timeout: 10000 });
+                    assert.strictEqual(execution.status, 0, `${fixture.name}: ${execution.stderr}`);
+                    assert.ok(execution.stdout.includes('TRUE'), `${fixture.name} should return an invisible result without leaking locals`);
+                    if (fixture.message) {
+                        assert.ok(execution.stderr.includes(fixture.message) || execution.stdout.includes(fixture.message));
+                    }
+                }
+            } finally {
+                await fsp.rm(executionDirectory, { recursive: true, force: true });
+            }
+        } finally {
+            preparation.dispose();
+            preparation.dispose();
+            await waitFor(async () => !(await pathExists(preparation.scriptPath)));
+            assert.ok(await pathExists(parallelPreparation.scriptPath), 'disposing one resource must not remove a parallel preparation');
+            parallelPreparation.dispose();
+            await waitFor(async () => !(await pathExists(parallelPreparation.scriptPath)));
+        }
+    }).timeout(20000);
+
+    test('prepareAttachment removes a script published during shutdown', async () => {
+        await session.shutdownSessionWatcher();
+        session.deploySessionWatcher(extension_root);
+        sandbox.stub(extension, 'enableSessionWatcher').value(true);
+        let enterRename!: () => void;
+        let releaseRename!: () => void;
+        const renameEntered = new Promise<void>(resolve => { enterRename = resolve; });
+        const renameGate = new Promise<void>(resolve => { releaseRename = resolve; });
+        const originalRename = Object.getOwnPropertyDescriptor(fsp, 'rename')?.value as
+            ((oldPath: PathLike, newPath: PathLike) => Promise<void>) | undefined;
+        assert.ok(originalRename);
+        sandbox.stub(fsp, 'rename').callsFake(async (oldPath, newPath) => {
+            if (String(newPath).includes('consumer-')) {
+                enterRename();
+                await renameGate;
+            }
+            return originalRename!.call(fsp, oldPath, newPath);
+        });
+        const preparation = session.prepareAttachment({
+            connection: { transport: 'sess', endpoint: path.join(os.tmpdir(), 'rename-race.sock') },
+        });
+        await renameEntered;
+        const shutdown = session.shutdownSessionWatcher();
+        releaseRename();
+        await assert.rejects(preparation, /shut down while publishing sess attachment/);
+        await shutdown;
+        const attachDirectory = path.join(extension.extensionContext.globalStorageUri.fsPath, 'tmp', 'attach');
+        const files = await fsp.readdir(attachDirectory).catch(() => []);
+        assert.ok(!files.some(file => file.startsWith('consumer-')));
+    }).timeout(20000);
+
+    test('shutdown waits for a preparation dispose cleanup already in progress', async () => {
+        sandbox.stub(extension, 'enableSessionWatcher').value(true);
+        const preparation = await session.prepareAttachment({
+            connection: { transport: 'sess', endpoint: path.join(os.tmpdir(), 'dispose-race.sock') },
+        });
+        assert.ok(preparation);
+        if (!preparation) { return; }
+
+        let enterRemove!: () => void;
+        let releaseRemove!: () => void;
+        const removeEntered = new Promise<void>(resolve => { enterRemove = resolve; });
+        const removeGate = new Promise<void>(resolve => { releaseRemove = resolve; });
+        const originalRemove = fsp.rm.bind(fsp);
+        sandbox.stub(fsp, 'rm').callsFake(async (target, options) => {
+            if (String(target) === preparation.scriptPath) {
+                enterRemove();
+                await removeGate;
+            }
+            return originalRemove(target, options);
+        });
+
+        preparation.dispose();
+        await removeEntered;
+        let shutdownFinished = false;
+        const shutdown = session.shutdownSessionWatcher().then(() => { shutdownFinished = true; });
+        await new Promise<void>(resolve => setImmediate(resolve));
+        assert.strictEqual(shutdownFinished, false, 'shutdown must await the resource cleanup started by dispose');
+        releaseRemove();
+        await shutdown;
+        assert.strictEqual(shutdownFinished, true);
+        assert.strictEqual(await pathExists(preparation.scriptPath), false);
+    }).timeout(20000);
+
+    test('a redeployed watcher keeps its resources while the previous shutdown is awaiting', async () => {
+        await session.shutdownSessionWatcher();
+        session.deploySessionWatcher(extension_root);
+        sandbox.stub(extension, 'enableSessionWatcher').value(true);
+        const oldPreparation = await session.prepareAttachment({
+            connection: { transport: 'sess', endpoint: path.join(os.tmpdir(), 'old-lifecycle.sock') },
+        });
+        assert.ok(oldPreparation);
+        if (!oldPreparation) { return; }
+
+        let enterStop!: () => void;
+        let releaseStop!: () => void;
+        const stopEntered = new Promise<void>(resolve => { enterStop = resolve; });
+        const stopGate = new Promise<void>(resolve => { releaseStop = resolve; });
+        const originalStop = Object.getOwnPropertyDescriptor(SessConsentService.prototype, 'stop')?.value as
+            ((this: SessConsentService) => Promise<void>) | undefined;
+        assert.ok(originalStop);
+        let firstStop = true;
+        sandbox.stub(SessConsentService.prototype, 'stop').callsFake(async function(this: SessConsentService) {
+            if (firstStop) {
+                firstStop = false;
+                enterStop();
+                await stopGate;
+            }
+            await originalStop!.call(this);
+        });
+
+        const oldShutdown = session.shutdownSessionWatcher();
+        await stopEntered;
+        session.deploySessionWatcher(extension_root);
+        const newPreparation = await session.prepareAttachment({
+            connection: { transport: 'sess', endpoint: path.join(os.tmpdir(), 'new-lifecycle.sock') },
+        });
+        assert.ok(newPreparation);
+        if (!newPreparation) { releaseStop(); await oldShutdown; return; }
+        releaseStop();
+        await oldShutdown;
+        assert.ok(await pathExists(newPreparation.scriptPath), 'old shutdown must not remove a later preparation');
+        assert.ok(!(await pathExists(oldPreparation.scriptPath)), 'old shutdown must reclaim its preparation');
+        newPreparation.dispose();
+        await session.shutdownSessionWatcher();
+    }).timeout(30000);
+
+    test('prepareAttachment cleans up when shutdown races consent service startup', async () => {
+        await session.shutdownSessionWatcher();
+        session.deploySessionWatcher(extension_root);
+        sandbox.stub(extension, 'enableSessionWatcher').value(true);
+        let releaseStart!: () => void;
+        const startGate = new Promise<void>(resolve => { releaseStart = resolve; });
+        const originalStart = Object.getOwnPropertyDescriptor(SessConsentService.prototype, 'start')?.value as
+            ((this: SessConsentService) => Promise<void>) | undefined;
+        assert.ok(originalStart);
+        const start = sandbox.stub(SessConsentService.prototype, 'start').callsFake(async function(this: SessConsentService) {
+            await startGate;
+            await originalStart!.call(this);
+        });
+        const preparation = session.prepareAttachment({
+            connection: { transport: 'sess', endpoint: path.join(os.tmpdir(), 'race.sock') },
+        });
+        await waitFor(() => start.calledOnce);
+        const shutdown = session.shutdownSessionWatcher();
+        releaseStart();
+        await assert.rejects(preparation, /shut down while preparing sess consent/);
+        await shutdown;
+        const attachDirectory = path.join(extension.extensionContext.globalStorageUri.fsPath, 'tmp', 'attach');
+        const files = await fsp.readdir(attachDirectory).catch(() => []);
+        assert.ok(!files.some(file => file.startsWith('consumer-')));
+    }).timeout(20000);
+
     test('connectToSession does not create attach artifacts when the watcher is disabled', async () => {
         await session.shutdownSessionWatcher();
+        sandbox.stub(extension, 'enableSessionWatcher').value(false);
         sandbox.stub(util, 'config').returns({
             get: (key: string) => key === 'sessionWatcher' ? false : undefined,
         } as unknown as vscode.WorkspaceConfiguration);
+        assert.strictEqual(await session.prepareAttachment({ connection: { transport: 'sess', endpoint: 'invalid' } }), undefined);
         const information = sandbox.stub(vscode.window, 'showInformationMessage').resolves(undefined);
         const before = session.globalPipePath;
         await session.connectToSession();

@@ -24,7 +24,7 @@ suite('Session Terminal Binding', () => {
     let sendText: sinon.SinonStub;
     let otherSendText: sinon.SinonStub;
     let show: sinon.SinonStub;
-    const api: RSessionApi = { getConnectionInfo: session.getConnectionInfo, activate: session.activateSessionById };
+    const api: RSessionApi = { getConnectionInfo: session.getConnectionInfo, prepareAttachment: session.prepareAttachment, activate: session.activateSessionById };
 
     setup(() => {
         sandbox = sinon.createSandbox();

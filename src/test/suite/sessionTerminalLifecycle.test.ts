@@ -253,7 +253,7 @@ suite('Session Terminal Lifecycle', () => {
                 assert.ok(owner);
                 assert.strictEqual(owner.socket._terminalPid, 46260);
                 if (explicitBinding) {
-                    const api: RSessionApi = { getConnectionInfo: session.getConnectionInfo, activate: session.activateSessionById };
+                    const api: RSessionApi = { getConnectionInfo: session.getConnectionInfo, prepareAttachment: session.prepareAttachment, activate: session.activateSessionById };
                     assert.strictEqual(await api.activate(owner.sessionId, { terminal }), true);
                 }
                 assert.strictEqual(await rTerminal.runTextInTerm('source("example.R")'), true);
@@ -281,7 +281,7 @@ suite('Session Terminal Lifecycle', () => {
         sandbox.stub(util, 'config').returns({
             get: (key: string) => key === 'source.focus' ? 'none' : undefined,
         } as unknown as vscode.WorkspaceConfiguration);
-        const api: RSessionApi = { getConnectionInfo: session.getConnectionInfo, activate: session.activateSessionById };
+        const api: RSessionApi = { getConnectionInfo: session.getConnectionInfo, prepareAttachment: session.prepareAttachment, activate: session.activateSessionById };
         await connections.attach('native-moved-to-explicit', 46280);
         const owner = session.activeSession;
         assert.ok(owner);
@@ -357,7 +357,7 @@ suite('Session Terminal Lifecycle', () => {
             sandbox.stub(util, 'config').returns({
                 get: (key: string) => key === 'sessionWatcher' ? true : key === 'source.focus' ? 'none' : undefined,
             } as unknown as vscode.WorkspaceConfiguration);
-            const api: RSessionApi = { getConnectionInfo: session.getConnectionInfo, activate: session.activateSessionById };
+            const api: RSessionApi = { getConnectionInfo: session.getConnectionInfo, prepareAttachment: session.prepareAttachment, activate: session.activateSessionById };
             const old = await connections.attach('selected-reconnect', 46301);
             const previous = session.activeSession;
             assert.ok(previous);

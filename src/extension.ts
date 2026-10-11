@@ -62,6 +62,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
     const rExtension = new apiImplementation.RExtensionImplementation();
     rExtension.session = {
         getConnectionInfo: session.getConnectionInfo,
+        prepareAttachment: session.prepareAttachment,
         activate: session.activateSessionById,
     };
 
