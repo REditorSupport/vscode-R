@@ -174,6 +174,8 @@ suite('Session Communication', () => {
         const api: RSessionApi = {
             getConnectionInfo: session.getConnectionInfo,
             prepareAttachment: session.prepareAttachment,
+            onDidChangeSessionConnection: session.onDidChangeSessionConnection,
+            getSessionReference: session.getSessionReference,
             activate: session.activateSessionById,
         };
 
@@ -307,6 +309,8 @@ suite('Session Communication', () => {
         const api: RSessionApi = {
             getConnectionInfo: session.getConnectionInfo,
             prepareAttachment: session.prepareAttachment,
+            onDidChangeSessionConnection: session.onDidChangeSessionConnection,
+            getSessionReference: session.getSessionReference,
             activate: session.activateSessionById,
         };
         assert.strictEqual(await api.getConnectionInfo(), undefined);
@@ -337,6 +341,8 @@ suite('Session Communication', () => {
         const api: RSessionApi = {
             getConnectionInfo: session.getConnectionInfo,
             prepareAttachment: session.prepareAttachment,
+            onDidChangeSessionConnection: session.onDidChangeSessionConnection,
+            getSessionReference: session.getSessionReference,
             activate: session.activateSessionById,
         };
         const endpoint = await waitFor(() => session.globalPipePath);
@@ -714,6 +720,8 @@ suite('Session Communication', () => {
         const api: RSessionApi = {
             getConnectionInfo: session.getConnectionInfo,
             prepareAttachment: session.prepareAttachment,
+            onDidChangeSessionConnection: session.onDidChangeSessionConnection,
+            getSessionReference: session.getSessionReference,
             activate: session.activateSessionById,
         };
         const endpoint = process.platform === 'win32'
@@ -733,26 +741,43 @@ suite('Session Communication', () => {
             session.prepareAttachment({ connection: { transport: 'sess', endpoint: undefined as unknown as string } }),
             /non-empty local sess IPC endpoint/,
         );
-        const [preparation, parallelPreparation] = await Promise.all([
+        await assert.rejects(
+            session.prepareAttachment({ autoActivate: 'false' as unknown as boolean }),
+            /autoActivate must be a boolean/,
+        );
+        const [preparation, parallelPreparation, backgroundPreparation] = await Promise.all([
             api.prepareAttachment({ connection: { transport: 'sess', endpoint } }),
             api.prepareAttachment({ connection: { transport: 'sess', endpoint: localSessEndpoint('parallel') } }),
+            api.prepareAttachment({ connection: { transport: 'sess', endpoint: localSessEndpoint('background') }, autoActivate: false }),
         ]);
         assert.ok(preparation);
         assert.ok(parallelPreparation);
-        if (!preparation || !parallelPreparation) { return; }
+        assert.ok(backgroundPreparation);
+        if (!preparation || !parallelPreparation || !backgroundPreparation) { return; }
         try {
             const rscript = process.platform === 'win32' ? 'Rscript.exe' : 'Rscript';
             const rAvailable = spawnSync(rscript, ['--version'], { encoding: 'utf8' });
             if (rAvailable.error) { this.skip(); }
             assert.ok(Object.isFrozen(preparation), 'preparation metadata should be immutable');
             assert.notStrictEqual(preparation.scriptPath, parallelPreparation.scriptPath);
+            assert.strictEqual(typeof preparation.attachmentId, 'string');
+            assert.ok(preparation.attachmentId.length > 0);
+            assert.strictEqual(typeof backgroundPreparation.attachmentId, 'string');
+            assert.ok(backgroundPreparation.attachmentId.length > 0);
+            assert.notStrictEqual(preparation.attachmentId, backgroundPreparation.attachmentId);
             assert.ok(await pathExists(preparation.scriptPath));
             assert.ok(await pathExists(parallelPreparation.scriptPath));
+            assert.ok(await pathExists(backgroundPreparation.scriptPath));
             assert.strictEqual(preparation.command, `source(${JSON.stringify(preparation.scriptPath)})`);
             const source = await fsp.readFile(preparation.scriptPath, 'utf8');
             assert.ok(source.includes(JSON.stringify(endpoint).slice(1, -1)));
+            assert.ok(source.includes(`attachment_id = "${preparation.attachmentId}"`));
+            assert.match(source, /auto_activate = TRUE/);
             assert.match(source, /tryCatch\(/);
             assert.match(source, /use_rstudioapi = (TRUE|FALSE)/);
+            const backgroundSource = await fsp.readFile(backgroundPreparation.scriptPath, 'utf8');
+            assert.ok(backgroundSource.includes(`attachment_id = "${backgroundPreparation.attachmentId}"`));
+            assert.match(backgroundSource, /auto_activate = FALSE/);
             const executionDirectory = await fsp.mkdtemp(path.join(os.tmpdir(), 'vscode-r-prepare-test-'));
             try {
                 const fixtures = [
@@ -789,6 +814,9 @@ suite('Session Communication', () => {
             assert.ok(await pathExists(parallelPreparation.scriptPath), 'disposing one resource must not remove a parallel preparation');
             parallelPreparation.dispose();
             await waitFor(async () => !(await pathExists(parallelPreparation.scriptPath)));
+            assert.ok(await pathExists(backgroundPreparation.scriptPath), 'disposing one resource must not remove another preparation');
+            backgroundPreparation.dispose();
+            await waitFor(async () => !(await pathExists(backgroundPreparation.scriptPath)));
         }
     }).timeout(20000);
 

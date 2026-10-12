@@ -64,6 +64,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
         getConnectionInfo: session.getConnectionInfo,
         prepareAttachment: session.prepareAttachment,
         activate: session.activateSessionById,
+        onDidChangeSessionConnection: session.onDidChangeSessionConnection,
+        getSessionReference: session.getSessionReference,
     };
 
     // assign extension context to global variable

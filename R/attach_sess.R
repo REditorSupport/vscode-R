@@ -183,7 +183,22 @@ vscode_r_attach_sess <- function(endpoint, pkg_path, managed_root, consent_dir,
                                  source_helper, installer_helper, plot_backend,
                                  timeout_seconds = 180,
                                  setup_timeout_seconds = 300,
-                                 use_rstudioapi = TRUE) {
+                                 use_rstudioapi = TRUE,
+                                 attachment_id = NULL,
+                                 auto_activate = TRUE) {
+    if (!is.null(attachment_id) &&
+            !(is.character(attachment_id) && length(attachment_id) == 1L &&
+                  !is.na(attachment_id) &&
+                  grepl("^[A-Za-z0-9_-]{1,128}$", attachment_id, useBytes = TRUE))) {
+        stop("attachment_id must be NULL or a 1-128 character ASCII identifier.", call. = FALSE)
+    }
+    if (!(is.logical(auto_activate) && length(auto_activate) == 1L && !is.na(auto_activate))) {
+        stop("auto_activate must be a single non-NA logical value.", call. = FALSE)
+    }
+    if (!auto_activate && is.null(attachment_id)) {
+        stop("auto_activate = FALSE requires attachment_id.", call. = FALSE)
+    }
+
     registered <- getOption("vscodeR.terminalStartup")
     profile_process <- is.list(registered) && identical(registered$pid, Sys.getpid())
     startup_context <- NULL
@@ -218,8 +233,15 @@ vscode_r_attach_sess <- function(endpoint, pkg_path, managed_root, consent_dir,
             return(invisible(FALSE))
         }
         connect <- get("connect", envir = ns, inherits = FALSE)
-        connect(endpoint = endpoint, plot_backend = plot_backend,
-                use_rstudioapi = use_rstudioapi)
+        args <- list(endpoint = endpoint, plot_backend = plot_backend,
+                     use_rstudioapi = use_rstudioapi)
+        # Preserve compatibility with older sess namespaces and helper stubs
+        # when the caller uses the legacy, untagged attach path.
+        if (!is.null(attachment_id)) {
+            args$attachment_id <- attachment_id
+            args$auto_activate <- auto_activate
+        }
+        do.call(connect, args)
     }
 
     if (profile_process) {
