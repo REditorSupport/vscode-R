@@ -22,6 +22,7 @@ import { purgeAddinPickerItems, RSEditOperation, RSRange } from './rstudioapi';
 import { extensionContext, rWorkspace, globalRHelp, globalPlotManager, sessionStatusBarItem, enableSessionWatcher } from './extension';
 import { resolveBackend, jgdEnabled, CommonPlotManager } from './plotViewer';
 import type {
+    RExternalTerminalIntegration,
     RSessionActivationOptions,
     RSessionConnectionChange,
     RSessionConnectionInfo,
@@ -188,6 +189,17 @@ const terminalRegistry = new TerminalSessionRegistry<Session, vscode.Terminal>(
     target => sessions.get(target.sessionId) === target && isConnectedSession(target),
     terminal => !terminal.exitStatus && window.terminals.includes(terminal),
 );
+interface TerminalIntegrationRun {
+    readonly cancellation: vscode.CancellationTokenSource;
+    cancel(): void;
+}
+interface TerminalIntegrationRegistration {
+    readonly terminal: vscode.Terminal;
+    readonly integration: RExternalTerminalIntegration;
+    readonly closeSubscription: vscode.Disposable;
+    active?: TerminalIntegrationRun;
+}
+const terminalIntegrations = new Map<vscode.Terminal, TerminalIntegrationRegistration>();
 const documentSessions = new Map<string, Session>();
 const sessionDocumentBound = new vscode.EventEmitter<Uri>();
 export const onDidBindSessionDocument = sessionDocumentBound.event;
@@ -714,6 +726,68 @@ function isLiveTerminal(terminal: vscode.Terminal): boolean {
 /** Called for every terminal close, including extension-owned pseudoterminals. */
 export function cleanupTerminalBinding(terminal: vscode.Terminal): void {
     terminalRegistry.closeTerminal(terminal);
+    removeTerminalIntegration(terminal);
+}
+
+function removeTerminalIntegration(terminal: vscode.Terminal): void {
+    removeTerminalIntegrationRegistration(terminalIntegrations.get(terminal));
+}
+
+function removeTerminalIntegrationRegistration(registration: TerminalIntegrationRegistration | undefined): void {
+    if (!registration) { return; }
+    if (terminalIntegrations.get(registration.terminal) !== registration) { return; }
+    // Remove ownership before canceling: cancellation listeners may synchronously
+    // attempt a new registration or start another attach operation.
+    terminalIntegrations.delete(registration.terminal);
+    registration.closeSubscription.dispose();
+    if (window.activeTerminal === registration.terminal) { sessionSelectionRevision++; }
+    registration.active?.cancel();
+}
+
+function revokeTerminalIntegrationSnapshot(registrations: readonly TerminalIntegrationRegistration[]): void {
+    for (const registration of registrations) {
+        if (terminalIntegrations.get(registration.terminal) === registration) {
+            terminalIntegrations.delete(registration.terminal);
+        }
+    }
+    for (const registration of registrations) {
+        registration.closeSubscription.dispose();
+    }
+    if (registrations.some(registration => window.activeTerminal === registration.terminal)) {
+        sessionSelectionRevision++;
+    }
+    for (const registration of registrations) {
+        registration.active?.cancel();
+    }
+}
+
+export function registerTerminalIntegration(
+    terminal: vscode.Terminal,
+    integration: RExternalTerminalIntegration,
+): vscode.Disposable {
+    if (attachmentLifecycleStopping) {
+        throw new Error('Cannot register a terminal integration while the session watcher is shutting down.');
+    }
+    if (!terminal || !terminalRegistry.isLive(terminal)) {
+        throw new Error('Cannot register an integration for a closed or unavailable terminal.');
+    }
+    if (terminalIntegrations.has(terminal)) {
+        throw new Error('A terminal integration is already registered for this terminal.');
+    }
+    if (!integration || typeof integration.attach !== 'function') {
+        throw new TypeError('A terminal integration must provide an attach(token) function.');
+    }
+    const registration: TerminalIntegrationRegistration = {
+        terminal,
+        integration,
+        closeSubscription: window.onDidCloseTerminal(changed => {
+            if (changed === terminal) { cleanupTerminalBinding(terminal); }
+        }),
+    };
+    terminalIntegrations.set(terminal, registration);
+    // Invalidate an earlier native PID/command path that may still be awaiting I/O.
+    if (window.activeTerminal === terminal) { sessionSelectionRevision++; }
+    return { dispose: () => removeTerminalIntegrationRegistration(registration) };
 }
 
 /**
@@ -1362,6 +1436,7 @@ async function removePathIfExists(pathLike: string): Promise<void> {
 export async function shutdownSessionWatcher(): Promise<void> {
     attachmentLifecycleGeneration++;
     attachmentLifecycleStopping = true;
+    const terminalIntegrationSnapshot = [...terminalIntegrations.values()];
     const shutdownGeneration = attachmentLifecycleGeneration;
     const consentStartup = attachConsentStartup;
     const consentService = attachConsentService;
@@ -1396,6 +1471,8 @@ export async function shutdownSessionWatcher(): Promise<void> {
     });
     attachScriptPublication = manualCleanup;
     // Snapshot and revoke before notifying; listeners may redeploy synchronously.
+    sessionSelectionRevision++;
+    revokeTerminalIntegrationSnapshot(terminalIntegrationSnapshot);
     enqueueSessionConnectionChanges(shutdownChanges);
     await Promise.allSettled(pendingOperations);
     await manualCleanup.catch(() => undefined);
@@ -1455,9 +1532,6 @@ export async function activateRSession(): Promise<void> {
         return;
     }
     const terminal = window.activeTerminal;
-    const selectionRevision = ++sessionSelectionRevision;
-    const isCurrent = () => selectionRevision === sessionSelectionRevision && terminal === window.activeTerminal
-        && (!terminal || (!isTerminalClosed(terminal) && !terminal.exitStatus));
     const focusOwner = (): Promise<void> | undefined => {
         const owner = terminalRegistry.ownerOf(terminal);
         if (!terminal || !owner) { return undefined; }
@@ -1471,6 +1545,70 @@ export async function activateRSession(): Promise<void> {
     };
     const focused = focusOwner();
     if (focused) { await focused; return; }
+
+    if (terminal) {
+        const registration = terminalIntegrations.get(terminal);
+        if (registration) {
+            if (registration.active) {
+                void window.showInformationMessage('An R session attach is already in progress for this terminal.');
+                return;
+            }
+            if (!isLiveTerminal(terminal) || window.activeTerminal !== terminal) { return; }
+            // Supersede native attach operations that may still be waiting for PID or command I/O.
+            sessionSelectionRevision++;
+            const integrationSelectionRevision = sessionSelectionRevision;
+            const cancellation = new vscode.CancellationTokenSource();
+            let focusSubscription: vscode.Disposable = { dispose: () => undefined };
+            const run: TerminalIntegrationRun = {
+                cancellation,
+                cancel: () => {
+                    focusSubscription.dispose();
+                    cancellation.cancel();
+                },
+            };
+            registration.active = run;
+            focusSubscription = window.onDidChangeActiveTerminal(changed => {
+                if (changed !== terminal) { run.cancel(); }
+            });
+            const isCurrentIntegration = () => terminalIntegrations.get(terminal) === registration
+                && registration.active === run
+                && !cancellation.token.isCancellationRequested
+                && isLiveTerminal(terminal)
+                && window.activeTerminal === terminal;
+            try {
+                if (!isCurrentIntegration()) { return; }
+                const attached = await registration.integration.attach(cancellation.token);
+                if (!isCurrentIntegration()) { return; }
+                if (attached !== true) { return; }
+                const owner = terminalRegistry.ownerOf(terminal);
+                if (!owner) {
+                    void window.showErrorMessage('The external R terminal reported a successful attach but has no current session binding.');
+                    return;
+                }
+                if (sessionSelectionRevision !== integrationSelectionRevision && activeSession !== owner) { return; }
+                const activation = activeSession === owner ? Promise.resolve() : activateSession(owner);
+                const activationRevision = sessionSelectionRevision;
+                await activation;
+                if (sessionSelectionRevision !== activationRevision) { return; }
+                if (!isCurrentIntegration() || terminalRegistry.ownerOf(terminal) !== owner) { return; }
+                terminal.show();
+            } catch (error) {
+                if (isCurrentIntegration()) {
+                    const detail = error instanceof Error ? error.message : String(error);
+                    void window.showErrorMessage(`Failed to attach the R session in this external terminal: ${detail}`);
+                }
+            } finally {
+                focusSubscription.dispose();
+                cancellation.dispose();
+                if (registration.active === run) { registration.active = undefined; }
+            }
+            return;
+        }
+    }
+
+    const selectionRevision = ++sessionSelectionRevision;
+    const isCurrent = () => selectionRevision === sessionSelectionRevision && terminal === window.activeTerminal
+        && (!terminal || (!isTerminalClosed(terminal) && !terminal.exitStatus));
 
     let discoveryPath = terminal && terminalDiscoveryPath(terminal);
     if (terminal && !discoveryPath) {
@@ -1486,7 +1624,7 @@ export async function activateRSession(): Promise<void> {
         if (!isCurrent()) { return; }
         const focused = focusOwner();
         if (focused) { await focused; return; }
-        if (terminal && isLiveTerminal(terminal)) {
+        if (terminal && isLiveTerminal(terminal) && !terminalIntegrations.has(terminal)) {
             terminal.sendText(command, true);
             terminal.show();
         }
@@ -2635,10 +2773,15 @@ interface NativeTerminalCandidate {
 async function findLocalTerminal(rPid: string): Promise<NativeTerminalCandidate | undefined> {
     const candidates = new Map<number, NativeTerminalCandidate>();
     for (const terminal of window.terminals) {
+        if (terminalIntegrations.has(terminal)) { continue; }
         const isCurrent = terminalRegistry.snapshot(terminal);
         const terminalPid = await terminal.processId;
-        if (terminalPid === undefined || !isCurrent()) { continue; }
-        const candidate = { terminal, pid: String(terminalPid), isCurrent };
+        if (terminalPid === undefined || !isCurrent() || terminalIntegrations.has(terminal)) { continue; }
+        const candidate = {
+            terminal,
+            pid: String(terminalPid),
+            isCurrent: () => isCurrent() && !terminalIntegrations.has(terminal),
+        };
         if (candidate.pid === rPid) { return candidate; }
         candidates.set(terminalPid, candidate);
     }

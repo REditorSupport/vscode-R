@@ -260,6 +260,7 @@ suite('Session Terminal Lifecycle', () => {
                 if (explicitBinding) {
                     const api: RSessionApi = { getConnectionInfo: session.getConnectionInfo, prepareAttachment: session.prepareAttachment,
                         onDidChangeSessionConnection: session.onDidChangeSessionConnection, getSessionReference: session.getSessionReference,
+                        registerTerminalIntegration: session.registerTerminalIntegration,
                         activate: session.activateSessionById };
                     assert.strictEqual(await api.activate(owner.sessionId, { terminal }), true);
                 }
@@ -290,6 +291,7 @@ suite('Session Terminal Lifecycle', () => {
         } as unknown as vscode.WorkspaceConfiguration);
         const api: RSessionApi = { getConnectionInfo: session.getConnectionInfo, prepareAttachment: session.prepareAttachment,
             onDidChangeSessionConnection: session.onDidChangeSessionConnection, getSessionReference: session.getSessionReference,
+            registerTerminalIntegration: session.registerTerminalIntegration,
             activate: session.activateSessionById };
         await connections.attach('native-moved-to-explicit', 46280);
         const owner = session.activeSession;
@@ -368,6 +370,7 @@ suite('Session Terminal Lifecycle', () => {
             } as unknown as vscode.WorkspaceConfiguration);
             const api: RSessionApi = { getConnectionInfo: session.getConnectionInfo, prepareAttachment: session.prepareAttachment,
                 onDidChangeSessionConnection: session.onDidChangeSessionConnection, getSessionReference: session.getSessionReference,
+                registerTerminalIntegration: session.registerTerminalIntegration,
                 activate: session.activateSessionById };
             const old = await connections.attach('selected-reconnect', 46301);
             const previous = session.activeSession;

@@ -176,6 +176,7 @@ suite('Session Communication', () => {
             prepareAttachment: session.prepareAttachment,
             onDidChangeSessionConnection: session.onDidChangeSessionConnection,
             getSessionReference: session.getSessionReference,
+            registerTerminalIntegration: session.registerTerminalIntegration,
             activate: session.activateSessionById,
         };
 
@@ -311,6 +312,7 @@ suite('Session Communication', () => {
             prepareAttachment: session.prepareAttachment,
             onDidChangeSessionConnection: session.onDidChangeSessionConnection,
             getSessionReference: session.getSessionReference,
+            registerTerminalIntegration: session.registerTerminalIntegration,
             activate: session.activateSessionById,
         };
         assert.strictEqual(await api.getConnectionInfo(), undefined);
@@ -343,6 +345,7 @@ suite('Session Communication', () => {
             prepareAttachment: session.prepareAttachment,
             onDidChangeSessionConnection: session.onDidChangeSessionConnection,
             getSessionReference: session.getSessionReference,
+            registerTerminalIntegration: session.registerTerminalIntegration,
             activate: session.activateSessionById,
         };
         const endpoint = await waitFor(() => session.globalPipePath);
@@ -722,6 +725,7 @@ suite('Session Communication', () => {
             prepareAttachment: session.prepareAttachment,
             onDidChangeSessionConnection: session.onDidChangeSessionConnection,
             getSessionReference: session.getSessionReference,
+            registerTerminalIntegration: session.registerTerminalIntegration,
             activate: session.activateSessionById,
         };
         const endpoint = process.platform === 'win32'
