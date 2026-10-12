@@ -129,7 +129,9 @@ suite('Workspace Viewer', () => {
             get: (key: string) => key === 'source.focus' ? 'none'
                 : key === 'session.watchGlobalEnvironment' ? true : undefined,
         } as unknown as vscode.WorkspaceConfiguration);
-        const api: RSessionApi = { getConnectionInfo: session.getConnectionInfo, prepareAttachment: session.prepareAttachment, activate: session.activateSessionById };
+        const api: RSessionApi = { getConnectionInfo: session.getConnectionInfo, prepareAttachment: session.prepareAttachment,
+            onDidChangeSessionConnection: session.onDidChangeSessionConnection, getSessionReference: session.getSessionReference,
+            activate: session.activateSessionById };
         assert.strictEqual(await api.activate(first.sessionId, { terminal }), true);
         session.updateSessionWorkspace(first, data('table'));
         const node = (await envNodes())[0];

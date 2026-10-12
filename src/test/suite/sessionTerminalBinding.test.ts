@@ -25,7 +25,9 @@ suite('Session Terminal Binding', () => {
     let otherSendText: sinon.SinonStub;
     let show: sinon.SinonStub;
     const extensionRoot = path.join(__dirname, '..', '..', '..');
-    const api: RSessionApi = { getConnectionInfo: session.getConnectionInfo, prepareAttachment: session.prepareAttachment, activate: session.activateSessionById };
+    const api: RSessionApi = { getConnectionInfo: session.getConnectionInfo, prepareAttachment: session.prepareAttachment,
+        onDidChangeSessionConnection: session.onDidChangeSessionConnection, getSessionReference: session.getSessionReference,
+        activate: session.activateSessionById };
 
     setup(async () => {
         await session.shutdownSessionWatcher();

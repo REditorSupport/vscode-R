@@ -31,6 +31,13 @@ export interface RSessionActivationOptions {
      * Superseded native PID associations require a fresh native attach to resume.
      */
     terminal?: vscode.Terminal;
+    /**
+     * Bind/activate only this specific live sess connection. A reference from a
+     * replaced or disconnected connection is stale and returns false.
+     */
+    connectionId?: string;
+    /** Update the active session and UI. Defaults to true; false changes only the terminal binding. */
+    select?: boolean;
 }
 
 export interface RSessionPreparationOptions {
@@ -45,14 +52,31 @@ export interface RSessionPreparationOptions {
         transport: 'sess';
         endpoint: string;
     };
+    /** Whether this attachment may automatically select its session in the UI. Defaults to true. */
+    autoActivate?: boolean;
 }
 
 /** Opaque R code and script resource for preparing sess in a consumer-owned R process. */
 export interface RSessionPreparation extends vscode.Disposable {
+    /** Opaque correlation ID carried by this attachment's sess handshake. */
+    readonly attachmentId: string;
     /** Source this file in the target R process; its contents are private to vscode-R. */
     readonly scriptPath: string;
     /** R source(...) expression for scriptPath. This is R code, not a shell command. */
     readonly command: string;
+}
+
+export interface RSessionReference {
+    readonly sessionId: string;
+    /** Opaque identity for one accepted IPC connection; changes on reconnect. */
+    readonly connectionId: string;
+    /** Correlation ID supplied by a prepared external attachment, when present. */
+    readonly attachmentId?: string;
+}
+
+export interface RSessionConnectionChange {
+    readonly kind: 'connected' | 'disconnected';
+    readonly session: RSessionReference;
 }
 
 export interface RSessionApi {
@@ -71,14 +95,32 @@ export interface RSessionApi {
      * Attaching follows vscode-R's current automatic-selection rules and may change the UI's
      * selected session. After connection, call `activate(sessionId, { terminal })` to register
      * the consumer's execution terminal; connection replacement clears that registration.
+     * Set `autoActivate: false` to skip native-terminal PID discovery and association, register
+     * the consumer-owned terminal only when you call `activate`, and avoid automatic selection.
+     * Replacement of the currently selected logical session still follows its new connection.
+     * The `attachmentId` correlates with `onDidChangeSessionConnection` and `getSessionReference`;
+     * it is not an authentication or exclusive-ownership token, and reusing a script can share it.
      * During script execution, R may wait up to 180 seconds for install consent or 300 seconds
      * for another setup's lock. These are R-side waits, not a total startup timeout.
      */
     prepareAttachment(options?: RSessionPreparationOptions): Promise<RSessionPreparation | undefined>;
     /**
+     * Sess connection history is delivered as immutable snapshots in FIFO order after each
+     * transition is committed. During replacement, `disconnected(old)` is followed by
+     * `connected(new)` even if a reentrant listener disconnects the new connection; query
+     * `getSessionReference` for current state because it may already be undefined while a queued
+     * historical event is delivered.
+     */
+    readonly onDidChangeSessionConnection: vscode.Event<RSessionConnectionChange>;
+    /** Synchronously query the current live sess connection; requester transports return undefined. */
+    getSessionReference(sessionId: string): RSessionReference | undefined;
+    /**
      * Activates a connected session, optionally binding its execution terminal.
      * Omitting terminal preserves any existing binding. Returns false for unknown
-     * or disconnected sessions, or a terminal that is closed or no longer open.
+     * or disconnected sessions, a stale `connectionId`, or a terminal that is closed or no
+     * longer open. With `select: false`, only the terminal binding changes; selection revision,
+     * active-session pointer and UI remain untouched. The result reflects whether the connection
+     * is still current after activation completes; a later disconnect can still occur.
      */
     activate(sessionId: string, options?: RSessionActivationOptions): Promise<boolean>;
 }

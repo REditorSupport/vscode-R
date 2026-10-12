@@ -43,7 +43,8 @@ local({
   path <- tempfile()
   on.exit(unlink(path), add = TRUE)
   settings <- list(path = path, endpoint = "old", options = list(
-    use_rstudioapi = FALSE, plot_backend = "httpgd"
+    use_rstudioapi = FALSE, plot_backend = "httpgd",
+    attachment_id = "console_retry_1", auto_activate = FALSE
   ))
   env$.schedule_reconnect(settings, schedule = schedule)
   tick() # Missing discovery file.
