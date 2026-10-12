@@ -215,8 +215,10 @@ runtime_start <- function(use_rstudioapi = TRUE,
   .sess_env$runtime_start_phase <- "plot"
   has_jgd <- plot_backend %in% c("auto", "jgd") &&
     nzchar(Sys.getenv("JGD_SOCKET")) && requireNamespace("jgd", quietly = TRUE)
+  # The built-in client requires the 2.x renderer schema, including descr.
   has_httpgd <- plot_backend %in% c("auto", "httpgd") &&
-    requireNamespace("httpgd", quietly = TRUE)
+    requireNamespace("httpgd", quietly = TRUE) &&
+    package_version(getNamespaceVersion("httpgd")) >= "2.0.1"
   selected_backend <- .select_plot_backend(plot_backend, has_httpgd, has_jgd)
   if (selected_backend == "jgd") {
     .runtime_set_option("device", function(...) {
@@ -270,9 +272,9 @@ runtime_start <- function(use_rstudioapi = TRUE,
                 "connection is available. Falling back to the standard plot ",
                 "viewer.", call. = FALSE)
       } else if (plot_backend == "httpgd") {
-        warning("[sess] Plot backend \"httpgd\" was requested but the httpgd ",
-                "package is not installed. Falling back to the standard plot ",
-                "viewer. Install httpgd, or change the r.plot.backend setting.",
+        warning("[sess] Plot backend \"httpgd\" requires httpgd >= 2.0.1. ",
+                "Falling back to the standard plot viewer. ",
+                "Install or update httpgd, or change the r.plot.backend setting.",
                 call. = FALSE)
       }
     }

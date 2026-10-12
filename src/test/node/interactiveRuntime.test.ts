@@ -234,8 +234,10 @@ sess::display("display-${cell}", "text/plain"); cat("stderr-${cell}\\n", file=st
     });
 
     test('interrupts evaluation without losing R and cancels queued code', async () => {
-        const id = await submit('kept <- 17; Sys.sleep(30)');
-        await until(() => events.some(event => event.executionId === id && event.type === 'started'));
+        const marker = `interrupt-ready-${randomUUID()}`;
+        // Keep the marker and blocking call in one expression, without inter-expression hooks between them.
+        const id = await submit(`{ kept <- 17; cat(${JSON.stringify(marker)}, "\\n"); Sys.sleep(30) }`);
+        await until(() => text(id).includes(marker));
         const queued = await submit('kept <- 0'); await client.request('cancel', { id: queued });
         assert.strictEqual((await finished(queued)).state, 'cancelled');
         await client.request('interrupt', { id }); assert.strictEqual((await finished(id)).state, 'interrupted');
@@ -1038,11 +1040,12 @@ ggplot(diamonds, aes(x = carat, y = price, color = cut)) +
 
             // Pause startup after its started event so immediate interruption does
             // not depend on the runner winning a short race before user evaluation.
+            // Short sleeps let embedded R check pending interrupts regularly on macOS.
             await arfRequest(endpoint, 'evaluate', { visible: true, code: `local({
 ns <- asNamespace("sess"); original <- get(".interactive_plot_context", ns)
 replacement <- local({ inner <- original; first <- TRUE; function(...) {
     if (first && !is.null(sess:::.sess_env$interactive_id)) {
-        first <<- FALSE; Sys.sleep(30)
+        first <<- FALSE; for (i in seq_len(300)) Sys.sleep(0.1)
     }
     inner(...)
 } })
@@ -1059,7 +1062,9 @@ lockBinding(".interactive_plot_context", ns)
             await completed('stopifnot(kept_before_adoption == 73)');
 
             const running = randomUUID();
-            await connection.request('submit', { submission: { id: running, code: 'kept_during_adoption <- 81; cat("before interrupt"); sess::display("interrupt ready", "text/plain"); Sys.sleep(30)' } });
+            // Keep readiness and sleep in one expression, without plot hooks
+            // between them: headless arf only interrupts R during blocking calls.
+            await connection.request('submit', { submission: { id: running, code: '{ kept_during_adoption <- 81; cat("before interrupt"); sess::display("interrupt ready", "text/plain"); for (i in seq_len(300)) Sys.sleep(0.1) }' } });
             await waitFor(() => observed.some(event => event.executionId === running && event.type === 'display' && event.data.text === 'interrupt ready'));
             await connection.request('interrupt', { id: running });
             await waitFor(() => observed.some(event => event.executionId === running && event.type === 'finished'));

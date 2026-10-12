@@ -1,6 +1,8 @@
 'use strict';
 
-import * as fs from 'fs-extra';
+import * as fs from 'node:fs';
+import * as fsp from 'node:fs/promises';
+import { pathExists, readJson } from './fileSystem';
 import * as path from 'path';
 import * as os from 'os';
 import * as net from 'net';
@@ -9,20 +11,37 @@ import * as vscode from 'vscode';
 import { commands, Uri, ViewColumn, Webview, window, env } from 'vscode';
 
 import { restartRTerminal } from './rTerminal';
-import { config, readContent, setContext, UriIcon } from './util';
+import { config, readContent, readSessSourceRevision, setContext, UriIcon } from './util';
 import * as rTerminal from './rTerminal';
 import { getProcessAncestors } from './processTree';
 import { TerminalSessionRegistry } from './terminalSessionRegistry';
+import { SessionProcessMonitor } from './sessionProcessMonitor';
+import { sessionProcessIdentity } from './sessionIdentity';
 import { purgeAddinPickerItems, RSEditOperation, RSRange } from './rstudioapi';
 
 import { extensionContext, rWorkspace, globalRHelp, globalPlotManager, sessionStatusBarItem, enableSessionWatcher, rLanguageService } from './extension';
 import { resolveBackend, jgdEnabled, CommonPlotManager } from './plotViewer';
-import type { RSessionActivationOptions, RSessionConnectionInfo } from './api';
+import type {
+    RSessionActivationOptions,
+    RSessionConnectionChange,
+    RSessionConnectionInfo,
+    RSessionPreparation,
+    RSessionPreparationOptions,
+    RSessionReference,
+} from './api';
 
 import { showWebView } from './webViewer';
 import { getListViewerScript, listViewerStyle, ListViewNavigation } from './listViewer';
 import { getDataViewerScript, getDataViewerStyle, getDataViewerToolbarHtml } from './dataViewer';
 import { getDataViewerColumnPanelHtml, getDataViewerColumnPanelScript, getDataViewerColumnPanelStyle } from './dataViewerColumnPanel';
+import { createViewerSessionContext, formatSessionLabel, getViewerSessionScript, ViewerSessionContext, ViewerSessionSource } from './viewerSession';
+import { SessConsentChoice, SessConsentService } from './sessConsent';
+import {
+    assessTerminalStartup,
+    parseTerminalStartupRecord,
+    TerminalStartupRecord,
+    TerminalStartupStatus,
+} from './terminalStartup';
 
 export interface SessionInfo {
     version: string;
@@ -54,15 +73,24 @@ interface IpcSocket extends net.Socket {
     _terminalPid?: number;
     _pipePath?: string;
     _sessionId?: string;
+    _server?: net.Server;
 }
 
 export class Session {
+    private exited = false;
+    public get processExited(): boolean { return this.exited; }
+    public set processExited(value: boolean) {
+        this.exited = value;
+        if (value) { sessionProcessMonitor.markExited(this); }
+    }
     public label?: string;
     public workspaceUnavailable?: string;
     public execute?: (code: string) => Promise<void>;
     public rPath?: string;
     public libraryPaths?: string[];
     public requester?: (data: Record<string, unknown>) => Promise<unknown>;
+    public connectionId?: string;
+    public attachmentId?: string;
     public sessionId: string;
     public host: string;
     public sessVersion: string;
@@ -107,6 +135,55 @@ export let workspaceFile: string;
 const SESS_PROTOCOL_VERSION = 2;
 
 const sessions = new Map<string, Session>();
+const sessionConnectionEmitter = new vscode.EventEmitter<RSessionConnectionChange>();
+export const onDidChangeSessionConnection = sessionConnectionEmitter.event;
+const pendingConnectionChanges: RSessionConnectionChange[] = [];
+let dispatchingConnectionChanges = false;
+
+function createSessionReference(target: Session): RSessionReference | undefined {
+    if (!target.connectionId) { return undefined; }
+    return Object.freeze({
+        sessionId: target.sessionId,
+        connectionId: target.connectionId,
+        ...(target.attachmentId ? { attachmentId: target.attachmentId } : {}),
+    });
+}
+
+function enqueueSessionConnectionChanges(changes: readonly RSessionConnectionChange[]): void {
+    for (const change of changes) {
+        pendingConnectionChanges.push(Object.freeze({
+            kind: change.kind,
+            session: Object.freeze({ ...change.session }),
+        }));
+    }
+    if (dispatchingConnectionChanges) { return; }
+    dispatchingConnectionChanges = true;
+    try {
+        while (pendingConnectionChanges.length) {
+            const change = pendingConnectionChanges.shift()!;
+            try { sessionConnectionEmitter.fire(change); }
+            catch (error) { console.error('[SessionConnection] Listener failed', error); }
+        }
+    } finally {
+        dispatchingConnectionChanges = false;
+    }
+}
+
+function invalidateSessionConnection(target: Session): RSessionConnectionChange | undefined {
+    const reference = createSessionReference(target);
+    target.connectionId = undefined;
+    target.attachmentId = undefined;
+    return reference ? Object.freeze({ kind: 'disconnected', session: reference }) : undefined;
+}
+
+export function getSessionReference(sessionId: string): RSessionReference | undefined {
+    const target = sessions.get(sessionId);
+    if (!target || target.requester || !target.connectionId || target.socket._sessionId !== sessionId
+        || !isLiveSessionSocket(target.socket)) { return undefined; }
+    return createSessionReference(target);
+}
+
+const sessionProcessMonitor = new SessionProcessMonitor<ViewerSessionSource>(isLocalHost);
 // Only the newest handshake for a stable ID may commit after terminal discovery.
 const pendingSessionAttachments = new Map<string, IpcSocket>();
 const terminalRegistry = new TerminalSessionRegistry<Session, vscode.Terminal>(
@@ -138,8 +215,11 @@ export function unregisterSessionTransport(target: Session): void {
     rLanguageService?.syncSessionState(undefined, target.resource, target.sessionId);
     for (const [uri, owner] of documentSessions) { if (owner === target) { documentSessions.delete(uri); } }
     terminalRegistry.releaseSession(target);
-    if (sessions.get(target.sessionId) === target) { sessions.delete(target.sessionId); }
+    const current = sessions.get(target.sessionId) === target;
+    if (current) { sessions.delete(target.sessionId); }
+    const disconnected = current ? invalidateSessionConnection(target) : undefined;
     if (activeSession === target) { void clearActiveSession(); }
+    if (disconnected) { enqueueSessionConnectionChanges([disconnected]); }
 }
 
 function clearActiveSession(): Promise<void> {
@@ -155,7 +235,8 @@ function clearActiveSession(): Promise<void> {
 }
 
 function isConnectedSession(target: Session): boolean {
-    return Boolean(target.requester) || (isCurrentSocket(target.socket) && !target.socket.destroyed && target.socket.writable);
+    return Boolean(target.requester) || (Boolean(target.connectionId) && isLiveSessionSocket(target.socket)
+        && isCurrentSocket(target.socket));
 }
 
 function assertExecutableSession(target: Session): void {
@@ -194,39 +275,186 @@ export function replaceSessionTransport(previous: Session, next: Session): void 
     rLanguageService?.syncSessionState(undefined, previous.resource, previous.sessionId);
     for (const [uri, owner] of documentSessions) { if (owner === previous) { documentSessions.set(uri, next); } }
     terminalRegistry.releaseSession(previous);
-    if (sessions.get(previous.sessionId) === previous) { sessions.delete(previous.sessionId); }
+    const current = sessions.get(previous.sessionId) === previous;
+    if (current) { sessions.delete(previous.sessionId); }
+    const disconnected = current ? invalidateSessionConnection(previous) : undefined;
     if (activeSession === previous) { sessionSelectionRevision++; activeSession = next; }
+    if (disconnected) { enqueueSessionConnectionChanges([disconnected]); }
 }
 
 export function registerSessionTransport(id: string, host: string, directory: string,
     requester: (data: Record<string, unknown>) => Promise<unknown>): Session {
-    const target = sessions.get(id) ?? new Session(id, host, '', '', new net.Socket());
+    const previous = sessions.get(id);
+    const target = previous?.connectionId
+        ? new Session(id, host, '', '', new net.Socket())
+        : previous ?? new Session(id, host, '', '', new net.Socket());
     target.requester = requester;
     target.workingDir = directory;
     target.resource = vscode.workspace.getWorkspaceFolder(Uri.file(directory))?.uri;
     sessions.set(id, target);
+    if (previous && previous !== target) {
+        for (const [uri, owner] of documentSessions) {
+            if (owner === previous) { documentSessions.set(uri, target); }
+        }
+        terminalRegistry.releaseSession(previous);
+        const disconnected = invalidateSessionConnection(previous);
+        if (activeSession === previous) { sessionSelectionRevision++; activeSession = target; }
+        if (!previous.socket.destroyed) { previous.socket.destroy(); }
+        if (disconnected) { enqueueSessionConnectionChanges([disconnected]); }
+    }
     return target;
 }
-/** Wait for the same connected owner used by execution and terminal selection. */
-export function waitForTerminalReady(terminal: vscode.Terminal, timeout = 30000): Promise<boolean> {
+const SESS_SETUP_TIMEOUT = 600000;
+const TERMINAL_ATTACH_TIMEOUT = 30000;
+
+/** Read the bounded status sidecar written by the R startup helper. */
+async function readTerminalStartupRecord(filePath: string, token: string): Promise<TerminalStartupRecord | undefined> {
+    let file: fs.promises.FileHandle | undefined;
+    try {
+        file = await fsp.open(filePath, 'r');
+        const buffer = Buffer.alloc(513);
+        const { bytesRead } = await file.read(buffer, 0, buffer.length, 0);
+        if (bytesRead > 512) { return undefined; }
+        return parseTerminalStartupRecord(buffer.toString('utf8', 0, bytesRead), token);
+    } catch {
+        return undefined;
+    } finally {
+        await file?.close().catch(() => undefined);
+    }
+}
+
+/**
+ * Wait for this R process's setup attempt and its matching attached owner.
+ * A new manual-attach attempt may satisfy a fresh wait, but can never release
+ * input held by a wait that already observed a different attempt.
+ */
+export function waitForTerminalReady(terminal: vscode.Terminal, timeout = 30000, startupFilePath?: string,
+    startupToken?: string): Promise<boolean> {
     return new Promise(resolve => {
         let settled = false;
+        let observedAttemptId: string | undefined;
+        let observedState: TerminalStartupStatus | undefined;
+        let latestRecord: TerminalStartupRecord | undefined;
+        let startupTimer: NodeJS.Timeout | undefined;
+        let pendingTimer: NodeJS.Timeout | undefined;
+        let attachTimer: NodeJS.Timeout | undefined;
+        let pollTimer: NodeJS.Timeout | undefined;
+        let checkingRecord = false;
+
         const finish = (ready: boolean) => {
             if (settled) { return; }
             settled = true;
-            clearTimeout(timer);
+            if (startupTimer) { clearTimeout(startupTimer); }
+            if (pendingTimer) { clearTimeout(pendingTimer); }
+            if (attachTimer) { clearTimeout(attachTimer); }
+            if (pollTimer) { clearTimeout(pollTimer); }
             attached.dispose();
             closed.dispose();
             resolve(ready);
         };
+        const isClosed = () => terminalRegistry.isClosed(terminal) || terminal.exitStatus !== undefined;
+        const checkOwner = () => {
+            if (settled) { return; }
+            if (isClosed()) { finish(false); }
+            else if (observedState === 'failed') { finish(false); }
+            else if (!startupFilePath && terminalRegistry.ownerOf(terminal)) { finish(true); }
+            else if (observedState === 'ready' && latestRecord) {
+                const owner = terminalRegistry.ownerOf(terminal);
+                if (assessTerminalStartup(observedAttemptId, latestRecord, owner?.pid, owner?.pipePath).readyForOwner) {
+                    finish(true);
+                }
+            }
+        };
+        const setRecord = (record: TerminalStartupRecord | undefined) => {
+            if (settled) { return; }
+            const owner = terminalRegistry.ownerOf(terminal);
+            const decision = assessTerminalStartup(observedAttemptId, record, owner?.pid, owner?.pipePath);
+            const observation = decision.observation;
+            if (observation === 'unknown') {
+                // A read that cannot identify the current status must not leave an
+                // older ready snapshot available to a later owner event.
+                latestRecord = undefined;
+                return;
+            }
+            if (observation === 'attempt-changed') {
+                finish(false);
+                return;
+            }
+            if (!record) { return; }
+            latestRecord = record;
+            if (observedAttemptId === undefined) { observedAttemptId = decision.attemptId; }
+            if (observation === 'failed') {
+                observedState = 'failed';
+                finish(false);
+            } else if (observation === 'pending') {
+                if (observedState !== 'pending') {
+                    observedState = 'pending';
+                    if (startupTimer) { clearTimeout(startupTimer); startupTimer = undefined; }
+                    pendingTimer = setTimeout(() => finish(false), SESS_SETUP_TIMEOUT);
+                }
+            } else if (observation === 'ready') {
+                if (observedState !== 'ready') {
+                    observedState = 'ready';
+                    if (startupTimer) { clearTimeout(startupTimer); startupTimer = undefined; }
+                    if (pendingTimer) { clearTimeout(pendingTimer); pendingTimer = undefined; }
+                    attachTimer = setTimeout(() => finish(false), Math.min(timeout, TERMINAL_ATTACH_TIMEOUT));
+                }
+                if (decision.readyForOwner) { finish(true); }
+                else { checkOwner(); }
+            }
+        };
+        const schedulePoll = (delay = 100) => {
+            if (settled) { return; }
+            if (pollTimer) { clearTimeout(pollTimer); pollTimer = undefined; }
+            pollTimer = setTimeout(() => {
+                pollTimer = undefined;
+                beginRead();
+            }, delay);
+        };
+        const readCurrentRecord = async () => {
+            if (settled || !startupFilePath || !startupToken || checkingRecord) { return; }
+            checkingRecord = true;
+            const ownerSnapshotIsCurrent = terminalRegistry.snapshot(terminal);
+            let record: TerminalStartupRecord | undefined;
+            try {
+                record = await readTerminalStartupRecord(startupFilePath, startupToken);
+            } finally {
+                checkingRecord = false;
+            }
+            if (settled) { return; }
+            if (!ownerSnapshotIsCurrent()) {
+                // Ownership changed during the file read. Retry against the
+                // current association before accepting any ready record.
+                latestRecord = undefined;
+                schedulePoll(0);
+                return;
+            }
+            setRecord(record);
+            if (!settled) { checkOwner(); }
+            schedulePoll();
+        };
+        const beginRead = () => {
+            void readCurrentRecord().catch(() => {
+                checkingRecord = false;
+                if (!settled) { latestRecord = undefined; checkOwner(); schedulePoll(); }
+            });
+        };
         const check = () => {
-            if (terminalRegistry.isClosed(terminal) || terminal.exitStatus) { finish(false); }
-            else if (terminalRegistry.ownerOf(terminal)) { finish(true); }
+            if (settled) { return; }
+            if (isClosed()) { finish(false); return; }
+            if (!startupFilePath || !startupToken) { checkOwner(); return; }
+            beginRead();
         };
         const attached = terminalRegistry.onDidChange(changed => { if (changed === terminal) { check(); } });
         const closed = window.onDidCloseTerminal(changed => { if (changed === terminal) { finish(false); } });
-        // A timeout rejects startup; it never authorizes sending input.
-        const timer = setTimeout(() => finish(false), timeout);
+
+        // Missing or invalid state keeps the ordinary attachment timeout.
+        startupTimer = setTimeout(() => finish(false), timeout);
+        // Preserve the historical immediate path for terminals without profile setup.
+        if (!startupFilePath) { checkOwner(); }
+        if (startupFilePath && startupToken) {
+            beginRead();
+        }
         check();
     });
 }
@@ -382,6 +610,18 @@ function attachDynamicDataViewBridge(panel: vscode.WebviewPanel, viewId: string,
 }
 
 export function deploySessionWatcher(extensionPath: string): void {
+    if (attachmentLifecycleStopping) {
+        // A new activation must not inherit endpoints being torn down by the prior host lifecycle.
+        globalSessionServer = undefined;
+        globalSessionServerStartup = undefined;
+        globalPipePath = undefined;
+        attachConsentService = undefined;
+        attachConsentDirectory = undefined;
+        attachConsentStartup = undefined;
+        attachSessionScriptPath = undefined;
+    }
+    attachmentLifecycleGeneration++;
+    attachmentLifecycleStopping = false;
     console.info(`[deploySessionWatcher] extensionPath: ${extensionPath}`);
     resDir = path.join(extensionPath, 'dist', 'resources');
 
@@ -397,7 +637,13 @@ let pipeClient: IpcSocket | undefined;
 export const activeConnections = new Set<IpcSocket>();
 
 function isCurrentSocket(socket: IpcSocket): boolean {
-    return !!socket._sessionId && sessions.get(socket._sessionId)?.socket === socket;
+    const target = socket._sessionId ? sessions.get(socket._sessionId) : undefined;
+    return Boolean(target?.connectionId && target.socket === socket && isLiveSessionSocket(socket));
+}
+
+function isLiveSessionSocket(socket: IpcSocket): boolean {
+    return Boolean(globalSessionServer && !attachmentLifecycleStopping && socket._server === globalSessionServer
+        && !socket.destroyed && socket.writable);
 }
 
 const pendingRequests = new Map<number, {
@@ -427,6 +673,15 @@ function queueTerminalDiscoveryOperation(terminal: vscode.Terminal, operation: (
 let globalSessionServer: net.Server | undefined;
 let globalSessionServerStartup: Promise<string> | undefined;
 let attachSessionScriptPath: string | undefined;
+let attachConsentDirectory: string | undefined;
+let attachConsentService: SessConsentService | undefined;
+let attachConsentStartup: Promise<string> | undefined;
+let attachmentLifecycleGeneration = 0;
+let attachmentLifecycleStopping = false;
+let attachScriptPublication: Promise<void> = Promise.resolve();
+const preparedAttachmentScripts = new Set<string>();
+const pendingAttachmentPreparations = new Set<Promise<unknown>>();
+const SESS_INSTALL_PROMPT_DISMISSED_REVISION = 'sessInstallPromptDismissedRevision';
 
 interface SessionDiscoveryFile {
     version: 1;
@@ -485,17 +740,27 @@ export async function removeTerminalDiscoveryFile(terminal: vscode.Terminal): Pr
         }
 
         if (discoveryPath) {
-            await fs.remove(discoveryPath);
+            await Promise.all([
+                fsp.rm(discoveryPath, { recursive: true, force: true }),
+                fsp.rm(`${discoveryPath}.startup`, { force: true }),
+            ]);
         }
     });
 }
 
 export async function createSessionDiscoveryFile(endpoint: string): Promise<string> {
     const discoveryDir = getSessionDiscoveryDir();
-    await fs.ensureDir(discoveryDir);
+    await fsp.mkdir(discoveryDir, { recursive: true });
     const filePath = path.join(discoveryDir, `${crypto.randomBytes(16).toString('hex')}.json`);
-    await writeSessionDiscoveryFile(filePath, endpoint);
-    return filePath;
+    try {
+        await writeSessionDiscoveryFile(filePath, endpoint);
+        return filePath;
+    } catch (error) {
+        await fsp.rm(filePath, { recursive: true, force: true }).catch(cleanupError => {
+            console.error('Failed to clean incomplete session discovery file', cleanupError);
+        });
+        throw error;
+    }
 }
 
 async function writeSessionDiscoveryFile(filePath: string, endpoint: string, terminalPid?: number): Promise<void> {
@@ -505,21 +770,21 @@ async function writeSessionDiscoveryFile(filePath: string, endpoint: string, ter
     const data: SessionDiscoveryFile = { version: 1, endpoint, jgdSocket: getSessionJgdSocket() };
     if (terminalPid !== undefined) {
         data.terminalPid = terminalPid;
-    } else if (await fs.pathExists(filePath)) {
-        const existing = await fs.readJson(filePath) as Partial<SessionDiscoveryFile>;
+    } else if (await pathExists(filePath)) {
+        const existing = await readJson(filePath) as Partial<SessionDiscoveryFile>;
         if (typeof existing.terminalPid === 'number') {
             data.terminalPid = existing.terminalPid;
         }
     }
-    await fs.ensureDir(path.dirname(filePath));
+    await fsp.mkdir(path.dirname(filePath), { recursive: true });
     const temporaryPath = `${filePath}.${crypto.randomBytes(8).toString('hex')}.tmp`;
     try {
-        await fs.writeJson(temporaryPath, data, { mode: 0o600 });
+        await fsp.writeFile(temporaryPath, `${JSON.stringify(data)}\n`, { mode: 0o600 });
         await setOwnerOnlyPermissions(temporaryPath);
-        await fs.rename(temporaryPath, filePath);
+        await fsp.rename(temporaryPath, filePath);
         await setOwnerOnlyPermissions(filePath);
     } catch (error) {
-        await fs.remove(temporaryPath).catch(() => undefined);
+        await fsp.rm(temporaryPath, { recursive: true, force: true }).catch(() => undefined);
         throw error;
     }
 }
@@ -543,11 +808,11 @@ export async function updateTerminalSessionDiscoveryFile(
 
 async function findDiscoveryFileForTerminal(terminalPid: number): Promise<string | undefined> {
     const discoveryDir = getSessionDiscoveryDir();
-    if (!await fs.pathExists(discoveryDir)) {
+    if (!await pathExists(discoveryDir)) {
         return undefined;
     }
     const candidates: Array<{ filePath: string; mtimeMs: number }> = [];
-    for (const file of await fs.readdir(discoveryDir)) {
+    for (const file of await fsp.readdir(discoveryDir)) {
         if (!file.endsWith('.json')) {
             continue;
         }
@@ -556,9 +821,9 @@ async function findDiscoveryFileForTerminal(terminalPid: number): Promise<string
             continue;
         }
         try {
-            const discovery = await fs.readJson(filePath) as Partial<SessionDiscoveryFile>;
+            const discovery = await readJson(filePath) as Partial<SessionDiscoveryFile>;
             if (discovery.version === 1 && discovery.terminalPid === terminalPid && typeof discovery.endpoint === 'string') {
-                const stat = await fs.stat(filePath);
+                const stat = await fsp.stat(filePath);
                 candidates.push({ filePath, mtimeMs: stat.mtimeMs });
             }
         } catch (e) {
@@ -610,7 +875,7 @@ async function setOwnerOnlyPermissions(filePath: string): Promise<void> {
         return;
     }
 
-    await fs.chmod(filePath, 0o600);
+    await fsp.chmod(filePath, 0o600);
 }
 
 function makePipePath(): string {
@@ -623,20 +888,25 @@ function makePipePath(): string {
 }
 
 export async function getGlobalPipePath(): Promise<string> {
+    const generation = attachmentLifecycleGeneration;
+    if (!isAttachmentLifecycleCurrent(generation)) { throw new Error('The session watcher is shutting down.'); }
     if (globalPipePath) {
         return globalPipePath;
     }
 
     if (!globalSessionServerStartup) {
-        globalSessionServerStartup = startGlobalSessionServer().catch((err: unknown) => {
-            globalSessionServerStartup = undefined;
+        const startup = startGlobalSessionServer(generation).catch((err: unknown) => {
+            if (globalSessionServerStartup === startup) { globalSessionServerStartup = undefined; }
             throw err;
         });
+        globalSessionServerStartup = startup;
     }
-    return globalSessionServerStartup;
+    const endpoint = await globalSessionServerStartup;
+    if (!isAttachmentLifecycleCurrent(generation)) { throw new Error('The session watcher shut down while starting its IPC server.'); }
+    return endpoint;
 }
 
-function startGlobalSessionServer(): Promise<string> {
+function startGlobalSessionServer(generation: number): Promise<string> {
     return new Promise((resolve, reject) => {
         const pipePath = makePipePath();
         let listening = false;
@@ -649,6 +919,7 @@ function startGlobalSessionServer(): Promise<string> {
                 return;
             }
             const socket = rawSocket as IpcSocket;
+            socket._server = server;
             socket._pipePath = pipePath;
             console.info('[SessionServer] Client connected via IPC pipe');
             activeConnections.add(socket);
@@ -785,6 +1056,10 @@ function startGlobalSessionServer(): Promise<string> {
                     if (settled) {
                         return;
                     }
+                    if (!isAttachmentLifecycleCurrent(generation)) {
+                        failStartup(new Error('The session watcher shut down while starting its IPC server.'));
+                        return;
+                    }
                     settled = true;
                     initialized = true;
                     globalPipePath = pipePath;
@@ -824,7 +1099,18 @@ export async function getConnectionInfo(): Promise<RSessionConnectionInfo | unde
 }
 
 function asRStringLiteral(value: string): string {
-    return `"${value.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
+    let escaped = '';
+    for (const character of value) {
+        const code = character.codePointAt(0)!;
+        if (character === '\\') { escaped += '\\\\'; }
+        else if (character === '"') { escaped += '\\"'; }
+        else if (character === '\n') { escaped += '\\n'; }
+        else if (character === '\r') { escaped += '\\r'; }
+        else if (character === '\t') { escaped += '\\t'; }
+        else if (code < 0x20 || code === 0x7f) { escaped += `\\${code.toString(8).padStart(3, '0')}`; }
+        else { escaped += character; }
+    }
+    return `"${escaped}"`;
 }
 
 function getAttachSessionScriptPath(pipePath: string): string {
@@ -832,49 +1118,247 @@ function getAttachSessionScriptPath(pipePath: string): string {
     return path.join(extensionContext.globalStorageUri.fsPath, 'tmp', 'attach', `${scriptBase}.R`);
 }
 
-function buildAttachSessionScript(pipePath: string, sessPath: string, installSessScriptPath: string): string {
+function buildAttachSessionScript(pipePath: string, sessPath: string, consentDirectory: string,
+    attachment?: { attachmentId: string; autoActivate: boolean }): string {
     const backend = resolveBackend();
     const jgdSocket = getSessionJgdSocket();
     return [
         'local({',
+        '  tryCatch({',
+        '    attached <- local({',
         `  endpoint <- ${asRStringLiteral(pipePath)}`,
         `  sess_src <- ${asRStringLiteral(sessPath)}`,
-        `  install_sess_script <- ${asRStringLiteral(installSessScriptPath)}`,
+        `  managed_root <- ${asRStringLiteral(path.join(extensionContext.globalStorageUri.fsPath, 'sess').replace(/\\/g, '/'))}`,
+        `  consent_dir <- ${asRStringLiteral(consentDirectory.replace(/\\/g, '/'))}`,
+        `  source_helper <- ${asRStringLiteral(extensionContext.asAbsolutePath(path.join('R', 'sess_source.R')).replace(/\\/g, '/'))}`,
+        `  installer_helper <- ${asRStringLiteral(extensionContext.asAbsolutePath(path.join('R', 'sess-package-install.R')).replace(/\\/g, '/'))}`,
+        `  startup_helper <- ${asRStringLiteral(extensionContext.asAbsolutePath(path.join('R', 'terminal-startup.R')).replace(/\\/g, '/'))}`,
+        `  attach_helper <- ${asRStringLiteral(extensionContext.asAbsolutePath(path.join('R', 'attach_sess.R')).replace(/\\/g, '/'))}`,
         ...(backend === 'native' ? [] : [
             jgdSocket ? `  Sys.setenv(JGD_SOCKET = ${asRStringLiteral(jgdSocket)})` : '  Sys.unsetenv("JGD_SOCKET")',
         ]),
-        `  source(${asRStringLiteral(extensionContext.asAbsolutePath(path.join('R', 'sess_source.R')).replace(/\\/g, '/'))}, local = TRUE)`,
-        '  if (sess_install_required(sess_src)) {',
-        '    if (!file.exists(install_sess_script)) {',
-        '      stop(sprintf("install_sess.R not found: %s", install_sess_script))',
-        '    }',
-        '    Sys.setenv(VSCODE_R_SESS_PKG_PATH = sess_src)',
-        '    on.exit(Sys.unsetenv(c("VSCODE_R_SESS_PKG_PATH", "VSCODE_R_SESS_REPO")), add = TRUE)',
-        '    source(install_sess_script, local = TRUE)',
-        '  }',
-        `  sess::connect(endpoint = endpoint, plot_backend = ${asRStringLiteral(backend)})`,
+        '  source(startup_helper, local = TRUE)',
+        '  source(attach_helper, local = TRUE)',
+        `  vscode_r_attach_sess(endpoint, sess_src, managed_root, consent_dir, source_helper, installer_helper, ${asRStringLiteral(backend)}, use_rstudioapi = ${config().get<boolean>('session.emulateRStudioAPI') ? 'TRUE' : 'FALSE'}${attachment ? `, attachment_id = ${asRStringLiteral(attachment.attachmentId)}, auto_activate = ${attachment.autoActivate ? 'TRUE' : 'FALSE'}` : ''})`,
+        '    })',
+        '    invisible(isTRUE(attached))',
+        '  }, error = function(error) {',
+        '    message("vscode-R could not prepare the session watcher: ", conditionMessage(error))',
+        '    invisible(FALSE)',
+        '  }, interrupt = function(error) {',
+        '    message("vscode-R session watcher preparation was interrupted; you can continue using this R session.")',
+        '    invisible(FALSE)',
+        '  })',
         '})',
         '',
     ].join('\n');
 }
 
-export async function getAttachSessionCommand(): Promise<string> {
+function isAttachmentLifecycleCurrent(generation: number): boolean {
+    return !attachmentLifecycleStopping && generation === attachmentLifecycleGeneration;
+}
+
+async function ensureAttachSessConsentService(generation = attachmentLifecycleGeneration): Promise<string> {
+    if (!isAttachmentLifecycleCurrent(generation)) {
+        throw new Error('The session watcher is shutting down.');
+    }
+    if (attachConsentStartup) { return attachConsentStartup; }
+    if (attachConsentService && attachConsentDirectory) { return attachConsentDirectory; }
+
+    const startup = (async (): Promise<string> => {
+        const directory = path.join(extensionContext.globalStorageUri.fsPath, 'tmp', 'attach', 'consent', crypto.randomBytes(16).toString('hex'));
+        const sessDescription = await readContent(
+            extensionContext.asAbsolutePath(path.join('dist', 'resources', 'sess', 'DESCRIPTION')), 'utf8');
+        const sourceRevision = readSessSourceRevision(sessDescription);
+        if (!sourceRevision) {
+            throw new Error('The bundled sess package has no valid source revision.');
+        }
+        const service = new SessConsentService({
+            directory,
+            expectedRevision: sourceRevision,
+            isEnabled: () => config().get<boolean>('sessionWatcher') === true,
+            getDismissedRevision: () => {
+                const value = extensionContext.globalState.get<unknown>(SESS_INSTALL_PROMPT_DISMISSED_REVISION);
+                return typeof value === 'string' ? value : undefined;
+            },
+            rememberDismissedRevision: async revision => {
+                await Promise.resolve(extensionContext.globalState.update(SESS_INSTALL_PROMPT_DISMISSED_REVISION, revision));
+            },
+            prompt: async request => {
+                const mismatch = request.reason === 'mismatch';
+                const message = mismatch
+                    ? 'The installed sess does not match this build of vscode-R. Install the bundled copy in a vscode-R-managed library? Your existing sess installation will not be modified. “Don’t ask again” applies to this bundled sess revision.'
+                    : 'vscode-R needs bundled sess to attach the session watcher. Install it in a vscode-R-managed library? Your existing sess installation will not be modified. “Don’t ask again” applies to this bundled sess revision.';
+                const choice = await window.showWarningMessage(
+                    message, 'Install bundled sess', 'Not now', "Don't ask again");
+                const choices: Record<string, SessConsentChoice> = {
+                    'Install bundled sess': 'install',
+                    'Not now': 'notNow',
+                    "Don't ask again": 'dontAskAgain',
+                };
+                return choices[choice ?? ''] ?? 'dismiss';
+            },
+        });
+        try {
+            await service.start();
+            if (!isAttachmentLifecycleCurrent(generation)) {
+                await service.stop();
+                await removePathIfExists(directory);
+                throw new Error('The session watcher shut down while preparing sess consent.');
+            }
+            attachConsentDirectory = directory;
+            attachConsentService = service;
+            return directory;
+        } catch (error) {
+            await service.stop();
+            await removePathIfExists(directory);
+            throw error;
+        }
+    })();
+    attachConsentStartup = startup;
+    try {
+        return await startup;
+    } catch (error) {
+        if (attachConsentStartup === startup) { attachConsentStartup = undefined; }
+        throw error;
+    }
+}
+
+export async function getSessConsentDirectory(): Promise<string> {
+    return ensureAttachSessConsentService();
+}
+
+function validateAttachmentEndpoint(endpoint: unknown): asserts endpoint is string {
+    if (typeof endpoint !== 'string' || endpoint.length === 0 || endpoint.includes('\0')) {
+        throw new TypeError('A non-empty local sess IPC endpoint is required.');
+    }
+    const localNamedPipe = /^\\\\\.\\pipe\\[A-Za-z0-9_.-]+$/i.test(endpoint);
+    const valid = process.platform === 'win32'
+        ? localNamedPipe
+        : path.isAbsolute(endpoint);
+    if (!valid) {
+        throw new TypeError('The sess IPC endpoint must be a local absolute path or Windows named pipe.');
+    }
+}
+
+function makeAttachmentScriptPath(): string {
+    return path.join(extensionContext.globalStorageUri.fsPath, 'tmp', 'attach', `consumer-${crypto.randomBytes(16).toString('hex')}.R`);
+}
+
+/** Prepare the managed sess bootstrap for an R process owned by a downstream consumer. */
+async function prepareAttachmentCore(options?: RSessionPreparationOptions): Promise<RSessionPreparation | undefined> {
+    if (!enableSessionWatcher) { return undefined; }
+    if (options?.autoActivate !== undefined && typeof options.autoActivate !== 'boolean') {
+        throw new TypeError('autoActivate must be a boolean.');
+    }
+    const connection = options?.connection;
+    if (connection && connection.transport !== 'sess') {
+        throw new TypeError('Only the sess transport is supported.');
+    }
+    const generation = attachmentLifecycleGeneration;
+    if (!isAttachmentLifecycleCurrent(generation)) {
+        throw new Error('The session watcher is shutting down.');
+    }
+    const endpoint = connection ? connection.endpoint : await getGlobalPipePath();
+    validateAttachmentEndpoint(endpoint);
+    const sessPath = extensionContext.asAbsolutePath(path.join('dist', 'resources', 'sess')).replace(/\\/g, '/');
+    const consentDirectory = await ensureAttachSessConsentService(generation);
+    if (!isAttachmentLifecycleCurrent(generation)) {
+        throw new Error('The session watcher shut down while preparing sess attachment.');
+    }
+    const attachmentId = crypto.randomBytes(16).toString('hex');
+    const autoActivate = options?.autoActivate ?? true;
+    const scriptPath = makeAttachmentScriptPath();
+    await fsp.mkdir(path.dirname(scriptPath), { recursive: true });
+    const temporaryPath = `${scriptPath}.${crypto.randomBytes(8).toString('hex')}.tmp`;
+    try {
+        await fsp.writeFile(temporaryPath, buildAttachSessionScript(endpoint, sessPath, consentDirectory, { attachmentId, autoActivate }), { encoding: 'utf-8', mode: 0o600, flag: 'wx' });
+        await setOwnerOnlyPermissions(temporaryPath);
+        if (!isAttachmentLifecycleCurrent(generation)) {
+            throw new Error('The session watcher shut down while publishing sess attachment.');
+        }
+        await fsp.rename(temporaryPath, scriptPath);
+        if (!isAttachmentLifecycleCurrent(generation)) {
+            await removePathIfExists(scriptPath);
+            throw new Error('The session watcher shut down while publishing sess attachment.');
+        }
+        preparedAttachmentScripts.add(scriptPath);
+        let disposed = false;
+        return Object.freeze({
+            attachmentId,
+            scriptPath,
+            command: `source(${asRStringLiteral(scriptPath)})`,
+            dispose: () => {
+                if (disposed) { return; }
+                disposed = true;
+                preparedAttachmentScripts.delete(scriptPath);
+                const cleanup = removePathIfExists(scriptPath);
+                pendingAttachmentPreparations.add(cleanup);
+                void cleanup.finally(() => pendingAttachmentPreparations.delete(cleanup)).catch(() => undefined);
+            },
+        });
+    } catch (error) {
+        await removePathIfExists(temporaryPath);
+        await removePathIfExists(scriptPath);
+        throw error;
+    }
+}
+
+export function prepareAttachment(options?: RSessionPreparationOptions): Promise<RSessionPreparation | undefined> {
+    const preparation = prepareAttachmentCore(options);
+    pendingAttachmentPreparations.add(preparation);
+    void preparation.finally(() => pendingAttachmentPreparations.delete(preparation)).catch(() => undefined);
+    return preparation;
+}
+
+async function getAttachSessionCommandCore(): Promise<string> {
+    const generation = attachmentLifecycleGeneration;
+    if (!isAttachmentLifecycleCurrent(generation)) { throw new Error('The session watcher is shutting down.'); }
     const pipePath = await getGlobalPipePath();
     const sessPath = extensionContext.asAbsolutePath(path.join('dist', 'resources', 'sess')).replace(/\\/g, '/');
-    const installSessScriptPath = extensionContext.asAbsolutePath(path.join('R', 'install_sess.R')).replace(/\\/g, '/');
+    const consentDirectory = await ensureAttachSessConsentService(generation);
+    if (!isAttachmentLifecycleCurrent(generation)) { throw new Error('The session watcher is shutting down.'); }
     const scriptPath = getAttachSessionScriptPath(pipePath);
-    await fs.ensureDir(path.dirname(scriptPath));
-    await fs.writeFile(scriptPath, buildAttachSessionScript(pipePath, sessPath, installSessScriptPath), { encoding: 'utf-8', mode: 0o600 });
-    await setOwnerOnlyPermissions(scriptPath);
-    attachSessionScriptPath = scriptPath;
+    await fsp.mkdir(path.dirname(scriptPath), { recursive: true });
+    const publish = attachScriptPublication.catch(() => undefined).then(async () => {
+        if (!isAttachmentLifecycleCurrent(generation)) { throw new Error('The session watcher is shutting down.'); }
+        const temporaryPath = `${scriptPath}.${crypto.randomBytes(8).toString('hex')}.tmp`;
+        let published = false;
+        try {
+            await fsp.writeFile(temporaryPath, buildAttachSessionScript(pipePath, sessPath, consentDirectory), { encoding: 'utf-8', mode: 0o600, flag: 'wx' });
+            await setOwnerOnlyPermissions(temporaryPath);
+            if (!isAttachmentLifecycleCurrent(generation)) { throw new Error('The session watcher is shutting down.'); }
+            await fsp.rename(temporaryPath, scriptPath);
+            published = true;
+            if (!isAttachmentLifecycleCurrent(generation)) { throw new Error('The session watcher shut down while publishing attach command.'); }
+            // Keep this check and ownership registration synchronous so shutdown cannot miss the script.
+            attachSessionScriptPath = scriptPath;
+        } catch (error) {
+            await removePathIfExists(temporaryPath);
+            if (published && !isAttachmentLifecycleCurrent(generation)) { await removePathIfExists(scriptPath); }
+            throw error;
+        }
+    });
+    attachScriptPublication = publish;
+    await publish;
+    if (!isAttachmentLifecycleCurrent(generation)) {
+        throw new Error('The session watcher shut down before returning the attach command.');
+    }
 
     return `source(${asRStringLiteral(scriptPath)})`;
 }
 
+export function getAttachSessionCommand(): Promise<string> {
+    const operation = getAttachSessionCommandCore();
+    pendingAttachmentPreparations.add(operation);
+    void operation.finally(() => pendingAttachmentPreparations.delete(operation)).catch(() => undefined);
+    return operation;
+}
+
 async function removePathIfExists(pathLike: string): Promise<void> {
     try {
-        if (await fs.pathExists(pathLike)) {
-            await fs.remove(pathLike);
+        if (await pathExists(pathLike)) {
+            await fsp.rm(pathLike, { recursive: true, force: true });
         }
     } catch (e) {
         console.warn(`[session cleanup] Failed to remove ${pathLike}`, e);
@@ -882,40 +1366,93 @@ async function removePathIfExists(pathLike: string): Promise<void> {
 }
 
 export async function shutdownSessionWatcher(): Promise<void> {
-    // Startup publishes the server only after listen and permission setup finish.
-    // Wait before capturing it, otherwise it could survive extension shutdown.
-    await globalSessionServerStartup?.catch(() => undefined);
-    const pipePath = globalPipePath;
-
-    for (const socket of activeConnections) {
-        socket.destroy();
+    attachmentLifecycleGeneration++;
+    attachmentLifecycleStopping = true;
+    const shutdownGeneration = attachmentLifecycleGeneration;
+    const consentStartup = attachConsentStartup;
+    const consentService = attachConsentService;
+    const consentDirectory = attachConsentDirectory;
+    const serverStartup = globalSessionServerStartup;
+    const pipePathAtShutdown = globalPipePath;
+    const serverAtShutdown = globalSessionServer;
+    const manualScriptPath = attachSessionScriptPath;
+    const preparationScripts = [...preparedAttachmentScripts];
+    const pendingOperations = [...pendingAttachmentPreparations];
+    const sessionsAtShutdown = serverAtShutdown
+        ? [...sessions.values()].filter(target => target.socket._server === serverAtShutdown)
+        : [];
+    const shutdownChanges: RSessionConnectionChange[] = [];
+    let clearActive = false;
+    for (const target of sessionsAtShutdown) {
+        if (sessions.get(target.sessionId) !== target) { continue; }
+        sessions.delete(target.sessionId);
+        terminalRegistry.releaseSession(target);
+        const disconnected = invalidateSessionConnection(target);
+        if (disconnected) { shutdownChanges.push(disconnected); }
+        if (activeSession === target) { clearActive = true; }
     }
-    activeConnections.clear();
-    pendingSessionAttachments.clear();
-    pipeClient = undefined;
+    if (clearActive) { void clearActiveSession(); }
+    for (const [sessionId, socket] of pendingSessionAttachments) {
+        if (socket._server === serverAtShutdown) { pendingSessionAttachments.delete(sessionId); }
+    }
+    // Queue removal of the fixed manual-attach path before a redeployed lifecycle
+    // can publish a replacement at the same path.
+    const manualCleanup = attachScriptPublication.catch(() => undefined).then(async () => {
+        if (manualScriptPath) { await removePathIfExists(manualScriptPath); }
+    });
+    attachScriptPublication = manualCleanup;
+    // Snapshot and revoke before notifying; listeners may redeploy synchronously.
+    enqueueSessionConnectionChanges(shutdownChanges);
+    await Promise.allSettled(pendingOperations);
+    await manualCleanup.catch(() => undefined);
+    await consentStartup?.catch(() => undefined);
+    await consentService?.stop();
+    if (attachConsentService === consentService) { attachConsentService = undefined; }
+    if (consentDirectory) {
+        await removePathIfExists(consentDirectory);
+        if (attachConsentDirectory === consentDirectory) { attachConsentDirectory = undefined; }
+    }
+    if (attachConsentStartup === consentStartup) { attachConsentStartup = undefined; }
+    // Await the startup snapshot so a server published by it can be closed below.
+    await serverStartup?.catch(() => undefined);
+    const pipePath = pipePathAtShutdown;
+    const server = serverAtShutdown;
 
-    if (globalSessionServer) {
+    const oldSockets = server ? [...activeConnections].filter(socket => socket._server === server) : [];
+    for (const socket of oldSockets) {
+        socket.destroy();
+        for (const [sessionId, pending] of pendingSessionAttachments) {
+            if (pending === socket) { pendingSessionAttachments.delete(sessionId); }
+        }
+    }
+    if (pipeClient && pipeClient._server === server) { pipeClient = undefined; }
+
+    if (server) {
         await new Promise<void>((resolve) => {
             try {
-                globalSessionServer?.close(() => resolve());
+                server.close(() => resolve());
             } catch {
                 resolve();
             }
         });
-        globalSessionServer = undefined;
+        if (globalSessionServer === server) { globalSessionServer = undefined; }
     }
 
-    if (attachSessionScriptPath) {
-        await removePathIfExists(attachSessionScriptPath);
-        attachSessionScriptPath = undefined;
+    for (const scriptPath of preparationScripts) {
+        await removePathIfExists(scriptPath);
+        preparedAttachmentScripts.delete(scriptPath);
     }
 
     if (pipePath && pipePath.endsWith('.sock')) {
         await removePathIfExists(pipePath);
     }
 
-    globalPipePath = undefined;
-    globalSessionServerStartup = undefined;
+    if (attachmentLifecycleGeneration === shutdownGeneration) {
+        if (globalPipePath === pipePath) { globalPipePath = undefined; }
+        if (globalSessionServerStartup === serverStartup) { globalSessionServerStartup = undefined; }
+        if (attachSessionScriptPath === manualScriptPath) { attachSessionScriptPath = undefined; }
+        attachScriptPublication = Promise.resolve();
+    }
 }
 
 export async function activateRSession(): Promise<void> {
@@ -1115,7 +1652,7 @@ export async function showDataView(
                 }
                 existing.title = title;
                 existing.reveal(existing.viewColumn, true);
-                existing.webview.html = await getTableHtml(existing.webview, undefined, title);
+                existing.webview.html = await getTableHtml(existing.webview, undefined, title, sessionId);
                 return;
             }
         }
@@ -1132,11 +1669,12 @@ export async function showDataView(
                 localResourceRoots: [Uri.file(resDir)],
             });
         panel.iconPath = new UriIcon('open-preview');
+        attachViewerSessionBridge(panel, sessionId);
         if (viewId) {
             registerDataViewPanel(panel, panelKey, viewId, sessionId, stateGeneration);
             attachDynamicDataViewBridge(panel, viewId, sessionId);
         }
-        const content = await getTableHtml(panel.webview, file || undefined, title);
+        const content = await getTableHtml(panel.webview, file || undefined, title, sessionId);
         panel.webview.html = content;
     } else if (source === 'list') {
         if (viewId) {
@@ -1148,7 +1686,7 @@ export async function showDataView(
                 existing.title = title;
                 existing.reveal(existing.viewColumn, true);
                 existing.webview.html = getListHtml(
-                    existing.webview, title, navigation
+                    existing.webview, title, navigation, sessionId
                 );
                 return;
             }
@@ -1166,6 +1704,7 @@ export async function showDataView(
                 localResourceRoots: [Uri.file(resDir)],
             });
         panel.iconPath = new UriIcon('preview');
+        attachViewerSessionBridge(panel, sessionId);
         if (viewId) {
             registerDataViewPanel(panel, panelKey, viewId, sessionId, stateGeneration);
             const webview = panel.webview;
@@ -1220,7 +1759,7 @@ export async function showDataView(
             });
         }
         panel.webview.html = getListHtml(
-            panel.webview, title, navigation
+            panel.webview, title, navigation, sessionId
         );
     } else {
         await commands.executeCommand('vscode.open', Uri.file(file), {
@@ -1232,7 +1771,27 @@ export async function showDataView(
     console.info('[showDataView] Done');
 }
 
-export async function getTableHtml(webview: Webview, file: string | undefined, title: string): Promise<string> {
+function getViewerSessionHtml(sessionId: string | null): string {
+    return getViewerSessionContext(sessionId)?.getHtml() ?? '';
+}
+
+function attachViewerSessionBridge(panel: vscode.WebviewPanel, sessionId: string | null): void {
+    getViewerSessionContext(sessionId)?.attach(panel);
+}
+
+export function getViewerSessionContext(sessionId: string | null, saved?: ViewerSessionSource): ViewerSessionContext | undefined {
+    const attached = sessions.get(sessionId ?? '');
+    // A saved Viewer belongs to its original process, never a replacement.
+    const owner = saved && (saved.processExited || !attached || sessionProcessIdentity(attached) !== sessionProcessIdentity(saved))
+        ? saved : attached;
+    return owner ? createViewerSessionContext(owner, sessionProcessMonitor) : undefined;
+}
+
+export async function getTableHtml(
+    webview: Webview, file: string | undefined, title: string, sessionId: string | null = null,
+): Promise<string> {
+    const sessionHtml = getViewerSessionHtml(sessionId);
+    const codicons = webview.asWebviewUri(Uri.file(path.join(resDir, 'codicon.css'))).toString();
     const pageSize = config().get<number>('session.data.pageSize', 500);
     if (!file) {
         const documentGeneration = ++documentGenerationRevision;
@@ -1244,6 +1803,7 @@ export async function getTableHtml(webview: Webview, file: string | undefined, t
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>${escapeHtml(title)}</title>
+    <link rel="stylesheet" href="${codicons}">
     <style media="only screen">
     html, body {
         height: 100%;
@@ -1653,7 +2213,7 @@ export async function getTableHtml(webview: Webview, file: string | undefined, t
             const info = document.createElement('span');
             info.textContent = 'Full data';
             info.title = 'This view retains the full object without a copy. Reference edits may appear here. Reopen from the cell to refresh after edits. Sorting and filtering scan the full data.';
-            document.querySelector('#viewerToolbar').append(info);
+            document.querySelector('#viewerControls').append(info);
         }
         const bigintFields = prepareViewerColumns(columns);
         updateViewerRowCount(filteredRows, totalRows);
@@ -1750,7 +2310,7 @@ export async function getTableHtml(webview: Webview, file: string | undefined, t
     </script>
 </head>
 <body>
-    ${getDataViewerToolbarHtml()}
+    ${getDataViewerToolbarHtml(sessionHtml)}
     <div id="gridContainer">
         <div id="myGrid" style="height: 100%;"></div>
         ${getDataViewerColumnPanelHtml()}
@@ -1760,6 +2320,7 @@ export async function getTableHtml(webview: Webview, file: string | undefined, t
             <button id="fetchRetryBtn" type="button">Retry</button>
         </div>
     </div>
+    <script>${getViewerSessionScript()}</script>
 </body>
 </html>
 `;
@@ -1773,6 +2334,7 @@ export async function getTableHtml(webview: Webview, file: string | undefined, t
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>${escapeHtml(title)}</title>
+    <link rel="stylesheet" href="${codicons}">
     <style media="only screen">
     html, body {
         height: 100%;
@@ -1919,11 +2481,12 @@ export async function getTableHtml(webview: Webview, file: string | undefined, t
     </script>
 </head>
 <body onload='onload()'>
-    ${getDataViewerToolbarHtml()}
+    ${getDataViewerToolbarHtml(sessionHtml)}
     <div id="gridContainer">
         <div id="myGrid" style="height: 100%;"></div>
         ${getDataViewerColumnPanelHtml()}
     </div>
+    <script>${getViewerSessionScript()}</script>
 </body>
 </html>
 `;
@@ -1932,7 +2495,8 @@ export async function getTableHtml(webview: Webview, file: string | undefined, t
 export function getListHtml(
     webview: Webview,
     title: string,
-    navigation?: ListViewNavigation
+    navigation?: ListViewNavigation,
+    sessionId: string | null = null,
 ): string {
     const documentGeneration = ++documentGenerationRevision;
     documentGenerations.set(webview, documentGeneration);
@@ -1968,6 +2532,7 @@ export function getListHtml(
         <button id="back" class="back" title="Back" aria-label="Back" disabled><span class="codicon codicon-arrow-left" aria-hidden="true"></span>Back</button>
         <nav id="breadcrumbs" class="breadcrumbs" aria-label="Object path"></nav>
         <button id="reset" class="reset" title="Reset to initial view" aria-label="Reset to initial view"><span class="codicon codicon-discard" aria-hidden="true"></span>Reset</button>
+        ${getViewerSessionHtml(sessionId)}
     </div>
     <div id="navigation-status" class="navigation-status" role="status"></div>
     <div id="list" class="list"></div>
@@ -1975,6 +2540,7 @@ export function getListHtml(
     ${getListViewerScript(documentGeneration, navigation ?? {
         title, path: [], breadcrumbs: [{ label: title, path: [] }],
     })}
+    ${getViewerSessionScript()}
     </script>
 </body>
 </html>
@@ -2023,8 +2589,7 @@ async function refreshActiveSession(session: Session): Promise<void> {
     rLanguageService?.syncSessionState(workspaceData, session.resource, session.sessionId);
 
     if (sessionStatusBarItem) {
-        const version = rVer.replace(/^R (?:version )?/, '').replace(/\s+\(.*/, '');
-        sessionStatusBarItem.text = `R ${version}: ${pid}`;
+        sessionStatusBarItem.text = formatSessionLabel(rVer, pid);
         sessionStatusBarItem.tooltip = `${info.version || rVer}\nProcess ID: ${pid}\nCommand: ${info.command}\nStart time: ${info.start_time}\nClick to attach to active terminal.`;
         sessionStatusBarItem.show();
     }
@@ -2039,13 +2604,22 @@ export async function activateSessionById(sessionId: string, options?: RSessionA
     }
     const target = sessions.get(sessionId);
     if (!enableSessionWatcher && !target?.requester) { return false; }
-    if (!target || !isConnectedSession(target)) {
+    if (!target || !isConnectedSession(target)
+        || (options?.connectionId !== undefined
+            && (target.requester || !target.connectionId || target.connectionId !== options.connectionId))
+        || (options?.select !== undefined && typeof options.select !== 'boolean')) {
         return false;
     }
+    const connectionId = target.connectionId;
     const terminal = options?.terminal;
     if (terminal && !terminalRegistry.bindExplicit(terminal, target)) { return false; }
+    const isStillCurrent = () => sessions.get(sessionId) === target && isConnectedSession(target)
+        && target.connectionId === connectionId && (!terminal || terminalRegistry.ownerOf(terminal) === target);
+    if (options?.select === false) {
+        return isStillCurrent();
+    }
     await activateSession(target);
-    return true;
+    return isStillCurrent();
 }
 
 export function resetStatusBar(): void {
@@ -2112,9 +2686,30 @@ async function handleNotification(message: Record<string, unknown>, socket: IpcS
 
     switch (method) {
         case 'attach': {
+            if (!isLiveSessionSocket(socket)) { socket.destroy(); return; }
             const protocolVersion = params.protocol_version;
             const sessionId = typeof params.session_id === 'string' ? params.session_id.trim() : '';
             const host = typeof params.host === 'string' ? params.host : '';
+            const attachmentId = params.attachment_id === undefined || params.attachment_id === null
+                ? undefined : params.attachment_id;
+            const autoActivateValue = params.auto_activate;
+            if (attachmentId !== undefined && (typeof attachmentId !== 'string'
+                || !/^[A-Za-z0-9_-]{1,128}$/.test(attachmentId))) {
+                void window.showErrorMessage('Cannot attach R session: invalid attachment_id metadata; expected 1–128 ASCII letters, digits, underscores, or hyphens.');
+                socket.destroy();
+                return;
+            }
+            if (autoActivateValue !== undefined && typeof autoActivateValue !== 'boolean') {
+                void window.showErrorMessage('Cannot attach R session: invalid auto_activate metadata; expected a boolean.');
+                socket.destroy();
+                return;
+            }
+            if (autoActivateValue === false && attachmentId === undefined) {
+                void window.showErrorMessage('Cannot attach R session: auto_activate=false requires a valid attachment_id. Update the external console and try again.');
+                socket.destroy();
+                return;
+            }
+            const autoActivate = autoActivateValue !== false;
             if (protocolVersion !== SESS_PROTOCOL_VERSION) {
                 const found = protocolVersion === undefined ? 'missing' : JSON.stringify(protocolVersion);
                 void window.showErrorMessage(`Cannot attach R session: unsupported sess protocol version ${found}; this extension requires protocol version ${SESS_PROTOCOL_VERSION}.`);
@@ -2147,8 +2742,8 @@ async function handleNotification(message: Record<string, unknown>, socket: IpcS
             pendingSessionAttachments.set(sessionId, socket);
             const selectionRevision = sessionSelectionRevision;
             const selectedTerminal = window.activeTerminal;
-            const candidate = rPid && isLocalHost(host) ? await findLocalTerminal(rPid) : undefined;
-            if (socket.destroyed) {
+            const candidate = autoActivate && rPid && isLocalHost(host) ? await findLocalTerminal(rPid) : undefined;
+            if (!isLiveSessionSocket(socket)) {
                 return;
             }
             // Another attach notification on this socket may have completed while
@@ -2166,6 +2761,7 @@ async function handleNotification(message: Record<string, unknown>, socket: IpcS
                 return;
             }
             pendingSessionAttachments.delete(sessionId);
+            if (!isLiveSessionSocket(socket)) { socket.destroy(); return; }
             const native = candidate?.isCurrent() ? candidate : undefined;
             const previous = sessions.get(sessionId);
             if (previous) {
@@ -2178,8 +2774,13 @@ async function handleNotification(message: Record<string, unknown>, socket: IpcS
                 socket._pipePath ?? globalPipePath ?? '',
                 socket,
             );
+            session.connectionId = crypto.randomBytes(16).toString('hex');
+            session.attachmentId = attachmentId;
             socket._sessionId = sessionId;
             sessions.set(sessionId, session);
+            const changes: RSessionConnectionChange[] = [];
+            const disconnected = previous ? invalidateSessionConnection(previous) : undefined;
+            if (disconnected) { changes.push(disconnected); }
             if (previous && previous.socket !== socket) {
                 previous.socket.destroy();
             }
@@ -2194,14 +2795,32 @@ async function handleNotification(message: Record<string, unknown>, socket: IpcS
             const terminalPid = native && terminalRegistry.attachNative(native.terminal, session) ? native.pid : undefined;
             if (terminalPid) { socket._terminalPid = Number(terminalPid); }
 
-            await activateAttachedSession(session, previous, selectionRevision, selectedTerminal);
+            const canUseLegacyUiEffects = autoActivate
+                && selectionRevision === sessionSelectionRevision
+                && selectedTerminal === window.activeTerminal;
+            let activation: Promise<void> = Promise.resolve();
+            if (previous && activeSession === previous) {
+                activation = activateSession(session);
+            } else if (autoActivate) {
+                activation = activateAttachedSession(session, previous, selectionRevision, selectedTerminal);
+            }
+            // Capture after the synchronous activation decision but before notifying
+            // listeners, so a reentrant user/listener selection cancels stale effects.
+            const committedSelectionRevision = sessionSelectionRevision;
+            const connected = createSessionReference(session);
+            if (connected) { changes.push(Object.freeze({ kind: 'connected', session: connected })); }
+            enqueueSessionConnectionChanges(changes);
 
             console.info(`[startSessionWatcher] attach session ${sessionId} (${host || 'unknown'}:${rPid || 'unknown'}), terminal PID: ${terminalPid ?? 'unassociated'}`);
             purgeAddinPickerItems();
+            await activation;
+            const mayApplyUiEffects = () => activeSession === session
+                || (canUseLegacyUiEffects && sessionSelectionRevision === committedSelectionRevision);
+            if (!isLiveSessionSocket(socket) || !isCurrentSocket(socket) || !mayApplyUiEffects()) { return; }
             if (typeof params.plot_url === 'string' && params.plot_url) {
                 await globalPlotManager?.showHttpgdPlot(params.plot_url);
             }
-            scheduleWorkspaceRefresh(0);
+            if (isLiveSessionSocket(socket) && isCurrentSocket(socket) && mayApplyUiEffects()) { scheduleWorkspaceRefresh(0); }
             break;
         }
 
@@ -2243,7 +2862,10 @@ async function handleNotification(message: Record<string, unknown>, socket: IpcS
                     }
                 } else {
                     if (url.toLowerCase().endsWith('.html') || url.toLowerCase().endsWith('.htm')) {
-                        await showWebView(url, title, viewColumn);
+                        // Standalone HTML can arrive through page_viewer (e.g. profvis)
+                        // or browseURL as well as viewer; all belong to the source session.
+                        await showWebView(url, title, viewColumn,
+                            getViewerSessionContext(socket._sessionId ?? null));
                     } else {
                         await showDataView('object', 'txt', title, url, String(viewColumn));
                     }
@@ -2399,6 +3021,7 @@ export async function cleanupSession(sessionId: string, closingSocket?: IpcSocke
     }
     sessions.delete(sessionId);
     terminalRegistry.releaseSession(session);
+    const disconnected = invalidateSessionConnection(session);
     if (pipeClient === session.socket) {
         pipeClient = undefined;
     }
@@ -2406,9 +3029,9 @@ export async function cleanupSession(sessionId: string, closingSocket?: IpcSocke
         session.socket.destroy();
     }
     rLanguageService?.syncSessionState(undefined, session.resource, session.sessionId);
-    if (activeSession === session) {
-        await clearActiveSession();
-    }
+    const clearActive = activeSession === session ? clearActiveSession() : undefined;
+    if (disconnected) { enqueueSessionConnectionChanges([disconnected]); }
+    await clearActive;
 }
 
 export async function sessionRequest(
@@ -2459,6 +3082,10 @@ export async function sessionRequest(
 }
 
 export async function connectToSession(): Promise<void> {
+    if (!config().get<boolean>('sessionWatcher')) {
+        void window.showInformationMessage('This command requires that r.sessionWatcher be enabled.');
+        return;
+    }
     const command = await getAttachSessionCommand();
     void vscode.env.clipboard.writeText(command);
     void vscode.window.showInformationMessage(`R command copied to clipboard: ${command}`);

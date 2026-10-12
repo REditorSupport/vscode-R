@@ -1,6 +1,6 @@
 
 import * as vscode from 'vscode';
-import { Httpgd } from 'httpgd';
+import { HttpgdClient, HttpgdIdResponse, HttpgdPlotId, HttpgdRendererId } from './httpgdClient';
 import { HttpgdPlot, IHttpgdViewer, HttpgdViewerOptions } from './httpgdTypes';
 import * as path from 'path';
 import * as fs from 'fs';
@@ -9,7 +9,6 @@ import * as ejs from 'ejs';
 import { asViewColumn, config, setContext, UriIcon, makeWebviewCommandUriString } from '../util';
 import { extensionContext } from '../extension';
 import { FocusPlotMessage, InMessage, OutMessage, ToggleStyleMessage, UpdatePlotMessage, HidePlotMessage, AddPlotMessage, PreviewPlotLayout, PreviewPlotLayoutMessage, ToggleFullWindowMessage } from './webviewMessages';
-import { HttpgdIdResponse, HttpgdPlotId, HttpgdRendererId } from 'httpgd/lib/types';
 import { PlotViewer } from './types';
 
 export class HttpgdManager {
@@ -107,7 +106,8 @@ export class HttpgdViewer implements IHttpgdViewer, PlotViewer {
     readonly host: string;
     readonly token?: string;
     webviewPanel?: vscode.WebviewPanel;
-    readonly api: Httpgd;
+    readonly api: HttpgdClient;
+    private disposed = false;
     plots: HttpgdPlot<string>[] = [];
     activePlot?: HttpgdPlotId;
     hiddenPlots: HttpgdPlotId[] = [];
@@ -157,9 +157,11 @@ export class HttpgdViewer implements IHttpgdViewer, PlotViewer {
         this.token = options.token;
         this.parent = options.parent;
 
-        this.api = new Httpgd(this.host, this.token, true);
+        this.api = new HttpgdClient(this.host, this.token);
         this.api.onPlotsChanged((newState) => {
-            void this.refreshPlotsDelayed(newState.plots);
+            void this.refreshPlotsDelayed(newState.plots).catch(err => {
+                this.reportRefreshError(err);
+            });
         });
         const conf = config();
         this.customOverwriteCssPath = conf.get('plot.customStyleOverwrites', '');
@@ -186,7 +188,9 @@ export class HttpgdViewer implements IHttpgdViewer, PlotViewer {
         this.fullWindow = options.fullWindow ?? this.defaultFullWindow;
         this.resizeTimeoutLength = options.refreshTimeoutLength ?? this.resizeTimeoutLength;
         this.refreshTimeoutLength = options.refreshTimeoutLength ?? this.refreshTimeoutLength;
-        void this.api.connect();
+        void this.api.connect().catch(err => {
+            if (!this.disposed) { void vscode.window.showErrorMessage(`httpgd connection failed: ${String(err)}`); }
+        });
     }
 
     public handleCommand(command: string, ...args: unknown[]): void | Promise<void> {
@@ -270,7 +274,7 @@ export class HttpgdViewer implements IHttpgdViewer, PlotViewer {
     public resetPlots(): void {
         this.hiddenPlots = [];
         this.zoom = this.zoom0;
-        void this.refreshPlots(this.api.getPlots(), true, true);
+        void this.refreshPlots(this.api.getPlots(), true, true).catch(err => this.reportRefreshError(err));
     }
 
     public hidePlot(id?: HttpgdPlotId): void {
@@ -339,13 +343,13 @@ export class HttpgdViewer implements IHttpgdViewer, PlotViewer {
     public zoomOut(): void {
         if (this.zoom > 0.1) {
             this.zoom -= 0.1;
-            void this.resizePlot();
+            void this.resizePlot().catch(err => this.reportRefreshError(err));
         }
     }
 
     public zoomIn(): void {
         this.zoom += 0.1;
-        void this.resizePlot();
+        void this.resizePlot().catch(err => this.reportRefreshError(err));
     }
 
     public async setContextValues(mightBeInBackground: boolean = false): Promise<void> {
@@ -381,20 +385,25 @@ export class HttpgdViewer implements IHttpgdViewer, PlotViewer {
                 clearTimeout(this.resizeTimeout);
             }
             this.resizeTimeout = undefined;
-            void this.resizePlot();
+            void this.resizePlot().catch(err => this.reportRefreshError(err));
         } else if (!this.resizeTimeout) {
             this.resizeTimeout = setTimeout(() => {
-                void this.resizePlot().then(() =>
+                void this.resizePlot().catch(err => this.reportRefreshError(err)).then(() =>
                     this.resizeTimeout = undefined
                 );
             }, this.resizeTimeoutLength);
         }
     }
 
+    private reportRefreshError(err: unknown): void {
+        if (!this.disposed) { void vscode.window.showErrorMessage(`Plot refresh failed: ${String(err)}`); }
+    }
+
     protected async resizePlot(id?: HttpgdPlotId): Promise<void> {
         id ??= this.activePlot;
         if (!id) { return; }
         const plt = await this.getPlotContent(id, this.viewWidth, this.viewHeight, this.zoom);
+        if (this.disposed) { return; }
         this.plotWidth = plt.width;
         this.plotHeight = plt.height;
         this.updatePlot(plt);
@@ -406,7 +415,9 @@ export class HttpgdViewer implements IHttpgdViewer, PlotViewer {
         } else{
             clearTimeout(this.refreshTimeout);
             this.refreshTimeout = setTimeout(() => {
-                void this.refreshPlots(plotsIdResponse, redraw, force).then(() =>
+                void this.refreshPlots(plotsIdResponse, redraw, force).catch(err => {
+                    this.reportRefreshError(err);
+                }).then(() =>
                     this.refreshTimeout = undefined
                 );
             }, this.refreshTimeoutLength);
@@ -414,6 +425,7 @@ export class HttpgdViewer implements IHttpgdViewer, PlotViewer {
     }
 
     protected async refreshPlots(plotsIdResponse: HttpgdIdResponse[], redraw: boolean = false, force: boolean = false): Promise<void> {
+        if (this.disposed) { return; }
         const nPlots = this.plots.length;
         let plotIds = plotsIdResponse.map((x) => x.id);
         plotIds = plotIds.filter((id) => !this.hiddenPlots.includes(id));
@@ -426,6 +438,7 @@ export class HttpgdViewer implements IHttpgdViewer, PlotViewer {
             }
         });
         const newPlots = await Promise.all(newPlotPromises);
+        if (this.disposed) { return; }
         const oldPlotIds = this.plots.map(plt => plt.id);
         this.plots = newPlots;
         if (this.plots.length !== nPlots) {
@@ -475,8 +488,7 @@ export class HttpgdViewer implements IHttpgdViewer, PlotViewer {
             zoom: zoom,
             renderer: 'svgp'
         };
-        const plotContent = await this.api.getPlot(args);
-        const svg = await plotContent?.text() || '';
+        const svg = await this.api.getPlotText(args);
         const plt: HttpgdPlot<string> = {
             id: id,
             data: svg,
@@ -607,14 +619,19 @@ export class HttpgdViewer implements IHttpgdViewer, PlotViewer {
                 outFile = outUri.fsPath;
             } else {return;}
         }
-        const plt = await this.api.getPlot({ id: this.activePlot, renderer: rendererId }) as unknown as { body: NodeJS.ReadableStream };
-        const dest = fs.createWriteStream(outFile);
-        dest.on('error', (err) => void vscode.window.showErrorMessage(`Export failed: ${err.message}`));
-        dest.on('close', () => void vscode.window.showInformationMessage(`Export done: ${outFile || ''}`));
-        plt.body.pipe(dest);
+        try {
+            const bytes = await this.api.getPlotBytes({ id, renderer: rendererId });
+            await fs.promises.writeFile(outFile, bytes);
+            void vscode.window.showInformationMessage(`Export done: ${outFile}`);
+        } catch (err) {
+            if (!this.disposed) { void vscode.window.showErrorMessage(`Export failed: ${String(err)}`); }
+        }
     }
 
     public dispose(): void {
+        this.disposed = true;
+        clearTimeout(this.resizeTimeout);
+        clearTimeout(this.refreshTimeout);
         this.api.disconnect();
     }
 }

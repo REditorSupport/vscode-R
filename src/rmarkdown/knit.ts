@@ -1,6 +1,6 @@
 import * as util from '../util';
 import * as vscode from 'vscode';
-import * as fs from 'fs-extra';
+import * as fs from 'node:fs';
 import * as path from 'path';
 import * as yaml from 'js-yaml';
 

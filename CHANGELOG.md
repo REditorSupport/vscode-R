@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- Added the extension API's `session.prepareAttachment()` for extensions that own an R process and need vscode-R's managed `sess` setup. R errors and interrupts during manual attachment are now reported as messages while leaving the R prompt usable.
+- Added connection change events and live connection references for sess attachments, with activation controls for consumer-owned terminals.
+- The httpgd plot backend now requires the `httpgd` R package version 2.0.1 or later. Older versions are treated as unavailable when choosing the plot backend. (#1855)
+
 ## 3.0.1 - 2026-09-28
 
 - Bump version of both the extension and `sess` to `3.0.1` so users who installed an earlier `3.0.0` pre-release build of `sess` (before its connection protocol was finalized) are prompted to reinstall `sess`. (#1794)

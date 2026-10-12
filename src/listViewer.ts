@@ -1,5 +1,7 @@
 /// <reference lib="dom" />
 
+import { viewerSessionStyle } from './viewerSession';
+
 export interface ListViewNavigation {
     title: string;
     path: number[];
@@ -249,6 +251,8 @@ export const listViewerStyle = `
     .r-list-viewer .back { gap: 4px; padding: 4px 6px; flex-shrink: 0; border-radius: 3px; }
     .r-list-viewer .back:disabled { opacity: 0.4; cursor: default; background: transparent; }
     .r-list-viewer .reset { gap: 4px; padding: 4px 6px; flex-shrink: 0; border-radius: 3px; }
+    ${viewerSessionStyle}
+    .r-list-viewer .viewer-session { margin-left: auto; }
     .r-list-viewer .codicon { flex-shrink: 0; }
     .r-list-viewer .breadcrumbs {
         display: flex;

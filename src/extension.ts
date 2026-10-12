@@ -26,6 +26,7 @@ import * as languageService from './languageService';
 import { RTaskProvider } from './tasks';
 import { showRDebuggerCompatibilityWarningOnce } from './rDebuggerCompatibility';
 import { InteractiveManager } from './interactive/manager';
+import { initializeHtmlWidgetViewers, restoreHtmlViewer, runHtmlViewerCommand, shutdownHtmlWidgetViewers } from './webViewer';
 
 
 // global objects used in other files
@@ -62,11 +63,18 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
     const rExtension = new apiImplementation.RExtensionImplementation();
     rExtension.session = {
         getConnectionInfo: session.getConnectionInfo,
+        prepareAttachment: session.prepareAttachment,
         activate: session.activateSessionById,
+        onDidChangeSessionConnection: session.onDidChangeSessionConnection,
+        getSessionReference: session.getSessionReference,
     };
 
     // assign extension context to global variable
     extensionContext = context;
+    initializeHtmlWidgetViewers(context, {
+        resolveSession: source => session.getViewerSessionContext(source.sessionId, source)!,
+        getActiveSessionId: () => session.activeSession?.sessionId,
+    });
 
     // assign session watcher setting to global variable
     enableSessionWatcher = util.config().get<boolean>('sessionWatcher') ?? false;
@@ -164,6 +172,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
         'r.browser.refresh': session.refreshBrowser,
         'r.browser.openExternal': session.openExternalBrowser,
         'r.webview.find': () => vscode.commands.executeCommand('editor.action.webvieweditor.showFind'),
+        'r.htmlViewer.restore': restoreHtmlViewer,
+        'r.htmlViewer.back': () => runHtmlViewerCommand('back'),
+        'r.htmlViewer.forward': () => runHtmlViewerCommand('forward'),
+        'r.htmlViewer.remove': () => runHtmlViewerCommand('remove'),
+        'r.htmlViewer.info': () => runHtmlViewerCommand('info'),
 
         // (help related commands are registered in rHelp.initializeHelp)
     };
@@ -284,6 +297,7 @@ export function ensureWorkspaceViewer(): void {
 }
 
 export async function deactivate(): Promise<void> {
+    await shutdownHtmlWidgetViewers(true);
     (globalPlotManager as plotViewer.CommonPlotManager)?.dispose();
     await session.shutdownSessionWatcher();
 }

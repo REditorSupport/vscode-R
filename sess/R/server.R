@@ -5,6 +5,14 @@
 #' @param use_rstudioapi Logical. Enable rstudioapi emulation. Defaults to TRUE.
 #' @param plot_backend Plot backend: `auto`, `jgd`, `httpgd`, `standard`, or
 #'   `native`. NULL also selects `auto`.
+#' @param attachment_id Optional opaque identifier supplied by an external
+#'   terminal integration to correlate this attachment with its preparation.
+#'   It must be 1-128 ASCII characters from `A-Z`, `a-z`, `0-9`, `_`, and `-`.
+#'   It is not an authentication token or an exclusive ownership claim.
+#' @param auto_activate Logical. Whether vscode-R should select this attachment
+#'   automatically. `FALSE` requires `attachment_id`.
+#' @return Invisibly returns `TRUE` when the IPC connection and runtime startup
+#'   succeed, or `FALSE` when the IPC endpoint is unavailable.
 #' @details When SESS_DISCOVERY_FILE describes the connected endpoint, an
 #'   unexpected disconnect waits for a replacement endpoint in that file and
 #'   reconnects with the same runtime options and session identity. The optional
@@ -14,10 +22,28 @@
 #'   `options(sess.quiet = TRUE)` to suppress the successful connection message.
 #' @export
 connect <- function(endpoint = NULL, use_rstudioapi = TRUE,
-                    plot_backend = c("auto", "jgd", "httpgd", "standard", "native")) {
+                    plot_backend = c("auto", "jgd", "httpgd", "standard", "native"),
+                    attachment_id = NULL, auto_activate = TRUE) {
+  if (!is.null(attachment_id) &&
+        !(is.character(attachment_id) && length(attachment_id) == 1L &&
+            !is.na(attachment_id) &&
+            grepl("^[A-Za-z0-9_-]{1,128}$", attachment_id, useBytes = TRUE))) {
+    stop("attachment_id must be NULL or a 1-128 character ASCII identifier.", call. = FALSE)
+  }
+  if (!(is.logical(auto_activate) && length(auto_activate) == 1L && !is.na(auto_activate))) {
+    stop("auto_activate must be a single non-NA logical value.", call. = FALSE)
+  }
+  if (!auto_activate && is.null(attachment_id)) {
+    stop("auto_activate = FALSE requires attachment_id.", call. = FALSE)
+  }
+
   plot_backend <- .resolve_plot_backend(plot_backend)
   # Invalidate poll callbacks and restore a previous runtime before reconnecting.
   .transport_disconnect(silent = TRUE)
+  # Metadata belongs to this connect call, not to the R process. In particular,
+  # a later native attach must not inherit an external terminal's identity.
+  .sess_env$attachment_id <- attachment_id
+  .sess_env$auto_activate <- auto_activate
   .sess_env$con <- NULL
   .sess_env$pending_responses <- list()
   .sess_env$read_buffer <- ""
@@ -34,7 +60,7 @@ connect <- function(endpoint = NULL, use_rstudioapi = TRUE,
   endpoint <- .resolve_endpoint(endpoint)
   if (!nzchar(endpoint)) {
     warning("[sess] Connection info not available. Cannot connect to VS Code.")
-    return(invisible(NULL))
+    return(invisible(FALSE))
   }
 
   discovery_file <- Sys.getenv("SESS_DISCOVERY_FILE")
@@ -45,7 +71,8 @@ connect <- function(endpoint = NULL, use_rstudioapi = TRUE,
     .configure_discovery_jgd(discovery, plot_backend %in% c("auto", "jgd"))
     .sess_env$reconnect <- list(
       path = discovery_file, endpoint = endpoint,
-      options = list(use_rstudioapi = use_rstudioapi, plot_backend = plot_backend)
+      options = list(use_rstudioapi = use_rstudioapi, plot_backend = plot_backend,
+                     attachment_id = attachment_id, auto_activate = auto_activate)
     )
   }
 
@@ -124,7 +151,7 @@ connect <- function(endpoint = NULL, use_rstudioapi = TRUE,
     )
   }
 
-  invisible(NULL)
+  invisible(isTRUE(connected) && !is.null(.sess_env$con))
 }
 
 # Resolve the direct argument, environment variables, then discovery data.
@@ -242,7 +269,7 @@ connect <- function(endpoint = NULL, use_rstudioapi = TRUE,
 .session_attach_metadata <- function() {
   host <- Sys.info()[["nodename"]]
   if (is.null(host) || is.na(host)) host <- ""
-  list(
+  metadata <- list(
     protocol_version = 2L,
     interactive_token = .sess_env$interactive_token,
     sess_version = as.character(utils::packageVersion("sess")),
@@ -258,6 +285,11 @@ connect <- function(endpoint = NULL, use_rstudioapi = TRUE,
       start_time = format(Sys.time())
     )
   )
+  if (!is.null(.sess_env$attachment_id)) {
+    metadata$attachment_id <- .sess_env$attachment_id
+    metadata$auto_activate <- .sess_env$auto_activate
+  }
+  metadata
 }
 
 # Wait for a replacement endpoint, keeping the last connected endpoint until
@@ -281,7 +313,9 @@ connect <- function(endpoint = NULL, use_rstudioapi = TRUE,
                                settings$options$plot_backend %in% c("auto", "jgd"))
       .sess_env$reconnecting <- TRUE
       tryCatch(
-        do.call(connect, c(list(endpoint = endpoint), settings$options)),
+        .reconnect_with_startup(endpoint, function() {
+          do.call(connect, c(list(endpoint = endpoint), settings$options))
+        }),
         error = function(e) message("[sess] Reconnection failed: ", conditionMessage(e)),
         finally = {
           .sess_env$reconnecting <- NULL
@@ -299,6 +333,18 @@ connect <- function(endpoint = NULL, use_rstudioapi = TRUE,
     .schedule_reconnect(settings, .sess_env$transport_generation, schedule)
   }, 1)
   invisible(NULL)
+}
+
+.reconnect_with_startup <- function(endpoint, setup) {
+  registration <- getOption("vscodeR.terminalStartup")
+  if (!is.list(registration) || !identical(registration$pid, Sys.getpid())) {
+    return(setup())
+  }
+  if (!is.function(registration$run)) {
+    message("[sess] Terminal startup notifier is unavailable; reconnect was skipped.")
+    return(invisible(FALSE))
+  }
+  registration$run(endpoint, setup)
 }
 
 .transport_disconnect <- function(silent = FALSE, reconnect = FALSE) {

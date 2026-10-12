@@ -1,6 +1,6 @@
 'use strict';
 
-import { writeFile } from 'fs-extra';
+import { writeFile } from 'node:fs';
 import { existsSync, readFileSync } from 'fs';
 import { join } from 'path';
 import { window } from 'vscode';

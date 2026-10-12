@@ -12,7 +12,7 @@ import { discoverArf, probeArfSession, ArfSession } from './arf';
 import { resolveArfExecutable } from './arfExecutable';
 import { prepareSupervisor } from './supervisor';
 import { Transcript, TranscriptCell } from './transcript';
-import { DISPLAY_MIME, InteractiveSerializer } from './notebook';
+import { DISPLAY_MIME, InteractiveSerializer, persistentCellMetadata, persistentNotebookMetadata, restoredCellMetadata } from './notebook';
 import { setInteractiveExecutor } from './executionTarget';
 import * as session from '../session';
 import * as util from '../util';
@@ -25,6 +25,7 @@ import { HistoryPage, searchHistory } from './history';
 import { readExecutionRecords, readPreviousJournal } from './journal';
 import { sessionAge, sessionPresentation } from './sessionPresentation';
 import { runningSessions, stopSession } from './sessionLifecycle';
+import { InteractiveInputFeatures } from './inputFeatures';
 
 interface InteractiveView {
     client: AgentClient;
@@ -72,6 +73,9 @@ export class InteractiveManager implements vscode.Disposable, vscode.TreeDataPro
     private status = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 20);
 
     constructor(private context: vscode.ExtensionContext) {
+        // A restart replaces the transcript, invalidating pending formatting edits.
+        this.disposables.push(new InteractiveInputFeatures(editor => [...this.views.values()].find(view =>
+            !view.disposed && view.inputUri?.toString() === editor.document.uri.toString())?.model));
         this.root = util.config().get<string>('interactive.storagePath') || defaultStorage();
         this.clientId = randomUUID();
         // Native Interactive tabs restore their URI, but discard notebook metadata.
@@ -794,6 +798,7 @@ export class InteractiveManager implements vscode.Disposable, vscode.TreeDataPro
         const target = session.registerSessionTransport(`${manifest.id}:${manifest.generation}`, manifest.host, manifest.directory, data =>
             client.request('inspect', { method: data.method, params: data.params ?? {} }, data.method === 'hover' || data.method === 'completion' ? 250 : 6000));
         target.pid = String(manifest.rPid ?? ''); target.rVer = manifest.rVersion ?? '';
+        target.processExited = manifest.status === 'exited';
         target.rPath = manifest.rPath; target.libraryPaths = manifest.libraryPaths;
         target.label = manifest.label;
         target.execute = async code => {
@@ -834,17 +839,18 @@ export class InteractiveManager implements vscode.Disposable, vscode.TreeDataPro
 
     private async restore(view: InteractiveView, snapshot: AgentSnapshot, preserveDrafts = true): Promise<void> {
         const previousCells = preserveDrafts ? view.notebook.getCells() : [];
-        const drafts = previousCells.filter(cell => cell.kind === vscode.NotebookCellKind.Code && !cell.metadata.rExecutionId)
-            .map(cell => new vscode.NotebookCellData(cell.kind, cell.document.getText(), cell.document.languageId));
-        const edited = new Map(previousCells.map(cell => [cell.metadata.rExecutionId as string, cell.document.getText()]));
-        const previousNotice = previousCells.find(cell => cell.metadata.rSessionNotice === snapshot.manifest.generation);
         for (const { task } of view.executions.values()) { task.end(undefined); }
         view.executions.clear();
         for (const cell of view.notebook.getCells()) { session.unbindSessionDocument(cell.document.uri); }
         view.client.manifest = snapshot.manifest;
+        view.target.pid = String(snapshot.manifest.rPid ?? ''); view.target.rVer = snapshot.manifest.rVersion ?? '';
+        view.target.processExited = snapshot.manifest.status === 'exited';
         view.target.rPath = snapshot.manifest.rPath; view.target.libraryPaths = snapshot.manifest.libraryPaths;
         view.base = snapshot.manifest.assetBase ? (await vscode.env.asExternalUri(vscode.Uri.parse(snapshot.manifest.assetBase))).toString(true) : '';
         view.model.restore(snapshot);
+        const metadata = new Map(previousCells.map(cell => [cell, restoredCellMetadata(cell.metadata)]));
+        const edited = new Map(previousCells.map(cell => [metadata.get(cell)!.rExecutionId as string, cell.document.getText()]));
+        const previousNotice = previousCells.find(cell => metadata.get(cell)!.rSessionNotice === snapshot.manifest.generation);
         if (snapshot.workspace) { view.target.workspaceData = snapshot.workspace as unknown as session.WorkspaceData; }
         const cells: vscode.NotebookCellData[] = [];
         for (const model of [...view.history, view.model]) {
@@ -860,13 +866,33 @@ export class InteractiveManager implements vscode.Disposable, vscode.TreeDataPro
         if (snapshot.manifest.status === 'exited') { cells.push(this.noticeData(view, 'stopped')); }
         else if (previousNotice) {
             const notice = new vscode.NotebookCellData(vscode.NotebookCellKind.Markup, previousNotice.document.getText(), 'markdown');
-            notice.metadata = previousNotice.metadata; cells.push(notice);
+            notice.metadata = persistentCellMetadata(metadata.get(previousNotice)!, 'markdown'); cells.push(notice);
         }
-        cells.push(...drafts);
-        if (view.notebook.notebookType === 'r-interactive' && !drafts.length) { cells.push(new vscode.NotebookCellData(vscode.NotebookCellKind.Code, '', 'r')); }
+        // Group drafts by their next retained execution or notice, then merge
+        // once. Identity lookups avoid source matching and repeated array edits.
+        const executions = new Map(cells.map(cell => [cell.metadata?.rExecutionId, cell]));
+        const notices = new Map(cells.map(cell => [cell.metadata?.rSessionNotice, cell]));
+        const draftsBefore = new Map<vscode.NotebookCellData, vscode.NotebookCellData[]>();
+        let pendingDrafts: vscode.NotebookCellData[] = [];
+        let draftCount = 0;
+        for (const cell of previousCells) {
+            const data = metadata.get(cell)!;
+            if (cell.kind === vscode.NotebookCellKind.Code && !data.rExecutionId) {
+                pendingDrafts.push(new vscode.NotebookCellData(cell.kind, cell.document.getText(), cell.document.languageId));
+                draftCount++;
+            } else {
+                const anchor = data.rExecutionId ? executions.get(data.rExecutionId)
+                    : data.rSessionNotice ? notices.get(data.rSessionNotice) : undefined;
+                if (anchor && pendingDrafts.length) {
+                    draftsBefore.set(anchor, pendingDrafts); pendingDrafts = [];
+                }
+            }
+        }
+        const restoredCells = cells.flatMap(cell => [...draftsBefore.get(cell) ?? [], cell]).concat(pendingDrafts);
+        if (view.notebook.notebookType === 'r-interactive' && !draftCount) { restoredCells.push(new vscode.NotebookCellData(vscode.NotebookCellKind.Code, '', 'r')); }
         const edit = new vscode.WorkspaceEdit();
-        edit.set(view.notebook.uri, [vscode.NotebookEdit.replaceCells(new vscode.NotebookRange(0, view.notebook.cellCount), cells),
-            vscode.NotebookEdit.updateNotebookMetadata({ rSessionId: snapshot.manifest.id, rGeneration: snapshot.manifest.generation })]);
+        edit.set(view.notebook.uri, [vscode.NotebookEdit.replaceCells(new vscode.NotebookRange(0, view.notebook.cellCount), restoredCells),
+            vscode.NotebookEdit.updateNotebookMetadata(persistentNotebookMetadata(view.notebook.metadata, snapshot.manifest.id, snapshot.manifest.generation))]);
         await vscode.workspace.applyEdit(edit);
         for (const cell of view.notebook.getCells()) { session.bindSessionDocument(cell.document.uri, view.target); }
         if (snapshot.input && view.client.control) { void this.prompt(view, snapshot.input); }
@@ -895,7 +921,7 @@ export class InteractiveManager implements vscode.Disposable, vscode.TreeDataPro
         if (view.restarting) { throw new Error('R is restarting. Wait for the restart notice before running code.'); }
         if (!view.client.control) { throw new Error('This window is observing R. Run R: Take Control of Interactive Session first.'); }
         const data = new vscode.NotebookCellData(vscode.NotebookCellKind.Code, code, 'r');
-        const id = randomUUID(); data.metadata = { rExecutionId: id, rSource: source };
+        const id = randomUUID(); data.metadata = persistentCellMetadata({ rExecutionId: id, rSource: source }, 'r');
         const edit = new vscode.WorkspaceEdit();
         edit.set(view.notebook.uri, [vscode.NotebookEdit.insertCells(view.notebook.cellCount, [data])]);
         await vscode.workspace.applyEdit(edit);
@@ -919,7 +945,8 @@ export class InteractiveManager implements vscode.Disposable, vscode.TreeDataPro
             const id = previousId && !view.model.cells.has(previousId) ? previousId : randomUUID();
             const source = cell.metadata.rSource as SourceLocation | undefined;
             const edit = new vscode.WorkspaceEdit();
-            edit.set(view.notebook.uri, [vscode.NotebookEdit.updateCellMetadata(cell.index, { ...cell.metadata, rExecutionId: id })]);
+            edit.set(view.notebook.uri, [vscode.NotebookEdit.updateCellMetadata(cell.index,
+                persistentCellMetadata({ ...cell.metadata, rExecutionId: id }, 'r'))]);
             await vscode.workspace.applyEdit(edit);
             session.bindSessionDocument(cell.document.uri, view.target);
             const task = view.controller.createNotebookCellExecution(cell);
@@ -940,6 +967,7 @@ export class InteractiveManager implements vscode.Disposable, vscode.TreeDataPro
         this.updateStatus();
         if (event.type === 'state') {
             view.client.manifest.status = event.data.status as SessionManifest['status'];
+            view.target.processExited = event.data.status === 'exited';
             view.client.manifest.rPid = typeof event.data.rPid === 'number' ? event.data.rPid : undefined;
             view.client.manifest.rVersion = typeof event.data.rVersion === 'string' ? event.data.rVersion : undefined;
             view.client.manifest.ended = typeof event.data.ended === 'number' ? event.data.ended : undefined;
@@ -1042,7 +1070,8 @@ export class InteractiveManager implements vscode.Disposable, vscode.TreeDataPro
 
     private async cellData(view: InteractiveView, cell: TranscriptCell, portable = false): Promise<vscode.NotebookCellData> {
         const data = new vscode.NotebookCellData(vscode.NotebookCellKind.Code, cell.record.code, 'r');
-        data.metadata = { rExecutionId: cell.record.id, rGeneration: cell.generation, rSource: cell.record.source, rState: cell.record.state };
+        data.metadata = persistentCellMetadata({ rExecutionId: cell.record.id, rGeneration: cell.generation,
+            rSource: cell.record.source, rState: cell.record.state, execution_count: cell.record.order }, 'r');
         data.executionSummary = { executionOrder: cell.record.order,
             success: cell.record.state === 'success' ? true : cell.record.state === 'error' ? false : undefined,
             timing: cell.record.started && cell.record.ended ? { startTime: cell.record.started, endTime: cell.record.ended } : undefined };
@@ -1397,7 +1426,7 @@ export class InteractiveManager implements vscode.Disposable, vscode.TreeDataPro
         const markdown = new vscode.MarkdownString().appendMarkdown(`**${title}**\n\n`)
             .appendText(view.client.manifest.label).appendMarkdown(` — ${body}`);
         const data = new vscode.NotebookCellData(vscode.NotebookCellKind.Markup, markdown.value, 'markdown');
-        data.metadata = { rSessionNotice: generation, rNoticeKind: state };
+        data.metadata = persistentCellMetadata({ rSessionNotice: generation, rNoticeKind: state }, 'markdown');
         return data;
     }
 
@@ -1494,13 +1523,14 @@ export class InteractiveManager implements vscode.Disposable, vscode.TreeDataPro
             const snapshot = await view.client.snapshot();
             view.client.manifest = snapshot.manifest;
             target.pid = String(snapshot.manifest.rPid ?? ''); target.rVer = snapshot.manifest.rVersion ?? '';
+            target.processExited = snapshot.manifest.status === 'exited';
             target.rPath = snapshot.manifest.rPath; target.libraryPaths = snapshot.manifest.libraryPaths;
             view.prompts.clear();
             if (snapshot.workspace) { target.workspaceData = snapshot.workspace as unknown as session.WorkspaceData; }
             view.base = snapshot.manifest.assetBase ? (await vscode.env.asExternalUri(vscode.Uri.parse(snapshot.manifest.assetBase))).toString(true) : '';
             view.model.restore(snapshot);
             const edit = new vscode.WorkspaceEdit();
-            edit.set(view.notebook.uri, [vscode.NotebookEdit.updateNotebookMetadata({ ...view.notebook.metadata, rSessionId: manifest.id, rGeneration: manifest.generation })]);
+            edit.set(view.notebook.uri, [vscode.NotebookEdit.updateNotebookMetadata(persistentNotebookMetadata(view.notebook.metadata, manifest.id, manifest.generation))]);
             await vscode.workspace.applyEdit(edit);
             await this.queueNotice(view, 'restarted', generation);
             if (view.model.cells.size) {

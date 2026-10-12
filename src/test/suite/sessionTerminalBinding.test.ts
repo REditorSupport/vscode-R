@@ -2,7 +2,8 @@ import * as assert from 'assert';
 import * as path from 'path';
 import * as sinon from 'sinon';
 import * as vscode from 'vscode';
-import fs from 'fs-extra';
+import fsp from 'node:fs/promises';
+import * as fileSystem from '../../fileSystem';
 import type { RSessionApi } from '../../api';
 import * as extension from '../../extension';
 import * as rTerminal from '../../rTerminal';
@@ -23,12 +24,17 @@ suite('Session Terminal Binding', () => {
     let sendText: sinon.SinonStub;
     let otherSendText: sinon.SinonStub;
     let show: sinon.SinonStub;
-    const api: RSessionApi = { getConnectionInfo: session.getConnectionInfo, activate: session.activateSessionById };
+    const extensionRoot = path.join(__dirname, '..', '..', '..');
+    const api: RSessionApi = { getConnectionInfo: session.getConnectionInfo, prepareAttachment: session.prepareAttachment,
+        onDidChangeSessionConnection: session.onDidChangeSessionConnection, getSessionReference: session.getSessionReference,
+        activate: session.activateSessionById };
 
-    setup(() => {
+    setup(async () => {
+        await session.shutdownSessionWatcher();
         sandbox = sinon.createSandbox();
-        mockExtensionContext(path.join(__dirname, '..', '..', '..'), sandbox);
+        mockExtensionContext(extensionRoot, sandbox);
         sandbox.stub(vscode.commands, 'executeCommand').resolves();
+        sandbox.stub(extension, 'enableSessionWatcher').value(true);
         sandbox.stub(extension, 'rWorkspace').value(undefined);
         configuration = sandbox.stub(util, 'config').returns({
             get: (key: string) => key === 'source.focus' ? 'none' : undefined,
@@ -41,12 +47,15 @@ suite('Session Terminal Binding', () => {
         other = { processId: Promise.resolve(99999), sendText: otherSendText, show: sandbox.stub() } as unknown as vscode.Terminal;
         terminals = sandbox.stub(vscode.window, 'terminals').value([terminal, other]);
         activeTerminal = sandbox.stub(vscode.window, 'activeTerminal').value(other);
+        session.deploySessionWatcher(extensionRoot);
+        await session.getGlobalPipePath();
     });
 
-    teardown(() => {
+    teardown(async () => {
         session.unregisterSessionTransport(first);
         session.unregisterSessionTransport(second);
         session.deferWorkspaceRefresh();
+        await session.shutdownSessionWatcher();
         sandbox.restore();
     });
 
@@ -243,7 +252,7 @@ suite('Session Terminal Binding', () => {
         terminals.value([terminal, other]);
         activeTerminal.value(terminal);
         configuration.returns({ get: (key: string) => key === 'sessionWatcher' } as unknown as vscode.WorkspaceConfiguration);
-        sandbox.stub(fs, 'pathExists').resolves(false);
+        sandbox.stub(fileSystem, 'pathExists').resolves(false);
         const create = sandbox.stub(rTerminal, 'createRTerm').resolves(false);
         await api.activate(first.sessionId, { terminal: other });
         await session.activateRSession();
@@ -265,12 +274,12 @@ suite('Session Terminal Binding', () => {
             configuration.returns({ get: (key: string) => key === 'sessionWatcher' } as unknown as vscode.WorkspaceConfiguration);
             const started = deferred<void>();
             const proceed = deferred<void>();
-            const ensureDir = fs.ensureDir;
-            const ensure = sandbox.stub(fs, 'ensureDir') as unknown as sinon.SinonStub<[string], Promise<void>>;
-            ensure.callsFake(async directory => {
+            const mkdir = fsp.mkdir;
+            const mkdirStub = sandbox.stub(fsp, 'mkdir') as unknown as sinon.SinonStub<[string, { recursive: true }], Promise<string | undefined>>;
+            mkdirStub.callsFake(async (directory, options) => {
                 started.resolve();
                 await proceed.promise;
-                return ensureDir(directory);
+                return mkdir(directory, options);
             });
             const pending = session.activateRSession();
             await started.promise;
@@ -286,7 +295,6 @@ suite('Session Terminal Binding', () => {
 
     test('a native attach preserves the selected terminal explicit owner', async () => {
         const connections = new SessionConnections();
-        sandbox.stub(extension, 'enableSessionWatcher').value(true);
         terminal = { ...terminal, processId: Promise.resolve(12345) } as vscode.Terminal;
         other = { ...other, processId: Promise.resolve(23456) } as vscode.Terminal;
         terminals.value([terminal, other]);
