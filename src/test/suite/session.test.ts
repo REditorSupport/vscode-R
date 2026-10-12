@@ -1089,7 +1089,7 @@ suite('Session Communication', () => {
             name: 'Renamed R', processId: Promise.resolve(45241),
             creationOptions: { name: 'R Interactive' }, show: sandbox.spy(), sendText: sandbox.spy(),
         };
-        sandbox.stub(vscode.window, 'terminals').value([first, second]);
+        const liveTerminals = sandbox.stub(vscode.window, 'terminals').value([first, second]);
         const activeTerminal = sandbox.stub(vscode.window, 'activeTerminal').value(second);
         sandbox.stub(util, 'config').returns({
             get: (key: string) => key === 'sessionWatcher' ? true : undefined,
@@ -1125,7 +1125,9 @@ suite('Session Communication', () => {
 
             // The R Interactive name alone must not grant ownership of another terminal.
             first.show.resetHistory();
-            activeTerminal.value({ ...second, name: 'R Interactive', processId: Promise.resolve(45242) });
+            const sameLabelTerminal = { ...second, name: 'R Interactive', processId: Promise.resolve(45242) };
+            liveTerminals.value([first, second, sameLabelTerminal]);
+            activeTerminal.value(sameLabelTerminal);
             await session.activateRSession();
             sinon.assert.calledOnce(first.show);
             sinon.assert.calledOnce(second.sendText);
