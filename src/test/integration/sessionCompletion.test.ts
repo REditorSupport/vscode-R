@@ -1,6 +1,5 @@
 import * as assert from 'assert';
-import * as fs from 'fs-extra';
-import { rm } from 'node:fs/promises';
+import * as fs from 'node:fs/promises';
 import * as os from 'os';
 import * as path from 'path';
 import * as sinon from 'sinon';
@@ -51,7 +50,7 @@ suite('Session completion with real R language server', () => {
             const projects: vscode.WorkspaceFolder[] = [];
             for (const name of ['initial project', 'added project']) {
                 const directory = path.join(root, name);
-                await fs.ensureDir(directory);
+                await fs.mkdir(directory, { recursive: true });
                 await fs.writeFile(path.join(directory, 'completion.R'), 'bs');
                 projects.push({ uri: vscode.Uri.file(directory), name, index: projects.length });
             }
@@ -104,7 +103,7 @@ suite('Session completion with real R language server', () => {
                 sandbox.restore();
                 // TCP shutdown can finish before R releases its working directory
                 // on Windows. Retry transient locks instead of failing cleanup.
-                await rm(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+                await fs.rm(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
             }
         }
     }).timeout(60000);
