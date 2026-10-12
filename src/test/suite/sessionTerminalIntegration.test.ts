@@ -62,7 +62,9 @@ suite('External Terminal Integration', () => {
         showError = sandbox.stub(vscode.window, 'showErrorMessage').resolves(undefined);
         showInformation = sandbox.stub(vscode.window, 'showInformationMessage').resolves(undefined);
         sandbox.stub(util, 'config').returns({
-            get: (key: string) => ({ sessionWatcher: true, alwaysUseActiveTerminal: false, bracketedPaste: true })[key],
+            get: (key: string) => ({
+                sessionWatcher: true, alwaysUseActiveTerminal: false, bracketedPaste: false, 'source.focus': 'none',
+            })[key],
         } as unknown as vscode.WorkspaceConfiguration);
         session.deploySessionWatcher(extensionRoot);
         await session.getGlobalPipePath();
