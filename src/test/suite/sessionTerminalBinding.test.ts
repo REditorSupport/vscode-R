@@ -27,6 +27,7 @@ suite('Session Terminal Binding', () => {
     const extensionRoot = path.join(__dirname, '..', '..', '..');
     const api: RSessionApi = { getConnectionInfo: session.getConnectionInfo, prepareAttachment: session.prepareAttachment,
         onDidChangeSessionConnection: session.onDidChangeSessionConnection, getSessionReference: session.getSessionReference,
+        registerTerminalIntegration: session.registerTerminalIntegration,
         activate: session.activateSessionById };
 
     setup(async () => {

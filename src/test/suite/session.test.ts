@@ -176,6 +176,7 @@ suite('Session Communication', () => {
             prepareAttachment: session.prepareAttachment,
             onDidChangeSessionConnection: session.onDidChangeSessionConnection,
             getSessionReference: session.getSessionReference,
+            registerTerminalIntegration: session.registerTerminalIntegration,
             activate: session.activateSessionById,
         };
 
@@ -311,6 +312,7 @@ suite('Session Communication', () => {
             prepareAttachment: session.prepareAttachment,
             onDidChangeSessionConnection: session.onDidChangeSessionConnection,
             getSessionReference: session.getSessionReference,
+            registerTerminalIntegration: session.registerTerminalIntegration,
             activate: session.activateSessionById,
         };
         assert.strictEqual(await api.getConnectionInfo(), undefined);
@@ -343,6 +345,7 @@ suite('Session Communication', () => {
             prepareAttachment: session.prepareAttachment,
             onDidChangeSessionConnection: session.onDidChangeSessionConnection,
             getSessionReference: session.getSessionReference,
+            registerTerminalIntegration: session.registerTerminalIntegration,
             activate: session.activateSessionById,
         };
         const endpoint = await waitFor(() => session.globalPipePath);
@@ -722,6 +725,7 @@ suite('Session Communication', () => {
             prepareAttachment: session.prepareAttachment,
             onDidChangeSessionConnection: session.onDidChangeSessionConnection,
             getSessionReference: session.getSessionReference,
+            registerTerminalIntegration: session.registerTerminalIntegration,
             activate: session.activateSessionById,
         };
         const endpoint = process.platform === 'win32'
@@ -1085,7 +1089,7 @@ suite('Session Communication', () => {
             name: 'Renamed R', processId: Promise.resolve(45241),
             creationOptions: { name: 'R Interactive' }, show: sandbox.spy(), sendText: sandbox.spy(),
         };
-        sandbox.stub(vscode.window, 'terminals').value([first, second]);
+        const liveTerminals = sandbox.stub(vscode.window, 'terminals').value([first, second]);
         const activeTerminal = sandbox.stub(vscode.window, 'activeTerminal').value(second);
         sandbox.stub(util, 'config').returns({
             get: (key: string) => key === 'sessionWatcher' ? true : undefined,
@@ -1121,7 +1125,9 @@ suite('Session Communication', () => {
 
             // The R Interactive name alone must not grant ownership of another terminal.
             first.show.resetHistory();
-            activeTerminal.value({ ...second, name: 'R Interactive', processId: Promise.resolve(45242) });
+            const sameLabelTerminal = { ...second, name: 'R Interactive', processId: Promise.resolve(45242) };
+            liveTerminals.value([first, second, sameLabelTerminal]);
+            activeTerminal.value(sameLabelTerminal);
             await session.activateRSession();
             sinon.assert.calledOnce(first.show);
             sinon.assert.calledOnce(second.sendText);
@@ -1144,6 +1150,7 @@ suite('Session Communication', () => {
             processId: Promise.resolve(terminalPid),
             creationOptions: { name: 'R Interactive', env: { SESS_DISCOVERY_FILE: discoveryFile } },
         } as unknown as vscode.Terminal;
+        const liveTerminals = sandbox.stub(vscode.window, 'terminals').value([terminal]);
         let wrapperDiscoveryFile: string | undefined;
         try {
             await session.refreshTerminalDiscoveryFiles(newEndpoint, [terminal]);
@@ -1165,6 +1172,7 @@ suite('Session Communication', () => {
                 processId: Promise.resolve(wrapperTerminalPid),
                 creationOptions: { name: 'R Interactive' },
             } as unknown as vscode.Terminal;
+            liveTerminals.value([wrapperTerminal]);
             await session.refreshTerminalDiscoveryFiles(newEndpoint, [wrapperTerminal]);
             assert.deepStrictEqual(await readJson(wrapperDiscoveryFile), {
                 version: 1,
@@ -1193,6 +1201,7 @@ suite('Session Communication', () => {
             name: 'Renamed R', processId: Promise.resolve(45244),
             creationOptions: { name: 'R Interactive' },
         } as unknown as vscode.Terminal;
+        sandbox.stub(vscode.window, 'terminals').value([terminal]);
         try {
             await session.updateSessionDiscoveryFile(file, 'old-sess', 45244);
             jgdSocket = 'new-jgd-socket';
@@ -1229,6 +1238,7 @@ suite('Session Communication', () => {
                 processId: Promise.resolve(terminalPid),
                 creationOptions: { name: 'R Interactive' },
             } as unknown as vscode.Terminal;
+            sandbox.stub(vscode.window, 'terminals').value([terminal]);
             await session.refreshTerminalDiscoveryFiles(newEndpoint, [terminal]);
 
             const olderDiscovery: unknown = await readJson(olderFile);

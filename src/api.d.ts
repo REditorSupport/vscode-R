@@ -40,6 +40,16 @@ export interface RSessionActivationOptions {
     select?: boolean;
 }
 
+/** Consumer-owned terminal hook for restoring a sess connection without bypassing its proxy. */
+export interface RExternalTerminalIntegration {
+    /**
+     * Reconnect through the consumer's transport and bind this terminal before resolving true.
+     * A resolved false is a consumer-reported decline/busy result; a rejection is shown by
+     * vscode-R. Cancellation can stop pending work, but cannot retract R code already submitted.
+     */
+    attach(token: vscode.CancellationToken): Promise<boolean>;
+}
+
 export interface RSessionPreparationOptions {
     /**
      * A local sess IPC endpoint on the current R host, such as a proxy socket.
@@ -123,6 +133,28 @@ export interface RSessionApi {
      * is still current after activation completes; a later disconnect can still occur.
      */
     activate(sessionId: string, options?: RSessionActivationOptions): Promise<boolean>;
+    /**
+     * Register one attach hook for an open terminal. Duplicate or closed-terminal registrations
+     * throw. The hook remains registered across session disconnects and replacements until its
+     * Disposable is disposed, the terminal closes, or the extension host shuts down. It is
+     * invoked before native PID discovery; false, rejection, busy, or cancellation never falls
+     * back to a native attach command. On true, vscode-R requires a current live session binding
+     * for this terminal, then focuses that session. Consumers should bind with
+     * `activate(..., { terminal, connectionId, select: false })` before resolving true. When no
+     * hook is in flight, a current live owner is focused and the hook is skipped. While a hook is
+     * in flight, repeated activations report busy without selecting or focusing its bound owner,
+     * and do not invoke another handler. The terminal remains busy until the handler promise
+     * settles, even after cancellation is requested.
+     * Registered terminals are excluded from native PID association, so consumers must bind
+     * their session explicitly. Registration during host shutdown throws.
+     * If the user selects another session while the hook is pending, vscode-R leaves that selection
+     * in place and retains the terminal binding. Cancellation is requested when focus leaves the
+     * terminal, it closes, registration is disposed, or the host shuts down. Consumers should
+     * stop cancellable waits and settle the handler on cancellation. Submitted R code cannot be
+     * recalled; the consumer must retain its preparation while the runtime keeps its submission
+     * queue occupied until execution finishes.
+     */
+    registerTerminalIntegration(terminal: vscode.Terminal, integration: RExternalTerminalIntegration): vscode.Disposable;
 }
 
 export type HelpSubMenu = 'doc' | 'pkgList' | 'refresh' | '?' | '??';

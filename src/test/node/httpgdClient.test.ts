@@ -30,7 +30,6 @@ async function until(condition: () => boolean): Promise<void> {
 
 suite('Internal httpgd client', () => {
     let server: Server;
-    let upgradedSocket: Duplex | undefined;
     let client: HttpgdClient;
     let origin: string;
     let remote: HttpgdState;
@@ -44,7 +43,6 @@ suite('Internal httpgd client', () => {
     const binary = Buffer.from([0, 255, 128, 13, 10]);
 
     setup(async () => {
-        upgradedSocket = undefined;
         remote = { upid: 1, hsize: 1, active: true };
         ids = ['1'];
         requests = [];
@@ -80,7 +78,6 @@ suite('Internal httpgd client', () => {
     });
     teardown(async () => {
         client.disconnect();
-        upgradedSocket?.destroy();
         if (websocketDescriptor) { Object.defineProperty(globalThis, 'WebSocket', websocketDescriptor); }
         else { Reflect.deleteProperty(globalThis, 'WebSocket'); }
         for (const response of held) { response.destroy(); }
@@ -140,25 +137,131 @@ suite('Internal httpgd client', () => {
         await until(() => requests.filter(request => request.path === '/plots').length >= 5);
     });
     test('receives notifications through an actual native WebSocket connection', async function () {
-        if (typeof nativeWebSocket !== 'function') { this.skip(); }
-        globalThis.WebSocket = nativeWebSocket;
-        server.on('upgrade', (request, socket) => {
-            assert.strictEqual(new URL(request.url ?? '/', origin).searchParams.get('token'), 'secret');
-            const key = request.headers['sec-websocket-key'];
-            assert.strictEqual(typeof key, 'string');
-            const accept = createHash('sha1').update(`${String(key)}258EAFA5-E914-47DA-95CA-C5AB0DC85B11`).digest('base64');
-            socket.write(`HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: ${accept}\r\n\r\n`);
-            upgradedSocket = socket;
+        if (typeof nativeWebSocket !== 'function') { this.skip(); return; }
+
+        const handshakeTimeoutMs = 5000;
+        const testOrigin = origin;
+        const actualServer = server;
+        let upgradedSocket: Duplex | undefined;
+        let tearingDown = false;
+        let resolveClientFailure!: (error: Error) => void;
+        let resolveServerFailure!: (error: Error) => void;
+        const clientFailure = new Promise<Error>(resolve => { resolveClientFailure = resolve; });
+        const serverFailure = new Promise<Error>(resolve => { resolveServerFailure = resolve; });
+        const socketFailure = Promise.race([clientFailure, serverFailure]).then(error => { throw error; });
+        let resolveClientOpen!: () => void;
+        let rejectClientOpen!: (error: Error) => void;
+        let clientOpenSettled = false;
+        let clientOpenTimer: NodeJS.Timeout | undefined;
+        const clientOpened = new Promise<void>((resolve, reject) => {
+            resolveClientOpen = () => {
+                if (clientOpenSettled) { return; }
+                clientOpenSettled = true;
+                clearTimeout(clientOpenTimer);
+                resolve();
+            };
+            rejectClientOpen = error => {
+                if (clientOpenSettled) { return; }
+                clientOpenSettled = true;
+                clearTimeout(clientOpenTimer);
+                reject(error);
+            };
         });
-        await client.connect();
-        await until(() => notifications.length === 2);
-        ids = ['2']; remote = { ...remote, upid: 2 };
-        const message = Buffer.from(JSON.stringify(remote));
-        // The fixture's state JSON is a short, unmasked server text frame.
-        assert.ok(message.length < 126);
-        assert.ok(upgradedSocket);
-        upgradedSocket.write(Buffer.concat([Buffer.from([0x81, message.length]), message]));
-        await until(() => client.getPlots()[0]?.id === '2');
+        clientOpenTimer = setTimeout(() => rejectClientOpen(new Error(`Timed out waiting for native WebSocket open after ${handshakeTimeoutMs}ms`)), handshakeTimeoutMs);
+        void clientOpened.catch(() => undefined);
+        class CapturingWebSocket extends nativeWebSocket {
+            constructor(url: string | URL) {
+                super(url);
+                this.addEventListener('open', resolveClientOpen, { once: true });
+                this.addEventListener('error', () => {
+                    const error = new Error('Native WebSocket failed before or during the test connection.');
+                    rejectClientOpen(error);
+                    if (!tearingDown) { resolveClientFailure(error); }
+                });
+                this.addEventListener('close', () => rejectClientOpen(new Error('Native WebSocket closed before it opened.')), { once: true });
+            }
+        }
+
+        let upgradeTimer: NodeJS.Timeout | undefined;
+        let upgradeHandler: ((request: import('node:http').IncomingMessage, socket: Duplex) => void) | undefined;
+        let resolveUpgrade!: (socket: Duplex) => void;
+        let rejectUpgrade!: (error: Error) => void;
+        let upgradeSettled = false;
+        const upgraded = new Promise<Duplex>((resolve, reject) => {
+            resolveUpgrade = socket => {
+                if (upgradeSettled) { return; }
+                upgradeSettled = true;
+                clearTimeout(upgradeTimer);
+                resolve(socket);
+            };
+            rejectUpgrade = error => {
+                if (upgradeSettled) { return; }
+                upgradeSettled = true;
+                clearTimeout(upgradeTimer);
+                reject(error);
+            };
+        });
+        void upgraded.catch(() => undefined);
+        upgradeHandler = (request, socket) => {
+            upgradedSocket = socket;
+            socket.on('error', error => {
+                if (!tearingDown) { resolveServerFailure(error); }
+            });
+            try {
+                assert.strictEqual(new URL(request.url ?? '/', testOrigin).searchParams.get('token'), 'secret');
+                const key = request.headers['sec-websocket-key'];
+                assert.strictEqual(typeof key, 'string');
+                const accept = createHash('sha1').update(`${String(key)}258EAFA5-E914-47DA-95CA-C5AB0DC85B11`).digest('base64');
+                socket.write(`HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: ${accept}\r\n\r\n`);
+                resolveUpgrade(socket);
+            } catch (error) {
+                rejectUpgrade(error instanceof Error ? error : new Error(String(error)));
+            }
+        };
+        actualServer.on('upgrade', upgradeHandler);
+        upgradeTimer = setTimeout(() => rejectUpgrade(new Error(`Timed out waiting for HTTP WebSocket upgrade after ${handshakeTimeoutMs}ms`)), handshakeTimeoutMs);
+
+        globalThis.WebSocket = CapturingWebSocket as typeof WebSocket;
+        client = new HttpgdClient(testOrigin, 'secret', {
+            pollIntervalMs: handshakeTimeoutMs + 1000,
+            retryIntervalMs: handshakeTimeoutMs + 1000,
+            // Exercise a real native handshake; short deadlines remain in fake timeout tests.
+            webSocketTimeoutMs: handshakeTimeoutMs,
+        });
+        const actualClient = client;
+        const actualNotifications: string[][] = [];
+        actualClient.onPlotsChanged(value => actualNotifications.push(value.plots.map(plot => plot.id)));
+
+        try {
+            await Promise.race([actualClient.connect(), socketFailure]);
+            const [socket] = await Promise.race([
+                Promise.all([upgraded, clientOpened]),
+                socketFailure,
+            ]);
+            assert.ok(socket);
+            // Wait for the onopen resync to finish before injecting the state change.
+            await Promise.race([
+                until(() => actualNotifications.length >= 2),
+                socketFailure,
+            ]);
+            ids = ['2']; remote = { ...remote, upid: 2 };
+            const message = Buffer.from(JSON.stringify(remote));
+            // The fixture's state JSON is a short, unmasked server text frame.
+            assert.ok(message.length < 126);
+            socket.write(Buffer.concat([Buffer.from([0x81, message.length]), message]));
+            await Promise.race([
+                until(() => actualClient.getPlots()[0]?.id === '2' && actualNotifications.some(value => value.length === 1 && value[0] === '2')),
+                socketFailure,
+            ]);
+            assert.ok(actualNotifications.some(value => value.length === 1 && value[0] === '2'));
+        } finally {
+            tearingDown = true;
+            clearTimeout(upgradeTimer);
+            clearTimeout(clientOpenTimer);
+            if (upgradeHandler) { actualServer.removeListener('upgrade', upgradeHandler); }
+            actualClient.disconnect();
+            upgradedSocket?.destroy();
+        }
     });
     test('falls back when WebSocket cannot open', async () => {
         globalThis.WebSocket = TestWebSocket as unknown as typeof WebSocket;
