@@ -17,6 +17,7 @@ import { getProcessAncestors } from './processTree';
 import { TerminalSessionRegistry } from './terminalSessionRegistry';
 import { SessionProcessMonitor } from './sessionProcessMonitor';
 import { sessionProcessIdentity } from './sessionIdentity';
+import { NativeTerminalPidWaitRegistry } from './nativeTerminalPidWait';
 import { purgeAddinPickerItems, RSEditOperation, RSRange } from './rstudioapi';
 
 import { extensionContext, rWorkspace, globalRHelp, globalPlotManager, sessionStatusBarItem, enableSessionWatcher } from './extension';
@@ -184,11 +185,17 @@ export function getSessionReference(sessionId: string): RSessionReference | unde
 
 const sessionProcessMonitor = new SessionProcessMonitor<ViewerSessionSource>(isLocalHost);
 // Only the newest handshake for a stable ID may commit after terminal discovery.
-const pendingSessionAttachments = new Map<string, IpcSocket>();
+interface PendingSessionAttachment {
+    readonly socket: IpcSocket;
+    readonly controller: AbortController;
+}
+const pendingSessionAttachments = new Map<string, PendingSessionAttachment>();
 const terminalRegistry = new TerminalSessionRegistry<Session, vscode.Terminal>(
     target => sessions.get(target.sessionId) === target && isConnectedSession(target),
     terminal => !terminal.exitStatus && window.terminals.includes(terminal),
 );
+const nativeTerminalPidWaits = new NativeTerminalPidWaitRegistry<vscode.Terminal>();
+const pendingManualNativePidWaits = new WeakMap<vscode.Terminal, AbortController>();
 interface TerminalIntegrationRun {
     readonly cancellation: vscode.CancellationTokenSource;
     cancel(): void;
@@ -725,6 +732,8 @@ function isLiveTerminal(terminal: vscode.Terminal): boolean {
 
 /** Called for every terminal close, including extension-owned pseudoterminals. */
 export function cleanupTerminalBinding(terminal: vscode.Terminal): void {
+    nativeTerminalPidWaits.invalidate(terminal);
+    pendingManualNativePidWaits.get(terminal)?.abort();
     terminalRegistry.closeTerminal(terminal);
     removeTerminalIntegration(terminal);
 }
@@ -785,6 +794,7 @@ export function registerTerminalIntegration(
         }),
     };
     terminalIntegrations.set(terminal, registration);
+    nativeTerminalPidWaits.invalidate(terminal);
     // Invalidate an earlier native PID/command path that may still be awaiting I/O.
     if (window.activeTerminal === terminal) { sessionSelectionRevision++; }
     return { dispose: () => removeTerminalIntegrationRegistration(registration) };
@@ -831,10 +841,16 @@ export async function createSessionDiscoveryFile(endpoint: string): Promise<stri
     }
 }
 
-async function writeSessionDiscoveryFile(filePath: string, endpoint: string, terminalPid?: number): Promise<void> {
+async function writeSessionDiscoveryFile(
+    filePath: string,
+    endpoint: string,
+    terminalPid?: number,
+    shouldPublish: () => boolean = () => true,
+): Promise<void> {
     if (!isExtensionDiscoveryPath(filePath)) {
         throw new Error('Refusing to write session discovery data outside extension global storage');
     }
+    if (!shouldPublish()) { return; }
     const data: SessionDiscoveryFile = { version: 1, endpoint, jgdSocket: getSessionJgdSocket() };
     if (terminalPid !== undefined) {
         data.terminalPid = terminalPid;
@@ -843,17 +859,19 @@ async function writeSessionDiscoveryFile(filePath: string, endpoint: string, ter
         if (typeof existing.terminalPid === 'number') {
             data.terminalPid = existing.terminalPid;
         }
+        if (!shouldPublish()) { return; }
     }
     await fsp.mkdir(path.dirname(filePath), { recursive: true });
     const temporaryPath = `${filePath}.${crypto.randomBytes(8).toString('hex')}.tmp`;
+    let published = false;
     try {
         await fsp.writeFile(temporaryPath, `${JSON.stringify(data)}\n`, { mode: 0o600 });
         await setOwnerOnlyPermissions(temporaryPath);
+        if (!shouldPublish()) { return; }
         await fsp.rename(temporaryPath, filePath);
-        await setOwnerOnlyPermissions(filePath);
-    } catch (error) {
-        await fsp.rm(temporaryPath, { recursive: true, force: true }).catch(() => undefined);
-        throw error;
+        published = true;
+    } finally {
+        if (!published) { await fsp.rm(temporaryPath, { recursive: true, force: true }).catch(() => undefined); }
     }
 }
 
@@ -866,10 +884,11 @@ export async function updateTerminalSessionDiscoveryFile(
     filePath: string,
     endpoint: string,
     terminalPid?: number,
+    isCurrent: () => boolean = () => true,
 ): Promise<void> {
     await queueTerminalDiscoveryOperation(terminal, async () => {
-        if (!isTerminalClosed(terminal)) {
-            await writeSessionDiscoveryFile(filePath, endpoint, terminalPid);
+        if (!isTerminalClosed(terminal) && isCurrent()) {
+            await writeSessionDiscoveryFile(filePath, endpoint, terminalPid, isCurrent);
         }
     });
 }
@@ -906,35 +925,55 @@ export async function refreshTerminalDiscoveryFiles(
     pipePath: string,
     terminals: readonly vscode.Terminal[] = vscode.window.terminals,
 ): Promise<void> {
+    const generation = attachmentLifecycleGeneration;
+    if (attachmentLifecycleStopping) { return; }
     for (const term of terminals) {
-        if (isTerminalClosed(term)) {
+        if (generation !== attachmentLifecycleGeneration || attachmentLifecycleStopping) { return; }
+        if (!isNativeTerminalEligible(term)) {
             continue;
         }
         const envPath = terminalDiscoveryPath(term);
-        const terminalPid = await term.processId;
-        if (!terminalPid || isTerminalClosed(term)) {
+        const pidWait = await nativeTerminalPidWaits.waitFor(term, () => term.processId, {
+            isEligible: () => isNativeTerminalEligible(term),
+        });
+        if (pidWait.kind === 'invalidated') {
+            if (pidWait.reason === 'lifecycle') { return; }
+            continue;
+        }
+        const terminalPid = pidWait.value;
+        const isCurrent = () => generation === attachmentLifecycleGeneration
+            && !attachmentLifecycleStopping && pidWait.isCurrent() && isNativeTerminalEligible(term);
+        if (!terminalPid || !isCurrent()) {
             continue;
         }
         let discoveryPath = envPath;
         discoveryPath ??= await findDiscoveryFileForTerminal(terminalPid);
-        if (discoveryPath && !isTerminalClosed(term)) {
-            await updateTerminalSessionDiscoveryFile(term, discoveryPath, pipePath, terminalPid);
+        if (discoveryPath && isCurrent()) {
+            await updateTerminalSessionDiscoveryFile(term, discoveryPath, pipePath, terminalPid, isCurrent);
         }
     }
 }
 
 export async function updateTerminalDiscovery(terminal: vscode.Terminal): Promise<void> {
-    if (!globalPipePath || isTerminalClosed(terminal)) {
+    const generation = attachmentLifecycleGeneration;
+    const endpoint = globalPipePath;
+    if (!endpoint || attachmentLifecycleStopping || !isNativeTerminalEligible(terminal)) {
         return;
     }
-    const terminalPid = await terminal.processId;
-    if (terminalPid === undefined || isTerminalClosed(terminal)) {
+    const pidWait = await nativeTerminalPidWaits.waitFor(terminal, () => terminal.processId, {
+        isEligible: () => isNativeTerminalEligible(terminal),
+    });
+    if (pidWait.kind === 'invalidated') {
         return;
     }
+    const terminalPid = pidWait.value;
+    const isCurrent = () => generation === attachmentLifecycleGeneration && !attachmentLifecycleStopping
+        && endpoint === globalPipePath && pidWait.isCurrent() && isNativeTerminalEligible(terminal);
+    if (terminalPid === undefined || !isCurrent()) { return; }
     let discoveryPath = terminalDiscoveryPath(terminal);
     discoveryPath ??= await findDiscoveryFileForTerminal(terminalPid);
-    if (discoveryPath && !isTerminalClosed(terminal)) {
-        await updateTerminalSessionDiscoveryFile(terminal, discoveryPath, globalPipePath, terminalPid);
+    if (discoveryPath && isCurrent()) {
+        await updateTerminalSessionDiscoveryFile(terminal, discoveryPath, endpoint, terminalPid, isCurrent);
     }
 }
 
@@ -1074,7 +1113,10 @@ function startGlobalSessionServer(generation: number): Promise<string> {
                 readBufferLength = 0;
                 activeConnections.delete(socket);
                 for (const [id, pending] of pendingSessionAttachments) {
-                    if (pending === socket) { pendingSessionAttachments.delete(id); }
+                    if (pending.socket === socket) {
+                        pendingSessionAttachments.delete(id);
+                        pending.controller.abort();
+                    }
                 }
                 for (const [id, pending] of pendingRequests.entries()) {
                     if (pending.socket === socket) {
@@ -1434,6 +1476,7 @@ async function removePathIfExists(pathLike: string): Promise<void> {
 }
 
 export async function shutdownSessionWatcher(): Promise<void> {
+    nativeTerminalPidWaits.invalidateAll();
     attachmentLifecycleGeneration++;
     attachmentLifecycleStopping = true;
     const terminalIntegrationSnapshot = [...terminalIntegrations.values()];
@@ -1461,8 +1504,11 @@ export async function shutdownSessionWatcher(): Promise<void> {
         if (activeSession === target) { clearActive = true; }
     }
     if (clearActive) { void clearActiveSession(); }
-    for (const [sessionId, socket] of pendingSessionAttachments) {
-        if (socket._server === serverAtShutdown) { pendingSessionAttachments.delete(sessionId); }
+    for (const [sessionId, pending] of pendingSessionAttachments) {
+        if (pending.socket._server === serverAtShutdown) {
+            pendingSessionAttachments.delete(sessionId);
+            pending.controller.abort();
+        }
     }
     // Queue removal of the fixed manual-attach path before a redeployed lifecycle
     // can publish a replacement at the same path.
@@ -1493,7 +1539,10 @@ export async function shutdownSessionWatcher(): Promise<void> {
     for (const socket of oldSockets) {
         socket.destroy();
         for (const [sessionId, pending] of pendingSessionAttachments) {
-            if (pending === socket) { pendingSessionAttachments.delete(sessionId); }
+            if (pending.socket === socket) {
+                pendingSessionAttachments.delete(sessionId);
+                pending.controller.abort();
+            }
         }
     }
     if (pipeClient && pipeClient._server === server) { pipeClient = undefined; }
@@ -1527,6 +1576,7 @@ export async function shutdownSessionWatcher(): Promise<void> {
 }
 
 export async function activateRSession(): Promise<void> {
+    const lifecycleGeneration = attachmentLifecycleGeneration;
     if (!config().get<boolean>('sessionWatcher')) {
         void window.showInformationMessage('This command requires that r.sessionWatcher be enabled.');
         return;
@@ -1548,6 +1598,7 @@ export async function activateRSession(): Promise<void> {
         void window.showInformationMessage('An R session attach is already in progress for this terminal.');
         return;
     }
+    if (terminal) { pendingManualNativePidWaits.get(terminal)?.abort(); }
     const focused = focusOwner();
     if (focused) { await focused; return; }
 
@@ -1607,12 +1658,36 @@ export async function activateRSession(): Promise<void> {
     }
 
     const selectionRevision = ++sessionSelectionRevision;
-    const isCurrent = () => selectionRevision === sessionSelectionRevision && terminal === window.activeTerminal
+    let nativePidWaitIsCurrent = () => true;
+    const isCurrent = () => lifecycleGeneration === attachmentLifecycleGeneration
+        && !attachmentLifecycleStopping
+        && selectionRevision === sessionSelectionRevision && terminal === window.activeTerminal
+        && nativePidWaitIsCurrent()
         && (!terminal || (!isTerminalClosed(terminal) && !terminal.exitStatus));
 
     let discoveryPath = terminal && terminalDiscoveryPath(terminal);
     if (terminal && !discoveryPath) {
-        const terminalPid = await terminal.processId;
+        const controller = new AbortController();
+        pendingManualNativePidWaits.set(terminal, controller);
+        const focusSubscription = window.onDidChangeActiveTerminal(changed => {
+            if (changed !== terminal) { controller.abort(); }
+        });
+        let terminalPid: number | undefined;
+        try {
+            if (!isCurrent()) { return; }
+            const pidWait = await nativeTerminalPidWaits.waitFor(terminal, () => terminal.processId, {
+                signal: controller.signal,
+                isEligible: () => isNativeTerminalEligible(terminal),
+            });
+            if (pidWait.kind === 'invalidated' || !pidWait.isCurrent() || !isCurrent()) { return; }
+            nativePidWaitIsCurrent = pidWait.isCurrent;
+            terminalPid = pidWait.value;
+        } finally {
+            focusSubscription.dispose();
+            if (pendingManualNativePidWaits.get(terminal) === controller) {
+                pendingManualNativePidWaits.delete(terminal);
+            }
+        }
         if (!isCurrent()) { return; }
         const focused = focusOwner();
         if (focused) { await focused; return; }
@@ -2770,17 +2845,29 @@ interface NativeTerminalCandidate {
     isCurrent: () => boolean;
 }
 
-async function findLocalTerminal(rPid: string): Promise<NativeTerminalCandidate | undefined> {
+function isNativeTerminalEligible(terminal: vscode.Terminal): boolean {
+    return isLiveTerminal(terminal) && !terminalIntegrations.has(terminal);
+}
+
+async function findLocalTerminal(rPid: string, signal?: AbortSignal): Promise<NativeTerminalCandidate | undefined> {
     const candidates = new Map<number, NativeTerminalCandidate>();
     for (const terminal of window.terminals) {
-        if (terminalIntegrations.has(terminal)) { continue; }
+        if (signal?.aborted) { return undefined; }
+        if (!isNativeTerminalEligible(terminal)) { continue; }
         const isCurrent = terminalRegistry.snapshot(terminal);
-        const terminalPid = await terminal.processId;
-        if (terminalPid === undefined || !isCurrent() || terminalIntegrations.has(terminal)) { continue; }
+        const pidWait = await nativeTerminalPidWaits.waitFor(terminal, () => terminal.processId, {
+            signal, isEligible: () => isNativeTerminalEligible(terminal),
+        });
+        if (pidWait.kind === 'invalidated') {
+            if (pidWait.reason !== 'terminal') { return undefined; }
+            continue;
+        }
+        const terminalPid = pidWait.value;
+        if (terminalPid === undefined || !pidWait.isCurrent() || !isCurrent()) { continue; }
         const candidate = {
             terminal,
             pid: String(terminalPid),
-            isCurrent: () => isCurrent() && !terminalIntegrations.has(terminal),
+            isCurrent: () => pidWait.isCurrent() && isCurrent() && isNativeTerminalEligible(terminal),
         };
         if (candidate.pid === rPid) { return candidate; }
         candidates.set(terminalPid, candidate);
@@ -2875,11 +2962,27 @@ async function handleNotification(message: Record<string, unknown>, socket: IpcS
             }
 
             const rPid = typeof params.pid === 'string' || typeof params.pid === 'number' ? String(params.pid) : '';
-            pendingSessionAttachments.set(sessionId, socket);
+            pendingSessionAttachments.get(sessionId)?.controller.abort();
+            const pendingAttachment: PendingSessionAttachment = { socket, controller: new AbortController() };
+            pendingSessionAttachments.set(sessionId, pendingAttachment);
             const selectionRevision = sessionSelectionRevision;
             const selectedTerminal = window.activeTerminal;
-            const candidate = autoActivate && rPid && isLocalHost(host) ? await findLocalTerminal(rPid) : undefined;
+            const discardPendingAttachment = (): void => {
+                if (pendingSessionAttachments.get(sessionId) !== pendingAttachment) { return; }
+                pendingSessionAttachments.delete(sessionId);
+                pendingAttachment.controller.abort();
+                if (!socket._sessionId) { socket.destroy(); }
+            };
+            let candidate: NativeTerminalCandidate | undefined;
+            try {
+                candidate = autoActivate && rPid && isLocalHost(host)
+                    ? await findLocalTerminal(rPid, pendingAttachment.controller.signal) : undefined;
+            } catch (error) {
+                discardPendingAttachment();
+                throw error;
+            }
             if (!isLiveSessionSocket(socket)) {
+                discardPendingAttachment();
                 return;
             }
             // Another attach notification on this socket may have completed while
@@ -2892,8 +2995,11 @@ async function handleNotification(message: Record<string, unknown>, socket: IpcS
                 }
                 return;
             }
-            if (pendingSessionAttachments.get(sessionId) !== socket) {
-                socket.destroy();
+            const currentPendingAttachment = pendingSessionAttachments.get(sessionId);
+            if (currentPendingAttachment !== pendingAttachment) {
+                // A newer handshake can reuse the same socket. Only destroy a
+                // different obsolete socket; never close the newer handshake's socket.
+                if (currentPendingAttachment?.socket !== socket) { socket.destroy(); }
                 return;
             }
             pendingSessionAttachments.delete(sessionId);

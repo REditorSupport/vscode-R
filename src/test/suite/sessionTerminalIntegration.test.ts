@@ -1,9 +1,11 @@
 import * as assert from 'assert';
 import * as os from 'os';
 import * as path from 'path';
+import * as fsp from 'node:fs/promises';
 import * as sinon from 'sinon';
 import * as vscode from 'vscode';
 import * as extension from '../../extension';
+import { readJson } from '../../fileSystem';
 import * as rTerminal from '../../rTerminal';
 import * as session from '../../session';
 import * as util from '../../util';
@@ -142,6 +144,119 @@ suite('External Terminal Integration', () => {
         }
     });
 
+    test('registering a scanned terminal releases discovery and lets the scan continue', async () => {
+        let pidRead!: () => void;
+        const readStarted = new Promise<void>(resolve => { pidRead = resolve; });
+        const externalSendText = sandbox.stub();
+        const externalShow = sandbox.stub();
+        const external = {
+            name: 'External R Console',
+            get processId() { pidRead(); return new Promise<number>(() => undefined); },
+            sendText: externalSendText, show: externalShow, dispose: sandbox.stub(),
+        } as unknown as vscode.Terminal;
+        terminalSpies.set(external, { sendText: externalSendText, show: externalShow });
+        const native = makeTerminal(Promise.resolve(55109));
+        setTerminals([external, native], native);
+        const socketPromise = connections.attach('native-scan-register-race', 55109, os.hostname());
+        await readStarted;
+        const registration = session.registerTerminalIntegration(external, { attach: () => Promise.resolve(false) });
+        try {
+            const socket = await socketPromise;
+            assert.strictEqual(socket._terminalPid, 55109);
+            assert.strictEqual(session.activeSession?.sessionId, 'native-scan-register-race');
+        } finally {
+            registration.dispose();
+            await session.cleanupSession('native-scan-register-race');
+        }
+    });
+
+    test('discovery refresh skips a newly registered terminal and continues with live native terminals', async () => {
+        let pidRead!: () => void;
+        const readStarted = new Promise<void>(resolve => { pidRead = resolve; });
+        const external = {
+            name: 'External R Console',
+            get processId() { pidRead(); return new Promise<number>(() => undefined); },
+            sendText: sandbox.stub(), show: sandbox.stub(), dispose: sandbox.stub(),
+        } as unknown as vscode.Terminal;
+        const discoveryFile = await session.createSessionDiscoveryFile('old-sess');
+        await session.updateSessionDiscoveryFile(discoveryFile, 'old-sess', 55112);
+        const native = {
+            name: 'Native R', processId: Promise.resolve(55112),
+            creationOptions: { name: 'R Interactive', env: { SESS_DISCOVERY_FILE: discoveryFile } },
+            sendText: sandbox.stub(), show: sandbox.stub(),
+        } as unknown as vscode.Terminal;
+        setTerminals([external, native], native);
+        const refresh = session.refreshTerminalDiscoveryFiles('new-sess', [external, native]);
+        await readStarted;
+        const registration = session.registerTerminalIntegration(external, { attach: () => Promise.resolve(false) });
+        try {
+            await refresh;
+            assert.strictEqual((await readJson(discoveryFile) as { endpoint?: string }).endpoint, 'new-sess');
+        } finally {
+            registration.dispose();
+            await fsp.rm(discoveryFile, { force: true });
+        }
+    });
+
+    test('terminal discovery update cannot publish after its PID lookup is invalidated', async () => {
+        let pidRead!: () => void;
+        const readStarted = new Promise<void>(resolve => { pidRead = resolve; });
+        const discoveryFile = await session.createSessionDiscoveryFile('old-sess');
+        await session.updateSessionDiscoveryFile(discoveryFile, 'old-sess', 55113);
+        const external = {
+            name: 'External R Console',
+            get processId() { pidRead(); return new Promise<number>(() => undefined); },
+            creationOptions: { name: 'External R Console', env: { SESS_DISCOVERY_FILE: discoveryFile } },
+            sendText: sandbox.stub(), show: sandbox.stub(), dispose: sandbox.stub(),
+        } as unknown as vscode.Terminal;
+        setTerminals([external]);
+        const update = session.updateTerminalDiscovery(external);
+        await readStarted;
+        const registration = session.registerTerminalIntegration(external, { attach: () => Promise.resolve(false) });
+        try {
+            await update;
+            assert.strictEqual((await readJson(discoveryFile) as { endpoint?: string }).endpoint, 'old-sess');
+        } finally {
+            registration.dispose();
+            await fsp.rm(discoveryFile, { force: true });
+        }
+    });
+
+    test('a superseded socket is closed after discovery while the new same-ID connection commits', async () => {
+        let resolveFirstPid!: (pid: number | undefined) => void;
+        let pidRead!: () => void;
+        const firstRead = new Promise<void>(resolve => { pidRead = resolve; });
+        let reads = 0;
+        const sendText = sandbox.stub();
+        const show = sandbox.stub();
+        const terminal = {
+            name: 'Native R',
+            get processId() {
+                if (reads++ === 0) { pidRead(); return new Promise<number | undefined>(resolve => { resolveFirstPid = resolve; }); }
+                return Promise.resolve(55111);
+            },
+            sendText, show,
+        } as unknown as vscode.Terminal;
+        terminalSpies.set(terminal, { sendText, show });
+        setTerminals([terminal]);
+        const oldSocket = await connections.startAttach('same-id-discovery-replacement', 55111, os.hostname());
+        await firstRead;
+        const currentSocket = await connections.startAttach('same-id-discovery-replacement', 55111, os.hostname());
+        try {
+            const reference = await waitForValue(() => session.getSessionReference('same-id-discovery-replacement'));
+            await waitForValue(() => oldSocket.destroyed ? true : undefined);
+            assert.strictEqual(currentSocket.destroyed, false);
+            assert.strictEqual(session.getSessionReference('same-id-discovery-replacement')?.connectionId, reference.connectionId);
+            resolveFirstPid(55111);
+            await new Promise<void>(resolve => setImmediate(resolve));
+            assert.strictEqual(currentSocket.destroyed, false, 'late old discovery must not close the committed socket');
+            assert.strictEqual(session.getSessionReference('same-id-discovery-replacement')?.connectionId, reference.connectionId);
+        } finally {
+            resolveFirstPid(55111);
+            await session.cleanupSession('same-id-discovery-replacement');
+        }
+    });
+
     test('registering the active terminal during native PID discovery cancels the native path', async () => {
         let resolvePid!: (pid: number | undefined) => void;
         let pidRead!: () => void;
@@ -160,14 +275,75 @@ suite('External Terminal Integration', () => {
         await readStarted;
         const registration = session.registerTerminalIntegration(terminal, { attach: () => Promise.resolve(false) });
         try {
+            // Registration invalidates the pending PID lookup synchronously; the
+            // command must finish even though VS Code never resolves processId.
+            await nativeOperation;
             await session.activateRSession();
             resolvePid(undefined);
-            await nativeOperation;
+            await new Promise<void>(resolve => setImmediate(resolve));
             sinon.assert.notCalled(terminalSpies.get(terminal)!.sendText);
             sinon.assert.notCalled(createRTerm);
         } finally {
             resolvePid(undefined);
             registration.dispose();
+        }
+    });
+
+    test('disposing an integration cannot revive an older native PID wait', async () => {
+        let resolvePid!: (pid: number | undefined) => void;
+        let pidRead!: () => void;
+        const readStarted = new Promise<void>(resolve => { pidRead = resolve; });
+        const sendText = sandbox.stub();
+        const show = sandbox.stub();
+        const terminal = {
+            name: 'Native R',
+            get processId() { pidRead(); return new Promise<number | undefined>(resolve => { resolvePid = resolve; }); },
+            sendText, show,
+        } as unknown as vscode.Terminal;
+        terminalSpies.set(terminal, { sendText, show });
+        setTerminals([terminal]);
+        const createRTerm = sandbox.stub(rTerminal, 'createRTerm').resolves(true);
+        const operation = session.activateRSession();
+        await readStarted;
+        const registration = session.registerTerminalIntegration(terminal, { attach: () => Promise.resolve(false) });
+        registration.dispose();
+        try {
+            await operation;
+            resolvePid(55110);
+            await new Promise<void>(resolve => setImmediate(resolve));
+            sinon.assert.notCalled(sendText);
+            sinon.assert.notCalled(createRTerm);
+        } finally {
+            resolvePid(undefined);
+        }
+    });
+
+    test('terminal cleanup and watcher shutdown release manual PID waits and observe late rejection', async () => {
+        for (const invalidation of ['terminal', 'lifecycle'] as const) {
+            let rejectPid!: (error: Error) => void;
+            let pidRead!: () => void;
+            const readStarted = new Promise<void>(resolve => { pidRead = resolve; });
+            const sendText = sandbox.stub();
+            const show = sandbox.stub();
+            const terminal = {
+                name: 'Native R',
+                get processId() { pidRead(); return new Promise<number | undefined>((_resolve, reject) => { rejectPid = reject; }); },
+                sendText, show,
+            } as unknown as vscode.Terminal;
+            terminalSpies.set(terminal, { sendText, show });
+            setTerminals([terminal]);
+            const operation = session.activateRSession();
+            await readStarted;
+            if (invalidation === 'terminal') {
+                session.cleanupTerminalBinding(terminal);
+            } else {
+                await session.shutdownSessionWatcher();
+            }
+            await operation;
+            rejectPid(new Error('late processId rejection'));
+            await new Promise<void>(resolve => setImmediate(resolve));
+            sinon.assert.notCalled(sendText);
+            if (invalidation === 'lifecycle') { break; }
         }
     });
 

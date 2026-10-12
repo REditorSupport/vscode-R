@@ -1148,6 +1148,7 @@ suite('Session Communication', () => {
             processId: Promise.resolve(terminalPid),
             creationOptions: { name: 'R Interactive', env: { SESS_DISCOVERY_FILE: discoveryFile } },
         } as unknown as vscode.Terminal;
+        const liveTerminals = sandbox.stub(vscode.window, 'terminals').value([terminal]);
         let wrapperDiscoveryFile: string | undefined;
         try {
             await session.refreshTerminalDiscoveryFiles(newEndpoint, [terminal]);
@@ -1169,6 +1170,7 @@ suite('Session Communication', () => {
                 processId: Promise.resolve(wrapperTerminalPid),
                 creationOptions: { name: 'R Interactive' },
             } as unknown as vscode.Terminal;
+            liveTerminals.value([wrapperTerminal]);
             await session.refreshTerminalDiscoveryFiles(newEndpoint, [wrapperTerminal]);
             assert.deepStrictEqual(await readJson(wrapperDiscoveryFile), {
                 version: 1,
@@ -1197,6 +1199,7 @@ suite('Session Communication', () => {
             name: 'Renamed R', processId: Promise.resolve(45244),
             creationOptions: { name: 'R Interactive' },
         } as unknown as vscode.Terminal;
+        sandbox.stub(vscode.window, 'terminals').value([terminal]);
         try {
             await session.updateSessionDiscoveryFile(file, 'old-sess', 45244);
             jgdSocket = 'new-jgd-socket';
@@ -1233,6 +1236,7 @@ suite('Session Communication', () => {
                 processId: Promise.resolve(terminalPid),
                 creationOptions: { name: 'R Interactive' },
             } as unknown as vscode.Terminal;
+            sandbox.stub(vscode.window, 'terminals').value([terminal]);
             await session.refreshTerminalDiscoveryFiles(newEndpoint, [terminal]);
 
             const olderDiscovery: unknown = await readJson(olderFile);
