@@ -140,15 +140,19 @@ export interface RSessionApi {
      * invoked before native PID discovery; false, rejection, busy, or cancellation never falls
      * back to a native attach command. On true, vscode-R requires a current live session binding
      * for this terminal, then focuses that session. Consumers should bind with
-     * `activate(..., { terminal, connectionId, select: false })` before resolving true. If the
-     * terminal already has a current live owner, that owner is focused and the hook is skipped.
-     * While a hook is in flight, repeated activations of that terminal do not invoke it again.
+     * `activate(..., { terminal, connectionId, select: false })` before resolving true. When no
+     * hook is in flight, a current live owner is focused and the hook is skipped. While a hook is
+     * in flight, repeated activations report busy without selecting or focusing its bound owner,
+     * and do not invoke another handler. The terminal remains busy until the handler promise
+     * settles, even after cancellation is requested.
      * Registered terminals are excluded from native PID association, so consumers must bind
      * their session explicitly. Registration during host shutdown throws.
-     * If the user selects another session while the hook is pending, vscode-R leaves that selection in
-     * place and retains the terminal binding. Cancellation is requested when focus leaves the
-     * terminal, it closes, registration is disposed, or the host shuts down; submitted R code
-     * cannot be recalled.
+     * If the user selects another session while the hook is pending, vscode-R leaves that selection
+     * in place and retains the terminal binding. Cancellation is requested when focus leaves the
+     * terminal, it closes, registration is disposed, or the host shuts down. Consumers should
+     * stop cancellable waits and settle the handler on cancellation. Submitted R code cannot be
+     * recalled; the consumer must retain its preparation while the runtime keeps its submission
+     * queue occupied until execution finishes.
      */
     registerTerminalIntegration(terminal: vscode.Terminal, integration: RExternalTerminalIntegration): vscode.Disposable;
 }

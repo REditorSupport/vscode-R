@@ -1543,16 +1543,16 @@ export async function activateRSession(): Promise<void> {
             }
         });
     };
+    const registration = terminal ? terminalIntegrations.get(terminal) : undefined;
+    if (registration?.active) {
+        void window.showInformationMessage('An R session attach is already in progress for this terminal.');
+        return;
+    }
     const focused = focusOwner();
     if (focused) { await focused; return; }
 
     if (terminal) {
-        const registration = terminalIntegrations.get(terminal);
         if (registration) {
-            if (registration.active) {
-                void window.showInformationMessage('An R session attach is already in progress for this terminal.');
-                return;
-            }
             if (!isLiveTerminal(terminal) || window.activeTerminal !== terminal) { return; }
             // Supersede native attach operations that may still be waiting for PID or command I/O.
             sessionSelectionRevision++;

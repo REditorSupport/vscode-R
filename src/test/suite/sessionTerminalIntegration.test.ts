@@ -239,6 +239,7 @@ suite('External Terminal Integration', () => {
         const terminal = makeTerminal();
         setTerminals([terminal]);
         const owner = session.registerSessionTransport('integration-busy-owner', 'host', '/tmp', () => Promise.resolve({}));
+        const createRTerm = sandbox.stub(rTerminal, 'createRTerm').resolves(true);
         const gate = deferred<boolean>();
         const started = deferred<void>();
         const attach = sandbox.stub().callsFake(() => { started.resolve(); return gate.promise; });
@@ -246,10 +247,14 @@ suite('External Terminal Integration', () => {
         try {
             const first = session.activateRSession();
             await started.promise;
+            assert.strictEqual(await session.activateSessionById(owner.sessionId, { terminal, select: false }), true);
             await session.activateRSession();
             sinon.assert.calledOnce(attach);
             sinon.assert.calledOnceWithExactly(showInformation, 'An R session attach is already in progress for this terminal.');
-            assert.strictEqual(await session.activateSessionById(owner.sessionId, { terminal, select: false }), true);
+            assert.strictEqual(session.activeSession, undefined, 'busy click must not focus a bound owner');
+            sinon.assert.notCalled(terminalSpies.get(terminal)!.show);
+            sinon.assert.notCalled(terminalSpies.get(terminal)!.sendText);
+            sinon.assert.notCalled(createRTerm);
             gate.resolve(true);
             await first;
             assert.strictEqual(session.activeSession, owner, 'the successful hook should still select its live bound owner');
@@ -258,6 +263,55 @@ suite('External Terminal Integration', () => {
             gate.resolve(true);
             registration.dispose();
             session.unregisterSessionTransport(owner);
+        }
+    });
+
+    test('busy clicks stay inert while a bound hook awaits decline or cancellation completion', async () => {
+        const createRTerm = sandbox.stub(rTerminal, 'createRTerm').resolves(true);
+        for (const outcome of ['false', 'cancelled'] as const) {
+            const terminal = makeTerminal();
+            const other = makeTerminal();
+            setTerminals(outcome === 'cancelled' ? [terminal, other] : [terminal]);
+            const owner = session.registerSessionTransport(`integration-busy-${outcome}`, 'host', '/tmp', () => Promise.resolve({}));
+            const gate = deferred<boolean>();
+            const started = deferred<vscode.CancellationToken>();
+            const attach = sandbox.stub().callsFake((token: vscode.CancellationToken) => {
+                started.resolve(token);
+                return gate.promise;
+            });
+            const registration = session.registerTerminalIntegration(terminal, { attach });
+            try {
+                const first = session.activateRSession();
+                const token = await started.promise;
+                assert.strictEqual(await session.activateSessionById(owner.sessionId, { terminal, select: false }), true);
+                if (outcome === 'cancelled') {
+                    activeTerminal.value(other);
+                    activeEvents.fire(other);
+                    activeTerminal.value(terminal);
+                    activeEvents.fire(terminal);
+                    assert.strictEqual(token.isCancellationRequested, true);
+                }
+
+                await session.activateRSession();
+                sinon.assert.calledOnce(attach);
+                sinon.assert.calledOnceWithExactly(showInformation,
+                    'An R session attach is already in progress for this terminal.');
+                assert.strictEqual(session.activeSession, undefined, `${outcome} busy click must not focus the bound owner`);
+                sinon.assert.notCalled(terminalSpies.get(terminal)!.show);
+                sinon.assert.notCalled(terminalSpies.get(terminal)!.sendText);
+                sinon.assert.notCalled(createRTerm);
+
+                gate.resolve(outcome === 'cancelled');
+                await first;
+                assert.strictEqual(session.activeSession, undefined, `${outcome} hook must not activate its owner`);
+                sinon.assert.notCalled(terminalSpies.get(terminal)!.show);
+            } finally {
+                gate.resolve(false);
+                registration.dispose();
+                session.unregisterSessionTransport(owner);
+            }
+            showInformation.resetHistory();
+            createRTerm.resetHistory();
         }
     });
 
