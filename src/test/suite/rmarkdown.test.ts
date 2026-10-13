@@ -31,8 +31,10 @@ suite('R Markdown execution', () => {
         const directory = path.join(os.tmpdir(), `project's "report"`);
         const manager = new KnitHarness();
         assert.strictEqual(manager.directory(KnitWorkingDirectory.documentDirectory, path.join(directory, 'test.Rmd')), directory);
-        sandbox.stub(vscode.workspace, 'getWorkspaceFolder').returns({ uri: vscode.Uri.file(directory) } as vscode.WorkspaceFolder);
-        assert.strictEqual(manager.directory(KnitWorkingDirectory.workspaceRoot, '/test.Rmd'), directory);
+        const workspaceUri = vscode.Uri.file(directory);
+        sandbox.stub(vscode.workspace, 'getWorkspaceFolder').returns({ uri: workspaceUri } as vscode.WorkspaceFolder);
+        // VS Code normalizes Windows drive-letter casing in URI filesystem paths.
+        assert.strictEqual(manager.directory(KnitWorkingDirectory.workspaceRoot, '/test.Rmd'), workspaceUri.fsPath);
     });
 
     function mockChild() {
