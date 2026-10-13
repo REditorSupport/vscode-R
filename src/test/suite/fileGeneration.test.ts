@@ -54,4 +54,45 @@ suite('Generated file overwrite prompts', () => {
         await generateCppProperties();
         assert.strictEqual(fs.readFileSync(cppPath, 'utf8'), 'user compiler settings');
     });
+
+    test('unavailable R preserves the existing lint configuration after confirming overwrite', async () => {
+        sandbox.stub(vscode.window, 'showWarningMessage').callsFake(() => Promise.resolve('Yes') as unknown as Thenable<never>);
+        sandbox.stub(util, 'executeRCommand').resolves(undefined);
+        const lintrPath = path.join(directory, '.lintr');
+        fs.writeFileSync(lintrPath, 'user lint settings');
+        assert.strictEqual(await createLintrConfig(), undefined);
+        assert.strictEqual(fs.readFileSync(lintrPath, 'utf8'), 'user lint settings');
+        assert.deepStrictEqual(fs.readdirSync(directory), ['.lintr']);
+    });
+
+    test('failed lint generation restores the original even after partial output', async () => {
+        sandbox.stub(vscode.window, 'showWarningMessage').callsFake(() => Promise.resolve('Yes') as unknown as Thenable<never>);
+        const error = sandbox.stub(vscode.window, 'showErrorMessage');
+        const lintrPath = path.join(directory, '.lintr');
+        fs.writeFileSync(lintrPath, 'user lint settings');
+        sandbox.stub(util, 'executeRCommand').callsFake((_command, _cwd, fallback) => {
+            fs.writeFileSync(lintrPath, 'partial lint settings');
+            const failure = new Error('lint generation failed');
+            if (typeof fallback === 'function') { return Promise.resolve(fallback(failure)); }
+            throw failure;
+        });
+        assert.strictEqual(await createLintrConfig(), '');
+        assert.strictEqual(fs.readFileSync(lintrPath, 'utf8'), 'user lint settings');
+        assert.deepStrictEqual(fs.readdirSync(directory), ['.lintr']);
+        sinon.assert.calledOnce(error);
+        assert.deepStrictEqual(error.firstCall.args, ['lint generation failed']);
+    });
+
+    test('successful lint generation replaces the original and removes its backup', async () => {
+        sandbox.stub(vscode.window, 'showWarningMessage').callsFake(() => Promise.resolve('Yes') as unknown as Thenable<never>);
+        const lintrPath = path.join(directory, '.lintr');
+        fs.writeFileSync(lintrPath, 'user lint settings');
+        sandbox.stub(util, 'executeRCommand').callsFake(() => {
+            fs.writeFileSync(lintrPath, 'new lint settings');
+            return Promise.resolve('');
+        });
+        assert.strictEqual(await createLintrConfig(), '');
+        assert.strictEqual(fs.readFileSync(lintrPath, 'utf8'), 'new lint settings');
+        assert.deepStrictEqual(fs.readdirSync(directory), ['.lintr']);
+    });
 });

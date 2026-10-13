@@ -1,9 +1,9 @@
 'use strict';
 
-import { existsSync, unlinkSync } from 'fs';
+import { existsSync, mkdtempSync, renameSync, rmSync } from 'fs';
 import { join } from 'path';
 import { window } from 'vscode';
-import { executeRCommand, getCurrentWorkspaceFolder } from './util';
+import { catchAsError, executeRCommand, getCurrentWorkspaceFolder } from './util';
 
 export async function createLintrConfig(): Promise<string | undefined> {
     const currentWorkspaceFolder = getCurrentWorkspaceFolder()?.uri.fsPath;
@@ -20,10 +20,31 @@ export async function createLintrConfig(): Promise<string | undefined> {
         if (overwrite !== 'Yes') {
             return;
         }
-        unlinkSync(lintrFilePath);
     }
-    return await executeRCommand(`lintr::use_lintr()`, currentWorkspaceFolder, (e: Error) => {
-        void window.showErrorMessage(e.message);
+
+    let backupDirectory: string | undefined;
+    let generated = false;
+    try {
+        if (existsSync(lintrFilePath)) {
+            // lintr refuses to overwrite an existing file. Keep the original on
+            // disk until it has successfully generated the replacement.
+            backupDirectory = mkdtempSync(join(currentWorkspaceFolder, '.vscode-r-lintr-'));
+            renameSync(lintrFilePath, join(backupDirectory, '.lintr'));
+        }
+        const output = await executeRCommand('lintr::use_lintr()', currentWorkspaceFolder, (error: Error) => { throw error; });
+        if (output !== undefined) {
+            if (!existsSync(lintrFilePath)) { throw new Error('R did not create a .lintr configuration.'); }
+            generated = true;
+        }
+        return output;
+    } catch (error) {
+        void window.showErrorMessage(catchAsError(error).message);
         return '';
-    });
+    } finally {
+        if (backupDirectory) {
+            const backupPath = join(backupDirectory, '.lintr');
+            if (!generated && existsSync(backupPath)) { renameSync(backupPath, lintrFilePath); }
+            rmSync(backupDirectory, { recursive: true, force: true });
+        }
+    }
 }
