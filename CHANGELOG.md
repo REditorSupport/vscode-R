@@ -2,10 +2,49 @@
 
 ## Unreleased
 
-- Added the extension API's `session.prepareAttachment()` for extensions that own an R process and need vscode-R's managed `sess` setup. R errors and interrupts during manual attachment are now reported as messages while leaving the R prompt usable.
-- Added connection change events and live connection references for sess attachments, with activation controls for consumer-owned terminals.
-- Added `session.registerTerminalIntegration()` so external terminals can recover sess connections without falling back to a native attach command.
-- The httpgd plot backend now requires the `httpgd` R package version 2.0.1 or later. Older versions are treated as unavailable when choosing the plot backend. (#1855)
+### Compatibility and upgrade notes
+
+- Lowered the minimum supported VS Code version from 1.110 to **1.98.2**. (#1832, #1855)
+- The httpgd backend now requires **httpgd 2.0.1 or later**. (#1855)
+- `sess` now requires IPC protocol 2 and an exact bundled source revision; restart R if a different `sess` is already loaded. (@Fred-Wu, #1819, #1840, #1856)
+- Removed `sess::register_hooks()` and the `use_httpgd`/`use_jgd` arguments; use `sess::connect(plot_backend = ...)` instead. (#1847)
+- Plot backend settings are no longer synchronized between machines by Settings Sync. (#1817)
+
+### New features
+
+- Added paged list and vector viewers with nested expansion, parent/child navigation, and reset controls. (@Fred-Wu, #1835)
+- Data and list viewers stay bound to their source session and show its R version and process ID. (@Fred-Wu)
+- HTML Viewer now reuses a tab per session, with output history, navigation, removal, and restoration after closing the tab or reloading VS Code. (#1852)
+- Added `r.plot.backend: "native"` to preserve R's configured graphics device while retaining other session integrations. (#1817)
+- `sess` setup now uses the target R process and asks before installing into a managed library, leaving user and project libraries unchanged. (#1856)
+- Added `options(sess.quiet = TRUE)` to suppress successful connection messages. (#1795)
+- **Experimental:** Persistent R Interactive sessions with retained history, rich outputs, and automatic input formatting; requires arf on Linux/macOS, with Windows and console input/debugger prompts currently unsupported. (#1805, #1830, #1835, #1867)
+
+### Extension API
+
+- Added `getRExecutablePath(resource?)` to resolve the configured R executable. (#1813)
+- Added `session.prepareAttachment()` to prepare managed `sess` in an extension-owned R process, including through a local proxy endpoint. (#1868)
+- Extended `session.activate(sessionId, { terminal })` to route Workspace actions to extension-owned terminals; bindings must be renewed after reconnecting. (#1837)
+- Added `onDidChangeSessionConnection`, `getSessionReference()`, attachment/connection IDs, and selection controls (`autoActivate`, `select`). (#1870)
+- Added `session.registerTerminalIntegration()` to delegate manual attachment recovery to external terminals without bypassing their transport. (#1871)
+
+### Bug fixes
+
+- Prevented unintended R code evaluation when hover or completion has no valid expression range. (#1803)
+- Initial code submission now waits for the terminal's own session attachment and package preparation. (#1821, #1856)
+- Applied configured R library paths before looking for `renv` in language server and help processes. (#1797)
+- Prevented overlapping standard plot renders and stale results after session switches or viewer changes. (#1844)
+- Fixed stale viewer disposal/responses, custom list extraction, and duplicate evaluation of active bindings. (@Fred-Wu)
+- Fixed HTML Viewer search, fragment links, authored HTML preservation, and navigation blocked by missing load confirmation. (#1852)
+- Fixed Interactive dependency loading in isolated libraries and preserved cells and drafts across reloads. (#1843, #1861)
+- Removed duplicate startup prompts and unwanted `TRUE`/`FALSE` output. (#1795, #1864)
+- Manual attachment now handles R errors and interrupts while keeping the R prompt usable. (#1868)
+
+### Internals and development builds
+
+- Added daily pre-releases to the VS Code Marketplace and Open VSX after successful verification. (#1833, #1834)
+- Reduced VSIX assets and runtime dependencies, including replacing `httpgd-js` with built-in transports. (#1849, #1855)
+- Updated build tooling, shared release verification, and dependencies, including security fixes. (#1792, #1814, #1818, #1823)
 
 ## 3.0.1 - 2026-09-28
 
