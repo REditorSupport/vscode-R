@@ -123,7 +123,7 @@ export async function insertOrModifyText(query: RSEditOperation[], id: string | 
         }
     });
 
-    void workspace.applyEdit(edit);
+    await workspace.applyEdit(edit);
 }
 
 export async function replaceTextInCurrentSelection(text: string, id: string | null): Promise<void> {
@@ -281,13 +281,12 @@ export async function documentNew(text: string, type: string, position: number[]
         )),
         text);
 
-    void workspace.applyEdit(edit).then(async () => {
-        const editor = await window.showTextDocument(targetDocument);
-        editor.selections = [new Selection(
-            parsePosition(position, targetDocument),
-            parsePosition(position, targetDocument)
-        )];
-    });
+    await workspace.applyEdit(edit);
+    const editor = await window.showTextDocument(targetDocument);
+    editor.selections = [new Selection(
+        parsePosition(position, targetDocument),
+        parsePosition(position, targetDocument)
+    )];
 }
 
 // interface
@@ -438,12 +437,12 @@ function normaliseEditText(text: string, editLocation: RSPosition | RSRange,
     operation: string, targetDocument: TextDocument) {
     // in a document with lines, does the line position extend past the existing
     // lines in the document? rstudioapi adds a newline in this case, so must we.
-    // n_lines is a count, line is 0 indexed position hence + 1
+    // RStudio positions are one-based, as is the document's line count.
     const editStartLine = operation === 'insertText' ?
         (editLocation as RSPosition)[0] :
         (editLocation as RSRange).start[0];
     if (editStartLine === 'Inf' ||
-        (typeof editStartLine === 'number' && editStartLine + 1 > targetDocument.lineCount && targetDocument.lineCount > 0)) {
+        (typeof editStartLine === 'number' && editStartLine > targetDocument.lineCount && targetDocument.lineCount > 0)) {
         return (text + '\n');
     } else {
         return text;
