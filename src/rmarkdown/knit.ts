@@ -116,9 +116,10 @@ export class RMarkdownKnitManager extends RMarkdownManager {
         let paramObj: IYamlFrontmatter = {};
         if (yamlText) {
             try {
-                paramObj = yaml.load(
-                    yamlText
-                ) as IYamlFrontmatter;
+                const parsed: unknown = yaml.load(yamlText);
+                if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+                    paramObj = parsed as IYamlFrontmatter;
+                }
             } catch (e) {
                 console.error(`Could not parse YAML frontmatter for "${docPath}". Error: ${String(e)}`);
             }
@@ -136,26 +137,21 @@ export class RMarkdownKnitManager extends RMarkdownManager {
 
         // precedence:
         // knit > site > configuration
-        if (yamlParams?.['knit']) {
+        const formatArg = outputFormat ? `, output_format = ${util.ToRStringLiteral(outputFormat, '"')}` : '';
+        if (typeof yamlParams['knit'] === 'string' && yamlParams['knit']) {
             const knitParam = yamlParams['knit'].trim();
-            knitCommand = outputFormat ?
-                `${knitParam}(${docPath}, output_format = '${outputFormat}')` :
-                `${knitParam}(${docPath})`;
+            knitCommand = `(${knitParam})(${docPath}${formatArg})`;
         } else if (!this.isREADME(docPath) && yamlParams?.['site']) {
-            knitCommand = outputFormat ?
-                `rmarkdown::render_site(${docPath}, output_format = '${outputFormat}')` :
-                `rmarkdown::render_site(${docPath})`;
+            knitCommand = `rmarkdown::render_site(${docPath}${formatArg})`;
         } else {
             const cmd = util.config().get<string>('rmarkdown.knit.command');
             if (!cmd) {
                 return;
             }
-            knitCommand = outputFormat ?
-                `${cmd}(${docPath}, output_format = '${outputFormat}')` :
-                `${cmd}(${docPath})`;
+            knitCommand = `${cmd}(${docPath}${formatArg})`;
         }
 
-        return knitCommand.replace(/['"]/g, '\'');
+        return knitCommand;
     }
 
     // check if the workspace of the document is a R Markdown site.
@@ -166,8 +162,8 @@ export class RMarkdownKnitManager extends RMarkdownManager {
         if (!wad) {
             return;
         }
-        const rootFolder = vscode.workspace.workspaceFolders?.[0]?.uri?.fsPath ?? path.dirname(wad);
-        const indexFile = (await vscode.workspace.findFiles(new vscode.RelativePattern(rootFolder, 'index.{Rmd,rmd, md}'), null, 1))?.[0];
+        const rootFolder = vscode.workspace.getWorkspaceFolder(vscode.Uri.file(wad))?.uri.fsPath ?? path.dirname(wad);
+        const indexFile = (await vscode.workspace.findFiles(new vscode.RelativePattern(rootFolder, 'index.{Rmd,rmd,md}'), null, 1))?.[0];
         const siteRoot = path.join(path.dirname(wad), '_site.yml');
 
         // 'Simple' R Markdown websites require all docs to be in the root folder
@@ -275,19 +271,22 @@ export class RMarkdownKnitManager extends RMarkdownManager {
                 return;
             }
             this.busyUriStore.add(busyPath);
-            await this.renderDocument(
-                rDocumentPath,
-                wad.uri.fsPath,
-                path.basename(wad.uri.fsPath),
-                this.getYamlFrontmatter(wad.uri.fsPath),
-                outputFormat
-            );
-            this.busyUriStore.delete(busyPath);
+            try {
+                await this.renderDocument(
+                    rDocumentPath,
+                    wad.uri.fsPath,
+                    path.basename(wad.uri.fsPath),
+                    this.getYamlFrontmatter(wad.uri.fsPath),
+                    outputFormat
+                );
+            } finally {
+                this.busyUriStore.delete(busyPath);
+            }
         } else {
             if (outputFormat === undefined) {
                 void runTextInTerm(`rmarkdown::render(${rDocumentPath})`);
             } else {
-                void runTextInTerm(`rmarkdown::render(${rDocumentPath}, '${outputFormat}')`);
+                void runTextInTerm(`rmarkdown::render(${rDocumentPath}, ${util.ToRStringLiteral(outputFormat, '"')})`);
             }
         }
     }

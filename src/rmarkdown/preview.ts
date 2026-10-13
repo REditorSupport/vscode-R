@@ -231,8 +231,11 @@ export class RMarkdownPreviewManager extends RMarkdownManager {
             this.previewStore.get(filePath)?.panel.reveal();
         } else {
             this.busyUriStore.add(filePath);
-            await this.previewDocument(filePath, fileName, viewer, currentViewColumn);
-            this.busyUriStore.delete(filePath);
+            try {
+                await this.previewDocument(filePath, fileName, viewer, currentViewColumn);
+            } finally {
+                this.busyUriStore.delete(filePath);
+            }
         }
     }
 

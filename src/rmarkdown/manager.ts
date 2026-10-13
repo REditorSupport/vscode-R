@@ -2,6 +2,7 @@ import * as util from '../util';
 import * as vscode from 'vscode';
 import * as cp from 'child_process';
 import path = require('path');
+import { StringDecoder } from 'string_decoder';
 import { DisposableProcess, spawn } from '../util';
 
 export enum KnitWorkingDirectory {
@@ -39,12 +40,11 @@ export abstract class RMarkdownManager {
         switch (knitDir) {
             // the directory containing the R Markdown document
             case KnitWorkingDirectory.documentDirectory: {
-                return path.dirname(docPath)?.replace(/\\/g, '/')?.replace(/['"]/g, '\\"') ?? undefined;
+                return path.dirname(docPath);
             }
             // the root of the current workspace
             case KnitWorkingDirectory.workspaceRoot: {
-                const currentDocumentWorkspace = vscode.workspace.getWorkspaceFolder(vscode.Uri.file(docPath) ?? vscode.window.activeTextEditor?.document?.uri)?.uri?.fsPath ?? undefined;
-                return currentDocumentWorkspace?.replace(/\\/g, '/')?.replace(/['"]/g, '\\"') ?? undefined;
+                return vscode.workspace.getWorkspaceFolder(vscode.Uri.file(docPath))?.uri.fsPath;
             }
             // the working directory of the attached terminal, NYI
             // case 'current directory': {
@@ -60,6 +60,7 @@ export abstract class RMarkdownManager {
         let currentProgress = 0;
         let printOutput = true;
 
+        let cancellation: vscode.Disposable | undefined;
         return await new Promise<DisposableProcess>(
             (resolve, reject) => {
                 const scriptArgs = args.scriptArgs;
@@ -77,7 +78,7 @@ export abstract class RMarkdownManager {
                 // When there's no LANG variable, we should try to set to a UTF-8 compatible one, as R relies
                 // on locale setting (based on LANG) to render certain characters.
                 // See https://github.com/REditorSupport/vscode-R/issues/933
-                const env = process.env;
+                const env = { ...process.env };
                 if (env.LANG === undefined) {
                     env.LANG = 'en_US.UTF-8';
                 }
@@ -115,75 +116,74 @@ export abstract class RMarkdownManager {
                     this.rMarkdownOutput.appendLine(`==> ${args.rCmd}`);
                 }
 
-                childProcess.stdout.on('data',
-                    (data: Buffer) => {
-                        const dat = data.toString('utf8');
-                        if (printOutput) {
-                            this.rMarkdownOutput.appendLine(dat);
-
+                const stdoutDecoder = new StringDecoder('utf8');
+                const stderrDecoder = new StringDecoder('utf8');
+                let outputBuffer = '';
+                let outputComplete = false;
+                const receive = (dat: string) => {
+                    // R's output-path marker can span several pipe writes.
+                    // Retain a bounded suffix while streaming ordinary output.
+                    outputBuffer = (outputBuffer + dat).slice(-65536);
+                    if (printOutput) {
+                        this.rMarkdownOutput.appendLine(dat);
+                    }
+                    const percentRegex = /[0-9]+(?=%)/g;
+                    const divisionRegex = /([0-9]+)\/([0-9]+)/g;
+                    const percentRegOutput = dat.match(percentRegex);
+                    if (percentRegOutput) {
+                        for (const item of percentRegOutput) {
+                            const perc = Number(item);
+                            progress?.report({ increment: perc - currentProgress, message: `${perc}%` });
+                            currentProgress = perc;
                         }
-                        const percentRegex = /[0-9]+(?=%)/g;
-                        const divisionRegex = /([0-9]+)\/([0-9]+)/g;
-                        const percentRegOutput = dat.match(percentRegex);
-                        if (percentRegOutput) {
-                            for (const item of percentRegOutput) {
-                                const perc = Number(item);
-                                progress?.report(
-                                    {
-                                        increment: perc - currentProgress,
-                                        message: `${perc}%`
-                                    }
-                                );
-                                currentProgress = perc;
-                            }
-                        } else {
-                            const divisionRegOutput = divisionRegex.exec(dat);
-                            if (divisionRegOutput) {
-                                const perc = Math.ceil(parseInt(divisionRegOutput[1]) / parseInt(divisionRegOutput[2]) * 100);
-                                progress?.report(
-                                    {
-                                        increment: perc - currentProgress,
-                                        message: `${perc}%`
-                                    }
-                                );
-                                currentProgress = perc;
-                            }
-                        }
-
-                        if (token?.isCancellationRequested) {
-                            if (childProcess) {
-                                resolve(childProcess);
-                            }
-                        } else {
-                            if (args.callback(dat, childProcess)) {
-                                if (childProcess) {
-                                    resolve(childProcess);
-                                }
-                            }
+                    } else {
+                        const divisionRegOutput = divisionRegex.exec(dat);
+                        if (divisionRegOutput) {
+                            const perc = Math.ceil(parseInt(divisionRegOutput[1]) / parseInt(divisionRegOutput[2]) * 100);
+                            progress?.report({ increment: perc - currentProgress, message: `${perc}%` });
+                            currentProgress = perc;
                         }
                     }
-                );
+
+                    if (token?.isCancellationRequested) {
+                        reject({ cp: childProcess, wasCancelled: true });
+                    } else if (!outputComplete && args.callback(outputBuffer, childProcess)) {
+                        outputComplete = true;
+                        if (childProcess) { resolve(childProcess); }
+                    }
+                };
+                childProcess.stdout.on('data', (data: Buffer) => {
+                    try { receive(stdoutDecoder.write(data)); }
+                    catch (error) {
+                        this.rMarkdownOutput.appendLine(String(error));
+                        reject({ cp: childProcess, wasCancelled: false });
+                    }
+                });
 
                 childProcess.stderr.on('data', (data: Buffer) => {
-                    const dat = data.toString('utf8');
+                    const dat = stderrDecoder.write(data);
                     if (printOutput) {
                         this.rMarkdownOutput.appendLine(dat);
                     }
                 });
 
-                childProcess.on('exit', (code, signal) => {
+                childProcess.on('error', error => {
+                    this.rMarkdownOutput.appendLine(error.message);
+                    reject({ cp: childProcess, wasCancelled: false });
+                });
+                childProcess.on('close', (code, signal) => {
                     this.rMarkdownOutput.appendLine(`[VSC-R] ${fileName} process exited ` +
-                        (signal ? `from signal '${signal}'` : `with exit code ${code || 'null'}`));
-                    if (code !== 0) {
-                        reject({ cp: childProcess, wasCancelled: false });
-                    }
+                        (signal ? `from signal '${signal}'` : `with exit code ${code ?? 'null'}`));
+                    // If no callback recognized the output, even a zero exit code
+                    // cannot produce a preview. Always settle the pending progress.
+                    reject({ cp: childProcess, wasCancelled: false });
                 });
 
-                token?.onCancellationRequested(() => {
+                cancellation = token?.onCancellationRequested(() => {
                     reject({ cp: childProcess, wasCancelled: true });
                 });
             }
-        );
+        ).finally(() => { cancellation?.dispose(); });
     }
 
     protected async knitWithProgress(args: IKnitArgs): Promise<DisposableProcess | undefined> {
