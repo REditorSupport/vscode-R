@@ -7,6 +7,7 @@
 - Lowered the minimum supported VS Code version from 1.110 to **1.98.2**. (#1832, #1855)
 - The httpgd backend now requires **httpgd 2.0.1 or later**. (#1855)
 - `sess` now requires IPC protocol 2 and an exact bundled source revision; restart R if a different `sess` is already loaded. (@Fred-Wu, #1819, #1840, #1856)
+- When using isolated R libraries (e.g. with renv), install any missing R package dependencies of `sess` in each environment's library. (#1856)
 - Removed `sess::register_hooks()` and the `use_httpgd`/`use_jgd` arguments; use `sess::connect(plot_backend = ...)` instead. (#1847)
 - Plot backend settings are no longer synchronized between machines by Settings Sync. (#1817)
 
