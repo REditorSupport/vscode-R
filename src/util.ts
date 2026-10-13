@@ -10,6 +10,7 @@ import * as vscode from 'vscode';
 import * as cp from 'child_process';
 import { extensionContext } from './extension';
 import { randomBytes } from 'crypto';
+import { StringDecoder } from 'string_decoder';
 import {
     createRPathResolverDependencies,
     findExecutableOnPath,
@@ -128,17 +129,15 @@ export function ToRStringLiteral(s: string, quote: string): string {
         return 'NULL';
     }
 
-    return (quote +
-        s.replace(/\\/g, '\\\\')
-            .replace(/"""/g, `\\${quote}`)
-            .replace(/\\n/g, '\\n')
-            .replace(/\\r/g, '\\r')
-            .replace(/\\t/g, '\\t')
-            .replace(/\\b/g, '\\b')
-            .replace(/\\a/g, '\\a')
-            .replace(/\\f/g, '\\f')
-            .replace(/\\v/g, '\\v') +
-        quote);
+    const escapes: Record<string, string> = { '\\': '\\\\', '\n': '\\n', '\r': '\\r', '\t': '\\t',
+        '\b': '\\b', '\x07': '\\a', '\f': '\\f', '\v': '\\v' };
+    const escaped = Array.from(s, character => {
+        if (character === '"' || character === "'") {
+            return !quote || character === quote ? `\\${character}` : character;
+        }
+        return escapes[character] ?? character;
+    }).join('');
+    return quote + escaped + quote;
 }
 
 export async function delay(ms: number): Promise<unknown> {
@@ -272,9 +271,9 @@ export async function doWithProgress<T>(cb: (token?: vscode.CancellationToken, p
         title: title
     };
     return await vscode.window.withProgress(options, async (progress, token) => {
-        return await new Promise<T>((resolve) => setTimeout(() => {
-            const ret = cb(token, progress);
-            resolve(ret);
+        return await new Promise<T>((resolve, reject) => setTimeout(() => {
+            try { resolve(cb(token, progress)); }
+            catch (error) { reject(error); }
         }));
     });
 }
@@ -503,16 +502,21 @@ export async function spawnAsync(command: string, args?: ReadonlyArray<string>, 
             if (childProcess.pid !== undefined) {
                 result.pid = childProcess.pid;
             }
+            const stdoutDecoder = new StringDecoder('utf8');
+            const stderrDecoder = new StringDecoder('utf8');
             childProcess.stdout?.on('data', (chunk: Buffer) => {
-                result.stdout += chunk.toString();
+                result.stdout += stdoutDecoder.write(chunk);
             });
             childProcess.stderr?.on('data', (chunk: Buffer) => {
-                result.stderr += chunk.toString();
+                result.stderr += stderrDecoder.write(chunk);
             });
             childProcess.on('error', (err: Error) => {
                 result.error = err;
             });
-            childProcess.on('exit', (code, signal) => {
+            // close also fires for spawn errors and waits for both output pipes.
+            childProcess.on('close', (code, signal) => {
+                result.stdout += stdoutDecoder.end();
+                result.stderr += stderrDecoder.end();
                 result.status = code;
                 result.signal = signal;
                 resolve(result);
