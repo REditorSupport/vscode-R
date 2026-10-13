@@ -17,7 +17,7 @@ export async function createLintrConfig(): Promise<string | undefined> {
             '".lintr" file already exists. Do you want to overwrite?',
             'Yes', 'No'
         );
-        if (overwrite === 'No') {
+        if (overwrite !== 'Yes') {
             return;
         }
         unlinkSync(lintrFilePath);

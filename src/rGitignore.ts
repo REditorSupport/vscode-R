@@ -1,6 +1,6 @@
 'use strict';
 
-import { writeFile } from 'node:fs';
+import { writeFile } from 'node:fs/promises';
 import { existsSync, readFileSync } from 'fs';
 import { join } from 'path';
 import { window } from 'vscode';
@@ -23,17 +23,13 @@ export async function createGitignore(): Promise<void> {
             '".gitignore" file already exists. Do you want to overwrite?',
             'Yes', 'No'
         );
-        if (overwrite === 'No') {
+        if (overwrite !== 'Yes') {
             return;
         }
     }
-    writeFile(ignorePath, ignoreFileContent, (err) => {
-        try {
-            if (err) {
-                void window.showErrorMessage(err.name);
-            }
-        } catch (e) {
-            void window.showErrorMessage(catchAsError(e).message);
-        }
-    });
+    try {
+        await writeFile(ignorePath, ignoreFileContent);
+    } catch (e) {
+        void window.showErrorMessage(catchAsError(e).message);
+    }
 }
