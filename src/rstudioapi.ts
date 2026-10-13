@@ -96,6 +96,12 @@ export async function documentContext(id: string | null): Promise<RSDocumentCont
     };
 }
 
+async function applyEditorEdit(edit: WorkspaceEdit): Promise<void> {
+    if (!await workspace.applyEdit(edit)) {
+        throw new Error('Could not apply editor changes.');
+    }
+}
+
 export async function insertOrModifyText(query: RSEditOperation[], id: string | null = null): Promise<void> {
 
 
@@ -123,7 +129,7 @@ export async function insertOrModifyText(query: RSEditOperation[], id: string | 
         }
     });
 
-    await workspace.applyEdit(edit);
+    await applyEditorEdit(edit);
 }
 
 export async function replaceTextInCurrentSelection(text: string, id: string | null): Promise<void> {
@@ -135,7 +141,7 @@ export async function replaceTextInCurrentSelection(text: string, id: string | n
         getLastActiveTextEditor().selection,
         text
     );
-    await workspace.applyEdit(edit);
+    await applyEditorEdit(edit);
 }
 
 export function showDialog(message: string): void {
@@ -281,7 +287,7 @@ export async function documentNew(text: string, type: string, position: number[]
         )),
         text);
 
-    await workspace.applyEdit(edit);
+    await applyEditorEdit(edit);
     const editor = await window.showTextDocument(targetDocument);
     editor.selections = [new Selection(
         parsePosition(position, targetDocument),
