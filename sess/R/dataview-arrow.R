@@ -747,11 +747,13 @@ dataview_arrow_row_group_slice <- function(state, row_idx) {
   columns <- match(fields, index$fields)
   present <- !is.na(columns)
   page <- if (any(present)) {
-    dataview_arrow_data_frame(index$reader$ReadRowGroups(
+    table <- index$reader$ReadRowGroups(
       groups - 1L, as.integer(columns[present] - 1L)
-    ))
+    )
+    # Select in Arrow so only requested rows are materialized as R columns.
+    dataview_arrow_data_frame(table$Take(selected_idx - 1L))
   } else {
-    data.frame(row.names = seq_len(sum(counts)))
+    data.frame(row.names = seq_along(row_idx))
   }
 
   for (name in fields[!present]) {
@@ -763,8 +765,7 @@ dataview_arrow_row_group_slice <- function(state, row_idx) {
       value[rep(1L, nrow(page))]
     }
   }
-  page <- page[, fields, drop = FALSE]
-  page[selected_idx, , drop = FALSE]
+  page[, fields, drop = FALSE]
 }
 
 dataview_arrow_query_forward_slice <- function(state, row_idx) {

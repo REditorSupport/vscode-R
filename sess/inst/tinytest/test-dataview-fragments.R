@@ -14,6 +14,63 @@ local({
 })
 
 if (requireNamespace("arrow", quietly = TRUE)) local({
+  root <- tempfile("dataview-row-group-selection-")
+  dir.create(root)
+  path <- file.path(root, "year=2025")
+  dir.create(path)
+  on.exit(unlink(root, recursive = TRUE), add = TRUE)
+  ids <- seq_len(60000L)
+  df <- data.frame(
+    id = ids,
+    date = as.Date("2020-01-01") + ids,
+    time = as.POSIXct("2020-01-01", tz = "Australia/Sydney") + ids,
+    label = rep(c("a", NA_character_), length.out = length(ids))
+  )
+  df$struct <- data.frame(value = ids)
+  if (requireNamespace("bit64", quietly = TRUE)) {
+    df$big <- bit64::as.integer64("9007199254740993") + bit64::as.integer64(ids)
+  }
+  arrow::write_parquet(df, file.path(path, "single.parquet"), chunk_size = 30000L)
+  data <- arrow::open_dataset(root)
+  expected <- sess:::dataview_arrow_data_frame(data)
+  state <- sess:::dataview_to_state(data)
+  on.exit(sess:::dataview_arrow_reader_reset(state), add = TRUE)
+
+  # Observe the conversion boundary without changing the package namespace.
+  # A small page must not convert the entire 30,000-row group into R.
+  slice <- sess:::dataview_arrow_row_group_slice
+  probe <- new.env(parent = environment(slice))
+  converted <- integer()
+  probe$dataview_arrow_data_frame <- function(data, conversion = NULL) {
+    converted <<- c(converted, nrow(data))
+    sess:::dataview_arrow_data_frame(data, conversion)
+  }
+  environment(slice) <- probe
+  normalize <- function(data) {
+    if (!is.data.frame(data)) return(data)
+    data <- as.data.frame(data)
+    data[] <- lapply(data, normalize)
+    rownames(data) <- NULL
+    data
+  }
+  for (fields in list(names(expected), c("id", "year"), "year")) {
+    projected <- sess:::dataview_arrow_page_state(
+      state, as.character(match(fields, names(expected)))
+    )
+    for (rows in list(
+      50001:50030, 20001:21000, 29991:30010,
+      c(60000L, 1L, 30001L, 30000L, 1L)
+    )) {
+      converted <- integer()
+      page <- slice(projected, rows)
+      reference <- expected[rows, names(projected$data), drop = FALSE]
+      expect_equal(normalize(page), normalize(reference))
+      expect_equal(converted, if (identical(fields, "year")) integer() else length(rows))
+    }
+  }
+})
+
+if (requireNamespace("arrow", quietly = TRUE)) local({
   root <- tempfile("dataview-projection-")
   dir.create(root)
   view_ids <- character()
