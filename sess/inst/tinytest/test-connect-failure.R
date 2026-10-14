@@ -63,7 +63,7 @@ local({
     expect_identical(getTaskCallbackNames(), original_callbacks)
     expect_identical(getHook("plot.new"), original_plot_hook)
   }
-  opts <- list(use_rstudioapi = FALSE, use_httpgd = FALSE, use_jgd = FALSE)
+  opts <- list(use_rstudioapi = FALSE, plot_backend = "standard")
   listen()
   expect_error(do.call(env$connect, c(list(endpoint = endpoint), opts)),
                "injected runtime failure")
@@ -94,4 +94,9 @@ local({
   expect_true(isTRUE(sess:::.runtime_state()$active))
   expect_equal(length(callbacks), 0L)
   expect_equal(sum(getTaskCallbackNames() == "sess.workspace"), 1L)
+
+  close_peer()
+  listen()
+  expect_true(isTRUE(do.call(env$connect, c(list(endpoint = endpoint), opts))))
+  close_peer()
 })

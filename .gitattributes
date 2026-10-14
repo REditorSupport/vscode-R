@@ -1,2 +1,2 @@
-# Auto detect text files and perform LF normalization
-* text=auto
+# Auto detect text files, normalize to LF and keep LF checkouts on every platform
+* text=auto eol=lf

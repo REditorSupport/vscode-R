@@ -116,7 +116,7 @@ local({
                  table = data.frame(value = 1:2), value = list(1 + 2i))
   formatted <- sess:::dataview_format_column(list(nested))[[1L]]
   expect_identical(formatted$date, nested$date)
-  expect_equal(formatted$table, list(list(value = 1L), list(value = 2L)))
+  expect_equal(formatted$table, nested$table)
   expect_equal(formatted$value, list("1+2i"))
 })
 
@@ -149,6 +149,92 @@ local({
     ))
     expect_equal(filtered$rows[["1"]], value, tolerance = 1e-14)
   }
+})
+
+# Inline numeric labels honor R print options without changing the raw RPC values.
+local({
+  .sess_env <- sess:::.sess_env
+  orig_dataviews <- .sess_env$dataviews
+  orig_con <- .sess_env$con
+  orig_options <- options(digits = 7, scipen = 0, OutDec = ".")
+  pipe <- processx::conn_create_pipepair()
+  on.exit({
+    .sess_env$dataviews <- orig_dataviews
+    .sess_env$con <- orig_con
+    options(orig_options)
+    lapply(pipe, close)
+  }, add = TRUE)
+  .sess_env$con <- pipe[[2L]]
+
+  request <- function(view_id, ...) {
+    sess:::dispatch_message(as.character(jsonlite::toJSON(
+      list(jsonrpc = "2.0", id = "formatted", method = "dataview_page",
+           params = c(list(view_id = view_id, formatNumbers = TRUE), list(...))),
+      auto_unbox = TRUE, digits = NA
+    )))
+    response <- jsonlite::fromJSON(processx::conn_read_chars(pipe[[1L]]),
+                                   simplifyVector = FALSE)
+    expect_null(response$error)
+    response$result
+  }
+
+  values <- c(326 / 0.23, 326 / 0.21, 1400)
+  df <- data.frame(value = values, tiny = c(1.54e-100, 2.54e-100, 0),
+                   text = c("001.234567890123", "<script>", "9007199254740993"))
+  cases <- list(frame = df, matrix = as.matrix(df[1:2]))
+  if (requireNamespace("data.table", quietly = TRUE)) {
+    cases$table <- data.table::as.data.table(df)
+  }
+  for (case in cases) {
+    original <- serialize(case, NULL)
+    view_id <- sess:::dataview_register(case)$view_id
+    page <- request(view_id)
+    expect_equal(unlist(page$formattedColumns[["1"]]), c("1417.391", "1552.381", "1400.000"))
+    expect_equal(unlist(page$formattedColumns[["2"]]), format(df$tiny, trim = TRUE))
+    expect_equal(vapply(page$rows, `[[`, numeric(1), "1"), values, tolerance = 1e-14)
+    expect_null(page$formattedColumns[["0"]])
+    expect_null(page$formattedColumns[["3"]])
+
+    single <- request(view_id, startRow = 1L, endRow = 2L)
+    expect_equal(single$formattedColumns[["1"]], list("1552.381"))
+    expect_length(request(view_id, startRow = 3L)$formattedColumns[["1"]], 0L)
+    raw <- sess:::handle_dataview_page(list(view_id = view_id))
+    expect_null(raw$formattedColumns)
+    expect_identical(raw$rows[["1"]], values)
+
+    sorted <- request(view_id, sortModel = list(list(colId = "1", sort = "asc")))
+    expect_equal(unlist(sorted$formattedColumns[["1"]]), c("1400.000", "1417.391", "1552.381"))
+    filtered <- request(view_id, filterModel = list("1" = list(type = "equals", filter = 1400)))
+    expect_length(filtered$rows, 1L)
+    expect_equal(filtered$formattedColumns[["1"]], list("1400"))
+    expect_identical(serialize(case, NULL), original)
+  }
+
+  view_id <- sess:::dataview_register(df)$view_id
+  for (settings in list(list(digits = 4), list(digits = 12),
+                        list(scipen = 999), list(scipen = -9, OutDec = ","))) {
+    options(settings)
+    page <- request(view_id)
+    expect_equal(unlist(page$formattedColumns[["1"]]), format(values, trim = TRUE))
+    expect_equal(unlist(page$formattedColumns[["2"]]), format(df$tiny, trim = TRUE))
+    expect_equal(vapply(page$rows, `[[`, numeric(1), "1"), values, tolerance = 1e-14)
+    options(digits = 7, scipen = 0, OutDec = ".")
+  }
+
+  special <- data.frame(value = c(NA_real_, NaN, Inf, -Inf), integer = c(1L, NA, 2L, 3L))
+  if (requireNamespace("bit64", quietly = TRUE)) {
+    special$integer64 <- bit64::as.integer64(c("9007199254740993", NA, "1", "2"))
+  }
+  view_id <- sess:::dataview_register(special)$view_id
+  page <- request(view_id)
+  expect_equal(unlist(page$formattedColumns[["1"]]), c("NA", "NaN", "Inf", "-Inf"))
+  expect_equal(unlist(page$formattedColumns[["2"]]), c("1", "NA", "2", "3"))
+  expect_null(page$formattedColumns[["3"]])
+  if ("integer64" %in% names(special)) {
+    expect_equal(page$rows[[1L]][["3"]], "9007199254740993")
+  }
+  empty <- sess:::dataview_register(df[0, ])$view_id
+  expect_length(request(empty)$formattedColumns[["1"]], 0L)
 })
 
 # S3 and S4 numeric subclasses supply their own display and text-filter values.
@@ -487,7 +573,10 @@ if (requireNamespace("arrow", quietly = TRUE)) {
     on.exit({
       unlink(path, recursive = TRUE)
       for (view_id in view_ids) {
-        sess:::handle_dataview_dispose(list(view_id = view_id))
+        sess:::handle_dataview_dispose(list(
+          view_id = view_id,
+          state_generation = sess:::dataview_get_state(view_id)$state_generation
+        ))
       }
       sess_env$dataviews <- original_views
     }, add = TRUE)
@@ -662,7 +751,12 @@ if (requireNamespace("arrow", quietly = TRUE)) {
     original_views <- sess_env$dataviews
     view_ids <- character()
     on.exit({
-      for (view_id in view_ids) sess:::handle_dataview_dispose(list(view_id = view_id))
+      for (view_id in view_ids) {
+        sess:::handle_dataview_dispose(list(
+          view_id = view_id,
+          state_generation = sess:::dataview_get_state(view_id)$state_generation
+        ))
+      }
       sess_env$dataviews <- original_views
     }, add = TRUE)
     df <- data.frame(
@@ -724,7 +818,12 @@ if (requireNamespace("arrow", quietly = TRUE)) {
       original_views <- sess_env$dataviews
       view_ids <- character()
       on.exit({
-        for (view_id in view_ids) sess:::handle_dataview_dispose(list(view_id = view_id))
+        for (view_id in view_ids) {
+          sess:::handle_dataview_dispose(list(
+            view_id = view_id,
+            state_generation = sess:::dataview_get_state(view_id)$state_generation
+          ))
+        }
         sess_env$dataviews <- original_views
       }, add = TRUE)
       data <- getExportedValue("arrow", "InMemoryDataset")$create(data.frame(
@@ -787,3 +886,127 @@ if (requireNamespace("arrow", quietly = TRUE)) {
     })
   }
 }
+
+# aggregate() can return a matrix per column. Its cells are tuples, not scalars.
+local({
+  .sess_env <- sess:::.sess_env
+  original_views <- .sess_env$dataviews
+  on.exit({
+    .sess_env$dataviews <- original_views
+  })
+  df <- aggregate(cbind(Ozone, Temp) ~ Month, airquality, quantile,
+                  probs = c(.25, .5, .75))
+  original <- serialize(df, NULL)
+  view_id <- sess:::dataview_register(df)$view_id
+  state <- sess:::dataview_get_state(view_id)
+  for (position in 3:4) {
+    expect_equal(as.character(state$columns[[position]]$type), "textColumn")
+    expect_false(state$columns[[position]]$sortable)
+    expect_false(state$columns[[position]]$filter)
+  }
+  # Ignore stale or externally supplied scalar queries on composite columns.
+  page <- sess:::handle_dataview_page(list(
+    view_id = view_id, formatNumbers = TRUE,
+    sortModel = list(list(colId = "2", sort = "desc")),
+    filterModel = list("3" = list(type = "greaterThan", filter = 70))
+  ))
+  expect_equal(page$totalRows, 5L)
+  expect_identical(page$rows[["2"]], df$Ozone)
+  expect_null(page$formattedColumns[["2"]])
+  # Scalar columns still query and page the complete matrix rows together.
+  page <- sess:::handle_dataview_page(list(
+    view_id = view_id, startRow = 1L, endRow = 3L,
+    sortModel = list(list(colId = "1", sort = "desc"))
+  ))
+  expect_identical(page$rows[["2"]], df$Ozone[c(4L, 3L), , drop = FALSE])
+  expect_identical(serialize(df, NULL), original)
+})
+
+# Workspace children expose View for both structured and text-viewable objects.
+local({
+  selector <- list(kind = "index", value = 1L)
+  expect_true(sess:::workspace_child_item(data.frame(x = 1), "df", selector)$viewable)
+  expect_true(sess:::workspace_child_item(matrix(1:4, 2), "matrix", selector)$viewable)
+  expect_true(sess:::workspace_child_item(list(x = 1), "list", selector)$viewable)
+  expect_true(sess:::workspace_child_item(new.env(), "environment", selector)$viewable)
+  expect_true(sess:::workspace_child_item(pairlist(x = 1), "pairlist", selector)$viewable)
+  methods::setClass("list_viewer_test_slots", slots = c(child = "list"))
+  on.exit(methods::removeClass("list_viewer_test_slots"), add = TRUE)
+  object <- methods::new("list_viewer_test_slots", child = list(x = 1))
+  expect_true(sess:::workspace_child_item(object, "S4", selector)$viewable)
+  expect_true(sess:::workspace_child_item(1:3, "vector", selector)$viewable)
+})
+
+# List pages inspect only the requested children, with stable indices across pages.
+local({
+  runtime <- sess:::.sess_env
+  previous <- runtime$dataviews
+  on.exit(runtime$dataviews <- previous, add = TRUE)
+  object <- new.env(parent = emptyenv())
+  child_names <- paste0("item", seq_len(501L))
+  for (name in child_names[1:500]) assign(name, 1L, envir = object)
+  delayedAssign("item501", stop("unrequested binding was evaluated"), assign.env = object)
+  runtime$dataviews$paging_test <- list(
+    type = "list", data = object, kind = "name", names = child_names, title = "object"
+  )
+
+  first <- sess:::get_workspace_children(view_id = "paging_test", start = 1L)
+  expect_length(first$children, 500L)
+  expect_equal(first$next_start, 501L)
+  expect_equal(vapply(first$children, `[[`, 1L, "index"), 1:500)
+
+  # Removing a binding must not shift later indices or fail the next page.
+  rm("item501", envir = object)
+  last <- sess:::get_workspace_children(view_id = "paging_test", start = 501L)
+  expect_equal(last$children[[1L]]$label, "$ item501")
+  expect_false(last$children[[1L]]$viewable)
+  expect_null(last$next_start)
+  makeActiveBinding("item501", function() stop("active binding was evaluated"), object)
+  last <- sess:::get_workspace_children(view_id = "paging_test", start = 501L)
+  expect_equal(last$children[[1L]]$str, "(active-binding)")
+  expect_false(last$children[[1L]]$viewable)
+  expect_length(sess:::get_workspace_children(view_id = "paging_test", start = 502L)$children, 0L)
+})
+
+
+# A delayed panel close cannot dispose state recreated under the same viewer id.
+local({
+  runtime <- sess:::.sess_env
+  previous <- runtime$dataviews
+  on.exit(runtime$dataviews <- previous, add = TRUE)
+
+  cases <- list(
+    list = list(
+      first = sess:::listview_state(list(value = 1L), "x", "x"),
+      replacement = sess:::listview_state(list(value = 2L), "x", "x")
+    ),
+    table = list(
+      first = sess:::dataview_to_state(data.frame(value = 1L)),
+      replacement = sess:::dataview_to_state(data.frame(value = 2L))
+    )
+  )
+
+  for (name in names(cases)) {
+    runtime$dataviews <- list()
+    first <- sess:::dataview_set_state("replacement_test", cases[[name]]$first)
+    replacement <- sess:::dataview_set_state(
+      "replacement_test", cases[[name]]$replacement
+    )
+    expect_true(replacement$state_generation > first$state_generation, info = name)
+
+    expect_true(sess:::handle_dataview_dispose(list(
+      view_id = "replacement_test", state_generation = first$state_generation
+    )), info = name)
+    expect_identical(
+      runtime$dataviews$replacement_test$state_generation, replacement$state_generation, info = name
+    )
+    expect_identical(
+      runtime$dataviews$replacement_test$data, cases[[name]]$replacement$data, info = name
+    )
+
+    expect_true(sess:::handle_dataview_dispose(list(
+      view_id = "replacement_test", state_generation = replacement$state_generation
+    )), info = name)
+    expect_null(runtime$dataviews$replacement_test, info = name)
+  }
+})

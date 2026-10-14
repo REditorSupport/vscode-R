@@ -19,11 +19,14 @@ import * as workspaceViewer from './workspaceViewer';
 import * as apiImplementation from './apiImplementation';
 import * as rHelp from './helpViewer';
 import * as completions from './completions';
+import { SessionSignatureHelpProvider } from './signatureHelp';
 import * as plotViewer from './plotViewer';
 import { PlotManager } from './plotViewer/types';
 import * as languageService from './languageService';
 import { RTaskProvider } from './tasks';
 import { showRDebuggerCompatibilityWarningOnce } from './rDebuggerCompatibility';
+import { InteractiveManager } from './interactive/manager';
+import { initializeHtmlWidgetViewers, restoreHtmlViewer, runHtmlViewerCommand, shutdownHtmlWidgetViewers } from './webViewer';
 
 
 // global objects used in other files
@@ -59,11 +62,19 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
     const rExtension = new apiImplementation.RExtensionImplementation();
     rExtension.session = {
         getConnectionInfo: session.getConnectionInfo,
+        prepareAttachment: session.prepareAttachment,
         activate: session.activateSessionById,
+        onDidChangeSessionConnection: session.onDidChangeSessionConnection,
+        getSessionReference: session.getSessionReference,
+        registerTerminalIntegration: session.registerTerminalIntegration,
     };
 
     // assign extension context to global variable
     extensionContext = context;
+    initializeHtmlWidgetViewers(context, {
+        resolveSession: source => session.getViewerSessionContext(source.sessionId, source)!,
+        getActiveSessionId: () => session.activeSession?.sessionId,
+    });
 
     // assign session watcher setting to global variable
     enableSessionWatcher = util.config().get<boolean>('sessionWatcher') ?? false;
@@ -83,15 +94,15 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
         'r.thead': () => rTerminal.runSelectionOrWord(['t', 'head']),
         'r.names': () => rTerminal.runSelectionOrWord(['names']),
         'r.view': () => rTerminal.runSelectionOrWord(['View']),
-        'r.runSource': () => { void rTerminal.runSource(false); },
-        'r.runSelection':  (code?: string) => { code ? void rTerminal.runTextInTerm(code) : void rTerminal.runSelection(); },
+        'r.runSource': () => rTerminal.runSource(false),
+        'r.runSelection': (code?: string) => code ? rTerminal.runTextInTerm(code) : rTerminal.runSelection(),
         'r.runFromLineToEnd': rTerminal.runFromLineToEnd,
         'r.runFromBeginningToLine': rTerminal.runFromBeginningToLine,
         'r.runSelectionRetainCursor': rTerminal.runSelectionRetainCursor,
         'r.runCommandWithSelectionOrWord': rTerminal.runCommandWithSelectionOrWord,
         'r.runCommandWithEditorPath': rTerminal.runCommandWithEditorPath,
         'r.runCommand': rTerminal.runCommand,
-        'r.runSourcewithEcho': () => { void rTerminal.runSource(true); },
+        'r.runSourcewithEcho': () => rTerminal.runSource(true),
 
         // chunk related
         'r.selectCurrentChunk': rmarkdown.selectCurrentChunk,
@@ -150,9 +161,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
         'r.launchAddinPicker': rstudioapi.launchAddinPicker,
 
         // workspace viewer
-        'r.workspaceViewer.refreshEntry': () => rWorkspace?.refresh(),
-        'r.workspaceViewer.view': (node: workspaceViewer.GlobalEnvItem) => node?.label && workspaceViewer.viewItem(node.label),
-        'r.workspaceViewer.remove': (node: workspaceViewer.GlobalEnvItem) => node?.label && workspaceViewer.removeItem(node.label),
+        'r.workspaceViewer.refreshEntry': session.updateWorkspace,
+        'r.workspaceViewer.view': (node: workspaceViewer.GlobalEnvItem) => node && workspaceViewer.viewItem(node),
+        'r.workspaceViewer.remove': (node: workspaceViewer.GlobalEnvItem) => node?.label && workspaceViewer.removeItem(node),
         'r.workspaceViewer.clear': workspaceViewer.clearWorkspace,
         'r.workspaceViewer.load': workspaceViewer.loadWorkspace,
         'r.workspaceViewer.save': workspaceViewer.saveWorkspace,
@@ -161,6 +172,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
         'r.browser.refresh': session.refreshBrowser,
         'r.browser.openExternal': session.openExternalBrowser,
         'r.webview.find': () => vscode.commands.executeCommand('editor.action.webvieweditor.showFind'),
+        'r.htmlViewer.restore': restoreHtmlViewer,
+        'r.htmlViewer.back': () => runHtmlViewerCommand('back'),
+        'r.htmlViewer.forward': () => runHtmlViewerCommand('forward'),
+        'r.htmlViewer.remove': () => runHtmlViewerCommand('remove'),
+        'r.htmlViewer.info': () => runHtmlViewerCommand('info'),
 
         // (help related commands are registered in rHelp.initializeHelp)
     };
@@ -224,6 +240,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
 
     // initialize the package/help related functions
     globalRHelp = await rHelp.initializeHelp(context, rExtension);
+    context.subscriptions.push(new InteractiveManager(context));
 
     // register codelens and completion providers for r markdown and r files
     vscode.languages.registerCodeLensProvider(['r', 'rmd'], new rmarkdown.RMarkdownCodeLensProvider());
@@ -242,7 +259,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
     // deploy session watcher (if configured by user)
     if (enableSessionWatcher) {
         console.info('Initialize session watcher');
-        void session.deploySessionWatcher(context.extensionPath);
+        session.deploySessionWatcher(context.extensionPath);
         // create status bar item that contains info about the session watcher
         console.info('Create sessionStatusBarItem');
         sessionStatusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 1000);
@@ -260,17 +277,26 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
         // only shows view when session watcher is enabled
         rWorkspace = new workspaceViewer.WorkspaceDataProvider();
 
-        // if session watcher is active, register dyamic completion provider
-        const liveTriggerCharacters = ['', '[', '(', ',', '$', '@', '"', '\''];
-        vscode.languages.registerCompletionItemProvider(['r', 'rmd'], new completions.LiveCompletionItemProvider(), ...liveTriggerCharacters);
     }
+
+    const liveTriggerCharacters = ['', '[', '(', ',', '$', '@', '"', '\''];
+    context.subscriptions.push(vscode.languages.registerCompletionItemProvider(
+        ['r', 'rmd'], new completions.LiveCompletionItemProvider(), ...liveTriggerCharacters));
+    // Lower selector priority lets languageserver retain source-local definitions
+    // and package documentation. Fall back to the owning session's live functions.
+    context.subscriptions.push(vscode.languages.registerSignatureHelpProvider('*', new SessionSignatureHelpProvider(), '(', ','));
 
     void vscode.commands.executeCommand('setContext', 'r.WorkspaceViewer:show', enableSessionWatcher);
 
     return rExtension;
 }
 
+export function ensureWorkspaceViewer(): void {
+    rWorkspace ??= new workspaceViewer.WorkspaceDataProvider();
+}
+
 export async function deactivate(): Promise<void> {
+    await shutdownHtmlWidgetViewers(true);
     (globalPlotManager as plotViewer.CommonPlotManager)?.dispose();
     await session.shutdownSessionWatcher();
 }

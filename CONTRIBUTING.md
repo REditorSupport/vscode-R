@@ -4,10 +4,149 @@ If you are interested in writing code to fix issues, please see [How to Contribu
 
 ## Debugging the extension
 
-1. Run `npm install` and open this repository in VS Code.
-2. Select **Launch Extension** in Run and Debug, then press **F5**. The pre-launch task runs `npm run compile` to build the extension and webviews in `dist`, including source maps for TypeScript breakpoints.
+Use Node.js 22.13 or newer (CI uses Node.js 24) and the pnpm version declared in `package.json`. Install pnpm before running the repository commands:
+
+```sh
+npm install --global pnpm@11.27.1
+pnpm --version
+```
+
+If a command reports `pnpm: command not found`, ensure pnpm's installation directory is on `PATH` and restart the terminal or VS Code. Use pnpm for repository commands; dependency installation and CI use the checked-in `pnpm-lock.yaml` and `pnpm-workspace.yaml` build-script policy.
+
+1. Run `pnpm install --frozen-lockfile` and open this repository in VS Code.
+2. Select **Launch Extension** in Run and Debug, then press **F5**. The pre-launch task runs `pnpm run compile` to build the extension and webviews in `dist`, including source maps for TypeScript breakpoints.
 3. Open an R file or run an R command in the Extension Development Host to activate vscode-R. Ensure the **R Syntax** extension (`REditorSupport.r-syntax`) is installed and enabled there.
 
-For continuous rebuilding, run `npm run watch`. `npm run build` additionally installs the bundled `sess` R package; this is not required just to launch the extension debugger. **Extension Tests** builds both the bundle and the TypeScript test files before launching.
+For continuous rebuilding, run `pnpm run watch`. `pnpm run build` additionally installs the bundled `sess` R package; this is not required just to launch the extension debugger. **Extension Tests** builds both the bundle and the TypeScript test files before launching.
 
-VS Code 1.139 has a [JavaScript debugger regression](https://github.com/microsoft/vscode-js-debug/issues/2420) that can leave the development host paused before any extension activates. The launching window's extension host log shows `ECONNREFUSED ::1` and `Could not find any debuggable target`. The fix is included in [JavaScript Debugger 1.140](https://github.com/microsoft/vscode-js-debug/releases/tag/v1.140.0). Until your VS Code version includes it, use Microsoft's [JavaScript Debugger Nightly](https://marketplace.visualstudio.com/items?itemName=ms-vscode.js-debug-nightly): disable the built-in **JavaScript Debugger**, install Nightly, and reload VS Code. Switch back to the built-in debugger once VS Code includes the fix.
+VS Code 1.140.0 bundles [JavaScript Debugger 1.140.0](https://github.com/microsoft/vscode-js-debug/releases/tag/v1.140.0), which fixes the [extension host attach regression in VS Code 1.139](https://github.com/microsoft/vscode-js-debug/issues/2420). Use the built-in **JavaScript Debugger** on VS Code 1.140.0 or newer. If you previously used **JavaScript Debugger Nightly**, disable Nightly, re-enable the built-in debugger (`ms-vscode.js-debug`) in the Extensions view, and run **Developer: Reload Window**.
+
+If launching reports `Configured debug type 'extensionHost' is not supported`, ensure the built-in **JavaScript Debugger** is enabled in the launching window's profile and workspace. Disabling Nightly does not automatically re-enable the built-in debugger. To find it, search for `@builtin @id:ms-vscode.js-debug` in the Extensions view, select **Enable** (or **Enable (Workspace)** if it was disabled only for this workspace), and reload the window.
+
+On VS Code 1.139, the regression can leave the development host paused before any extension activates; the launching window's extension host log shows `ECONNREFUSED ::1` and `Could not find any debuggable target`. Upgrade to VS Code 1.140.0 or newer, or use Microsoft's [JavaScript Debugger Nightly](https://marketplace.visualstudio.com/items?itemName=ms-vscode.js-debug-nightly) as a temporary workaround: disable the built-in **JavaScript Debugger**, enable Nightly, and reload VS Code.
+
+## Building bundled sess
+
+Builds require Git and a checkout with HEAD. `scripts/prepare-sess.js` fingerprints
+`sess/` using a temporary Git index and exports the same snapshot to
+`dist/resources/sess/`, excluding untracked ignored files. It stamps only the
+generated DESCRIPTION; source files and the developer's index remain unchanged.
+A clean checkout matches `HEAD:sess`, so extension-only changes retain the identity.
+
+Compile and VSIX packaging prepare this copy, and `pnpm run build` installs it.
+Watch mode prepares it at startup; restart the watcher after editing `sess/`.
+R-universe's `sess/bootstrap.R` produces the same identity from committed sources.
+Source DESCRIPTION enables pkgbuild's bootstrap hook; the prepared copy disables
+it to avoid repeating preparation when installed through remotes.
+
+`Config/vscode-R/source-revision` controls installation independently of package
+versions and the runtime `protocol_version` handshake. vscode-R installs only
+the bundled snapshot; missing Imports come from the configured repository.
+Ordinary terminals and manual attach ask before installing a missing or different
+copy. They install into an extension-managed library, keep normal `.libPaths()`
+unchanged, and explicitly load the matching namespace; exact matches in normal
+libraries remain usable. Preparation and installation use the target R's
+platform, version, and normal libraries; when needed, R asks the extension for
+consent. R Interactive prepares its separate runtime as part of starting an
+Interactive session. Run the source/bootstrap checks with
+`pnpm run test:sess-source`, or just the base-R identity checks with
+`pnpm run test:sess-identity`.
+
+## Testing R Interactive
+
+The [architecture and backend contract](src/interactive/README.md) live beside the implementation. User setup and behavior belong in the [R Interactive wiki page](https://github.com/REditorSupport/vscode-R/wiki/R-Interactive).
+
+Use Linux or macOS for Interactive runtime tests, with R and an installed arf 0.5.3 executable. Bundled sess is pure R and needs no compiler when its Imports are already installed; missing Imports are installed from the configured repository. Windows runs the remaining extension checks; persistent Interactive supervision remains limited to Linux/macOS. From the repository root, after installing pnpm dependencies, prepare a test library:
+
+```sh
+export R_LIBS=/path/to/test-library
+mkdir -p "$R_LIBS"
+Rscript -e 'install.packages(c("remotes", "languageserver", "lintr", "renv"))'
+pnpm run build
+Rscript -e 'tinytest::test_package("sess")'
+```
+
+`pnpm run build` installs the bundled sess and its dependencies, including suggested packages, into the selected R library. JGD checks need `jgd` and `systemfonts`; standard graphics uses `svglite` or PNG. Runtime suites build private pure R sess installations and use disposable sessions/libraries. Keep `R_LIBS` set for the commands below.
+
+```sh
+pnpm run test:interactive
+ARF_PATH=/path/to/arf pnpm run test:interactive
+VSCR_TEST_STATIC=1 pnpm run test:interactive
+pnpm run pretest
+VSCR_TEST_TMUX=1 pnpm exec mocha out/test/node/interactiveRuntime.test.js --ui tdd --timeout 60000 --grep "standalone agent survives its launcher process exiting"
+```
+
+The provider is arf. `ARF_PATH` selects its executable; `VSCR_TEST_STATIC=1` selects standard graphics. The tmux variant needs tmux and exercises a real supervised agent, as Linux CI does. These variables can be combined. Check skipped tests when assessing coverage: a missing optional runtime or package is not a verified pass for that feature.
+
+`pnpm run test` prepares the bundle and test files, runs `src/test/node/` directly
+in Node/Mocha, then runs the extension-host suites and isolated sess task tests.
+`pnpm run test:interactive` prepares and runs only the Node suites, including
+supervision. After preparing once with `pnpm run pretest`, use `pnpm run test:node`
+and `pnpm run test:extension` to rerun either layer without rebuilding. The
+**Extension Tests** debugger configuration runs only `src/test/suite/`; use the
+CLI for the isolated multi-folder sess task tests.
+
+PR CI, main pushes and manual runs execute the full supported suites on every
+OS. Linux and macOS run the same Node, Interactive editor and isolated sess task
+tests, including the actual VS Code Electron runtime check with no Node executable
+on PATH and successful session creation using the default VS Code runtime.
+Windows skips the Interactive runtime/editor suites because persistent
+supervision currently requires Linux/macOS. Linux additionally runs the tmux launcher survival case
+once with tmux enabled and uses Xvfb for extension-host tests. Source/bootstrap
+checks, installed identity verification and sess package tests run on every OS.
+
+For just the Interactive editor suite, compile the tests and run:
+
+```sh
+pnpm run pretest
+pnpm exec vscode-test --run out/test/suite/interactiveEditor.test.js
+```
+
+On headless Linux, run the editor command under `xvfb-run -a`. The test configuration installs R Syntax in the test profile. [runtime-lifecycle.cjs](src/test/examples/README.md#editor-runtime-lifecycle) separately checks persistence across full application exit and different editor versions. Use it with the minimum VS Code version from `package.json` and current stable when changing runtime launch or reconnection.
+
+### Browser renderer
+
+After `pnpm run compile`, serve the repository from its root, for example:
+
+```sh
+python3 -m http.server 8765 --bind 127.0.0.1
+```
+
+Open <http://127.0.0.1:8765/src/test/browser/interactiveRenderer.html>. The harness checks table paging/filtering, stale responses/retries, offline controls, plot export, Unicode SVG, menu disposal, image failures, and sandboxed HTML. Repeat with `?theme=light&width=narrow` and `?theme=contrast`; verify native Tab/Shift+Tab navigation and Enter/Space activation manually. Execution success alone does not establish rendering or widget interaction.
+
+### Analysis and remote lifecycle checks
+
+The [analysis fixtures](src/test/examples/README.md) document public/research examples, reference plots, widget checks, and large-table allocation measurements. Keep repeatable procedures there; record dated results and environment-specific limitations in the PR discussion.
+
+For changes to persistence or supervision, also exercise the intended Remote SSH host: create managed arf sessions, adopt an existing terminal arf, create distinct objects, and submit jobs that stream text and plots. Close VS Code and disconnect SSH during execution, then reconnect. Verify the same R PIDs and objects, retained output, session isolation, usable plots, and no duplicate evaluation. Check that the adopted terminal remains usable and that stop/restart targets only the selected session. Local process tests do not establish server-specific logout, systemd, or network behavior.
+
+## Release versioning
+
+Stable releases use an even minor version (for example, `3.0.2` or `3.2.0`).
+The release workflow rejects odd minors, non-numeric versions, and tags that do
+not match `package.json`. Stable patch releases remain independent of daily
+pre-releases.
+
+The Marketplace pre-release workflow runs daily at 03:23 UTC. It skips commits
+already covered by a successful daily run, runs the existing build, lint and
+all-OS tests, and publishes only the verified pre-release VSIX. The GitHub
+`latest` development VSIX continues to update on every verified push.
+
+`.github/scripts/extension-version.js prerelease YYYY-MM-DD` rewrites `package.json`
+only in the packaging checkout. It uses the next odd minor after an even minor,
+or keeps an explicitly selected odd minor, with a UTC `YYYYMMDD` patch:
+`3.0.1` → `3.1.20261006`; after releasing `3.2.0`, builds use `3.3.YYYYMMDD`.
+Keep the base version in `package.json`; do not commit generated daily versions.
+For development toward `4.0.0`, maintainers can explicitly set the base version
+to `3.999.0`, then change it to `4.0.0` for the stable release.
+
+The workflow reuses `VSCE_TOKEN` and `OPEN_VSX_TOKEN` to publish the same VSIX
+to the VS Code Marketplace and Open VSX Registry. Both publications must succeed
+for the daily run to count as successful.
+Retries retain the original run's UTC date and tolerate an already-published
+version in either registry, allowing a partially failed publication to recover.
+A retry older than a successful daily run is skipped. No Git tags or
+version-bump commits are created by daily publishing.
+
+Run `node --test .github/scripts/extension-version.test.js` to test version generation
+and stable-release validation without installing dependencies.

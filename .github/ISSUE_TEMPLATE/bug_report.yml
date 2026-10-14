@@ -1,0 +1,101 @@
+name: Bug report
+description: Report a reproducible problem in vscode-R
+title: "[Bug]: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this form for reproducible problems in vscode-R.
+
+        - For setup help, troubleshooting, and other questions, [start a Q&A discussion](https://github.com/REditorSupport/vscode-R/discussions/new?category=q-a).
+        - For feature requests and behavior changes, [start an Ideas discussion](https://github.com/REditorSupport/vscode-R/discussions/new?category=ideas).
+        - Search the existing issues and try the latest vscode-R release when possible.
+
+        Language intelligence is provided in part by [languageserver](https://github.com/REditorSupport/languageserver), and syntax highlighting is maintained in [vscode-R-syntax](https://github.com/REditorSupport/vscode-R-syntax). If you are unsure which project is responsible, continue here and we will triage the report.
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      description: Which part of vscode-R is affected?
+      options:
+        - Installation or activation
+        - R terminal or code execution
+        - Session watcher or workspace viewer
+        - Data viewer
+        - Plot viewer
+        - Help viewer
+        - R Markdown or Quarto
+        - Language server integration
+        - Syntax highlighting
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Bug description
+      description: Describe what happened, including any error messages.
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to reproduce
+      description: Provide the smallest example and exact steps that reproduce the problem. If it is intermittent, describe how often it occurs.
+      placeholder: |
+        1. Open ...
+        2. Run ...
+        3. Observe ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: What did you expect to happen instead?
+    validations:
+      required: true
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Include the versions and environment below. Enter N/A for R if the problem does not involve an R installation. For language or encoding issues, include the output of Sys.getlocale(). Remove usernames, private paths, and other sensitive information.
+      placeholder: |
+        vscode-R version:
+        VS Code version/distribution:
+        OS/version:
+        R version (or N/A):
+        Environment (Local / WSL / SSH / Dev Container / Codespaces / Other):
+        R console (if relevant):
+        R locale (if relevant; output of Sys.getlocale()):
+    validations:
+      required: true
+
+  - type: textarea
+    id: package_versions
+    attributes:
+      label: Relevant R package versions
+      description: If relevant, include the versions of packages such as sess, languageserver, jgd, or httpgd.
+      placeholder: |
+        sess: <version>
+        languageserver: <version>
+
+  - type: textarea
+    id: settings
+    attributes:
+      label: Relevant VS Code settings
+      description: Copy only settings related to the problem from your user or workspace settings.json. Remove usernames, tokens, private paths, and other sensitive information.
+      render: jsonc
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs and additional context
+      description: Add relevant R terminal or Output panel logs, screenshots, and any other context that may help diagnose the problem. Remove sensitive information first.

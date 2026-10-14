@@ -15,9 +15,9 @@ window.onmousedown = (ev) => {
 
 // handle requests from vscode ui
 window.addEventListener('message', (ev: MessageEvent) => {
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+    // oxlint-disable-next-line typescript/no-unsafe-assignment
     const message = ev.data;
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+    // oxlint-disable-next-line typescript/no-unsafe-member-access
     if(message.command === 'getScrollY'){
         vscode.postMessage({
             message: 'getScrollY',
@@ -94,4 +94,3 @@ window.document.body.onload = () => {
         }
     }
 };
-

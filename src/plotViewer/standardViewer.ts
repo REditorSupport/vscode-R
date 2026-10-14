@@ -1,12 +1,22 @@
 
 import * as vscode from 'vscode';
 import { asViewColumn, config, UriIcon } from '../util';
-import { sessionRequest, globalPipePath } from '../session';
+import * as session from '../session';
 import { PlotViewer } from './types';
 
 interface PlotResponse {
     data: string;
     format: string;
+}
+
+interface PendingPlotRequest {
+    panel: vscode.WebviewPanel;
+    panelGeneration: number;
+    targetSession: session.Session | undefined;
+    width: number;
+    height: number;
+    format: string;
+    devArgs: Record<string, unknown> | undefined;
 }
 
 export class StandardPlotViewer implements PlotViewer {
@@ -16,6 +26,9 @@ export class StandardPlotViewer implements PlotViewer {
     private viewHeight: number = 600;
     private plotData: string | undefined;
     private plotFormat: string | undefined;
+    private panelGeneration = 0;
+    private pendingPlotRequest: PendingPlotRequest | undefined;
+    private plotRequest: Promise<void> | undefined;
 
     public async update(): Promise<void> {
         const viewColumn = asViewColumn(config().get<string>('session.viewers.viewColumn.plot'), vscode.ViewColumn.Two);
@@ -38,11 +51,16 @@ export class StandardPlotViewer implements PlotViewer {
     }
 
     public dispose(): void {
-        this.panel?.dispose();
+        const panel = this.panel;
+        if (panel) {
+            this.panel = undefined;
+            this.panelGeneration++;
+            panel.dispose();
+        }
     }
 
     private createPanel(viewColumn: vscode.ViewColumn) {
-        this.panel = vscode.window.createWebviewPanel(
+        const panel = vscode.window.createWebviewPanel(
             'r.standardPlot',
             'R Plot',
             {
@@ -54,48 +72,137 @@ export class StandardPlotViewer implements PlotViewer {
                 retainContextWhenHidden: true
             }
         );
+        this.panel = panel;
+        const generation = ++this.panelGeneration;
 
-        this.panel.iconPath = new UriIcon('graph');
-        this.panel.webview.html = this.getHtml();
+        panel.iconPath = new UriIcon('graph');
+        panel.webview.html = this.getHtml();
 
-        this.panel.webview.onDidReceiveMessage(async (msg: { type: string, width?: number, height?: number }) => {
-            if (msg.type === 'resize') {
+        panel.webview.onDidReceiveMessage(async (msg: { type: string, width?: number, height?: number }) => {
+            if (this.panel === panel && this.panelGeneration === generation && msg.type === 'resize') {
                 this.viewWidth = msg.width || this.viewWidth;
                 this.viewHeight = msg.height || this.viewHeight;
                 await this.requestPlot();
             }
         });
 
-        this.panel.onDidDispose(() => {
-            this.panel = undefined;
+        panel.onDidDispose(() => {
+            if (this.panel === panel && this.panelGeneration === generation) {
+                this.panel = undefined;
+                this.panelGeneration++;
+            }
         });
     }
 
-    private async requestPlot() {
-        if (!globalPipePath || !this.panel) {
-            return;
+    private requestPlot(): Promise<void> {
+        const panel = this.panel;
+        if (!session.globalPipePath || !panel) {
+            return Promise.resolve();
         }
 
-        const format = config().get<string>('plot.format', 'svglite');
-        const devArgs = config().get<Record<string, unknown>>('plot.devArgs');
-        const response = await sessionRequest({
-            method: 'plot_latest',
-            params: {
-                width: this.viewWidth,
-                height: this.viewHeight,
-                format: format,
-                devArgs: devArgs
-            }
-        }) as PlotResponse | undefined;
+        this.pendingPlotRequest = {
+            panel,
+            panelGeneration: this.panelGeneration,
+            targetSession: session.activeSession,
+            width: this.viewWidth,
+            height: this.viewHeight,
+            format: config().get<string>('plot.format', 'svglite'),
+            devArgs: config().get<Record<string, unknown>>('plot.devArgs')
+        };
+        return this.startPlotDrain();
+    }
 
-        if (response?.data) {
-            this.plotData = response.data;
-            this.plotFormat = response.format || format;
-            void this.panel.webview.postMessage({
-                type: 'update',
-                data: this.plotData,
-                format: this.plotFormat
+    private startPlotDrain(): Promise<void> {
+        if (this.plotRequest) {
+            return this.plotRequest;
+        }
+
+        // Publish the flight before starting the drain because a requester can
+        // synchronously trigger another viewer event while starting its RPC.
+        let resolveFlight!: () => void;
+        const flight = new Promise<void>(resolve => { resolveFlight = resolve; });
+        this.plotRequest = flight;
+
+        const drain = () => {
+            void this.drainPlotRequests().then(() => {
+                if (this.plotRequest !== flight) {
+                    resolveFlight();
+                    return;
+                }
+                if (this.pendingPlotRequest) {
+                    // Keep the queued descriptor as captured; never recapture
+                    // the active session while handing off the same flight.
+                    drain();
+                    return;
+                }
+                this.plotRequest = undefined;
+                resolveFlight();
+            }, error => {
+                console.error('Failed to update the standard plot viewer:', error);
+                if (this.plotRequest === flight) {
+                    this.plotRequest = undefined;
+                }
+                resolveFlight();
             });
+        };
+
+        drain();
+        return flight;
+    }
+
+    private async drainPlotRequests(): Promise<void> {
+        while (this.pendingPlotRequest) {
+            const request = this.pendingPlotRequest;
+            this.pendingPlotRequest = undefined;
+            if (!this.isCurrentRequest(request)) {
+                continue;
+            }
+
+            let response: PlotResponse | undefined;
+            try {
+                response = await session.sessionRequest({
+                    method: 'plot_latest',
+                    params: {
+                        width: request.width,
+                        height: request.height,
+                        format: request.format,
+                        devArgs: request.devArgs
+                    }
+                }, request.targetSession) as PlotResponse | undefined;
+            } catch {
+                // sessionRequest normally converts transport failures to undefined;
+                // keep the viewer resilient if a requester rejects directly.
+            }
+
+            if (!response?.data) {
+                // A timed out request may still be running in R. Do not turn a
+                // failed request into an automatic retry for the same session.
+                this.discardPendingForSession(request.targetSession);
+                continue;
+            }
+
+            if (this.isCurrentRequest(request)) {
+                this.plotData = response.data;
+                this.plotFormat = response.format || request.format;
+                void request.panel.webview.postMessage({
+                    type: 'update',
+                    data: this.plotData,
+                    format: this.plotFormat
+                });
+            }
+        }
+    }
+
+    private isCurrentRequest(request: PendingPlotRequest): boolean {
+        return Boolean(session.globalPipePath)
+            && this.panel === request.panel
+            && this.panelGeneration === request.panelGeneration
+            && session.activeSession === request.targetSession;
+    }
+
+    private discardPendingForSession(targetSession: session.Session | undefined): void {
+        if (this.pendingPlotRequest?.targetSession === targetSession) {
+            this.pendingPlotRequest = undefined;
         }
     }
 

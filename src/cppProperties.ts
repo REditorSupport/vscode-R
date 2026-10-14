@@ -19,10 +19,9 @@ export async function generateCppProperties(): Promise<void> {
             '"c_cpp_properties.json" file already exists. Do you want to overwrite?',
             'Yes', 'No'
         );
-        if (overwrite === 'No') {
+        if (overwrite !== 'Yes') {
             return;
         }
-        void fs.unlinkSync(outFilePath);
     }
     return generateCppPropertiesProc(currentWorkspaceFolder);
 }

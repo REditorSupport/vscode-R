@@ -16,6 +16,7 @@ export function getWordOrSelection(): string | undefined {
     if ((selection.start.line === selection.end.line) &&
         (selection.start.character === selection.end.character)) {
         const wordRange = currentDocument.getWordRangeAtPosition(selection.start);
+        if (!wordRange) { return undefined; }
         text = currentDocument.getText(wordRange);
     } else {
         text = currentDocument.getText(textEditor.selection);

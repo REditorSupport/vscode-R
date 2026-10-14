@@ -23,10 +23,49 @@ socket on macOS/Linux, named pipe on Windows) using
 > ### Bundled install for VS Code
 >
 > Users of the VS Code R extension (>=v3.0.0) do not need to install `sess`
-> manually. The extension bundles its own copy of `sess` and will install it
-> for you (along with any missing CRAN dependencies) if it is missing or
-> outdated. Managed R terminals ask first; attaching an existing session
-> installs without prompting.
+> manually. The extension bundles its own copy and asks before installing it
+> when no installed copy has the exact bundled source revision. Accepted
+> installs and missing dependencies go into a vscode-R-managed library; existing
+> user, project, and package-manager libraries are left unchanged. The extension
+> explicitly loads the matching copy for its session watcher. Preparation and
+> installation use the terminal's R, platform, version, and normal libraries;
+> when needed, that R asks the extension for consent. Manual attach follows the
+> same rule for the attached R. If a different `sess` is already loaded, restart
+> R before attaching.
+
+R Interactive prepares its isolated runtime as part of starting an Interactive
+session; that runtime follows its own lifecycle and does not change ordinary R
+libraries.
+
+The bundled `sess` is a pure R package and needs no compiler to install from
+source. Its dependencies, including `processx`, `later`, and `jsonlite`, contain
+native code; during initial preparation, the extension installs missing Imports
+from the configured CRAN repository before installing its bundled copy. The
+extension does not substitute a separately published `sess` package if the
+bundled installation fails.
+
+> [!NOTE]
+>
+> ### Known limitation: isolated libraries
+>
+> A vscode-R-managed `sess` copy is reused across projects. Dependencies found in
+> ordinary R libraries during initial preparation are not copied into that managed
+> library. If an isolated project's `.libPaths()` cannot see them, `sess` may fail
+> to load; R still starts, but its session watcher is unavailable.
+>
+> In the affected project, install the missing dependencies with
+> [renv::install()](https://pkgs.rstudio.com/renv/reference/install.html). Then
+> restart R or retry manual attach. You do not need to install `sess` in the project.
+>
+> renv's default `implicit` snapshot type includes packages detected in project
+> files, so editor-only dependencies may be omitted; see
+> [snapshot types](https://pkgs.rstudio.com/renv/reference/snapshot.html#snapshot-types).
+
+R Interactive requires arf on the R host. Managed headless arf sessions stream
+console output and retain rich tables, HTML, and plots. Attached arf sessions
+return notebook console output on completion; arbitrary terminal console output
+has no subscription in the current arf IPC. Notebook console input and debugger
+prompts are unavailable. Ordinary R terminals remain available without arf.
 
 `sess` is not yet on CRAN. But you can install the development version from R-universe:
 
@@ -46,10 +85,17 @@ When you start an R terminal from VS Code, the extension's R profile calls
 sess::connect(
   endpoint = NULL,       # socket/pipe endpoint; see below
   use_rstudioapi = TRUE, # emulate rstudioapi functions
-  use_httpgd = TRUE,     # allow httpgd as the plot device
-  use_jgd = FALSE        # allow jgd as the plot device
+  plot_backend = "auto"  # or "standard", "httpgd", "jgd", "native"
 )
 ```
+
+If `plot_backend` is omitted or set to `NULL`, `sess::connect()` uses `auto`.
+The VS Code extension passes its configured backend explicitly.
+
+For code migrating from earlier `sess` APIs, replace `use_httpgd` and
+`use_jgd` with `plot_backend` (for example, `sess::connect(plot_backend = "httpgd")`).
+`register_hooks()` has been removed; `connect()` initializes the runtime
+integration when it connects.
 
 If `endpoint` is omitted, `connect()` resolves it in this order:
 
@@ -81,11 +127,11 @@ a new schema version. This discovery schema version is separate from the IPC
 `protocol_version`.
 
 The optional `jgdSocket` string describes the JGD renderer belonging to that
-endpoint. When `use_jgd = TRUE`, `sess` applies it before runtime initialization,
+endpoint. When `plot_backend` resolves to `auto` or `jgd`, `sess` applies it before runtime initialization,
 including automatic reconnect: a nonempty string sets `JGD_SOCKET`, an empty
 string unsets it (renderer unavailable), and an omitted field leaves it untouched.
 A present value of another type is invalid. It does not enable JGD or override
-`use_jgd`; no arbitrary environment variables or R code are accepted. VS Code
+the selected backend; no arbitrary environment variables or R code are accepted. VS Code
 publishes endpoint and renderer together in one atomic file replacement, with
 an empty `jgdSocket` when its current backend does not provide JGD.
 
@@ -95,7 +141,7 @@ finding managed terminal discovery files; `sess` does not use it as identity.
 
 ## What `sess` changes in your R session
 
-Once connected, `sess` registers hooks (via `register_hooks()`) that redirect
+Once connected, `sess` registers runtime integrations that redirect
 R's interactive features to the client:
 
 | R feature | Behavior |
@@ -103,7 +149,7 @@ R's interactive features to the client:
 | `View()` | Data frames, matrices, Arrow tables and polars data frames open in a paged, sortable, filterable data viewer. Lists open as JSON; other objects as R code. |
 | `browseURL()`, `viewer`, `page_viewer` | URLs and local HTML files (e.g. htmlwidgets) open in the editor. |
 | `?topic`, `help.search()` | Help pages open in the editor's help panel, in the column configured by `r.session.viewers.viewColumn.helpPanel`. |
-| Graphics device | Plots appear in the editor's plot viewer (see below). |
+| Graphics device | Plots appear in the editor's plot viewer unless `plot_backend = "native"`. |
 | `rstudioapi` | Editor functions such as `getActiveDocumentContext()` and `insertText()` are emulated when `use_rstudioapi = TRUE`. |
 | Top-level task callback | The client is notified after each command so it can refresh the workspace view. |
 
@@ -111,23 +157,26 @@ These changes are undone when the connection closes. `sess` removes its task
 callbacks, closes its graphics devices, and restores any options, bindings, S3
 methods and plot hooks it replaced (unless other code has since changed them).
 A plot held only by a jgd device may not survive a disconnect or window reload.
-Calling `register_hooks()` again replaces the previous installation rather than
-stacking hooks.
 
 ### Graphics devices
 
-For displaying R plots, `sess` chooses a graphics device in this order:
+For displaying R plots, `sess` chooses a graphics device in this order when
+`plot_backend = "auto"`:
 
-1. **jgd**, if `use_jgd = TRUE`, the `JGD_SOCKET` environment variable is set,
-   and the [jgd](https://cran.r-project.org/package=jgd) package is installed.
-2. **httpgd**, if `use_httpgd = TRUE` and the
-   [httpgd](https://cran.r-project.org/package=httpgd) package is installed.
+1. **jgd**, if `JGD_SOCKET` is set and the
+   [jgd](https://cran.r-project.org/package=jgd) package is installed.
+2. **httpgd**, if the [httpgd](https://cran.r-project.org/package=httpgd)
+   package is installed.
 3. **Standard**: plots are recorded on a null device and re-rendered by the
    client on demand at the viewer's size (as SVG via
    [svglite](https://cran.r-project.org/package=svglite) if installed,
    otherwise PNG).
 
 In VS Code, this is controlled by the `r.plot.backend` setting.
+`plot_backend = "native"` leaves the existing R graphics device option, plot
+hooks, plot task callbacks, and devices untouched. The `standard` backend continues
+to use the static plot viewer. When `plot_backend` is omitted or `NULL`, `auto`
+is used.
 
 ### Options and environment variables
 
@@ -135,7 +184,7 @@ In VS Code, this is controlled by the `r.plot.backend` setting.
 |---|---|---|
 | `SESS_ENDPOINT` | env var | Socket/pipe path used by `connect()`. |
 | `SESS_RSTUDIOAPI` | env var | `TRUE`/`FALSE`; passed as `use_rstudioapi` by the extension's R profile. |
-| `SESS_PLOT_BACKEND` | env var | `auto`, `standard`, `httpgd` or `jgd`; sets `use_httpgd`/`use_jgd` in the extension's R profile. |
+| `SESS_PLOT_BACKEND` | env var | `auto`, `standard`, `httpgd`, `jgd` or `native`; passed as `plot_backend` by the extension's R profile. |
 | `JGD_SOCKET` | env var | Socket used by the jgd device; set by the extension. |
 | `sess.quiet` | R option | Set to `TRUE` to suppress the successful connection message. Connection failures remain visible. |
 
@@ -165,7 +214,7 @@ On connecting, `sess` sends an `attach` notification:
   "jsonrpc": "2.0",
   "method": "attach",
   "params": {
-    "protocol_version": 1,
+    "protocol_version": 2,
     "sess_version": "3.0.0",
     "session_id": "sess-session-...",
     "host": "compute42",
@@ -189,6 +238,12 @@ The attached socket's lifetime controls cleanup. A replacement socket with the
 same identity supersedes the old one; a late close cannot remove its replacement.
 A fork child receives its own identity. Terminal PID association is local-only.
 
+Protocol version 2 includes the viewer-state generation contract: dynamic table
+and list `dataview` notifications provide `state_generation`, and
+`dataview_dispose` requires it. Both the extension and `sess` must support version
+2. The extension/webview `documentGeneration` field is internal to the client
+and is not part of the `sess` IPC contract.
+
 ### Notifications from R to client
 
 Sent with `notify_client()`.
@@ -197,7 +252,7 @@ Sent with `notify_client()`.
 |---|---|---|
 | `attach` | see above | Connection is established. |
 | `workspace_updated` | none | A top-level command completes. |
-| `dataview` | `title`, `source`, `type`, and `view_id` (tables) or `file` (other objects) | `View()` is called. |
+| `dataview` | `title`, `source`, `type`; `view_id` and `state_generation` for tables/lists, plus `navigation` for lists; `file` for other objects | `View()` is called. |
 | `plot_updated` | none | The standard device records a new or changed plot. |
 | `httpgd` | `url` | An httpgd device is opened. |
 | `help` | `requestPath` | A help page or help search is printed. |
@@ -230,7 +285,14 @@ arrives. All are used by `rstudioapi` emulation:
 | `plot_latest` | `width`, `height`, `format` (`svglite` or `png`), `devArgs` | `format`, `data` (base64) |
 | `dataview_init` | `view_id` | `columns`, `totalRows` |
 | `dataview_page` | `view_id`, `startRow`, `endRow`, `sortModel`, `filterModel` | `rows`, `totalRows`, `totalUnfiltered`, `lastRow` |
-| `dataview_dispose` | `view_id` | `true` |
+| `dataview_dispose` | `view_id`, `state_generation` | `true` |
+
+`state_generation` is an integer issued by `sess` when viewer data is registered.
+It changes when data for an existing `view_id` is replaced. When closing a viewer,
+the client sends the `state_generation` from its latest `dataview` notification.
+Disposal deletes data only if the generation matches the current registration;
+a missing or mismatched generation leaves the data intact and still returns
+`true`. This prevents a delayed close request from deleting replacement data.
 
 Example exchange:
 

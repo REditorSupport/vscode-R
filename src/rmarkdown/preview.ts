@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import * as fs from 'fs-extra';
+import * as fs from 'node:fs';
 import * as cheerio from 'cheerio';
 
 import path = require('path');
@@ -31,7 +31,7 @@ class RMarkdownPreview extends vscode.Disposable {
             this.cp?.dispose();
             this.panel?.dispose();
             this.fileWatcher?.close();
-            fs.removeSync(this.outputUri.fsPath);
+            fs.rmSync(this.outputUri.fsPath, { recursive: true, force: true });
         });
 
         this.title = title;
@@ -231,8 +231,11 @@ export class RMarkdownPreviewManager extends RMarkdownManager {
             this.previewStore.get(filePath)?.panel.reveal();
         } else {
             this.busyUriStore.add(filePath);
-            await this.previewDocument(filePath, fileName, viewer, currentViewColumn);
-            this.busyUriStore.delete(filePath);
+            try {
+                await this.previewDocument(filePath, fileName, viewer, currentViewColumn);
+            } finally {
+                this.busyUriStore.delete(filePath);
+            }
         }
     }
 
@@ -257,7 +260,7 @@ export class RMarkdownPreviewManager extends RMarkdownManager {
     public toggleTheme(): void {
         this.useCodeTheme = !this.useCodeTheme;
         for (const preview of this.previewStore) {
-            void preview[1].styleHtml(this.useCodeTheme);
+            preview[1].styleHtml(this.useCodeTheme);
         }
     }
 
@@ -330,7 +333,7 @@ export class RMarkdownPreviewManager extends RMarkdownManager {
             if (outputUrl) {
                 if (viewer !== undefined && fileName) {
                     const autoRefresh = config().get<boolean>('rmarkdown.preview.autoRefresh', false);
-                    void this.openPreview(
+                    this.openPreview(
                         vscode.Uri.file(outputUrl),
                         filePath,
                         fileName,

@@ -1,9 +1,7 @@
-/* eslint-disable @typescript-eslint/no-unsafe-argument */
-/* eslint-disable @typescript-eslint/no-explicit-any */
-
 import * as vscode from 'vscode';
 import * as cheerio from 'cheerio';
-import * as hljs from 'highlight.js';
+import hljs from 'highlight.js/lib/core';
+import r from 'highlight.js/lib/languages/r';
 
 import * as api from '../api';
 
@@ -22,6 +20,8 @@ import {HelpProvider, AliasProvider} from './helpProvider';
 import {HelpTreeWrapper} from './treeView';
 import {PackageManager} from './packages';
 import { makePreviewerList, RHelpPreviewerOptions, RLocalHelpPreviewer } from './helpPreviewer';
+
+hljs.registerLanguage('r', r);
 
 export type CodeClickAction = 'Ignore' | 'Copy' | 'Run';
 export interface CodeClickConfig {
@@ -263,7 +263,7 @@ export class RHelp implements api.HelpPanel, vscode.WebviewPanelSerializer<strin
         this.aliasProvider = new AliasProvider(options);
         const previewListener = (previewer: RLocalHelpPreviewer) => {
             console.log(`Refreshing R Help preview: ${previewer.packageDir}`);
-            void this.refreshPreviewer(previewer);
+            this.refreshPreviewer(previewer);
         };
         this.helpPreviewerOptions = {
             indexTemplatePath: options.indexTemplatePath,
@@ -304,7 +304,7 @@ export class RHelp implements api.HelpPanel, vscode.WebviewPanelSerializer<strin
             ) {
                 try {
                     child.dispose();
-                } catch (e) {}
+                } catch {}
             }
         }
     }
@@ -584,7 +584,7 @@ export class RHelp implements api.HelpPanel, vscode.WebviewPanelSerializer<strin
     // shows help for request path as used by R's internal help server
     public async showHelpForPath(
         requestPath: string,
-        viewer?: string | any,
+        viewer?: vscode.ViewColumn | string,
         preserveFocus: boolean = false,
         panel?: HelpPanel,
     ): Promise<boolean> {
@@ -648,7 +648,7 @@ export class RHelp implements api.HelpPanel, vscode.WebviewPanelSerializer<strin
     // shows (internal) help file object in webview
     private async showHelpFile(
         helpFile: HelpFile | Promise<HelpFile>,
-        viewer?: string | any,
+        viewer?: vscode.ViewColumn | string,
         preserveFocus: boolean = false,
         panel?: HelpPanel,
     ): Promise<boolean> {
@@ -726,7 +726,7 @@ function pimpMyHelp(helpFile: HelpFile): HelpFile {
 
             // apply syntax highlighting to each code section:
             codeSections.each((i, section) => {
-                const styledCode = hljs.default.highlight($(section).text() || '', {
+                const styledCode = hljs.highlight($(section).text() || '', {
                     language: 'r',
                 });
                 $(section).html(styledCode.value);

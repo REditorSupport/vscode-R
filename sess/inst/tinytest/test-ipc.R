@@ -158,7 +158,10 @@ local({
   response <- jsonlite::fromJSON(processx::conn_read_chars(pipe[[1L]]))
   expect_true(all(abs(response$result$rows[["1"]] - expected) <= abs(expected) * 1e-14))
 
-  disposed <- sess:::handle_dataview_dispose(list(view_id = registration$view_id))
+  disposed <- sess:::handle_dataview_dispose(list(
+    view_id = registration$view_id,
+    state_generation = registration$state_generation
+  ))
   expect_true(isTRUE(disposed))
   expect_error(
     sess:::handle_dataview_init(list(view_id = registration$view_id)),
@@ -248,7 +251,7 @@ local({
   expect_equal(.sess_env$dataviews, list())
   expect_length(ls(.sess_env$dataview_registry, all.names = TRUE), 0L)
 
-  sess:::runtime_start(use_rstudioapi = FALSE, use_httpgd = FALSE, use_jgd = FALSE)
+  sess:::runtime_start(use_rstudioapi = FALSE, plot_backend = "standard")
   expect_equal(.sess_env$dataviews, list())
   expect_length(ls(.sess_env$dataview_registry, all.names = TRUE), 0L)
   expect_true(isTRUE(sess:::.runtime_state()$active))
@@ -264,10 +267,10 @@ local({
   expect_false(identical(getHook("grid.newpage"), old_grid_hook))
 
   dataview_data <- data.frame(value = 1:2)
-  assign("lifecycle dataview", "runtime_view_before_restart",
+  assign("table:lifecycle dataview", "runtime_view_before_restart",
          envir = .sess_env$dataview_registry)
   utils::View(dataview_data, title = "lifecycle dataview")
-  first_view_id <- get("lifecycle dataview", envir = .sess_env$dataview_registry)
+  first_view_id <- get("table:lifecycle dataview", envir = .sess_env$dataview_registry)
   expect_identical(first_view_id, "runtime_view_before_restart")
   expect_true(first_view_id %in% names(.sess_env$dataviews))
 
@@ -276,7 +279,7 @@ local({
   runtime_device <- grDevices::dev.cur()
 
   callbacks_after_first_start <- getTaskCallbackNames()
-  sess:::runtime_start(use_rstudioapi = FALSE, use_httpgd = FALSE, use_jgd = FALSE)
+  sess:::runtime_start(use_rstudioapi = FALSE, plot_backend = "standard")
   expect_equal(.sess_env$dataviews, list())
   expect_length(ls(.sess_env$dataview_registry, all.names = TRUE), 0L)
   expect_equal(length(grep("^sess.workspace$", getTaskCallbackNames())), 1L)
@@ -284,7 +287,7 @@ local({
                length(grep("^sess.plot$", callbacks_after_first_start)))
 
   utils::View(dataview_data, title = "lifecycle dataview")
-  second_view_id <- get("lifecycle dataview", envir = .sess_env$dataview_registry)
+  second_view_id <- get("table:lifecycle dataview", envir = .sess_env$dataview_registry)
   expect_false(identical(first_view_id, second_view_id))
   expect_true(second_view_id %in% names(.sess_env$dataviews))
 
@@ -335,7 +338,7 @@ local({
     .sess_env$latest_plot_path <- old_plot_path
   }, add = TRUE)
 
-  sess:::runtime_start(use_rstudioapi = FALSE, use_httpgd = FALSE, use_jgd = FALSE)
+  sess:::runtime_start(use_rstudioapi = FALSE, plot_backend = "standard")
   options(viewer = user_viewer)
   if (binding_was_locked) unlockBinding("View", utils_ns)
   assign("View", user_view, envir = utils_ns)
@@ -366,7 +369,7 @@ local({
     .sess_env$latest_plot_path <- old_plot_path
   }, add = TRUE)
 
-  sess:::runtime_start(use_rstudioapi = TRUE, use_httpgd = FALSE, use_jgd = FALSE)
+  sess:::runtime_start(use_rstudioapi = TRUE, plot_backend = "standard")
   expect_false(identical(get("isAvailable", rstudioapi_ns, inherits = FALSE),
                          original_is_available))
   expect_false(identical(getHook(rstudioapi_hook_name), original_load_hook))
@@ -424,7 +427,7 @@ local({
   } else {
     .sess_env$transport_generation + 1L
   }
-  sess:::runtime_start(use_rstudioapi = FALSE, use_httpgd = FALSE, use_jgd = FALSE)
+  sess:::runtime_start(use_rstudioapi = FALSE, plot_backend = "standard")
   expect_true(isTRUE(sess:::.runtime_state()$active))
 
   close(cons[[1L]])
@@ -601,7 +604,7 @@ local({
 
   connected <- tryCatch({
     sess::connect(endpoint = first$path, use_rstudioapi = FALSE,
-                  use_httpgd = FALSE, use_jgd = FALSE)
+                  plot_backend = "standard")
     first_peer <- accept_peer(first$server)
     !is.null(first_peer) && !is.null(.sess_env$con)
   }, error = function(e) FALSE)
@@ -638,8 +641,17 @@ local({
   second_peer <- accept_peer(second$server)
   expect_false(is.null(second_peer))
   expect_equal(sess:::.session_id(), identity)
-  expect_equal(.sess_env$reconnect$options,
-               list(use_rstudioapi = FALSE, use_httpgd = FALSE, use_jgd = FALSE))
+  expect_false(.sess_env$reconnect$options$use_rstudioapi)
+  expect_equal(.sess_env$reconnect$options$plot_backend, "standard")
+  expect_null(.sess_env$attachment_id)
+  expect_true(.sess_env$auto_activate)
+  attach_ready <- tryCatch(processx::poll(list(second_peer), 1000L), error = function(e) NULL)
+  expect_false(is.null(attach_ready))
+  attach_line <- processx::conn_read_chars(second_peer)
+  attach_message <- jsonlite::fromJSON(trimws(attach_line), simplifyVector = FALSE)
+  expect_equal(attach_message$method, "attach")
+  expect_false("attachment_id" %in% names(attach_message$params))
+  expect_false("auto_activate" %in% names(attach_message$params))
   expect_true(isTRUE(sess:::.runtime_state()$active))
   expect_equal(length(grep("^sess.workspace$", getTaskCallbackNames())), 1L)
   sess:::.transport_disconnect()
@@ -667,7 +679,7 @@ local({
   }, add = TRUE)
 
   connected <- tryCatch({
-    sess::connect(endpoint = path, use_rstudioapi = FALSE, use_httpgd = FALSE, use_jgd = FALSE)
+    sess::connect(endpoint = path, use_rstudioapi = FALSE, plot_backend = "standard")
     ready <- processx::poll(list(server), 1000L)
     if (ready[[1]] %in% c("connect", "ready")) {
       processx::conn_accept_unix_socket(server)

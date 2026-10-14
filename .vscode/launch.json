@@ -17,7 +17,7 @@
         "${workspaceFolder}/dist/**/*.js"
       ],
       "sourceMaps": true,
-      "preLaunchTask": "npm: compile"
+      "preLaunchTask": "compile"
     },
     {
       "name": "Launch Extension (--disable-extensions)",
@@ -32,7 +32,7 @@
         "${workspaceFolder}/dist/**/*.js"
       ],
       "sourceMaps": true,
-      "preLaunchTask": "npm: compile"
+      "preLaunchTask": "compile"
     },
     {
       "name": "Extension Tests",
@@ -47,7 +47,7 @@
         "${workspaceFolder}/dist/**/*.js",
         "${workspaceFolder}/out/**/*.js"
       ],
-      "preLaunchTask": "npm: pretest"
+      "preLaunchTask": "pretest"
     }
   ]
 }
