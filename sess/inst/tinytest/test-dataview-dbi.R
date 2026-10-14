@@ -298,7 +298,8 @@ if (requireNamespace("DBI", quietly = TRUE) && requireNamespace("dbplyr", quietl
   if ("9" %in% names(wire)) expect_identical(wire[["9"]][[1L]], "9007199254740993")
   expect_true(result_open)
   expect_true(sess:::handle_dataview_dispose(list(
-    view_id = view$view_id, state_generation = view$state_generation
+    view_id = view$view_id,
+    state_generation = sess:::dataview_get_state(view$view_id)$state_generation
   )))
   expect_false(result_open)
   expect_true(DBI::dbIsValid(con)) # the viewer does not own the connection

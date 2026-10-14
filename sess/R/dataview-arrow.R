@@ -127,7 +127,43 @@ dataview_arrow_reader_state <- function(data = NULL) {
   state$conversion <- state$source_conversion
   state$projection <- NULL
   state$page_data <- NULL
+  state$result_cache_dir <- NULL
+  state$result_cache_batches <- list()
+  state$result_cache_rows <- 0L
+  state$result_complete <- FALSE
   state
+}
+
+dataview_arrow_result_cache_init <- function(state, view_id) {
+  if (!inherits(state$data, "arrow_dplyr_query")) return(invisible(NULL))
+
+  root <- file.path(tempdir(), "vscode-r-dataview")
+  dir.create(root, recursive = TRUE, showWarnings = FALSE)
+  result_cache_dir <- tempfile(pattern = paste0(view_id, "-"), tmpdir = root)
+  if (!dir.create(result_cache_dir, showWarnings = FALSE)) {
+    stop("unable to create temporary Arrow data viewer cache")
+  }
+
+  state$arrow_reader$result_cache_dir <- result_cache_dir
+  state$arrow_reader$result_cache_batches <- list()
+  state$arrow_reader$result_cache_rows <- 0L
+  state$arrow_reader$result_complete <- FALSE
+  invisible(NULL)
+}
+
+dataview_arrow_result_cache_cleanup <- function(state) {
+  if (is.null(state$arrow_reader)) return(invisible(NULL))
+
+  dataview_arrow_reader_reset(state)
+  result_cache_dir <- state$arrow_reader$result_cache_dir
+  if (!is.null(result_cache_dir) && dir.exists(result_cache_dir)) {
+    unlink(result_cache_dir, recursive = TRUE, force = TRUE)
+  }
+  state$arrow_reader$result_cache_dir <- NULL
+  state$arrow_reader$result_cache_batches <- list()
+  state$arrow_reader$result_cache_rows <- 0L
+  state$arrow_reader$result_complete <- FALSE
+  invisible(NULL)
 }
 
 dataview_arrow_cache_get <- function(reader_state, row_idx) {
@@ -213,19 +249,25 @@ dataview_arrow_query_cache_add <- function(
 dataview_arrow_page_state <- function(state, fields = NULL) {
   positions <- dataview_page_positions(state, fields)
   reader_state <- state$arrow_reader
+
+  if (inherits(state$data, "arrow_dplyr_query")) {
+    if (!identical(positions, reader_state$projection)) {
+      reader_state$row_cache <- list()
+      reader_state$query_cache <- list()
+      reader_state$projection <- positions
+    }
+    state$arrow_source <- state$data
+    state$columns <- state$columns[c(1L, positions + 1L)]
+    state$column_fields <- as.character(positions)
+    return(state)
+  }
+
   if (!identical(positions, reader_state$projection)) {
     dataview_arrow_reader_reset(state)
     reader_state$row_cache <- list()
     reader_state$query_cache <- list()
     reader_state$page_data <- if (length(positions) && length(positions) < ncol(state$data)) {
-      if (inherits(state$data, "arrow_dplyr_query")) {
-        dplyr::select(
-          dplyr::ungroup(dplyr::collapse(state$data)),
-          dplyr::all_of(names(state$data)[positions])
-        )
-      } else {
-        state$data$WithSchema(state$data$schema[names(state$data)[positions]])
-      }
+      state$data$WithSchema(state$data$schema[names(state$data)[positions]])
     } else {
       state$data
     }
@@ -312,16 +354,71 @@ dataview_arrow_column <- function(data, position) {
   dataview_arrow_data_frame(reader$read_table())[[name]]
 }
 
+dataview_arrow_result_cache_add <- function(reader_state, batch) {
+  if (is.null(reader_state$result_cache_dir) || !nrow(batch)) {
+    return(invisible(NULL))
+  }
+
+  batch_number <- length(reader_state$result_cache_batches) + 1L
+  first_row <- reader_state$next_row
+  last_row <- first_row + nrow(batch) - 1L
+  reader_state$result_cache_batches[[batch_number]] <- list(
+    data = batch,
+    path = NULL,
+    first_row = first_row,
+    last_row = last_row
+  )
+  reader_state$result_cache_rows <- last_row
+
+  in_memory_rows <- function() {
+    sum(vapply(
+      reader_state$result_cache_batches,
+      function(cached) if (is.null(cached$data)) 0L else
+        cached$last_row - cached$first_row + 1L,
+      integer(1)
+    ))
+  }
+
+  while (length(reader_state$result_cache_batches) > 1L &&
+         in_memory_rows() > dataview_arrow_cache_rows) {
+    position <- which(vapply(
+      reader_state$result_cache_batches,
+      function(cached) !is.null(cached$data),
+      logical(1)
+    ))[[1L]]
+    cached <- reader_state$result_cache_batches[[position]]
+    path <- file.path(
+      reader_state$result_cache_dir,
+      sprintf("batch-%08d.arrow", position)
+    )
+    temporary_path <- paste0(path, ".tmp")
+    on.exit(unlink(temporary_path, force = TRUE), add = TRUE)
+    getExportedValue("arrow", "write_ipc_file")(
+      cached$data, temporary_path
+    )
+    if (!file.rename(temporary_path, path)) {
+      stop("unable to finalize temporary Arrow data viewer cache")
+    }
+    cached$data <- NULL
+    cached$path <- path
+    reader_state$result_cache_batches[[position]] <- cached
+  }
+  invisible(NULL)
+}
+
 dataview_arrow_reader_ensure_batch <- function(reader_state) {
   while (is.null(reader_state$batch) ||
            reader_state$batch_row >= nrow(reader_state$batch)) {
     reader_state$batch <- reader_state$reader$read_next_batch()
     reader_state$batch_row <- 0L
-    if (is.null(reader_state$batch)) return(FALSE)
+    if (is.null(reader_state$batch)) {
+      reader_state$result_complete <- TRUE
+      return(FALSE)
+    }
+    dataview_arrow_result_cache_add(reader_state, reader_state$batch)
   }
   TRUE
 }
-
 dataview_arrow_reader_take <- function(reader_state, n, collect = TRUE) {
   pages <- list()
   while (n > 0L) {
@@ -382,12 +479,79 @@ dataview_arrow_reader_select <- function(reader_state, row_idx) {
     row_idx <- row_idx[row_idx > batch_last]
   }
 
+  if (!length(pages)) {
+    return(NULL)
+  }
   if (length(pages) == 1L) {
     return(pages[[1L]])
   }
   dataview_arrow_bind_pages(pages)
 }
 
+dataview_arrow_result_cache_slice <- function(state, row_idx) {
+  reader_state <- state$arrow_reader
+  if (is.null(reader_state$result_cache_dir) || !length(row_idx)) return(NULL)
+
+  target <- max(row_idx)
+  while (target > reader_state$result_cache_rows &&
+         !isTRUE(reader_state$result_complete)) {
+    if (is.null(reader_state$reader)) {
+      reader_state$reader <- dataview_arrow_reader_open(state$data)
+    }
+    if (!dataview_arrow_reader_ensure_batch(reader_state)) break
+    if (target <= reader_state$result_cache_rows) break
+
+    remaining <- nrow(reader_state$batch) - reader_state$batch_row
+    if (remaining > 0L) {
+      dataview_arrow_reader_take(reader_state, remaining, collect = FALSE)
+    }
+  }
+
+  available <- row_idx[row_idx <= reader_state$result_cache_rows]
+  projection <- reader_state$projection
+  if (is.null(projection)) projection <- seq_len(ncol(state$data))
+  fields <- names(state$data)[projection]
+  if (!length(available)) {
+    schema <- dataview_schema(state$data)
+    return(schema[integer(), projection, drop = FALSE])
+  }
+
+  pages <- list()
+  page_rows <- integer()
+
+  for (batch in reader_state$result_cache_batches) {
+    selected <- available[
+      available >= batch$first_row & available <= batch$last_row
+    ]
+    if (!length(selected)) next
+
+    positions <- selected - batch$first_row + 1L
+    page <- if (!length(fields)) {
+      data.frame(row.names = seq_along(selected))
+    } else if (!is.null(batch$data)) {
+      dataview_arrow_data_frame(
+        batch$data[positions, projection, drop = FALSE]
+      )
+    } else {
+      data <- getExportedValue("arrow", "read_ipc_file")(
+        batch$path,
+        col_select = fields,
+        as_data_frame = FALSE
+      )
+      dataview_arrow_data_frame(data)[positions, , drop = FALSE]
+    }
+    pages[[length(pages) + 1L]] <- page
+    page_rows <- c(page_rows, selected)
+  }
+
+  if (!length(pages)) return(NULL)
+  page <- if (length(pages) == 1L) {
+    pages[[1L]]
+  } else {
+    dataview_arrow_bind_pages(pages)
+  }
+  page[match(available, page_rows), , drop = FALSE]
+}
 dataview_arrow_fragment_index <- function(state) {
   reader_state <- state$arrow_reader
   if (isFALSE(reader_state$fragment_index)) {
@@ -611,6 +775,9 @@ dataview_arrow_query_forward_slice <- function(state, row_idx) {
 
   reader_state <- state$arrow_reader
   first_row <- row_idx[[1L]]
+  if (isTRUE(reader_state$result_complete)) {
+    return(NULL)
+  }
   if (first_row < reader_state$next_row) {
     return(NULL)
   }
@@ -639,6 +806,17 @@ dataview_arrow_query_fetch <- function(state, row_idx) {
   # Choose the cheapest Arrow path for fetching the requested source rows.
   if (!length(row_idx)) {
     return(dataview_schema(state$data))
+  }
+
+  if (inherits(state$data, "arrow_dplyr_query")) {
+    page <- dataview_arrow_query_forward_slice(state, row_idx)
+    if (!is.null(page)) {
+      projection <- state$arrow_reader$projection
+      if (is.null(projection)) projection <- seq_len(ncol(page))
+      return(page[, projection, drop = FALSE])
+    }
+
+    return(dataview_arrow_result_cache_slice(state, row_idx))
   }
 
   if (!is.data.frame(state$data)) {
@@ -699,6 +877,10 @@ dataview_arrow_slice <- function(state, row_idx) {
     return(dataview_schema(state$data))
   }
   reader_state <- state$arrow_reader
+
+  if (inherits(state$data, "arrow_dplyr_query")) {
+    return(dataview_arrow_query_fetch(state, row_idx))
+  }
 
   if (length(row_idx) == 1L || all(diff(row_idx) == 1L)) {
     return(dataview_arrow_block_slice(state, row_idx))
