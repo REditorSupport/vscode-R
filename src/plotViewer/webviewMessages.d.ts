@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 
 // Make sure these files contain the same interfaces as ./html/XXX/webviewMessages.d.ts!
 

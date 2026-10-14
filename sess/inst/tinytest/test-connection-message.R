@@ -19,7 +19,7 @@ local({
     assign(name, fun, env)
   }
   env$interactive <- function() TRUE
-  opts <- list(use_rstudioapi = FALSE, use_httpgd = FALSE, use_jgd = FALSE)
+  opts <- list(use_rstudioapi = FALSE, plot_backend = "standard")
 
   connect_once <- function(quiet) {
     path <- tempfile(fileext = ".sock")

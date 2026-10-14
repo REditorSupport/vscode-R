@@ -2,6 +2,11 @@ dataview_is_dbi_lazy <- function(data) {
   inherits(data, "tbl_sql")
 }
 
+dataview_dbi_is_bare_table <- function(data) {
+  table <- dbplyr::remote_table(data)
+  !is.null(table) && !dbplyr::is.sql(table)
+}
+
 dataview_dbi_cache_block_size <- 1000L
 dataview_dbi_sort_block_size <- 5000L
 dataview_dbi_cache_rows <- 20000L
@@ -14,9 +19,50 @@ dataview_dbi_require <- function() {
   }
 }
 
+dataview_dbi_primary_key_query <- function(con, table) {
+  table <- dbplyr::as_table_path(table, con)
+  components <- dbplyr::table_path_components(table, con)[[1L]]
+  catalog <- if (length(components) == 3L) {
+    # dbplyr's SQL Server path parser retains escaped closing brackets.
+    gsub("]]", "]", components[[1L]], fixed = TRUE)
+  } else {
+    NULL
+  }
+  metadata_table <- function(name, vars) {
+    source <- if (is.null(catalog)) {
+      dbplyr::in_schema("sys", name)
+    } else {
+      dbplyr::in_catalog(catalog, "sys", name)
+    }
+    dplyr::tbl(con, source, vars = vars)
+  }
+  object_id <- dbplyr::translate_sql(OBJECT_ID(!!as.character(table), "U"), con = con)
+  indexes <- metadata_table("indexes", c("object_id", "index_id", "is_primary_key"))
+  index_columns <- metadata_table(
+    "index_columns", c("object_id", "index_id", "column_id", "key_ordinal")
+  )
+  columns <- metadata_table("columns", c("object_id", "column_id", "name"))
+
+  indexes |>
+    dplyr::filter(.data$object_id == !!object_id, .data$is_primary_key == 1L) |>
+    dplyr::inner_join(index_columns, by = c("object_id", "index_id")) |>
+    dplyr::inner_join(columns, by = c("object_id", "column_id")) |>
+    dplyr::filter(.data$key_ordinal > 0L) |>
+    dplyr::arrange(.data$key_ordinal) |>
+    dplyr::select(column_name = dplyr::all_of("name"))
+}
+
+dataview_dbi_primary_key <- function(con, table) {
+  # Metadata may be unavailable to the user; viewing the table must still work.
+  tryCatch(
+    as.character(dplyr::collect(dataview_dbi_primary_key_query(con, table))$column_name),
+    error = function(e) character()
+  )
+}
+
 dataview_dbi_source <- function(data) {
   dataview_dbi_require()
-  con <- data$src$con
+  con <- dbplyr::remote_con(data)
   if (!inherits(con, "DBIConnection") || !DBI::dbIsValid(con)) {
     stop("the lazy table does not have a valid DBI connection")
   }
@@ -29,18 +75,20 @@ dataview_dbi_source <- function(data) {
   # Extension point for other database backends / SQL dialects: end
 
   # Keep the source ordering for the outer Data Viewer query, not inside the subquery.
+  bare_table <- dataview_dbi_is_bare_table(data)
   order <- dbplyr::op_sort(data)
-  source_sql <- suppressWarnings(dbplyr::sql_render(data, subquery = TRUE))
+  source_sql <- if (bare_table) {
+    dbplyr::remote_table(data)
+  } else {
+    suppressWarnings(dbplyr::sql_render(data, subquery = TRUE))
+  }
+  schema <- DBI::dbGetQuery(
+    con,
+    as.character(dbplyr::sql_query_fields(con, source_sql))
+  )
   from_sql <- as.character(
     dbplyr::sql_query_wrap(con, source_sql, name = "dataview_source")
   )
-  # Extension point for other database backends / SQL dialects: start
-  # Schema probing currently uses SQL Server TOP.
-  schema <- DBI::dbGetQuery(
-    con,
-    paste0("select top (0) * from ", from_sql)
-  )
-  # Extension point for other database backends / SQL dialects: end
   source_order <- if (length(order)) {
     as.character(dbplyr::translate_sql_(
       order,
@@ -62,30 +110,38 @@ dataview_dbi_source <- function(data) {
       NA_character_
     }
   }, character(1))
+  row_identity <- if (bare_table) {
+    dataview_dbi_primary_key(con, source_sql)
+  } else {
+    character()
+  }
   list(
     con = con,
     from_sql = from_sql,
     page_from_sql = from_sql,
     source_order = source_order,
     source_order_columns = source_order_columns,
+    row_identity = row_identity,
     schema = schema
   )
 }
 
 dataview_dbi_to_state <- function(data) {
   source <- dataview_dbi_source(data)
-  # Extension point for other database backends / SQL dialects: start
-  # Row counting currently uses SQL Server COUNT_BIG.
-  total_rows <- DBI::dbGetQuery(
-    source$con,
-    paste0("select count_big(*) as n from ", source$from_sql)
-  )[[1L]][[1L]]
-  # Extension point for other database backends / SQL dialects: end
-  total_rows <- as.numeric(total_rows)
-  if (!is.finite(total_rows) || total_rows < 0 || total_rows > .Machine$integer.max) {
-    stop("database result is too large for the current data viewer row index")
+  disable_sort_filter <- !dataview_dbi_is_bare_table(data)
+  total_rows <- if (disable_sort_filter) {
+    NULL
+  } else {
+    total <- DBI::dbGetQuery(
+      source$con,
+      paste0("select count_big(*) as n from ", source$from_sql)
+    )[[1L]][[1L]]
+    total <- as.numeric(total)
+    if (!is.finite(total) || total < 0 || total > .Machine$integer.max) {
+      stop("database result is too large for the current data viewer row index")
+    }
+    as.integer(total)
   }
-  total_rows <- as.integer(total_rows)
 
   colnames <- names(source$schema)
   headers <- c(" ", trimws(colnames))
@@ -95,12 +151,19 @@ dataview_dbi_to_state <- function(data) {
     lapply(seq_len(ncol(source$schema)), function(position) source$schema[[position]])
   )
   columns <- .mapply(get_column_def, list(headers, fields, cols), NULL)
+  if (disable_sort_filter) {
+    for (position in seq_len(ncol(source$schema))) {
+      columns[[position + 1L]]$filter <- jsonlite::unbox(FALSE)
+      columns[[position + 1L]]$sortable <- jsonlite::unbox(FALSE)
+    }
+  }
 
   list(
     dbi = source,
     columns = columns,
     column_names = colnames,
     total_rows = total_rows,
+    disable_sort_filter = disable_sort_filter,
     dbi_cache = dataview_dbi_cache_state()
   )
 }
@@ -113,6 +176,10 @@ dataview_dbi_cache_state <- function() {
   state$blocks <- list()
   state$result <- NULL
   state$next_row <- NULL
+  state$result_cache_dir <- NULL
+  state$result_cache_blocks <- list()
+  state$result_cache_rows <- 0L
+  state$result_complete <- FALSE
   state
 }
 
@@ -141,6 +208,214 @@ dataview_dbi_cache_add <- function(cache_state, block_start, block) {
            sum(vapply(cache_state$blocks, nrow, integer(1))) > dataview_dbi_cache_rows) {
     cache_state$blocks <- cache_state$blocks[-1L]
   }
+}
+
+
+dataview_dbi_result_cache_init <- function(state, view_id) {
+  if (!isTRUE(state$disable_sort_filter)) return(invisible(NULL))
+  if (!requireNamespace("arrow", quietly = TRUE)) {
+    stop("Viewing transformed lazy database queries requires the optional 'arrow' package")
+  }
+
+  root <- file.path(tempdir(), "vscode-r-dataview")
+  dir.create(root, recursive = TRUE, showWarnings = FALSE)
+  result_cache_dir <- tempfile(
+    pattern = paste0(view_id, "-dbi-"), tmpdir = root
+  )
+  if (!dir.create(result_cache_dir, showWarnings = FALSE)) {
+    stop("unable to create temporary database data viewer cache")
+  }
+
+  state$dbi_cache$result_cache_dir <- result_cache_dir
+  state$dbi_cache$result_cache_blocks <- list()
+  state$dbi_cache$result_cache_rows <- 0L
+  state$dbi_cache$result_complete <- FALSE
+  invisible(NULL)
+}
+
+dataview_dbi_result_cache_cleanup <- function(state) {
+  if (is.null(state$dbi_cache)) return(invisible(NULL))
+
+  dataview_dbi_result_reset(state$dbi_cache)
+  result_cache_dir <- state$dbi_cache$result_cache_dir
+  if (!is.null(result_cache_dir) && dir.exists(result_cache_dir)) {
+    unlink(result_cache_dir, recursive = TRUE, force = TRUE)
+  }
+  state$dbi_cache$result_cache_dir <- NULL
+  state$dbi_cache$result_cache_blocks <- list()
+  state$dbi_cache$result_cache_rows <- 0L
+  state$dbi_cache$result_complete <- FALSE
+  invisible(NULL)
+}
+
+dataview_dbi_result_cache_add <- function(cache_state, block) {
+  if (!nrow(block)) return(invisible(NULL))
+
+  block_number <- length(cache_state$result_cache_blocks) + 1L
+  first_row <- cache_state$result_cache_rows + 1L
+  last_row <- first_row + nrow(block) - 1L
+  cache_state$result_cache_blocks[[block_number]] <- list(
+    data = block,
+    path = NULL,
+    first_row = first_row,
+    last_row = last_row
+  )
+  cache_state$result_cache_rows <- last_row
+
+  in_memory_rows <- function() {
+    sum(vapply(
+      cache_state$result_cache_blocks,
+      function(cached) {
+        if (is.null(cached$data)) 0L else cached$last_row - cached$first_row + 1L
+      },
+      integer(1)
+    ))
+  }
+
+  while (length(cache_state$result_cache_blocks) > 1L &&
+           in_memory_rows() > dataview_dbi_cache_rows) {
+    position <- which(vapply(
+      cache_state$result_cache_blocks,
+      function(cached) !is.null(cached$data),
+      logical(1)
+    ))[[1L]]
+    cached <- cache_state$result_cache_blocks[[position]]
+    path <- file.path(
+      cache_state$result_cache_dir,
+      sprintf("block-%08d.arrow", position)
+    )
+    temporary_path <- paste0(path, ".tmp")
+    on.exit(unlink(temporary_path, force = TRUE), add = TRUE)
+    getExportedValue("arrow", "write_ipc_file")(
+      getExportedValue("arrow", "Table")$create(cached$data),
+      temporary_path
+    )
+    if (!file.rename(temporary_path, path)) {
+      stop("unable to finalize temporary database data viewer cache")
+    }
+    cached$data <- NULL
+    cached$path <- path
+    cache_state$result_cache_blocks[[position]] <- cached
+  }
+  invisible(NULL)
+}
+
+dataview_dbi_result_cache_slice <- function(state, row_idx, positions) {
+  cache_state <- state$dbi_cache
+  target <- if (length(row_idx)) max(row_idx) else 0L
+
+  if (target > cache_state$result_cache_rows &&
+        !isTRUE(cache_state$result_complete)) {
+    if (is.null(cache_state$result)) {
+      projection <- paste(vapply(seq_along(state$column_names), function(position) {
+        column <- dataview_dbi_identifier(state, as.character(position))
+        paste0("dataview_source.", column)
+      }, character(1)), collapse = ", ")
+      cache_state$result <- DBI::dbSendQuery(
+        state$dbi$con,
+        paste0(
+          "select ", projection,
+          " from ", state$dbi$page_from_sql,
+          dataview_dbi_order_sql(state, list())
+        )
+      )
+    }
+
+    while (target > cache_state$result_cache_rows &&
+             !isTRUE(cache_state$result_complete)) {
+      block <- tryCatch(
+        DBI::dbFetch(cache_state$result, n = dataview_dbi_sort_block_size),
+        error = function(e) {
+          dataview_dbi_result_reset(cache_state)
+          stop(e)
+        },
+        interrupt = function(e) {
+          dataview_dbi_result_reset(cache_state)
+          stop(e)
+        }
+      )
+      dataview_dbi_result_cache_add(cache_state, block)
+      if (!nrow(block) || DBI::dbHasCompleted(cache_state$result)) {
+        cache_state$result_complete <- TRUE
+        dataview_dbi_result_reset(cache_state)
+      }
+    }
+  }
+
+  available <- row_idx[row_idx <= cache_state$result_cache_rows]
+  if (!length(available)) {
+    return(state$dbi$schema[integer(), positions, drop = FALSE])
+  }
+
+  pages <- list()
+  page_rows <- integer()
+  for (cached in cache_state$result_cache_blocks) {
+    selected <- available[
+      available >= cached$first_row & available <= cached$last_row
+    ]
+    if (!length(selected)) next
+
+    rows <- selected - cached$first_row + 1L
+    page <- if (!length(positions)) {
+      data.frame(row.names = seq_along(selected))
+    } else if (!is.null(cached$data)) {
+      cached$data[rows, positions, drop = FALSE]
+    } else {
+      data <- getExportedValue("arrow", "read_ipc_file")(
+        cached$path,
+        col_select = state$column_names[positions],
+        as_data_frame = FALSE
+      )
+      dataview_arrow_data_frame(data)[rows, , drop = FALSE]
+    }
+    pages[[length(pages) + 1L]] <- page
+    page_rows <- c(page_rows, selected)
+  }
+
+  page <- if (length(pages) == 1L) pages[[1L]] else do.call(rbind, pages)
+  page[match(available, page_rows), , drop = FALSE]
+}
+
+dataview_dbi_lazy_page <- function(state, start_row, end_row, fields = NULL) {
+  positions <- dataview_page_positions(state, fields)
+  row_idx <- if (start_row < end_row) {
+    seq.int(start_row + 1L, end_row)
+  } else {
+    integer()
+  }
+  page <- dataview_dbi_result_cache_slice(state, row_idx, positions)
+
+  for (position in seq_len(ncol(page))) {
+    if (inherits(page[[position]], "POSIXt")) {
+      page[[position]] <- sub(
+        "\\.?0+$", "", format(page[[position]], "%Y-%m-%dT%H:%M:%OS6")
+      )
+    } else if (inherits(page[[position]], "Date")) {
+      page[[position]] <- format(page[[position]], "%Y-%m-%d")
+    } else if (inherits(page[[position]], "integer64")) {
+      page[[position]] <- as.character(page[[position]])
+    } else if (state$columns[[positions[[position]] + 1L]]$type == "textColumn") {
+      page[[position]] <- dataview_format_column(page[[position]])
+    }
+  }
+
+  page_row_idx <- if (nrow(page)) {
+    seq.int(start_row + 1L, length.out = nrow(page))
+  } else {
+    integer()
+  }
+  rows <- dataview_bind_rows(page, page_row_idx, as.character(positions))
+  last_row <- if (isTRUE(state$dbi_cache$result_complete)) {
+    state$dbi_cache$result_cache_rows
+  } else {
+    -1L
+  }
+  c(
+    list(rows = rows, lastRow = last_row),
+    if (last_row >= 0L) {
+      list(totalRows = last_row, totalUnfiltered = last_row)
+    }
+  )
 }
 
 
@@ -322,6 +597,17 @@ dataview_dbi_order_sql <- function(state, sort_model) {
   keep <- is.na(state$dbi$source_order_columns) |
     !(state$dbi$source_order_columns %in% viewer_columns)
   order <- c(order, state$dbi$source_order[keep])
+  row_identity <- state$dbi$row_identity[
+    !(state$dbi$row_identity %in% c(viewer_columns, state$dbi$source_order_columns))
+  ]
+  if (length(row_identity)) {
+    order <- c(order, vapply(row_identity, function(column) {
+      paste0(
+        "dataview_source.",
+        as.character(DBI::dbQuoteIdentifier(state$dbi$con, column))
+      )
+    }, character(1)))
+  }
   if (!length(order)) return(" order by (select null)")
   result <- paste0(" order by ", paste(order, collapse = ", "))
   # Extension point for other database backends / SQL dialects: end
@@ -329,6 +615,10 @@ dataview_dbi_order_sql <- function(state, sort_model) {
 }
 
 dataview_dbi_page <- function(state, start_row, end_row, sort_model, filter_model, fields = NULL) {
+  if (isTRUE(state$disable_sort_filter)) {
+    return(dataview_dbi_lazy_page(state, start_row, end_row, fields))
+  }
+
   positions <- dataview_page_positions(state, fields)
   projection <- paste(vapply(positions, function(position) {
     column <- dataview_dbi_identifier(state, as.character(position))

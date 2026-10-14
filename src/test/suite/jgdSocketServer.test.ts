@@ -17,7 +17,9 @@ function makePlotMsg(label: string, width = 400, height = 300, extra: Record<str
     };
     if (!extra.resizeReplay && !extra.incremental && msg.plotNumber === undefined) {
         msg.plotNumber = plotCounter++;
-        if (msg.newPage === undefined) msg.newPage = true;
+        if (msg.newPage === undefined) {
+            msg.newPage = true;
+        }
     }
     return msg;
 }
@@ -74,7 +76,9 @@ function connectClient(socketUri: string): Promise<ClientHelper> {
                 socket,
                 send: (msg: object) => socket.write(JSON.stringify(msg) + '\n'),
                 readLine: () => {
-                    if (lineQueue.length > 0) return Promise.resolve(lineQueue.shift()!);
+                    if (lineQueue.length > 0) {
+                        return Promise.resolve(lineQueue.shift()!);
+                    }
                     return new Promise((res) => { lineResolve = res; });
                 },
                 close: () => socket.destroy(),
@@ -108,8 +112,11 @@ suite('JGD SocketServer', () => {
 
         server.setOnFrame((_sessionId, msg) => {
             const current = history.currentPlot();
-            if (current) shownPlots.push(current);
-            else if (msg.plot) shownPlots.push(msg.plot as PlotFrame);
+            if (current) {
+                shownPlots.push(current);
+            } else if (msg.plot) {
+                shownPlots.push(msg.plot as PlotFrame);
+            }
         });
 
         server.setMeasureText((request) => {
@@ -134,7 +141,9 @@ suite('JGD SocketServer', () => {
     });
 
     teardown(() => {
-        for (const c of clients) c.close();
+        for (const c of clients) {
+            c.close();
+        }
         server.stop();
     });
 
@@ -268,6 +277,18 @@ suite('JGD SocketServer', () => {
             assert.strictEqual(resp.id, 7);
             assert.strictEqual(resp.width, 42);
             assert.strictEqual(measuredRequests.length, 1);
+        });
+
+        test('font measurement uses each device DPI without leaking across connections', async () => {
+            const first = await connect();
+            const second = await connect();
+            server.setMeasureText((request, dpi) => Promise.resolve({ type: 'metrics_response', id: request.id, dpi }));
+            first.send({ type: 'frame', newPage: true, plot: { version: 1,
+                device: { width: 800, height: 600, dpi: 144, bg: 'white' }, ops: [] } });
+            first.send({ type: 'metrics_request', id: 1, kind: 'strWidth', str: 'hello' });
+            second.send({ type: 'metrics_request', id: 2, kind: 'strWidth', str: 'hello' });
+            assert.strictEqual((JSON.parse(await first.readLine()) as { dpi: number }).dpi, 144);
+            assert.strictEqual((JSON.parse(await second.readLine()) as { dpi: number }).dpi, 96);
         });
     });
 });

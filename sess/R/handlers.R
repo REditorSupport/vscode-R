@@ -22,7 +22,10 @@ workspace_env_names <- function(env) {
 }
 
 workspace_child_count <- function(object) {
-  if (is.environment(object)) {
+  # POSIXlt is list-backed, but [[ returns another date-time, not a child list.
+  if (inherits(object, "POSIXlt")) {
+    0L
+  } else if (is.environment(object)) {
     length(workspace_env_names(object))
   } else if (isS4(object)) {
     length(methods::slotNames(object))
@@ -36,6 +39,7 @@ workspace_child_count <- function(object) {
 get_workspace_data <- function() {
   env <- .GlobalEnv
   all_names <- workspace_env_names(env)
+  workspace_dimensions <- new.env(parent = emptyenv())
 
   objs <- lapply(all_names, function(name) {
     if (bindingIsActive(name, env)) {
@@ -53,6 +57,13 @@ get_workspace_data <- function() {
     obj_type <- typeof(obj)
     obj_length <- length(obj)
     obj_dim <- dim(obj)
+    if (inherits(obj, "arrow_dplyr_query") && !is.null(obj_dim)) {
+      assign(
+        name,
+        list(object = obj, dim = obj_dim),
+        envir = workspace_dimensions
+      )
+    }
     first_class <- if (length(obj_class)) obj_class[[1]] else obj_type
     info <- list(
       class = class(obj),
@@ -78,7 +89,9 @@ get_workspace_data <- function() {
       NULL
     }
     if (length(obj_names)) {
-      info$names <- obj_names
+      # Automatic workspace refresh should not serialize millions of list names.
+      # Explicit completion and child paging can still inspect the full object.
+      info$names <- head(obj_names, 1000L)
     }
     if (isS4(obj)) {
       info$slots <- methods::slotNames(obj)
@@ -89,6 +102,7 @@ get_workspace_data <- function() {
     info
   })
   names(objs) <- all_names
+  .sess_env$workspace_dimensions <- workspace_dimensions
 
   list(
     globalenv = objs,
@@ -118,6 +132,7 @@ workspace_child_item <- function(object, str, selector) {
     class = paste(class(object), collapse = ", "),
     type = typeof(object),
     has_children = workspace_child_count(object) > 0L,
+    viewable = TRUE,
     selector = selector
   )
 }
@@ -130,72 +145,369 @@ workspace_child_label <- function(name, index) {
   }
 }
 
-get_workspace_children <- function(name, path = list(), start = 1L) {
-  tryCatch({
-    object <- workspace_object(name, path)
-    child_count <- workspace_child_count(object)
-    if (child_count == 0L) {
-      return(list(children = I(list()), next_start = NULL))
-    }
+# Keep one viewer of each type for a workspace root, including its descendants.
+workspace_show_view <- function(object, title, owner, context = NULL) {
+  previous <- .sess_env$view_owner
+  previous_context <- .sess_env$listview_context
+  on.exit({
+    .sess_env$view_owner <- previous
+    .sess_env$listview_context <- previous_context
+  }, add = TRUE)
+  .sess_env$view_owner <- owner
+  .sess_env$listview_context <- context
+  utils::View(object, title = title)
+  TRUE
+}
 
+handle_workspace_view <- function(name, path = list()) {
+  root <- listview_state(workspace_object(name), name, name)
+  context <- listview_context(root, path)
+  workspace_show_view(context$data, context$navigation$title, name, context)
+}
+
+# Lists and vectors share one viewer; only their row presentation differs.
+listview_supported <- function(object) {
+  !dataview_is_table(object) &&
+    (is.list(object) || is.pairlist(object) || is.environment(object) || isS4(object) ||
+       listview_is_vector(object))
+}
+
+listview_is_vector <- function(object) {
+  !dataview_is_table(object) && (is.atomic(object) || inherits(object, "POSIXlt"))
+}
+
+listview_state <- function(object, title, owner) {
+  kind <- if (is.environment(object)) "name" else if (isS4(object)) "slot" else "index"
+  list(
+    type = "list", data = object, title = title, owner = owner, kind = kind,
+    names = switch(kind,
+      name = workspace_env_names(object),
+      slot = methods::slotNames(object),
+      index = names(object)
+    ),
+    child_names = new.env(parent = emptyenv())
+  )
+}
+
+# Resolve workspace selectors once; navigation paths are relative to the retained root.
+listview_context <- function(root, selectors, expression_env = NULL) {
+  location <- listview_location(
+    root, selectors, resolve_selectors = TRUE, expression_env = expression_env
+  )
+  list(root = root, data = location$data, navigation = listview_navigation(location))
+}
+
+# Read a binding without invoking an active binding for a second time.
+listview_binding <- function(name, envir) {
+  while (!identical(envir, emptyenv()) && !exists(name, envir = envir, inherits = FALSE)) {
+    envir <- parent.env(envir)
+  }
+  if (identical(envir, emptyenv()) || bindingIsActive(name, envir)) return(NULL)
+  get(name, envir = envir, inherits = FALSE)
+}
+
+# Only known structural extraction can be represented by an index breadcrumb.
+listview_structural_extraction <- function(object, operator, envir) {
+  if (operator == "@") return(isS4(object))
+  if (!is.object(object)) return(TRUE)
+  if (isS4(object) || !identical(class(object), "data.frame")) return(FALSE)
+  if (operator == "$" &&
+        !is.null(utils::getS3method("$", "data.frame", optional = TRUE, envir = envir))) {
+    return(FALSE)
+  }
+  # Check both the caller's extraction and the viewer's later indexed traversal.
+  all(vapply(list(envir, environment(listview_location)), function(method_env) {
+    identical(utils::getS3method("[[", "data.frame", optional = TRUE, envir = method_env),
+              base::`[[.data.frame`)
+  }, logical(1)))
+}
+
+# Direct View(x$a) calls can also start with a complete breadcrumb path.
+listview_expression_context <- function(expression, envir, owner, value) {
+  tryCatch({
+    selectors <- list()
+    while (is.call(expression) && length(expression) == 3L &&
+             is.symbol(expression[[1L]])) {
+      operator <- as.character(expression[[1L]])
+      if (!operator %in% c("$", "[[", "@")) return(NULL)
+      if (!identical(listview_binding(operator, envir), get(operator, envir = baseenv()))) {
+        return(NULL)
+      }
+      selector <- expression[[3L]]
+      if (operator %in% c("$", "@") && is.symbol(selector)) selector <- as.character(selector)
+      if (length(selector) != 1L || !(is.character(selector) || is.numeric(selector))) return(NULL)
+      selectors <- c(list(list(kind = operator, value = selector)), selectors)
+      expression <- expression[[2L]]
+    }
+    if (!length(selectors) || !is.symbol(expression)) return(NULL)
+    name <- as.character(expression)
+    object <- listview_binding(name, envir)
+    if (is.null(object) || !listview_structural_extraction(object, selectors[[1L]]$kind, envir)) {
+      return(NULL)
+    }
+    root <- listview_state(object, name, owner)
+    context <- listview_context(root, selectors, expression_env = envir)
+    # Even a safe path is optional: the already-evaluated argument is authoritative.
+    if (!identical(context$data, value)) return(NULL)
+    context
+  }, error = function(e) NULL)
+}
+
+listview_navigation <- function(location) {
+  list(
+    title = location$title, path = I(location$path), breadcrumbs = I(location$breadcrumbs),
+    vector = listview_is_vector(location$data)
+  )
+}
+
+handle_listview_navigate <- function(view_id, path = list()) {
+  state <- dataview_get_state(view_id)
+  if (!identical(state$type, "list")) stop("Not a list view")
+  location <- listview_location(state, path)
+  if (dataview_is_table(location$data)) {
+    return(workspace_show_view(
+      location$data,
+      location$title,
+      state$owner %||% state$title
+    ))
+  }
+  if (!listview_supported(location$data)) stop("Not a list view")
+  listview_navigation(location)
+}
+
+listview_location <- function(state, path = list(), resolve_selectors = FALSE,
+                              expression_env = NULL) {
+  visited <- integer()
+  state$breadcrumbs <- list(list(label = state$title, path = I(list())))
+  for (index in path) {
+    if (resolve_selectors) {
+      if (!is.null(expression_env) &&
+            !listview_structural_extraction(state$data, index$kind, expression_env)) {
+        stop("Cannot reconstruct custom extraction as an index path")
+      }
+      index <- if (index$kind %in% c("index", "[[") && is.numeric(index$value)) {
+        index$value
+      } else if (index$kind == "$" && state$kind == "index") {
+        pmatch(index$value, state$names, duplicates.ok = TRUE)
+      } else {
+        match(index$value, state$names)
+      }
+    }
+    child_count <- if (state$kind == "index") length(state$data) else length(state$names)
+    if (length(index) != 1L || !is.numeric(index) || is.na(index) ||
+          index != as.integer(index) || index < 1L || index > child_count) {
+      stop("Invalid list item index")
+    }
+    child_name <- if (is.null(state$names)) NULL else state$names[[index]]
+    if (state$kind == "name" &&
+          (!exists(child_name, envir = state$data, inherits = FALSE) ||
+             bindingIsActive(child_name, state$data))) {
+      stop("List item is unavailable")
+    }
+    child <- switch(state$kind,
+      name = get(child_name, envir = state$data, inherits = FALSE),
+      slot = methods::slot(state$data, child_name),
+      index = state$data[[index]]
+    )
+    state$title <- if (state$kind == "slot") {
+      paste0(state$title, "@", child_name)
+    } else if (!is.null(child_name) && !is.na(child_name) && nzchar(child_name)) {
+      paste0(state$title, "$", child_name)
+    } else {
+      paste0(state$title, "[[", index, "]]")
+    }
+    state$data <- child
+    state$kind <- if (is.environment(child)) "name" else if (isS4(child)) "slot" else "index"
+    visited <- c(visited, index)
+    state$names <- switch(state$kind,
+      name = {
+        # Reuse the binding snapshot without enumerating the environment again.
+        key <- paste(visited, collapse = "/")
+        if (is.environment(state$child_names) &&
+              exists(key, envir = state$child_names, inherits = FALSE)) {
+          get(key, envir = state$child_names, inherits = FALSE)
+        } else {
+          child_names <- workspace_env_names(child)
+          if (is.environment(state$child_names)) assign(key, child_names, envir = state$child_names)
+          child_names
+        }
+      },
+      slot = methods::slotNames(child),
+      index = names(child)
+    )
+    label <- if (!is.null(child_name) && !is.na(child_name) && nzchar(child_name)) {
+      child_name
+    } else {
+      paste0("[[", index, "]]")
+    }
+    state$breadcrumbs <- c(state$breadcrumbs, list(list(label = label, path = I(as.list(visited)))))
+  }
+  state$path <- as.list(visited)
+  state
+}
+
+listview_format_values <- function(values) {
+  # Format before extracting individual elements, which may discard their class.
+  formatted <- dataview_format_column(values)
+  if (is.character(values) && !is.object(values)) {
+    return(encodeString(formatted, quote = "\"", na.encode = TRUE))
+  }
+  if (is.numeric(formatted) && !is.object(formatted)) {
+    # Match the numeric precision sent to the data viewer over IPC.
+    formatted <- vapply(formatted, function(value) {
+      if (is.finite(value)) {
+        as.character(jsonlite::toJSON(value, auto_unbox = TRUE, digits = NA))
+      } else {
+        as.character(value)
+      }
+    }, character(1))
+  } else if (!is.character(formatted)) {
+    formatted <- format(formatted, trim = TRUE, justify = "none")
+  }
+  formatted[is.na(formatted)] <- "NA"
+  formatted
+}
+
+listview_summary <- function(object) {
+  if (is.atomic(object) || inherits(object, "POSIXlt")) {
+    size <- length(object)
+    type <- if (is.object(object)) {
+      paste(class(object), collapse = "/")
+    } else {
+      switch(typeof(object), integer = "int", double = "num", complex = "cplx",
+             logical = "logi", character = "chr", raw = "raw")
+    }
+    if (!size) return(paste0(type, "(0)"))
+    shape <- if (!is.null(dim(object))) {
+      paste0(" [", paste0("1:", dim(object), collapse = ", "), "]")
+    } else if (size > 1L) {
+      paste0(" [1:", size, "]")
+    }
+    numeric_preview <- is.numeric(object) && !is.object(object)
+    preview_size <- if (numeric_preview) min(size, 5L) else 1L
+    # Subset before formatting so even very large vectors have a bounded preview.
+    values <- object[seq_len(preview_size)]
+    formatted <- if (numeric_preview) {
+      vapply(values, format, "", digits = 3L, trim = TRUE, justify = "none")
+    } else {
+      listview_format_values(values)
+    }
+    paste0(type, shape, " ", paste(formatted, collapse = " "),
+           if (size > preview_size) " ...")
+  } else {
+    trimws(try_capture_str(object))
+  }
+}
+
+get_workspace_children <- function(name = NULL, path = list(), start = 1L, view_id = NULL) {
+  tryCatch({
+    vector_rows <- FALSE
+    if (is.null(view_id)) {
+      object <- workspace_object(name, path)
+      kind <- if (is.environment(object)) "name" else if (isS4(object)) "slot" else "index"
+      child_names <- switch(kind,
+        name = workspace_env_names(object),
+        slot = methods::slotNames(object),
+        index = names(object)
+      )
+    } else {
+      state <- dataview_get_state(view_id)
+      if (!identical(state$type, "list")) stop("Not a list view")
+      state <- listview_location(state, path)
+      object <- state$data
+      vector_rows <- listview_is_vector(object)
+      kind <- if (vector_rows) "index" else state$kind
+      child_names <- if (vector_rows) names(object) else state$names
+    }
+    child_count <- if (kind == "index") {
+      if (vector_rows) {
+        length(object)
+      } else {
+        workspace_child_count(object)
+      }
+    } else {
+      length(child_names)
+    }
     start <- max(1L, as.integer(start))
     end <- min(child_count, start + workspace_child_page_size - 1L)
     if (start > end) {
       return(list(children = I(list()), next_start = NULL))
     }
+    formatted_values <- if (vector_rows) listview_format_values(object[seq.int(start, end)])
 
-    children <- if (is.environment(object)) {
-      child_names <- workspace_env_names(object)[seq.int(start, end)]
-      lapply(child_names, function(child_name) {
-        if (bindingIsActive(child_name, object)) {
-          list(
-            str = paste0("$ ", child_name, ": (active-binding)"),
-            class = "active_binding",
-            type = "active_binding",
-            has_children = FALSE
-          )
+    children <- lapply(seq.int(start, end), function(index) {
+      child_name <- if (is.null(child_names)) NULL else child_names[[index]]
+      label <- if (vector_rows) {
+        if (!is.null(child_name) && !is.na(child_name) && nzchar(child_name)) {
+          child_name
         } else {
-          child <- get(child_name, envir = object, inherits = FALSE)
-          workspace_child_item(
-            child,
-            paste0("$ ", child_name, ": ", trimws(try_capture_str(child))),
-            list(kind = "name", value = child_name)
-          )
+          paste0("[", index, "]")
         }
-      })
-    } else if (isS4(object)) {
-      child_names <- methods::slotNames(object)[seq.int(start, end)]
-      lapply(child_names, function(child_name) {
-        child <- methods::slot(object, child_name)
-        workspace_child_item(
-          child,
-          paste0("@ ", child_name, ": ", trimws(try_capture_str(child))),
-          list(kind = "slot", value = child_name)
+      } else if (kind == "slot") {
+        paste0("@ ", child_name)
+      } else {
+        workspace_child_label(child_name, index)
+      }
+      unavailable <- if (kind == "name" && !exists(child_name, envir = object, inherits = FALSE)) {
+        "removed"
+      } else if (kind == "name" && bindingIsActive(child_name, object)) {
+        "active_binding"
+      } else {
+        NULL
+      }
+      if (!is.null(unavailable)) {
+        summary <- if (unavailable == "removed") "(removed)" else "(active-binding)"
+        if (!is.null(view_id)) {
+          return(list(label = label, str = summary, viewable = FALSE, index = index))
+        }
+        return(list(
+          str = paste0(label, ": ", summary), class = unavailable,
+          type = unavailable, has_children = FALSE
+        ))
+      }
+      child <- if (!vector_rows) switch(kind,
+        name = get(child_name, envir = object, inherits = FALSE),
+        slot = methods::slot(object, child_name),
+        index = object[[index]]
+      )
+      summary <- if (vector_rows) {
+        formatted_values[[index - start + 1L]]
+      } else {
+        listview_summary(child)
+      }
+      if (!is.null(view_id)) {
+        list(
+          label = label, str = summary, viewable = !vector_rows, index = index,
+          has_children = !vector_rows && workspace_child_count(child) > 0L
         )
-      })
-    } else {
-      indices <- seq.int(start, end)
-      child_names <- names(object)
-      lapply(indices, function(index) {
-        child <- object[[index]]
-        child_name <- if (is.null(child_names)) NULL else child_names[[index]]
-        workspace_child_item(
-          child,
-          paste0(
-            workspace_child_label(child_name, index),
-            ": ",
-            trimws(try_capture_str(child))
-          ),
-          list(kind = "index", value = index)
-        )
-      })
-    }
+      } else {
+        selector <- if (kind == "index") {
+          list(kind = kind, value = index, name = child_name)
+        } else {
+          list(kind = kind, value = child_name)
+        }
+        workspace_child_item(child, paste0(label, ": ", summary), selector)
+      }
+    })
+    list(children = I(children), next_start = if (end < child_count) end + 1L else NULL)
+  }, error = function(e) {
+    if (!is.null(view_id)) stop(e)
+    list(children = I(list()), next_start = NULL)
+  })
+}
 
-    list(
-      children = I(children),
-      next_start = if (end < child_count) end + 1L else NULL
-    )
-  }, error = function(e) list(children = I(list()), next_start = NULL))
+handle_listview_view <- function(view_id, index, path = list()) {
+  state <- .sess_env$dataviews[[as.character(view_id)]]
+  if (is.null(state) || !identical(state$type, "list")) {
+    return(FALSE)
+  }
+  path <- c(path, list(index))
+  location <- tryCatch(listview_location(state, path), error = function(e) NULL)
+  if (is.null(location)) return(FALSE)
+  if (listview_supported(location$data)) {
+    return(listview_navigation(location))
+  }
+  workspace_show_view(location$data, location$title, state$owner %||% state$title)
 }
 
 handle_hover <- function(expr_str) {
@@ -333,7 +645,12 @@ get_column_def <- function(name, field, value) {
   if (!is.null(units)) {
     tooltip <- sprintf("%s, units: %s", tooltip, toString(units))
   }
-  if (inherits(value, "integer64")) {
+  if (!is.null(dim(value))) {
+    # A matrix/array column contains one composite cell per row. Treating its
+    # flattened elements as scalar sort/filter values invents out-of-range rows.
+    type <- "textColumn"
+    filter <- FALSE
+  } else if (inherits(value, "integer64")) {
     if (!requireNamespace("bit64", quietly = TRUE)) {
       stop("Viewing integer64 columns requires the optional 'bit64' package")
     }
@@ -356,7 +673,7 @@ get_column_def <- function(name, field, value) {
     type <- "textColumn"
     filter <- "agTextColumnFilter"
   }
-  sortable <- !is.complex(value) &&
+  sortable <- is.null(dim(value)) && !is.complex(value) &&
     !(is.list(value) && !inherits(value, "POSIXlt")) &&
     !is.raw(value)
   if (identical(field, "0")) {
@@ -447,7 +764,7 @@ dataview_slice <- function(data, row_idx, conversion = NULL) {
   }
   if (is.matrix(data) && is.object(data)) {
     page <- lapply(seq_len(ncol(data)), function(position) {
-      dataview_column(data, position)[row_idx]
+      data[row_idx, position]
     })
     names(page) <- colnames(data)
     return(as.data.frame(page, optional = TRUE))
@@ -481,16 +798,9 @@ dataview_to_state <- function(data) {
     stop("data must be a data frame, matrix, Arrow table/dataset/query, or Polars data frame")
   }
 
-  n <- nrow(data)
-  if (inherits(data, "arrow_dplyr_query") && (length(n) != 1L || is.na(n))) {
-    # Aggregated/limited queries can report NA; count their executed output
-    # without collecting it into an R data frame.
-    reader <- dataview_arrow_reader_open(data)
-    on.exit(try(reader$Close(), silent = TRUE), add = TRUE)
-    n <- getExportedValue("arrow", "Scanner")$create(reader)$CountRows()
-  }
-  if (length(n) != 1L || is.na(n)) {
-    stop("unable to determine the number of rows in the Arrow query")
+  n <- if (inherits(data, "arrow_dplyr_query")) NULL else nrow(data)
+  if (!is.null(n) && (length(n) != 1L || is.na(n))) {
+    stop("unable to determine the number of rows")
   }
   colnames <- if (inherits(data, "ArrowTabular") ||
                     dataview_is_arrow_lazy(data) ||
@@ -508,8 +818,7 @@ dataview_to_state <- function(data) {
   row_index <- if (is.data.frame(data) && .row_names_info(data) > 0L) {
     rownames(data)
   } else if (is.matrix(data)) {
-    row_index <- rownames(data)
-    if (is.null(row_index)) NULL else trimws(row_index)
+    rownames(data)
   } else {
     NULL
   }
@@ -536,6 +845,14 @@ dataview_to_state <- function(data) {
     }
   }
 
+  disable_sort_filter <- inherits(data, "arrow_dplyr_query")
+  if (disable_sort_filter) {
+    for (position in seq_len(ncol(schema))) {
+      columns[[position + 1L]]$filter <- jsonlite::unbox(FALSE)
+      columns[[position + 1L]]$sortable <- jsonlite::unbox(FALSE)
+    }
+  }
+
   list(
     data = data,
     row_index = row_index,
@@ -544,6 +861,7 @@ dataview_to_state <- function(data) {
     query_key = NULL,
     query_indices = NULL,
     query_has_sort = FALSE,
+    disable_sort_filter = disable_sort_filter,
     arrow_reader = if (dataview_is_arrow_lazy(data)) dataview_arrow_reader_state(data) else NULL
   )
 }
@@ -554,37 +872,76 @@ dataview_columns <- function(state) {
 
 dataview_new_id <- function() {
   repeat {
-    ts <- gsub("[^0-9]", "", format(Sys.time(), "%Y%m%d%H%M%OS6"), perl = TRUE)
-    view_id <- sprintf("dv_%s_%06d", ts, sample.int(999999L, 1L))
+    # Viewing data must neither advance nor initialize the analyst's RNG stream.
+    .sess_env$dataview_sequence <- (.sess_env$dataview_sequence %||% 0) + 1
+    view_id <- sprintf("dv_%d_%.0f", Sys.getpid(), .sess_env$dataview_sequence)
     if (is.null(.sess_env$dataviews) || is.null(.sess_env$dataviews[[view_id]])) {
       return(view_id)
     }
   }
 }
 
-dataview_register <- function(data, view_id = NULL) {
+dataview_set_state <- function(view_id, state) {
   if (is.null(.sess_env$dataviews)) {
     .sess_env$dataviews <- list()
   }
+  state$state_generation <- (.sess_env$dataviews[[view_id]]$state_generation %||% 0L) + 1L
+  .sess_env$dataviews[[view_id]] <- state
+  state
+}
 
+dataview_register <- function(data, view_id = NULL, live = FALSE, total_rows = NULL) {
   if (is.null(view_id)) {
     view_id <- dataview_new_id()
   }
 
   state <- dataview_to_state(data)
-  .sess_env$dataviews[[view_id]] <- state
-  list(
-    view_id = view_id,
-    total_rows = state$total_rows,
-    columns = dataview_columns(state)
+  if (inherits(data, "arrow_dplyr_query")) {
+    if (!is.null(total_rows)) state$total_rows <- total_rows
+    dataview_arrow_result_cache_init(state, view_id)
+  }
+  if (!is.null(state$dbi) && isTRUE(state$disable_sort_filter)) {
+    dataview_dbi_result_cache_init(state, view_id)
+  }
+
+  previous_state <- .sess_env$dataviews[[view_id]]
+  if (!is.null(previous_state$arrow_reader)) {
+    dataview_arrow_result_cache_cleanup(previous_state)
+  }
+  if (!is.null(previous_state$dbi_cache)) {
+    dataview_dbi_result_cache_cleanup(previous_state)
+  }
+  state$live <- live
+  state$revision <- .sess_env$dataview_revision %||% 0
+  state <- dataview_set_state(view_id, state)
+  c(
+    list(view_id = view_id, state_generation = state$state_generation),
+    if (!is.null(state$total_rows)) list(total_rows = state$total_rows),
+    list(columns = dataview_columns(state))
   )
 }
 
-dataview_get_state <- function(view_id) {
+dataview_get_state <- function(view_id, refresh = FALSE) {
   if (is.null(.sess_env$dataviews) || is.null(.sess_env$dataviews[[view_id]])) {
     stop(sprintf("Unknown dataview id: %s", view_id))
   }
-  .sess_env$dataviews[[view_id]]
+  state <- .sess_env$dataviews[[view_id]]
+  if (isTRUE(state$live)) {
+    current <- dataview_to_state(state$data)
+    if (!refresh && !identical(current$columns, state$columns)) {
+      stop("Table columns changed. Reopen Data viewer from the cell to refresh the full table.")
+    }
+    revision <- .sess_env$dataview_revision %||% 0
+    if (refresh || !identical(state$revision, revision) ||
+          !identical(state$total_rows, current$total_rows)) {
+      current$live <- TRUE
+      current$revision <- revision
+      current$state_generation <- state$state_generation
+      state <- current
+      .sess_env$dataviews[[view_id]] <- state
+    }
+  }
+  state
 }
 
 dataview_column_values <- function(state, position, row_idx = NULL) {
@@ -592,15 +949,65 @@ dataview_column_values <- function(state, position, row_idx = NULL) {
     if (is.null(state$row_index)) {
       return(if (is.null(row_idx)) seq_len(state$total_rows) else row_idx)
     }
-    return(if (is.null(row_idx)) state$row_index else state$row_index[row_idx])
+    values <- if (is.null(row_idx)) state$row_index else state$row_index[row_idx]
+    return(if (is.matrix(state$data)) trimws(values) else values)
   }
 
+  if (!is.null(row_idx) && is.matrix(state$data)) {
+    return(state$data[row_idx, position - 1L])
+  }
   values <- state$query_columns[[as.character(position)]]
   if (is.null(values)) values <- dataview_column(state$data, position - 1L)
   if (is.null(row_idx)) values else values[row_idx]
 }
 
-dataview_format_column <- function(values) {
+# List cells can themselves contain millions of values. Bound traversal before
+# copying, class printing or JSON encoding, while retaining small useful values.
+dataview_preview_text <- function(value) {
+  prefix <- substr(value, 1L, 1001L)
+  long <- !is.na(prefix) & nchar(prefix) > 1000L
+  prefix[long] <- paste0(substr(prefix[long], 1L, 1000L), "… [truncated]")
+  prefix
+}
+
+dataview_cell_preview <- function(value, depth = 0L, budget = new.env(parent = emptyenv())) {
+  if (is.null(budget$remaining)) budget$remaining <- 100L
+  size <- if (is.null(dim(value))) length(value) else prod(dim(value))
+  if (size > budget$remaining || depth >= 3L ||
+        is.environment(value) || isS4(value) || is.function(value) ||
+        (is.list(value) && is.object(value) && !is.data.frame(value) &&
+           !inherits(value, "POSIXlt"))) {
+    shape <- if (is.null(dim(value))) length(value) else dim(value)
+    return(sprintf("<%s [%s]>", class(value)[[1L]], paste(shape, collapse = " x ")))
+  }
+  budget$remaining <- budget$remaining - max(1L, size)
+  if (is.data.frame(value)) {
+    value <- dataview_slice(value, seq_len(nrow(value)))
+    for (i in seq_len(ncol(value))) {
+      if (is.list(value[[i]]) && is.null(dim(value[[i]])) && !inherits(value[[i]], "POSIXlt")) {
+        value[[i]] <- lapply(value[[i]], dataview_cell_preview, depth = depth + 1L, budget = budget)
+      } else if (is.character(value[[i]])) {
+        value[[i]] <- dataview_preview_text(value[[i]])
+      }
+    }
+    return(value)
+  }
+  if (is.list(value) && !is.object(value)) {
+    return(lapply(value, dataview_cell_preview, depth = depth + 1L, budget = budget))
+  }
+  if (is.character(value)) {
+    return(dataview_preview_text(value))
+  }
+  if (is.complex(value)) {
+    formatted <- format(value, trim = TRUE, justify = "none")
+    formatted[is.na(value)] <- NA_character_
+    return(formatted)
+  }
+  value
+}
+
+dataview_format_column <- function(values, truncate = TRUE) {
+  if (is.character(values)) return(if (truncate) dataview_preview_text(values) else values)
   # jsonlite's complex formatter rejects the IPC precision setting, digits = NA.
   if (is.complex(values)) {
     formatted <- format(values, trim = TRUE, justify = "none")
@@ -615,14 +1022,8 @@ dataview_format_column <- function(values) {
       })
     }))
   }
-  if (is.list(values) &&
-        (!is.object(values) || inherits(values, "vctrs_list_of"))) {
-    return(lapply(values, function(value) {
-      if (is.complex(value) || is.list(value)) {
-        return(dataview_format_column(value))
-      }
-      value
-    }))
+  if (is.list(values) && is.null(dim(values)) && !inherits(values, "POSIXlt")) {
+    return(lapply(values, dataview_cell_preview))
   }
   if (!is.object(values) || !is.null(dim(values))) {
     return(values)
@@ -806,7 +1207,7 @@ dataview_apply_filter_model <- function(state, filter_model, row_idx) {
     return(row_idx)
   }
 
-  matched <- rep(TRUE, length(row_idx))
+  matched <- NULL
 
   for (col_id in names(filter_model)) {
     col_model <- filter_model[[col_id]]
@@ -820,14 +1221,14 @@ dataview_apply_filter_model <- function(state, filter_model, row_idx) {
 
     values <- dataview_column_values(state, col_pos, row_idx)
     if (state$columns[[col_pos]]$type == "textColumn") {
-      values <- dataview_format_column(values)
+      values <- dataview_format_column(values, truncate = FALSE)
     }
     column_match <- dataview_filter_values(values, col_model)
     column_match[is.na(column_match)] <- FALSE
-    matched <- matched & column_match
+    matched <- if (is.null(matched)) column_match else matched & column_match
   }
 
-  row_idx[matched]
+  if (is.null(matched)) row_idx else if (is.null(row_idx)) which(matched) else row_idx[matched]
 }
 
 dataview_apply_sort_model <- function(state, sort_model, row_idx) {
@@ -865,10 +1266,10 @@ dataview_apply_sort_model <- function(state, sort_model, row_idx) {
     return(row_idx)
   }
 
-  row_order <- seq_along(row_idx)
+  row_order <- NULL
   for (i in rev(seq_along(sort_specs))) {
     spec <- sort_specs[[i]]
-    values <- spec$values[row_order]
+    values <- if (is.null(row_order)) spec$values else spec$values[row_order]
     order_index <- if (inherits(values, "integer64")) {
       bit64::order(
         values,
@@ -883,9 +1284,9 @@ dataview_apply_sort_model <- function(state, sort_model, row_idx) {
         method = "radix"
       )
     }
-    row_order <- row_order[order_index]
+    row_order <- if (is.null(row_order)) order_index else row_order[order_index]
   }
-  row_idx[row_order]
+  if (is.null(row_idx)) row_order else row_idx[row_order]
 }
 
 dataview_query_key <- function(sort_model, filter_model) {
@@ -911,8 +1312,9 @@ dataview_query_indices <- function(state, sort_model, filter_model) {
     # Request-local only: share one projected scan across filtering and sorting.
     state$query_columns <- dataview_arrow_query_columns(state, sort_model, filter_model)
   }
-  row_idx <- seq_len(state$total_rows)
-  row_idx <- dataview_apply_filter_model(state, filter_model, row_idx)
+  # NULL means the original order. Avoid materializing an identity index and
+  # subsetting every full column just to reproduce its existing values.
+  row_idx <- dataview_apply_filter_model(state, filter_model, NULL)
   dataview_apply_sort_model(state, sort_model, row_idx)
 }
 
@@ -924,7 +1326,12 @@ dataview_rows <- function(
   display_idx = row_idx
 ) {
   page <- if (identical(state$column_fields, character())) {
-    data.frame(row.names = seq_along(row_idx))
+    if (use_arrow_reader && inherits(state$data, "arrow_dplyr_query")) {
+      data <- dataview_arrow_slice(state, row_idx)
+      data.frame(row.names = seq_len(nrow(data)))
+    } else {
+      data.frame(row.names = seq_along(row_idx))
+    }
   } else if (use_arrow_reader) {
     dataview_arrow_slice(state, row_idx)
   } else if (use_arrow_query_cache) {
@@ -934,6 +1341,9 @@ dataview_rows <- function(
   }
   if (is.matrix(page)) {
     page <- as.data.frame(page, optional = TRUE)
+  }
+  if (is.data.frame(page) && nrow(page) < length(row_idx)) {
+    row_idx <- row_idx[seq_len(nrow(page))]
   }
   if (is.data.frame(page)) {
     for (position in seq_len(ncol(page))) {
@@ -956,12 +1366,14 @@ dataview_rows <- function(
 
 handle_dataview_init <- function(params) {
   view_id <- as.character(params$view_id %||% "")
-  state <- dataview_get_state(view_id)
-  list(
-    columns = dataview_columns(state),
-    totalRows = state$total_rows,
-    columnProjection = !is.null(state$dbi) ||
-      dataview_is_arrow_lazy(state$data)
+  state <- dataview_get_state(view_id, refresh = TRUE)
+  c(
+    list(columns = dataview_columns(state)),
+    if (!is.null(state$total_rows)) list(totalRows = state$total_rows),
+    list(
+      live = isTRUE(state$live),
+      columnProjection = !is.null(state$dbi) || dataview_is_arrow_lazy(state$data)
+    )
   )
 }
 
@@ -970,7 +1382,8 @@ handle_dataview_page <- function(params) {
   state <- dataview_get_state(view_id)
 
   start_row <- suppressWarnings(as.integer(params$startRow %||% 0L))
-  end_row <- suppressWarnings(as.integer(params$endRow %||% min(state$total_rows, 500L)))
+  default_end_row <- if (is.null(state$total_rows)) 500L else min(state$total_rows, 500L)
+  end_row <- suppressWarnings(as.integer(params$endRow %||% default_end_row))
   if (is.na(start_row) || start_row < 0L) {
     start_row <- 0L
   }
@@ -980,9 +1393,43 @@ handle_dataview_page <- function(params) {
 
   sort_model <- params$sortModel %||% list()
   filter_model <- params$filterModel %||% list()
+  if (isTRUE(state$disable_sort_filter)) {
+    sort_model <- list()
+    filter_model <- list()
+  }
   if (!is.null(state$dbi)) {
     return(dataview_dbi_page(state, start_row, end_row, sort_model, filter_model, params$fields))
   }
+  if (inherits(state$data, "arrow_dplyr_query")) {
+    page_idx <- if (is.null(state$total_rows)) {
+      if (start_row < end_row) seq.int(start_row + 1L, end_row) else integer()
+    } else {
+      dataview_page_indices(start_row, end_row, state$total_rows)
+    }
+    page_state <- dataview_arrow_page_state(state, params$fields)
+    rows <- dataview_rows(
+      page_state,
+      page_idx,
+      use_arrow_reader = TRUE
+    )
+    last_row <- if (!is.null(state$total_rows)) {
+      state$total_rows
+    } else if (isTRUE(state$arrow_reader$result_complete)) {
+      state$arrow_reader$result_cache_rows
+    } else {
+      -1L
+    }
+    return(c(
+      list(rows = rows, lastRow = last_row),
+      if (!is.null(state$total_rows)) {
+        list(
+          totalRows = state$total_rows,
+          totalUnfiltered = state$total_rows
+        )
+      }
+    ))
+  }
+
   query_key <- dataview_query_key(sort_model, filter_model)
   if (!identical(query_key, state$query_key)) {
     state$query_key <- query_key
@@ -1013,7 +1460,7 @@ handle_dataview_page <- function(params) {
   } else {
     state
   }
-  list(
+  result <- list(
     rows = dataview_rows(
       page_state,
       page_idx,
@@ -1027,17 +1474,30 @@ handle_dataview_page <- function(params) {
     totalUnfiltered = state$total_rows,
     lastRow = total
   )
+  if (isTRUE(params$formatNumbers)) {
+    # Format only the requested page, using the session's digits, scipen and OutDec.
+    # Keep raw rows unchanged for sorting, filtering and full-precision inspection.
+    numeric_fields <- vapply(Filter(function(column) {
+      column$type == "numericColumn" && column$field != "0"
+    }, state$columns), function(column) as.character(column$field), character(1))
+    numeric_fields <- intersect(numeric_fields, names(result$rows))
+    result$formattedColumns <- lapply(result$rows[numeric_fields], function(values) {
+      I(format(values, trim = TRUE, justify = "none"))
+    })
+  }
+  result
 }
 
 handle_dataview_dispose <- function(params) {
   view_id <- as.character(params$view_id %||% "")
-  if (!is.null(.sess_env$dataviews) && !is.null(.sess_env$dataviews[[view_id]])) {
-    state <- .sess_env$dataviews[[view_id]]
-    if (!is.null(state$arrow_reader) && !is.null(state$arrow_reader$reader)) {
-      try(state$arrow_reader$reader$Close(), silent = TRUE)
+  state <- if (is.null(.sess_env$dataviews)) NULL else .sess_env$dataviews[[view_id]]
+  state_generation <- suppressWarnings(as.integer(params$state_generation %||% NA_integer_))
+  if (!is.null(state) && identical(state$state_generation, state_generation)) {
+    if (!is.null(state$arrow_reader)) {
+      dataview_arrow_result_cache_cleanup(state)
     }
     if (!is.null(state$dbi_cache)) {
-      dataview_dbi_result_reset(state$dbi_cache)
+      dataview_dbi_result_cache_cleanup(state)
     }
     .sess_env$dataviews[[view_id]] <- NULL
   }

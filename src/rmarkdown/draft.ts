@@ -101,8 +101,7 @@ async function launchTemplatePicker(cwd: string): Promise<TemplateItem | undefin
 }
 
 async function makeDraft(file: string, template: TemplateItem, cwd: string): Promise<string | undefined> {
-    const fileString = ToRStringLiteral(file, '');
-    const cmd = `cat(normalizePath(rmarkdown::draft(file='${fileString}', template='${template.info.id}', package='${template.info.package}', edit=FALSE)))`;
+    const cmd = `cat(normalizePath(rmarkdown::draft(file=${ToRStringLiteral(file, '"')}, template=${ToRStringLiteral(template.info.id, '"')}, package=${ToRStringLiteral(template.info.package, '"')}, edit=FALSE)))`;
     return await executeRCommand(cmd, cwd, (e: Error) => {
         void window.showErrorMessage(e.message);
         return '';
@@ -136,7 +135,7 @@ export async function newDraft(): Promise<void> {
             const dir = path.join(parsedPath.dir, parsedPath.name);
             if (fs.existsSync(dir)) {
                 if (await getConfirmation(`Folder already exists. Are you sure you want to replace the folder?`)) {
-                    fs.rmdirSync(dir, { recursive: true });
+                    fs.rmSync(dir, { recursive: true, force: true });
                 } else {
                     return;
                 }
@@ -151,12 +150,15 @@ export async function newDraft(): Promise<void> {
     } else {
         const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'vscode-R-'));
         const tempFile = path.join(tempDir, 'draft.Rmd');
-        const draftPath = await makeDraft(tempFile, template, cwd);
-        if (draftPath) {
-            const text = fs.readFileSync(draftPath, 'utf8');
-            await workspace.openTextDocument({ language: 'rmd', content: text })
-                .then(document => window.showTextDocument(document));
+        try {
+            const draftPath = await makeDraft(tempFile, template, cwd);
+            if (draftPath) {
+                const text = fs.readFileSync(draftPath, 'utf8');
+                await workspace.openTextDocument({ language: 'rmd', content: text })
+                    .then(document => window.showTextDocument(document));
+            }
+        } finally {
+            fs.rmSync(tempDir, { recursive: true, force: true });
         }
-        fs.rmdirSync(tempDir, { recursive: true });
     }
 }

@@ -18,7 +18,10 @@ if (requireNamespace("arrow", quietly = TRUE)) local({
   dir.create(root)
   view_ids <- character()
   on.exit({
-    for (id in view_ids) sess:::handle_dataview_dispose(list(view_id = id))
+    for (id in view_ids) sess:::handle_dataview_dispose(list(
+      view_id = id,
+      state_generation = sess:::dataview_get_state(id)$state_generation
+    ))
     unlink(root, recursive = TRUE)
   }, add = TRUE)
   for (year in 2024:2025) {
@@ -102,7 +105,10 @@ if (requireNamespace("arrow", quietly = TRUE)) local({
   dir.create(root)
   view_ids <- character()
   on.exit({
-    for (id in view_ids) sess:::handle_dataview_dispose(list(view_id = id))
+    for (id in view_ids) sess:::handle_dataview_dispose(list(
+      view_id = id,
+      state_generation = sess:::dataview_get_state(id)$state_generation
+    ))
     unlink(root, recursive = TRUE)
   }, add = TRUE)
 

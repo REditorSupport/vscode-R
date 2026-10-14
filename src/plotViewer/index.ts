@@ -9,7 +9,9 @@ import { extensionContext } from '../extension';
 import { config } from '../util';
 import { getMigratedSetting } from '../configuration';
 
-export function resolveBackend(): 'auto' | 'standard' | 'httpgd' | 'jgd' {
+export type PlotBackend = 'auto' | 'standard' | 'httpgd' | 'jgd' | 'native';
+
+export function resolveBackend(): PlotBackend {
     const selected = getMigratedSetting<string | boolean>(
         config(),
         'plot.backend',
@@ -19,7 +21,7 @@ export function resolveBackend(): 'auto' | 'standard' | 'httpgd' | 'jgd' {
     if (selected === true) {
         return 'httpgd';
     }
-    return typeof selected === 'string' ? selected as 'standard' | 'httpgd' | 'jgd' : 'auto';
+    return typeof selected === 'string' ? selected as PlotBackend : 'auto';
 }
 
 export function jgdEnabled(backend = resolveBackend()): boolean {
@@ -60,7 +62,9 @@ export class CommonPlotManager implements PlotManager {
     get viewers(): PlotViewer[] {
         const viewers: PlotViewer[] = [...this.httpgdManager.viewers];
         const jgdViewer = this.jgdManager.getViewer();
-        if (jgdViewer) viewers.push(jgdViewer);
+        if (jgdViewer) {
+            viewers.push(jgdViewer);
+        }
         viewers.push(this.standardPlotViewer);
         return viewers;
     }
@@ -99,13 +103,14 @@ export class CommonPlotManager implements PlotManager {
     private applyBackend(): void {
         const backend = resolveBackend();
         void vscode.commands.executeCommand('setContext', 'r.plot.backend', backend);
+        const envCollection = extensionContext.environmentVariableCollection;
+        envCollection.persistent = false;
         if (!jgdEnabled(backend)) {
+            envCollection.delete('JGD_SOCKET');
             return;
         }
         this.jgdManager.start();
         // Set JGD_SOCKET env var for R child processes
-        const envCollection = extensionContext.environmentVariableCollection;
-        envCollection.persistent = false;
         for (const [key, value] of Object.entries(this.getJgdEnvVars())) {
             envCollection.replace(key, value);
         }

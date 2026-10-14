@@ -1,7 +1,8 @@
 'use strict';
 
 import { homedir } from 'os';
-import { existsSync, PathLike, readFile } from 'fs-extra';
+import { existsSync, PathLike, readFile as readFileCallback } from 'node:fs';
+import { promisify } from 'node:util';
 import * as fs from 'fs';
 import winreg = require('winreg');
 import * as path from 'path';
@@ -9,6 +10,7 @@ import * as vscode from 'vscode';
 import * as cp from 'child_process';
 import { extensionContext } from './extension';
 import { randomBytes } from 'crypto';
+import { StringDecoder } from 'string_decoder';
 import {
     createRPathResolverDependencies,
     findExecutableOnPath,
@@ -127,17 +129,15 @@ export function ToRStringLiteral(s: string, quote: string): string {
         return 'NULL';
     }
 
-    return (quote +
-        s.replace(/\\/g, '\\\\')
-            .replace(/"""/g, `\\${quote}`)
-            .replace(/\\n/g, '\\n')
-            .replace(/\\r/g, '\\r')
-            .replace(/\\t/g, '\\t')
-            .replace(/\\b/g, '\\b')
-            .replace(/\\a/g, '\\a')
-            .replace(/\\f/g, '\\f')
-            .replace(/\\v/g, '\\v') +
-        quote);
+    const escapes: Record<string, string> = { '\\': '\\\\', '\n': '\\n', '\r': '\\r', '\t': '\\t',
+        '\b': '\\b', '\x07': '\\a', '\f': '\\f', '\v': '\\v' };
+    const escaped = Array.from(s, character => {
+        if (character === '"' || character === "'") {
+            return !quote || character === quote ? `\\${character}` : character;
+        }
+        return escapes[character] ?? character;
+    }).join('');
+    return quote + escaped + quote;
 }
 
 export async function delay(ms: number): Promise<unknown> {
@@ -168,9 +168,11 @@ export function getCurrentWorkspaceFolder(resource?: vscode.Uri): vscode.Workspa
     return selectWorkspaceFolder(workspaceFolders, activeFileWorkspaceFolder, resourceWorkspaceFolder);
 }
 
+const readFile = promisify(readFileCallback);
+
 export function readContent(file: PathLike | number): Promise<Buffer> | undefined;
-export function readContent(file: PathLike | number, encoding: string): Promise<string> | undefined;
-export function readContent(file: PathLike | number, encoding?: string): Promise<string | Buffer> | undefined {
+export function readContent(file: PathLike | number, encoding: BufferEncoding): Promise<string> | undefined;
+export function readContent(file: PathLike | number, encoding?: BufferEncoding): Promise<string | Buffer> | undefined {
     return encoding === undefined ? readFile(file) : readFile(file, encoding);
 }
 
@@ -212,27 +214,28 @@ export async function getConfirmation(prompt: string, confirmation?: string, det
 // executes a given command as shell task
 // is more transparent than background processes without littering the integrated terminals
 // is not intended for actual user interaction
-export async function executeAsTask(name: string, process: string, args?: string[], asProcess?: true): Promise<void>;
-export async function executeAsTask(name: string, command: string, args?: string[], asProcess?: false): Promise<void>;
-export async function executeAsTask(name: string, cmdOrProcess: string, args?: string[], asProcess: boolean = false): Promise<void> {
+export async function executeAsTask(name: string, process: string, args?: string[], asProcess?: true, cwd?: string): Promise<void>;
+export async function executeAsTask(name: string, command: string, args?: string[], asProcess?: false, cwd?: string): Promise<void>;
+export async function executeAsTask(name: string, cmdOrProcess: string, args?: string[], asProcess: boolean = false, cwd?: string): Promise<void> {
     let taskDefinition: vscode.TaskDefinition;
     let taskExecution: vscode.ShellExecution | vscode.ProcessExecution;
     if(asProcess){
         taskDefinition = { type: 'process'};
-        taskExecution = args ? new vscode.ProcessExecution(
+        taskExecution = new vscode.ProcessExecution(
             cmdOrProcess,
-            args
-        ) : new vscode.ProcessExecution(
-            cmdOrProcess
+            args ?? [],
+            { cwd }
         );
     } else {
         taskDefinition = { type: 'shell' };
         const quotedArgs = args && args.map<vscode.ShellQuotedString>(arg => { return { value: arg, quoting: vscode.ShellQuoting.Weak }; });
         taskExecution = quotedArgs ? new vscode.ShellExecution(
             cmdOrProcess,
-            quotedArgs
+            quotedArgs,
+            { cwd }
         ) : new vscode.ShellExecution(
-            cmdOrProcess
+            cmdOrProcess,
+            { cwd }
         );
     }
     const task = new vscode.Task(
@@ -246,8 +249,9 @@ export async function executeAsTask(name: string, cmdOrProcess: string, args?: s
     const taskExecutionRunning = await vscode.tasks.executeTask(task);
 
     const taskDonePromise = new Promise<void>((resolve) => {
-        vscode.tasks.onDidEndTask(e => {
+        const subscription = vscode.tasks.onDidEndTask(e => {
             if (e.execution === taskExecutionRunning) {
+                subscription.dispose();
                 resolve();
             }
         });
@@ -267,9 +271,9 @@ export async function doWithProgress<T>(cb: (token?: vscode.CancellationToken, p
         title: title
     };
     return await vscode.window.withProgress(options, async (progress, token) => {
-        return await new Promise<T>((resolve) => setTimeout(() => {
-            const ret = cb(token, progress);
-            resolve(ret);
+        return await new Promise<T>((resolve, reject) => setTimeout(() => {
+            try { resolve(cb(token, progress)); }
+            catch (error) { reject(error); }
         }));
     });
 }
@@ -285,7 +289,7 @@ export async function getCranUrl(path: string = '', cwd?: string | URL): Promise
     let url: string;
     try {
         url = new URL(path, baseUrl).toString();
-    } catch (e) {
+    } catch {
         url = new URL(path, defaultCranUrl).toString();
     }
     return url;
@@ -300,17 +304,9 @@ export async function getRPackageVersion(name: string, cwd?: string | URL): Prom
     return result || undefined;
 }
 
-export function compareVersions(v1: string, v2: string): number {
-    const parts1 = v1.split('.').map(Number);
-    const parts2 = v2.split('.').map(Number);
-    const len = Math.max(parts1.length, parts2.length);
-    for (let i = 0; i < len; i++) {
-        const num1 = parts1[i] || 0;
-        const num2 = parts2[i] || 0;
-        if (num1 > num2) {return 1;}
-        if (num1 < num2) {return -1;}
-    }
-    return 0;
+export function readSessSourceRevision(description: string | undefined): string | undefined {
+    const revision = description?.match(/^Config\/vscode-R\/source-revision:[ \t]*(\S+)[ \t]*\r?$/m)?.[1];
+    return revision && /^git-tree:(?:[a-f0-9]{40}|[a-f0-9]{64})$/.test(revision) ? revision : undefined;
 }
 
 export function getRLibPaths(): string | undefined {
@@ -386,7 +382,6 @@ function resourceFromCwd(cwd?: string | URL | vscode.Uri): vscode.Uri | undefine
 // This class is a wrapper around Map<string, any> that implements vscode.Memento
 // Can be used in place of vscode.ExtensionContext.globalState or .workspaceState when no caching is desired
 export class DummyMemento implements vscode.Memento {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     items = new Map<string, any>()
     public get<T>(key: string, defaultValue?: T): T | undefined {
         if (this.items.has(key)) {
@@ -395,7 +390,7 @@ export class DummyMemento implements vscode.Memento {
             return defaultValue;
         }
     }
-    // eslint-disable-next-line @typescript-eslint/require-await, @typescript-eslint/explicit-module-boundary-types, @typescript-eslint/no-explicit-any
+    // oxlint-disable-next-line typescript/require-await
     public async update(key: string, value: any): Promise<void> {
         this.items.set(key, value);
     }
@@ -405,7 +400,6 @@ export class DummyMemento implements vscode.Memento {
     }
 }
 
-// eslint-disable-next-line @typescript-eslint/explicit-module-boundary-types, @typescript-eslint/no-explicit-any
 export async function setContext(key: string, value: any): Promise<void> {
     await vscode.commands.executeCommand(
         'setContext', key, value
@@ -508,16 +502,21 @@ export async function spawnAsync(command: string, args?: ReadonlyArray<string>, 
             if (childProcess.pid !== undefined) {
                 result.pid = childProcess.pid;
             }
+            const stdoutDecoder = new StringDecoder('utf8');
+            const stderrDecoder = new StringDecoder('utf8');
             childProcess.stdout?.on('data', (chunk: Buffer) => {
-                result.stdout += chunk.toString();
+                result.stdout += stdoutDecoder.write(chunk);
             });
             childProcess.stderr?.on('data', (chunk: Buffer) => {
-                result.stderr += chunk.toString();
+                result.stderr += stderrDecoder.write(chunk);
             });
             childProcess.on('error', (err: Error) => {
                 result.error = err;
             });
-            childProcess.on('exit', (code, signal) => {
+            // close also fires for spawn errors and waits for both output pipes.
+            childProcess.on('close', (code, signal) => {
+                result.stdout += stdoutDecoder.end();
+                result.stderr += stderrDecoder.end();
                 result.status = code;
                 result.signal = signal;
                 resolve(result);
@@ -561,65 +560,6 @@ export async function promptToInstallRPackage(name: string, section: string, cwd
                 }
             } else if (select === 'Never ask again') {
                 void _config.update(section, false);
-            }
-        });
-}
-
-/**
- * Prompt to install the bundled "sess" package
- */
-export async function promptToInstallSessPackage(
-    cwd?: string | vscode.Uri,
-    _config = config,
-    _getRPackageVersion = getRPackageVersion,
-    _readFileSyncSafe = readFileSyncSafe
-): Promise<void> {
-    const resource = resourceFromCwd(cwd);
-    const activeConfig = _config();
-    const sessionWatcher = activeConfig.get<boolean>('sessionWatcher');
-    if (!sessionWatcher) {
-        return;
-    }
-
-    const sessPath = extensionContext.asAbsolutePath('sess').replace(/\\/g, '/');
-    const descriptionPath = path.join(sessPath, 'DESCRIPTION');
-    const descriptionContent = _readFileSyncSafe(descriptionPath);
-    const match = descriptionContent?.match(/^Version:\s*(.+)$/m);
-    const bundledVersion = match ? match[1] : undefined;
-
-    const installedVersion = await _getRPackageVersion('sess', cwd instanceof vscode.Uri ? cwd.fsPath : cwd);
-
-    if (installedVersion && bundledVersion && compareVersions(installedVersion, bundledVersion) >= 0) {
-        return; // Already up to date
-    } else if (installedVersion && !bundledVersion) {
-        return; // Cannot determine bundled version, assume OK
-    }
-
-    const installSessScript = extensionContext.asAbsolutePath(path.join('R', 'install_sess.R')).replace(/\\/g, '/');
-    
-    let installMsg = 'R package "sess" (shipped with vscode-R) is required for the session watcher to work. Do you want to install it?';
-    if (installedVersion && bundledVersion && compareVersions(installedVersion, bundledVersion) < 0) {
-        installMsg = `A newer version of R package "sess" (${bundledVersion}) is available (installed: ${installedVersion}). Do you want to update it?`;
-    }
-
-    await vscode.window.showErrorMessage(installMsg, 'Yes', 'No')
-        .then(async function (select) {
-            if (select === 'Yes') {
-                const rPath = await getRpath(false, resource);
-                if (!rPath) {
-                    void vscode.window.showErrorMessage('R path not set', 'OK');
-                    return;
-                }
-                const repo = await getCranUrl('', cwd instanceof vscode.Uri ? cwd.fsPath : cwd);
-                const args = [
-                    '--silent',
-                    '--no-echo',
-                    '--no-save',
-                    '--no-restore',
-                    '-f', installSessScript,
-                    '--args', sessPath, repo
-                ];
-                void executeAsTask('Install "sess" package', rPath, args, true);
             }
         });
 }
@@ -679,7 +619,6 @@ export function asViewColumn(s: string | undefined | vscode.ViewColumn, fallback
 }
 
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function makeWebviewCommandUriString(command: string, ...args: any[]): string {
     const argString = encodeURIComponent(JSON.stringify(args));
     return `command:${command}?${argString}`;
@@ -692,7 +631,7 @@ export function readFileSyncSafe(
 ): string | undefined {
     try {
         return fs.readFileSync(path, {encoding:encoding});
-    } catch (e) {
+    } catch {
         return undefined;
     }
 }
@@ -704,7 +643,7 @@ export function readdirSyncSafe(
 ){
     try {
         return fs.readdirSync(path, {encoding: encoding});
-    } catch (e) {
+    } catch {
         return undefined;
     }
 }
@@ -712,7 +651,7 @@ export function readdirSyncSafe(
 export function statSyncSafe(path: fs.PathLike): fs.Stats | undefined {
     try {
         return fs.statSync(path, { throwIfNoEntry: false });
-    } catch (e) {
+    } catch {
         return undefined;
     }
 }

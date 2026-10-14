@@ -33,12 +33,13 @@ interface RSession {
     lastResizeW: number;
     lastResizeH: number;
     lastResizeHadPlotIndex: boolean;
+    dpi: number;
 }
 
 const isWindows = process.platform === 'win32';
 
 export interface JgdMeasureText {
-    (request: JgdMessage): Promise<unknown>;
+    (request: JgdMessage, dpi: number): Promise<unknown>;
 }
 
 export interface JgdGetDimensions {
@@ -116,7 +117,9 @@ export class JgdSocketServer {
 
     private notifyConnectionChange() {
         const count = this.sessions.size;
-        for (const l of this.connectionListeners) l(count);
+        for (const l of this.connectionListeners) {
+            l(count);
+        }
     }
 
     start() {
@@ -151,7 +154,9 @@ export class JgdSocketServer {
     }
 
     private notifyReady() {
-        for (const l of this.readyListeners) l();
+        for (const l of this.readyListeners) {
+            l();
+        }
     }
 
     stop() {
@@ -171,9 +176,11 @@ export class JgdSocketServer {
 
     private handleConnection(socket: net.Socket) {
         const sessionId = `session-${++this.sessionCounter}`;
+        // Metrics requests omit DPI. Use JGD's default until a frame announces
+        // the device's resolution, then keep it specific to this connection.
         const session: RSession = {
             id: sessionId, socket, buffer: '', welcomeSent: false,
-            lastResizeW: 0, lastResizeH: 0, lastResizeHadPlotIndex: false
+            lastResizeW: 0, lastResizeH: 0, lastResizeHadPlotIndex: false, dpi: 96
         };
         this.sessions.set(sessionId, session);
         this.notifyConnectionChange();
@@ -184,7 +191,9 @@ export class JgdSocketServer {
             while ((newlineIdx = session.buffer.indexOf('\n')) !== -1) {
                 const line = session.buffer.substring(0, newlineIdx);
                 session.buffer = session.buffer.substring(newlineIdx + 1);
-                if (line.length === 0) continue;
+                if (line.length === 0) {
+                    continue;
+                }
 
                 if (!session.welcomeSent) {
                     session.welcomeSent = true;
@@ -227,6 +236,7 @@ export class JgdSocketServer {
                 case 'frame': {
                     const plot = msg.plot;
                     if (plot) {
+                        if (Number.isFinite(plot.device?.dpi) && plot.device.dpi > 0) { session.dpi = plot.device.dpi; }
                         plot.sessionId = session.id;
                         plot.frameExt = msg.ext ?? null;
 
@@ -258,9 +268,11 @@ export class JgdSocketServer {
 
                 case 'metrics_request':
                     if (this.measureTextFn) {
-                        void this.measureTextFn(msg).then((response: unknown) => {
+                        void this.measureTextFn(msg, session.dpi).then((response: unknown) => {
                             const resp = JSON.stringify(response) + '\n';
                             session.socket.write(resp);
+                        }).catch((error: unknown) => {
+                            console.warn('jgd font measurement failed:', error);
                         });
                     }
                     break;
@@ -287,9 +299,13 @@ export class JgdSocketServer {
 
     private broadcastResize(w: number, h: number, plotIndex?: number, sessionId?: string) {
         if (plotIndex !== undefined) {
-            if (!sessionId) return;
+            if (!sessionId) {
+                return;
+            }
             const session = this.sessions.get(sessionId);
-            if (!session) return;
+            if (!session) {
+                return;
+            }
             session.lastResizeW = w;
             session.lastResizeH = h;
             session.lastResizeHadPlotIndex = true;
@@ -301,7 +317,9 @@ export class JgdSocketServer {
         const data = JSON.stringify({ type: 'resize', width: w, height: h }) + '\n';
         for (const session of this.sessions.values()) {
             if (session.lastResizeW === w && session.lastResizeH === h) {
-                if (!session.lastResizeHadPlotIndex) continue;
+                if (!session.lastResizeHadPlotIndex) {
+                    continue;
+                }
             }
             session.lastResizeHadPlotIndex = false;
             session.lastResizeW = w;

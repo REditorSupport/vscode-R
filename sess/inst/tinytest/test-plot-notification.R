@@ -38,7 +38,7 @@ local({
   env$.defer_runtime_notification <- function(method) {
     sess:::.defer_runtime_notification(method, schedule = scheduler)
   }
-  env$runtime_start(use_rstudioapi = FALSE, use_httpgd = FALSE, use_jgd = FALSE)
+  env$runtime_start(use_rstudioapi = FALSE, plot_backend = "standard")
   # tinytest already has a PDF device open. Explicitly open the sess device
   # instead of relying on plot() to use the default device factory.
   getOption("device")()

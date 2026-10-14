@@ -1,0 +1,32 @@
+VS Code Codicons (@vscode/codicons)
+Copyright (c) Microsoft Corporation.
+Source: https://github.com/microsoft/vscode-codicons
+
+The List Viewer uses the package's CSS and icon font. The icon artwork is
+unchanged.
+
+The extension also includes SVG copies of the open-preview, preview, globe,
+graph and help icons in images/icons/dark and images/icons/light, with colors
+set for the corresponding themes. These are used for viewer tab icons,
+including the Data Viewer and List Viewer.
+Original integration: https://github.com/REditorSupport/vscode-R/pull/759
+
+The artwork is licensed under Creative Commons Attribution 4.0 International:
+https://creativecommons.org/licenses/by/4.0/
+The package's code is licensed under the MIT License.
+
+The bundled license texts are in dist/resources/LICENSE (CC BY 4.0) and
+dist/resources/LICENSE-CODE (MIT). These files apply to Codicons.
+
+
+R logo
+Copyright (c) 2016 The R Foundation.
+Source: https://www.r-project.org/logo/
+
+Files: images/Rlogo.svg and images/Rlogo.png.
+The SVG reproduces the official artwork unchanged. The PNG is an 800 x 700
+raster variant used as the extension icon.
+
+The logo is distributed under Creative Commons Attribution-ShareAlike 4.0
+International:
+https://creativecommons.org/licenses/by-sa/4.0/

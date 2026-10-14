@@ -3,7 +3,10 @@ import * as sinon from 'sinon';
 import * as assert from 'assert';
 import * as path from 'path';
 import * as os from 'os';
-import fs from 'fs-extra';
+import type { PathLike } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import fsp from 'node:fs/promises';
+import { pathExists, readJson } from '../../fileSystem';
 import * as net from 'net';
 import { EventEmitter } from 'events';
 
@@ -11,11 +14,20 @@ import { mockExtensionContext } from '../common/mockvscode';
 import * as rTerminal from '../../rTerminal';
 import * as util from '../../util';
 import * as session from '../../session';
+import * as processTree from '../../processTree';
 import * as extension from '../../extension';
 import * as plotViewer from '../../plotViewer';
+import { SessConsentService } from '../../sessConsent';
+import { initializeHtmlWidgetViewers, shutdownHtmlWidgetViewers } from '../../webViewer';
 import type { RSessionApi } from '../../api';
 
 const extension_root: string = path.join(__dirname, '..', '..', '..');
+
+function localSessEndpoint(name: string): string {
+    return process.platform === 'win32'
+        ? String.raw`\\.\pipe\vscode-r-${name}`
+        : path.join(os.tmpdir(), `vscode-r-${name}.sock`);
+}
 
 async function waitFor<T>(condition: () => T | Promise<T>, timeout = 10000, interval = 100): Promise<T> {
     const start = Date.now();
@@ -32,16 +44,28 @@ async function waitFor<T>(condition: () => T | Promise<T>, timeout = 10000, inte
 suite('Session Communication', () => {
     let sandbox: sinon.SinonSandbox;
     let commandMarkerPath: string | undefined;
+    let plotPanelCleanup: (() => void) | undefined;
 
     setup(() => {
         sandbox = sinon.createSandbox();
+        sandbox.stub(processTree, 'getProcessAncestors').resolves([]);
         sandbox.stub(vscode.commands, 'registerCommand'); // prevent "command already exists" error
         mockExtensionContext(extension_root, sandbox);
+        sandbox.stub(vscode.window, 'registerWebviewPanelSerializer').returns({ dispose: sandbox.stub() });
+        initializeHtmlWidgetViewers(extension.extensionContext, {
+            resolveSession: source => session.getViewerSessionContext(source.sessionId, source)!,
+            getActiveSessionId: () => session.activeSession?.sessionId,
+        });
         session.deploySessionWatcher(extension_root);
         sandbox.stub(extension, 'globalPlotManager').value(plotViewer.initializePlotManager());
     });
 
     teardown(async () => {
+        await shutdownHtmlWidgetViewers();
+        plotPanelCleanup?.();
+        plotPanelCleanup = undefined;
+        const plotManager = extension.globalPlotManager as plotViewer.CommonPlotManager | undefined;
+        plotManager?.standardPlotViewer.dispose();
         const attachedSessionId = session.activeSession?.sessionId;
         if (rTerminal.rTerm) {
             rTerminal.rTerm.dispose();
@@ -54,9 +78,10 @@ suite('Session Communication', () => {
             await session.cleanupSession(attachedSessionId);
         }
         if (commandMarkerPath) {
-            await fs.remove(commandMarkerPath);
+            await fsp.rm(commandMarkerPath, { recursive: true, force: true });
             commandMarkerPath = undefined;
         }
+        await session.shutdownSessionWatcher();
         sandbox.restore();
     });
 
@@ -77,6 +102,23 @@ suite('Session Communication', () => {
         sinon.assert.calledOnceWithExactly(showHelpForPath, 'base/html/mean.html', 'Active');
     });
 
+    test('replacing an Interactive process moves document bindings while old viewers keep the old requester', async () => {
+        const previous = session.registerSessionTransport('restart-old', 'host', '/project', () => Promise.resolve('old'));
+        const next = session.registerSessionTransport('restart-new', 'host', '/project', () => Promise.resolve('new'));
+        const source = vscode.Uri.file('/project/restart.R');
+        const input = vscode.Uri.from({ scheme: 'vscode-interactive-input', path: '/restart' });
+        try {
+            session.bindSessionDocument(source, previous); session.bindSessionDocument(input, previous);
+            session.replaceSessionTransport(previous, next);
+            assert.strictEqual(session.boundSessionForDocument(source), next);
+            assert.strictEqual(session.boundSessionForDocument(input), next);
+            assert.strictEqual(await previous.requester?.({}), 'old');
+            assert.strictEqual(await next.requester?.({}), 'new');
+            session.unregisterSessionTransport(previous);
+            assert.strictEqual(session.boundSessionForDocument(source), next);
+        } finally { session.unregisterSessionTransport(previous); session.unregisterSessionTransport(next); }
+    });
+
     test('help notification does not open when help panel is disabled', async () => {
         const showHelpForPath = await showHelpWith({ helpPanel: 'Disable' });
 
@@ -89,6 +131,15 @@ suite('Session Communication', () => {
         sinon.assert.calledOnceWithExactly(showHelpForPath, 'base/html/mean.html', 'Two');
     });
 
+    test('help notification ignores malformed request paths', async () => {
+        const showHelpForPath = await showHelpWith(undefined, { requestPath: { path: 'base/html/mean.html' } });
+        await session.showHelpNotification({ requestPath: ['base/html/mean.html'] });
+        await session.showHelpNotification({ requestPath: 42 });
+        await session.showHelpNotification({ requestPath: '' });
+
+        sinon.assert.notCalled(showHelpForPath);
+    });
+
     test('help notification ignores stale viewer parameter from sess', async () => {
         const showHelpForPath = await showHelpWith({ helpPanel: 'Active' }, {
             requestPath: 'base/html/mean.html',
@@ -98,12 +149,34 @@ suite('Session Communication', () => {
         sinon.assert.calledOnceWithExactly(showHelpForPath, 'base/html/mean.html', 'Active');
     });
 
+    test('attached session status uses one R prefix for short and full version strings', async () => {
+        const status = vscode.window.createStatusBarItem();
+        sandbox.stub(extension, 'sessionStatusBarItem').value(status);
+        const target = session.registerSessionTransport('status-version-test', os.hostname(), process.cwd(), () => Promise.resolve({}));
+        target.pid = '92026';
+        target.info.version = 'R version 4.6.1 (2026-06-24)';
+        try {
+            for (const version of ['4.6.1', 'R version 4.6.1 (2026-06-24)']) {
+                target.rVer = version;
+                await session.activateSession(target);
+                assert.strictEqual(status.text, 'R 4.6.1: 92026');
+                assert.ok(typeof status.tooltip === 'string');
+                assert.ok(status.tooltip.includes(target.info.version));
+            }
+        } finally { session.unregisterSessionTransport(target); status.dispose(); }
+    });
+
     test('concurrent server initialization and public API calls share one endpoint', async () => {
         await session.shutdownSessionWatcher();
         sandbox.stub(extension, 'enableSessionWatcher').value(true);
         const listen = sandbox.spy(net.Server.prototype, 'listen');
+        session.deploySessionWatcher(extension_root);
         const api: RSessionApi = {
             getConnectionInfo: session.getConnectionInfo,
+            prepareAttachment: session.prepareAttachment,
+            onDidChangeSessionConnection: session.onDidChangeSessionConnection,
+            getSessionReference: session.getSessionReference,
+            registerTerminalIntegration: session.registerTerminalIntegration,
             activate: session.activateSessionById,
         };
 
@@ -137,6 +210,7 @@ suite('Session Communication', () => {
         await session.shutdownSessionWatcher();
         const failure = new Error('Simulated listen failure');
         const listen = sandbox.stub(net.Server.prototype, 'listen').throws(failure);
+        session.deploySessionWatcher(extension_root);
         const first = session.getGlobalPipePath();
         const second = session.getGlobalPipePath();
         await Promise.all([
@@ -162,7 +236,7 @@ suite('Session Communication', () => {
         // Unix fails at chmod; Windows has no permission setup, so inject an
         // error immediately after listening, before initialization is published.
         const fail = process.platform !== 'win32'
-            ? sandbox.stub(fs, 'chmod').rejects(failure)
+            ? sandbox.stub(fsp, 'chmod').rejects(failure)
             : sandbox.stub(net.Server.prototype, 'emit').callsFake(function (this: net.Server, event: string, ...args: unknown[]) {
                 const result = EventEmitter.prototype.emit.call(this, event, ...args);
                 if (event === 'listening') {
@@ -170,13 +244,14 @@ suite('Session Communication', () => {
                 }
                 return result;
             });
+        session.deploySessionWatcher(extension_root);
         await assert.rejects(session.getGlobalPipePath(), error => error === failure);
         const endpoint = listen.firstCall.args[0] as unknown as string;
         const server = listen.firstCall.thisValue as net.Server;
         assert.strictEqual(server.listening, false);
         assert.strictEqual(session.globalPipePath, undefined);
         if (process.platform !== 'win32') {
-            assert.strictEqual(await fs.pathExists(endpoint), false);
+            assert.strictEqual(await pathExists(endpoint), false);
         }
         const client = net.createConnection(endpoint);
         try {
@@ -192,6 +267,7 @@ suite('Session Communication', () => {
         assert.strictEqual(close.callCount, 0, 'failed server must not be published for shutdown');
         fail.restore();
         try {
+            session.deploySessionWatcher(extension_root);
             assert.ok(await session.getGlobalPipePath());
         } finally {
             await session.shutdownSessionWatcher();
@@ -200,13 +276,16 @@ suite('Session Communication', () => {
 
     test('shutdown waits for an in-progress server startup and permits a fresh start', async () => {
         await session.shutdownSessionWatcher();
+        const listen = sandbox.spy(net.Server.prototype, 'listen');
+        session.deploySessionWatcher(extension_root);
         const startup = session.getGlobalPipePath();
+        const startupRejected = assert.rejects(startup, /session watcher shut down while starting its IPC server/);
         const shutdown = session.shutdownSessionWatcher();
-        const endpoint = await startup;
-        await shutdown;
+        const endpoint = listen.firstCall.args[0] as unknown as string;
+        await Promise.all([startupRejected, shutdown]);
         assert.strictEqual(session.globalPipePath, undefined);
         if (process.platform !== 'win32') {
-            assert.strictEqual(await fs.pathExists(endpoint), false);
+            assert.strictEqual(await pathExists(endpoint), false);
         }
         const client = net.createConnection(endpoint);
         try {
@@ -219,6 +298,7 @@ suite('Session Communication', () => {
         }
 
         try {
+            session.deploySessionWatcher(extension_root);
             assert.notStrictEqual(await session.getGlobalPipePath(), endpoint);
         } finally {
             await session.shutdownSessionWatcher();
@@ -229,29 +309,43 @@ suite('Session Communication', () => {
         const watcher = sandbox.stub(extension, 'enableSessionWatcher').value(false);
         const api: RSessionApi = {
             getConnectionInfo: session.getConnectionInfo,
+            prepareAttachment: session.prepareAttachment,
+            onDidChangeSessionConnection: session.onDidChangeSessionConnection,
+            getSessionReference: session.getSessionReference,
+            registerTerminalIntegration: session.registerTerminalIntegration,
             activate: session.activateSessionById,
         };
         assert.strictEqual(await api.getConnectionInfo(), undefined);
 
         watcher.value(true);
+        let backend = 'standard';
         const configStub = {
-            get: (key: string) => key === 'plot.backend' ? 'standard' : undefined,
+            get: (key: string) => key === 'plot.backend' ? backend : undefined,
         };
         sandbox.stub(util, 'config').returns(configStub as unknown as vscode.WorkspaceConfiguration);
         await waitFor(() => session.globalPipePath);
 
         const connection = await api.getConnectionInfo();
         assert.ok(connection);
-        assert.strictEqual(connection.protocolVersion, 1);
+        assert.strictEqual(connection.protocolVersion, 2);
         assert.strictEqual(connection.endpoint, session.globalPipePath);
         assert.strictEqual(connection.plotBackend, 'standard');
         assert.ok(!('socket' in connection), 'connection info should contain plain contract data only');
+
+        backend = 'native';
+        const nativeConnection = await api.getConnectionInfo();
+        assert.strictEqual(nativeConnection?.plotBackend, 'native');
+        assert.strictEqual(nativeConnection?.jgdSocket, undefined);
     });
 
     test('public session API activates a connected session by id and rejects missing or disconnected sessions', async () => {
         sandbox.stub(extension, 'enableSessionWatcher').value(true);
         const api: RSessionApi = {
             getConnectionInfo: session.getConnectionInfo,
+            prepareAttachment: session.prepareAttachment,
+            onDidChangeSessionConnection: session.onDidChangeSessionConnection,
+            getSessionReference: session.getSessionReference,
+            registerTerminalIntegration: session.registerTerminalIntegration,
             activate: session.activateSessionById,
         };
         const endpoint = await waitFor(() => session.globalPipePath);
@@ -260,6 +354,15 @@ suite('Session Communication', () => {
         }
 
         const attached: Array<{ id: string; client: net.Socket; server: net.Socket }> = [];
+        const sendText = sandbox.stub();
+        const otherSendText = sandbox.stub();
+        const terminal = { processId: Promise.resolve(undefined), sendText } as unknown as vscode.Terminal;
+        const otherTerminal = { processId: Promise.resolve(99999), sendText: otherSendText } as unknown as vscode.Terminal;
+        sandbox.stub(vscode.window, 'terminals').value([terminal, otherTerminal]);
+        sandbox.stub(vscode.window, 'activeTerminal').value(otherTerminal);
+        sandbox.stub(util, 'config').returns({
+            get: (key: string) => key === 'source.focus' ? 'none' : undefined,
+        } as unknown as vscode.WorkspaceConfiguration);
         const attach = async (id: string): Promise<void> => {
             const existingSockets = new Set(session.activeConnections);
             const client = net.createConnection(endpoint);
@@ -276,7 +379,7 @@ suite('Session Communication', () => {
                 jsonrpc: '2.0',
                 method: 'attach',
                 params: {
-                    protocol_version: 1,
+                    protocol_version: 2,
                     session_id: id,
                     host: 'test-remote-host',
                     version: '4.4.0',
@@ -297,6 +400,19 @@ suite('Session Communication', () => {
             assert.strictEqual(session.activeSession?.sessionId, 'session-api-second');
             assert.strictEqual(await api.activate('session-api-first'), true);
             assert.strictEqual(session.activeSession?.sessionId, 'session-api-first');
+            const owner = session.activeSession;
+            assert.ok(owner);
+            await assert.rejects(session.executeSessionCode(owner, 'View(iris)'), /no attached terminal/);
+            assert.strictEqual(await api.activate(owner.sessionId, { terminal }), true);
+            assert.strictEqual(await api.activate('session-api-second'), true);
+            await session.executeSessionCode(owner, 'View(iris)');
+            sinon.assert.calledOnceWithExactly(sendText, 'View(iris)');
+            sinon.assert.notCalled(otherSendText);
+            await session.switchSessionByTerminal(terminal);
+            assert.strictEqual(session.activeSession, owner);
+            assert.strictEqual(await api.activate(owner.sessionId), true);
+            await session.executeSessionCode(owner, 'rm(iris)');
+            sinon.assert.calledWithExactly(sendText, 'rm(iris)');
 
             const disconnected = attached.find(item => item.id === 'session-api-second');
             assert.ok(disconnected);
@@ -329,8 +445,6 @@ suite('Session Communication', () => {
         assert.ok(rPath, 'R path should be found');
         sandbox.stub(util, 'getRterm').resolves(rPath);
         
-        sandbox.stub(util, 'promptToInstallSessPackage').resolves();
-
         const result = await rTerminal.createRTerm(true);
         assert.ok(result, 'createRTerm should return true');
         assert.ok(rTerminal.rTerm, 'rTerminal.rTerm should be defined');
@@ -347,7 +461,7 @@ suite('Session Communication', () => {
             `vscode-r-command-marker-${process.pid}-${Date.now()}`
         );
         commandMarkerPath = markerPath;
-        await fs.remove(markerPath);
+        await fsp.rm(markerPath, { recursive: true, force: true });
         term.sendText(
             `my_list <- list(hello_vscode = 12345); ` +
             `writeLines("evaluated", ${JSON.stringify(markerPath)})\n`
@@ -355,7 +469,7 @@ suite('Session Communication', () => {
 
         // This filesystem marker is independent of the IPC path and confirms
         // that R received and evaluated the command before probing the RPC.
-        await waitFor(() => fs.pathExists(markerPath), 10000, 200);
+        await waitFor(() => pathExists(markerPath), 10000, 200);
 
         // Verify the workspace request path after command execution, independently
         // from the pushed workspace refresh notification.
@@ -403,7 +517,7 @@ suite('Session Communication', () => {
         assert.ok(hasHello, 'completion result should contain hello_vscode');
     }).timeout(30000);
 
-    test('communication: plot() with various devices and View() events', async () => {
+    test('communication: plot() updates the standard viewer and View() events', async () => {
         const configStub = {
             get: (key: string, defaultValue?: unknown) => {
                 if (key === 'sessionWatcher') { return true; }
@@ -432,13 +546,6 @@ suite('Session Communication', () => {
         const rPath = await util.getRterm();
         assert.ok(rPath, 'R path should be found');
         sandbox.stub(util, 'getRterm').resolves(rPath);
-        sandbox.stub(util, 'promptToInstallSessPackage').resolves();
-
-        // svglite is a Suggests (optional) dependency of the sess package, so it may or
-        // may not be present. Detect it before stubbing so the format assertions below
-        // can verify the correct code path (SVG when installed, png fallback otherwise).
-        const svgliteInstalled = (await util.getRPackageVersion('svglite')) !== undefined;
-
         const result = await rTerminal.createRTerm(true);
         assert.ok(result);
         await waitFor(() => session.activeSession, 15000, 200);
@@ -449,83 +556,80 @@ suite('Session Communication', () => {
         
         const term = rTerminal.rTerm;
         assert.ok(term, 'rTerminal.rTerm should be defined');
-        await new Promise(resolve => setTimeout(resolve, 2000));
-        
-        // Spy on WebviewPanel creation to catch plot / dataview / webview rendering attempts
-        // Note: we set up the spy after activeSession to not intercept early setups if any.
-        const createWebviewPanelSpy = sandbox.spy(vscode.window, 'createWebviewPanel');
 
-        // 1. Test svglite
+        // Observe the real StandardPlotViewer's first update message. Install the
+        // observer before issuing the R command so an earlier/stale panel response
+        // cannot satisfy this phase.
+        const plotManager = extension.globalPlotManager as plotViewer.CommonPlotManager;
+        plotManager.standardPlotViewer.dispose();
+        let resolvePlotUpdate!: (message: { type: string, data?: string, format?: string }, delivered: boolean) => void;
+        let rejectPlotUpdate!: (error: unknown) => void;
+        const plotUpdateMessage = new Promise<{ message: { type: string, data?: string, format?: string }, delivered: boolean }>((resolve, reject) => {
+            resolvePlotUpdate = (message, delivered) => resolve({ message, delivered });
+            rejectPlotUpdate = reject;
+        });
+        const originalCreateWebviewPanel = vscode.window.createWebviewPanel.bind(vscode.window);
+        const createWebviewPanelSpy = sandbox.stub(vscode.window, 'createWebviewPanel').callsFake((...args) => {
+            const panel = originalCreateWebviewPanel(...args);
+            if (args[0] === 'r.standardPlot') {
+                const webview = panel.webview;
+                const originalPostMessage = webview.postMessage.bind(webview);
+                const postMessageStub = sandbox.stub(webview, 'postMessage').callsFake(async message => {
+                    const update = message as { type?: unknown, data?: unknown, format?: unknown };
+                    try {
+                        const delivered = await originalPostMessage(message);
+                        if (update.type === 'update' && typeof update.data === 'string' && update.data.length > 0) {
+                            resolvePlotUpdate({
+                                type: 'update',
+                                data: update.data,
+                                format: typeof update.format === 'string' ? update.format : undefined
+                            }, delivered);
+                        }
+                        return delivered;
+                    } catch (error) {
+                        if (update.type === 'update') { rejectPlotUpdate(error); }
+                        return false;
+                    }
+                });
+                plotPanelCleanup = () => {
+                    postMessageStub.restore();
+                    panel.dispose();
+                };
+            }
+            return panel;
+        });
+        const standardPlotUpdateSpy = sandbox.spy(plotManager, 'showStandardPlot');
+
+        // 1. Test plot command -> plot_updated notification -> real viewer update.
         const plotMarkerPath = path.join(
             os.tmpdir(),
             `vscode-r-plot-marker-${process.pid}-${Date.now()}`
         );
         commandMarkerPath = plotMarkerPath;
-        await fs.remove(plotMarkerPath);
+        await fsp.rm(plotMarkerPath, { recursive: true, force: true });
+        let plotUpdateTimer: NodeJS.Timeout | undefined;
+        const plotUpdateTimeout = new Promise<never>((_resolve, reject) => {
+            plotUpdateTimer = setTimeout(() => reject(new Error('Timed out waiting for the standard plot viewer update')), 15000);
+        });
+        const plotUpdateWait = Promise.race([plotUpdateMessage, plotUpdateTimeout]);
         term.sendText(
-            `plot(0, main="svglite"); ` +
+            `plot(0, main="standard viewer integration"); ` +
             `writeLines("evaluated", ${JSON.stringify(plotMarkerPath)})\n`
         );
-        await waitFor(() => fs.pathExists(plotMarkerPath), 10000, 200);
-
-        await waitFor(() => createWebviewPanelSpy.calledWith('r.standardPlot'), 10000, 200);
-        assert.ok(createWebviewPanelSpy.calledWith('r.standardPlot'), 'r.standardPlot should be triggered for svglite');
-
-        assert.ok(session.activeSession, 'activeSession should be defined');
-        
-        let svgliteResp: { data?: string, format?: string, error?: unknown } | undefined;
-        await waitFor(async () => {
-            try {
-                svgliteResp = await session.sessionRequest({
-                    method: 'plot_latest',
-                    params: { width: 800, height: 600, format: 'svglite' }
-                }) as { data?: string, format?: string, error?: unknown };
-                return svgliteResp && svgliteResp.data;
-            } catch (e) {
-                return false;
-            }
-        }, 15000, 500);
-        
-        assert.ok(svgliteResp && svgliteResp.data, 'svglite data should be returned');
-        // svglite is an optional (Suggests) dependency of the sess package. When it is
-        // installed the handler renders SVG; otherwise it falls back to png. Assert the
-        // path that actually applies to this environment so both branches are tested.
-        if (svgliteInstalled) {
-            assert.strictEqual(svgliteResp.format, 'svglite', 'format should be svglite when svglite is installed');
-        } else {
-            assert.strictEqual(svgliteResp.format, 'png', 'format should fall back to png when svglite is not installed');
+        let plotUpdate: Awaited<typeof plotUpdateMessage>;
+        try {
+            const [, update] = await Promise.all([
+                waitFor(() => pathExists(plotMarkerPath), 10000, 200),
+                plotUpdateWait
+            ]);
+            plotUpdate = update;
+        } finally {
+            if (plotUpdateTimer) { clearTimeout(plotUpdateTimer); }
         }
-
-        // Reset history to ensure we track the next plot if we were to recreate the panel
-        // Wait, since panel is reused, we shouldn't reset history if we just want it to pass,
-        // but if we want it to actually wait for the *update*, standardViewer doesn't call createWebviewPanel.
-        // I will not reset history for now, just apply the spy check.
-
-        // 2. Test png
-        term.sendText('plot(1, main="png")\n');
-        
-        // Wait for R to finish plotting
-        await new Promise(resolve => setTimeout(resolve, 2000));
-
-        // The panel is reused, but we use the spy just in case it were recreated or as requested.
-        await waitFor(() => createWebviewPanelSpy.calledWith('r.standardPlot'), 10000, 200);
-        assert.ok(createWebviewPanelSpy.calledWith('r.standardPlot'), 'r.standardPlot should be active for png');
-
-        let pngResp: { data?: string, format?: string } | undefined;
-        await waitFor(async () => {
-            try {
-                pngResp = await session.sessionRequest({
-                    method: 'plot_latest',
-                    params: { width: 800, height: 600, format: 'png' }
-                }) as { data?: string, format?: string };
-                return pngResp && pngResp.data;
-            } catch (e) {
-                return false;
-            }
-        }, 15000, 500);
-
-        assert.ok(pngResp && pngResp.data, 'png data should be returned');
-        assert.strictEqual(pngResp.format, 'png', 'format should be png');
+        assert.ok(plotUpdate.message.data, 'the standard plot viewer should receive rendered plot data');
+        assert.strictEqual(plotUpdate.delivered, true, 'VS Code should accept the standard plot viewer update');
+        assert.ok(createWebviewPanelSpy.calledWith('r.standardPlot'), 'r.standardPlot should be created');
+        assert.ok(standardPlotUpdateSpy.called, 'plot_updated should update the standard plot viewer');
 
         // 3. Test View() -> dataview
         term.sendText('View(mtcars)\n');
@@ -533,13 +637,35 @@ suite('Session Communication', () => {
         
         assert.ok(createWebviewPanelSpy.calledWith('dataview'), 'dataview should be triggered');
 
+        // Preserve the title produced by String(array) for a multi-line deparse().
+        const multilineTitle = 'subset(mtcars, mpg > 15 & cyl == 6 & disp < 300 & hp < 150 & ,'
+            + '    drat > 3 & wt < 4 & qsec < 20)';
+        term.sendText('View(subset(mtcars, mpg > 15 & cyl == 6 & disp < 300 & hp < 150 & drat > 3 & wt < 4 & qsec < 20))\n');
+        await waitFor(() => createWebviewPanelSpy.calledWith('dataview', multilineTitle), 10000, 200);
+
+        term.sendText('View(list(value = 1L), title = c("List title", "second line"))\n');
+        await waitFor(() => createWebviewPanelSpy.calledWith('dataview', 'List title,second line'), 10000, 200);
+
+        term.sendText('View(1:3, title = c("Object title", "second line"))\n');
+        await waitFor(() => createWebviewPanelSpy.calledWith('dataview', 'Object title,second line'), 10000, 200);
+
+        // Objects and arrays containing non-string values must still be rejected.
+        const dataViewCount = createWebviewPanelSpy.withArgs('dataview').callCount;
+        term.sendText(
+            'for (title in list(list(invalid = TRUE), list("valid", 42L), 42L)) ' +
+            'sess::notify_client("dataview", list(source = "table", type = "json", title = title)); ' +
+            'View(mtcars, title = "Valid title after malformed notifications")\n'
+        );
+        await waitFor(() => createWebviewPanelSpy.calledWith('dataview', 'Valid title after malformed notifications'), 10000, 200);
+        assert.strictEqual(createWebviewPanelSpy.withArgs('dataview').callCount, dataViewCount + 1);
+
         // 4. Test webview
         term.sendText('tf <- tempfile(fileext=".html"); writeLines("test", tf); getOption("viewer")(tf)\n');
-        await waitFor(() => createWebviewPanelSpy.calledWith('webview'), 10000, 200);
+        await waitFor(() => createWebviewPanelSpy.calledWith('r.htmlViewer'), 10000, 200);
 
-        assert.ok(createWebviewPanelSpy.calledWith('webview'), 'webview should be triggered for html file');
+        assert.ok(createWebviewPanelSpy.calledWith('r.htmlViewer'), 'webview should be triggered for html file');
 
-    }).timeout(45000);
+    }).timeout(85000);
 
     test('attach session artifacts are owner-only', async () => {
         const command = await session.getAttachSessionCommand();
@@ -549,10 +675,20 @@ suite('Session Communication', () => {
         }
 
         const scriptPath = JSON.parse(commandMatch[1]) as string;
-        const scriptContent = await fs.readFile(scriptPath, 'utf8');
-        assert.match(scriptContent, /sess::connect\(endpoint = endpoint/);
+        const scriptContent = await fsp.readFile(scriptPath, 'utf8');
+        const startupSource = scriptContent.indexOf('source(startup_helper, local = TRUE)');
+        const attachSource = scriptContent.indexOf('source(attach_helper, local = TRUE)');
+        assert.ok(startupSource >= 0 && attachSource > startupSource,
+            'the startup helper must be loaded before the generated attach helper');
+        assert.match(scriptContent, /vscode_r_attach_sess\(endpoint, sess_src/);
+        assert.match(scriptContent, /attach_sess\.R/);
+        assert.match(scriptContent, /sess-package-install\.R/);
+        assert.doesNotMatch(scriptContent, /install_sess\.R|sess::connect|sess_install_required/);
+        assert.ok(scriptContent.includes(extension.extensionContext.asAbsolutePath(
+            path.join('dist', 'resources', 'sess')).replace(/\\/g, '/')));
+        assert.doesNotMatch(scriptContent, /packageVersion|compareVersion/);
         assert.strictEqual(path.dirname(scriptPath), path.join(extension.extensionContext.globalStorageUri.fsPath, 'tmp', 'attach'));
-        const scriptStat = await fs.stat(scriptPath);
+        const scriptStat = await fsp.stat(scriptPath);
         if (process.platform !== 'win32') {
             assert.strictEqual(scriptStat.mode & 0o777, 0o600, 'attach script should be owner-only');
         }
@@ -561,26 +697,329 @@ suite('Session Communication', () => {
         assert.ok(pipePath, 'global pipe path should be set');
 
         if (pipePath && process.platform !== 'win32') {
-            const pipeStat = await fs.stat(pipePath);
+            const pipeStat = await fsp.stat(pipePath);
             assert.strictEqual(pipeStat.mode & 0o777, 0o600, 'socket file should be owner-only');
         }
 
         const sessionFilePath = await session.createSessionDiscoveryFile(pipePath ?? '');
         assert.strictEqual(path.dirname(sessionFilePath), path.join(extension.extensionContext.globalStorageUri.fsPath, 'sessions'));
         assert.match(path.basename(sessionFilePath), /^[a-f0-9]{32}\.json$/);
-        assert.deepStrictEqual(await fs.readJson(sessionFilePath), {
+        assert.deepStrictEqual(await readJson(sessionFilePath), {
             version: 1, endpoint: pipePath ?? '',
             jgdSocket: plotViewer.jgdEnabled()
                 ? (extension.globalPlotManager as plotViewer.CommonPlotManager).getJgdEnvVars()['JGD_SOCKET'] : '',
         });
-        const sessionFileStat = await fs.stat(sessionFilePath);
+        const sessionFileStat = await fsp.stat(sessionFilePath);
         if (process.platform !== 'win32') {
             assert.strictEqual(sessionFileStat.mode & 0o777, 0o600, 'session handoff file should be owner-only');
         }
-        await fs.remove(sessionFilePath);
+        await fsp.rm(sessionFilePath, { recursive: true, force: true });
 
         await session.shutdownSessionWatcher();
     }).timeout(15000);
+
+    test('prepareAttachment returns an opaque consumer script with independent disposable lifetime', async function(this: Mocha.Context) {
+        sandbox.stub(extension, 'enableSessionWatcher').value(true);
+        const api: RSessionApi = {
+            getConnectionInfo: session.getConnectionInfo,
+            prepareAttachment: session.prepareAttachment,
+            onDidChangeSessionConnection: session.onDidChangeSessionConnection,
+            getSessionReference: session.getSessionReference,
+            registerTerminalIntegration: session.registerTerminalIntegration,
+            activate: session.activateSessionById,
+        };
+        const endpoint = process.platform === 'win32'
+            ? localSessEndpoint('proxy')
+            : path.join(os.tmpdir(), 'proxy "quoted" \\ endpoint.sock');
+        await assert.rejects(
+            api.prepareAttachment({ connection: { transport: 'sess', endpoint: 'tcp://remote/endpoint' } }),
+            /local absolute path or Windows named pipe/,
+        );
+        for (const invalidEndpoint of [String.raw`\\remote\pipe\x`, String.raw`\\server\share\x`, String.raw`C:\socket`]) {
+            await assert.rejects(
+                api.prepareAttachment({ connection: { transport: 'sess', endpoint: invalidEndpoint } }),
+                /local absolute path or Windows named pipe/,
+            );
+        }
+        await assert.rejects(
+            session.prepareAttachment({ connection: { transport: 'sess', endpoint: undefined as unknown as string } }),
+            /non-empty local sess IPC endpoint/,
+        );
+        await assert.rejects(
+            session.prepareAttachment({ autoActivate: 'false' as unknown as boolean }),
+            /autoActivate must be a boolean/,
+        );
+        const [preparation, parallelPreparation, backgroundPreparation] = await Promise.all([
+            api.prepareAttachment({ connection: { transport: 'sess', endpoint } }),
+            api.prepareAttachment({ connection: { transport: 'sess', endpoint: localSessEndpoint('parallel') } }),
+            api.prepareAttachment({ connection: { transport: 'sess', endpoint: localSessEndpoint('background') }, autoActivate: false }),
+        ]);
+        assert.ok(preparation);
+        assert.ok(parallelPreparation);
+        assert.ok(backgroundPreparation);
+        if (!preparation || !parallelPreparation || !backgroundPreparation) { return; }
+        try {
+            const rscript = process.platform === 'win32' ? 'Rscript.exe' : 'Rscript';
+            const rAvailable = spawnSync(rscript, ['--version'], { encoding: 'utf8' });
+            if (rAvailable.error) { this.skip(); }
+            assert.ok(Object.isFrozen(preparation), 'preparation metadata should be immutable');
+            assert.notStrictEqual(preparation.scriptPath, parallelPreparation.scriptPath);
+            assert.strictEqual(typeof preparation.attachmentId, 'string');
+            assert.ok(preparation.attachmentId.length > 0);
+            assert.strictEqual(typeof backgroundPreparation.attachmentId, 'string');
+            assert.ok(backgroundPreparation.attachmentId.length > 0);
+            assert.notStrictEqual(preparation.attachmentId, backgroundPreparation.attachmentId);
+            assert.ok(await pathExists(preparation.scriptPath));
+            assert.ok(await pathExists(parallelPreparation.scriptPath));
+            assert.ok(await pathExists(backgroundPreparation.scriptPath));
+            assert.strictEqual(preparation.command, `source(${JSON.stringify(preparation.scriptPath)})`);
+            const source = await fsp.readFile(preparation.scriptPath, 'utf8');
+            assert.ok(source.includes(JSON.stringify(endpoint).slice(1, -1)));
+            assert.ok(source.includes(`attachment_id = "${preparation.attachmentId}"`));
+            assert.match(source, /auto_activate = TRUE/);
+            assert.match(source, /tryCatch\(/);
+            assert.match(source, /use_rstudioapi = (TRUE|FALSE)/);
+            const backgroundSource = await fsp.readFile(backgroundPreparation.scriptPath, 'utf8');
+            assert.ok(backgroundSource.includes(`attachment_id = "${backgroundPreparation.attachmentId}"`));
+            assert.match(backgroundSource, /auto_activate = FALSE/);
+            const executionDirectory = await fsp.mkdtemp(path.join(os.tmpdir(), 'vscode-r-prepare-test-'));
+            try {
+                const fixtures = [
+                    { name: 'error', replacement: 'stop("generated fixture failure")', expected: 'FALSE', message: 'generated fixture failure' },
+                    { name: 'interrupt', replacement: 'stop(structure(list(message="generated fixture interrupt", call=NULL), class=c("interrupt", "condition")))', expected: 'FALSE', message: 'was interrupted' },
+                    { name: 'success', replacement: 'vscode_r_attach_sess <- function(...) TRUE', expected: 'TRUE' },
+                ];
+                for (const fixture of fixtures) {
+                    const executionPath = path.join(executionDirectory, `${fixture.name}.R`);
+                    const executionScript = source.replace('source(attach_helper, local = TRUE)', fixture.replacement);
+                    await fsp.writeFile(executionPath, executionScript);
+                    const execution = spawnSync(rscript, [
+                        '--vanilla', '-e',
+                        `result <- source(commandArgs(TRUE)[[1L]]); cat(identical(result$value, ${fixture.expected}) && identical(result$visible, FALSE) && !exists("endpoint", envir=.GlobalEnv) && !exists("sess_src", envir=.GlobalEnv) && !exists("attach_helper", envir=.GlobalEnv))`,
+                        executionPath,
+                    ], { encoding: 'utf8', timeout: 10000 });
+                    assert.strictEqual(execution.status, 0, `${fixture.name}: ${execution.stderr}`);
+                    assert.ok(execution.stdout.includes('TRUE'), `${fixture.name} should return an invisible result without leaking locals`);
+                    if (fixture.message) {
+                        assert.ok(execution.stderr.includes(fixture.message) || execution.stdout.includes(fixture.message));
+                    }
+                    if (fixture.name === 'error') {
+                        assert.ok(!execution.stderr.includes('close this R session and start a new one')
+                            && !execution.stdout.includes('close this R session and start a new one'));
+                    }
+                }
+            } finally {
+                await fsp.rm(executionDirectory, { recursive: true, force: true });
+            }
+        } finally {
+            preparation.dispose();
+            preparation.dispose();
+            await waitFor(async () => !(await pathExists(preparation.scriptPath)));
+            assert.ok(await pathExists(parallelPreparation.scriptPath), 'disposing one resource must not remove a parallel preparation');
+            parallelPreparation.dispose();
+            await waitFor(async () => !(await pathExists(parallelPreparation.scriptPath)));
+            assert.ok(await pathExists(backgroundPreparation.scriptPath), 'disposing one resource must not remove another preparation');
+            backgroundPreparation.dispose();
+            await waitFor(async () => !(await pathExists(backgroundPreparation.scriptPath)));
+        }
+    }).timeout(20000);
+
+    test('manual attach rejects after shutdown starts at the publication boundary and shutdown removes the script', async () => {
+        await session.shutdownSessionWatcher();
+        sandbox.stub(extension, 'enableSessionWatcher').value(true);
+        session.deploySessionWatcher(extension_root);
+        const endpoint = await session.getGlobalPipePath();
+        const scriptBase = path.basename(endpoint).replace(/[^a-zA-Z0-9_.-]/g, '_') || 'attach_session';
+        const scriptPath = path.join(
+            extension.extensionContext.globalStorageUri.fsPath, 'tmp', 'attach', `${scriptBase}.R`,
+        );
+        const originalRename = Object.getOwnPropertyDescriptor(fsp, 'rename')?.value as
+            ((oldPath: PathLike, newPath: PathLike) => Promise<void>) | undefined;
+        assert.ok(originalRename);
+        let startShutdown!: () => void;
+        let shutdown: Promise<void> | undefined;
+        let shutdownScheduled = false;
+        const shutdownStarted = new Promise<void>(resolve => { startShutdown = resolve; });
+        sandbox.stub(fsp, 'rename').callsFake(async (oldPath, newPath) => {
+            const result = await originalRename!.call(fsp, oldPath, newPath);
+            if (String(newPath) === scriptPath) {
+                shutdownScheduled = true;
+                // Queue shutdown after the publication callback's final generation
+                // check but before the caller resumes from `await publish`.
+                queueMicrotask(() => queueMicrotask(() => {
+                    shutdown = session.shutdownSessionWatcher();
+                    startShutdown();
+                }));
+            }
+            return result;
+        });
+
+        const command = session.getAttachSessionCommand();
+        try {
+            await Promise.all([
+                assert.rejects(command, error => error instanceof Error
+                    && error.message === 'The session watcher shut down before returning the attach command.'),
+                shutdownStarted,
+            ]);
+            assert.ok(shutdown, 'the publication-boundary callback should start shutdown');
+            await shutdown;
+            assert.strictEqual(await pathExists(scriptPath), false, 'shutdown must remove the just-published manual script');
+        } finally {
+            if (shutdownScheduled) {
+                await shutdownStarted;
+                await shutdown;
+            }
+            await fsp.rm(scriptPath, { force: true });
+        }
+    }).timeout(20000);
+
+    test('prepareAttachment removes a script published during shutdown', async () => {
+        await session.shutdownSessionWatcher();
+        session.deploySessionWatcher(extension_root);
+        sandbox.stub(extension, 'enableSessionWatcher').value(true);
+        let enterRename!: () => void;
+        let releaseRename!: () => void;
+        const renameEntered = new Promise<void>(resolve => { enterRename = resolve; });
+        const renameGate = new Promise<void>(resolve => { releaseRename = resolve; });
+        const originalRename = Object.getOwnPropertyDescriptor(fsp, 'rename')?.value as
+            ((oldPath: PathLike, newPath: PathLike) => Promise<void>) | undefined;
+        assert.ok(originalRename);
+        sandbox.stub(fsp, 'rename').callsFake(async (oldPath, newPath) => {
+            if (String(newPath).includes('consumer-')) {
+                enterRename();
+                await renameGate;
+            }
+            return originalRename!.call(fsp, oldPath, newPath);
+        });
+        const preparation = session.prepareAttachment({
+            connection: { transport: 'sess', endpoint: localSessEndpoint('rename-race') },
+        });
+        await renameEntered;
+        const shutdown = session.shutdownSessionWatcher();
+        releaseRename();
+        await assert.rejects(preparation, /shut down while publishing sess attachment/);
+        await shutdown;
+        const attachDirectory = path.join(extension.extensionContext.globalStorageUri.fsPath, 'tmp', 'attach');
+        const files = await fsp.readdir(attachDirectory).catch(() => []);
+        assert.ok(!files.some(file => file.startsWith('consumer-')));
+    }).timeout(20000);
+
+    test('shutdown waits for a preparation dispose cleanup already in progress', async () => {
+        sandbox.stub(extension, 'enableSessionWatcher').value(true);
+        const preparation = await session.prepareAttachment({
+            connection: { transport: 'sess', endpoint: localSessEndpoint('dispose-race') },
+        });
+        assert.ok(preparation);
+        if (!preparation) { return; }
+
+        let enterRemove!: () => void;
+        let releaseRemove!: () => void;
+        const removeEntered = new Promise<void>(resolve => { enterRemove = resolve; });
+        const removeGate = new Promise<void>(resolve => { releaseRemove = resolve; });
+        const originalRemove = fsp.rm.bind(fsp);
+        sandbox.stub(fsp, 'rm').callsFake(async (target, options) => {
+            if (String(target) === preparation.scriptPath) {
+                enterRemove();
+                await removeGate;
+            }
+            return originalRemove(target, options);
+        });
+
+        preparation.dispose();
+        await removeEntered;
+        let shutdownFinished = false;
+        const shutdown = session.shutdownSessionWatcher().then(() => { shutdownFinished = true; });
+        await new Promise<void>(resolve => setImmediate(resolve));
+        assert.strictEqual(shutdownFinished, false, 'shutdown must await the resource cleanup started by dispose');
+        releaseRemove();
+        await shutdown;
+        assert.strictEqual(shutdownFinished, true);
+        assert.strictEqual(await pathExists(preparation.scriptPath), false);
+    }).timeout(20000);
+
+    test('a redeployed watcher keeps its resources while the previous shutdown is awaiting', async () => {
+        await session.shutdownSessionWatcher();
+        session.deploySessionWatcher(extension_root);
+        sandbox.stub(extension, 'enableSessionWatcher').value(true);
+        const oldPreparation = await session.prepareAttachment({
+            connection: { transport: 'sess', endpoint: localSessEndpoint('old-lifecycle') },
+        });
+        assert.ok(oldPreparation);
+        if (!oldPreparation) { return; }
+
+        let enterStop!: () => void;
+        let releaseStop!: () => void;
+        const stopEntered = new Promise<void>(resolve => { enterStop = resolve; });
+        const stopGate = new Promise<void>(resolve => { releaseStop = resolve; });
+        const originalStop = Object.getOwnPropertyDescriptor(SessConsentService.prototype, 'stop')?.value as
+            ((this: SessConsentService) => Promise<void>) | undefined;
+        assert.ok(originalStop);
+        let firstStop = true;
+        sandbox.stub(SessConsentService.prototype, 'stop').callsFake(async function(this: SessConsentService) {
+            if (firstStop) {
+                firstStop = false;
+                enterStop();
+                await stopGate;
+            }
+            await originalStop!.call(this);
+        });
+
+        const oldShutdown = session.shutdownSessionWatcher();
+        await stopEntered;
+        session.deploySessionWatcher(extension_root);
+        const newPreparation = await session.prepareAttachment({
+            connection: { transport: 'sess', endpoint: localSessEndpoint('new-lifecycle') },
+        });
+        assert.ok(newPreparation);
+        if (!newPreparation) { releaseStop(); await oldShutdown; return; }
+        releaseStop();
+        await oldShutdown;
+        assert.ok(await pathExists(newPreparation.scriptPath), 'old shutdown must not remove a later preparation');
+        assert.ok(!(await pathExists(oldPreparation.scriptPath)), 'old shutdown must reclaim its preparation');
+        newPreparation.dispose();
+        await session.shutdownSessionWatcher();
+    }).timeout(30000);
+
+    test('prepareAttachment cleans up when shutdown races consent service startup', async () => {
+        await session.shutdownSessionWatcher();
+        session.deploySessionWatcher(extension_root);
+        sandbox.stub(extension, 'enableSessionWatcher').value(true);
+        let releaseStart!: () => void;
+        const startGate = new Promise<void>(resolve => { releaseStart = resolve; });
+        const originalStart = Object.getOwnPropertyDescriptor(SessConsentService.prototype, 'start')?.value as
+            ((this: SessConsentService) => Promise<void>) | undefined;
+        assert.ok(originalStart);
+        const start = sandbox.stub(SessConsentService.prototype, 'start').callsFake(async function(this: SessConsentService) {
+            await startGate;
+            await originalStart!.call(this);
+        });
+        const preparation = session.prepareAttachment({
+            connection: { transport: 'sess', endpoint: localSessEndpoint('race') },
+        });
+        await waitFor(() => start.calledOnce);
+        const shutdown = session.shutdownSessionWatcher();
+        releaseStart();
+        await assert.rejects(preparation, /shut down while preparing sess consent/);
+        await shutdown;
+        const attachDirectory = path.join(extension.extensionContext.globalStorageUri.fsPath, 'tmp', 'attach');
+        const files = await fsp.readdir(attachDirectory).catch(() => []);
+        assert.ok(!files.some(file => file.startsWith('consumer-')));
+    }).timeout(20000);
+
+    test('connectToSession does not create attach artifacts when the watcher is disabled', async () => {
+        await session.shutdownSessionWatcher();
+        sandbox.stub(extension, 'enableSessionWatcher').value(false);
+        sandbox.stub(util, 'config').returns({
+            get: (key: string) => key === 'sessionWatcher' ? false : undefined,
+        } as unknown as vscode.WorkspaceConfiguration);
+        assert.strictEqual(await session.prepareAttachment({ connection: { transport: 'sess', endpoint: 'invalid' } }), undefined);
+        const information = sandbox.stub(vscode.window, 'showInformationMessage').resolves(undefined);
+        const before = session.globalPipePath;
+        await session.connectToSession();
+        assert.strictEqual(session.globalPipePath, before);
+        assert.strictEqual(information.callCount, 1);
+        assert.deepStrictEqual(information.firstCall.args, ['This command requires that r.sessionWatcher be enabled.']);
+    });
 
     test('reconnecting terminals preserve the selected terminal in either attach order', async () => {
         const endpoint = await session.getGlobalPipePath();
@@ -607,7 +1046,7 @@ suite('Session Communication', () => {
                     const id = `reconnected-${terminalPid}`;
                     client.write(`${JSON.stringify({
                         jsonrpc: '2.0', method: 'attach', params: {
-                            protocol_version: 1, session_id: id, host: os.hostname(),
+                            protocol_version: 2, session_id: id, host: os.hostname(),
                             pid: terminalPid, version: '4.4.0', tempdir: '/tmp', wd: '/tmp',
                         },
                     })}\n`);
@@ -627,6 +1066,19 @@ suite('Session Communication', () => {
         }
     });
 
+    test('attach script passes the native backend to sess', async () => {
+        sandbox.stub(util, 'config').returns({
+            get: (key: string) => key === 'plot.backend' ? 'native' : undefined,
+        } as unknown as vscode.WorkspaceConfiguration);
+        const command = await session.getAttachSessionCommand();
+        const commandMatch = command.match(/^source\((.*)\)$/);
+        assert.ok(commandMatch);
+        const scriptPath = JSON.parse(commandMatch[1]) as string;
+        const scriptContent = await fsp.readFile(scriptPath, 'utf8');
+        assert.match(scriptContent, /vscode_r_attach_sess\(endpoint, sess_src, managed_root, consent_dir, source_helper, installer_helper, "native", use_rstudioapi = (?:TRUE|FALSE)\)/);
+        assert.doesNotMatch(scriptContent, /Sys\.(?:setenv|unsetenv)\(JGD_SOCKET/);
+    });
+
     test('manual recovery targets the selected managed terminal while another session is active', async () => {
         const endpoint = await session.getGlobalPipePath();
         const first = {
@@ -637,7 +1089,7 @@ suite('Session Communication', () => {
             name: 'Renamed R', processId: Promise.resolve(45241),
             creationOptions: { name: 'R Interactive' }, show: sandbox.spy(), sendText: sandbox.spy(),
         };
-        sandbox.stub(vscode.window, 'terminals').value([first, second]);
+        const liveTerminals = sandbox.stub(vscode.window, 'terminals').value([first, second]);
         const activeTerminal = sandbox.stub(vscode.window, 'activeTerminal').value(second);
         sandbox.stub(util, 'config').returns({
             get: (key: string) => key === 'sessionWatcher' ? true : undefined,
@@ -652,7 +1104,7 @@ suite('Session Communication', () => {
             });
             client.write(`${JSON.stringify({
                 jsonrpc: '2.0', method: 'attach', params: {
-                    protocol_version: 1, session_id: 'manual-recovery-first',
+                    protocol_version: 2, session_id: 'manual-recovery-first',
                     host: os.hostname(), pid: 45240, version: '4.5.0',
                     tempdir: os.tmpdir(), wd: os.tmpdir(),
                     info: { version: 'R 4.5.0', command: 'R', start_time: '' },
@@ -673,14 +1125,16 @@ suite('Session Communication', () => {
 
             // The R Interactive name alone must not grant ownership of another terminal.
             first.show.resetHistory();
-            activeTerminal.value({ ...second, name: 'R Interactive', processId: Promise.resolve(45242) });
+            const sameLabelTerminal = { ...second, name: 'R Interactive', processId: Promise.resolve(45242) };
+            liveTerminals.value([first, second, sameLabelTerminal]);
+            activeTerminal.value(sameLabelTerminal);
             await session.activateRSession();
             sinon.assert.calledOnce(first.show);
             sinon.assert.calledOnce(second.sendText);
         } finally {
             client.destroy();
             await session.cleanupSession('manual-recovery-first');
-            await fs.remove(discoveryFile);
+            await fsp.rm(discoveryFile, { recursive: true, force: true });
         }
     });
 
@@ -690,17 +1144,18 @@ suite('Session Communication', () => {
         const terminalPid = 45231; // Deliberately distinct from any R process PID.
         await session.updateSessionDiscoveryFile(discoveryFile, oldEndpoint, terminalPid);
         const newEndpoint = `${oldEndpoint}.reload`;
-        const { jgdSocket } = await fs.readJson(discoveryFile) as { jgdSocket: string };
+        const { jgdSocket } = await readJson(discoveryFile) as { jgdSocket: string };
         const terminal = {
             name: 'R Interactive',
             processId: Promise.resolve(terminalPid),
             creationOptions: { name: 'R Interactive', env: { SESS_DISCOVERY_FILE: discoveryFile } },
         } as unknown as vscode.Terminal;
+        const liveTerminals = sandbox.stub(vscode.window, 'terminals').value([terminal]);
         let wrapperDiscoveryFile: string | undefined;
         try {
             await session.refreshTerminalDiscoveryFiles(newEndpoint, [terminal]);
 
-            assert.deepStrictEqual(await fs.readJson(discoveryFile), {
+            assert.deepStrictEqual(await readJson(discoveryFile), {
                 version: 1,
                 endpoint: newEndpoint,
                 terminalPid,
@@ -717,17 +1172,18 @@ suite('Session Communication', () => {
                 processId: Promise.resolve(wrapperTerminalPid),
                 creationOptions: { name: 'R Interactive' },
             } as unknown as vscode.Terminal;
+            liveTerminals.value([wrapperTerminal]);
             await session.refreshTerminalDiscoveryFiles(newEndpoint, [wrapperTerminal]);
-            assert.deepStrictEqual(await fs.readJson(wrapperDiscoveryFile), {
+            assert.deepStrictEqual(await readJson(wrapperDiscoveryFile), {
                 version: 1,
                 endpoint: newEndpoint,
                 terminalPid: wrapperTerminalPid,
                 jgdSocket,
             });
         } finally {
-            await fs.remove(discoveryFile);
+            await fsp.rm(discoveryFile, { recursive: true, force: true });
             if (wrapperDiscoveryFile) {
-                await fs.remove(wrapperDiscoveryFile);
+                await fsp.rm(wrapperDiscoveryFile, { recursive: true, force: true });
             }
         }
     });
@@ -745,20 +1201,21 @@ suite('Session Communication', () => {
             name: 'Renamed R', processId: Promise.resolve(45244),
             creationOptions: { name: 'R Interactive' },
         } as unknown as vscode.Terminal;
+        sandbox.stub(vscode.window, 'terminals').value([terminal]);
         try {
             await session.updateSessionDiscoveryFile(file, 'old-sess', 45244);
             jgdSocket = 'new-jgd-socket';
             await session.refreshTerminalDiscoveryFiles('new-sess', [terminal]);
-            assert.deepStrictEqual(await fs.readJson(file), {
+            assert.deepStrictEqual(await readJson(file), {
                 version: 1, endpoint: 'new-sess', terminalPid: 45244, jgdSocket,
             });
             backend = 'standard';
             await session.refreshTerminalDiscoveryFiles('next-sess', [terminal]);
-            assert.deepStrictEqual(await fs.readJson(file), {
+            assert.deepStrictEqual(await readJson(file), {
                 version: 1, endpoint: 'next-sess', terminalPid: 45244, jgdSocket: '',
             });
         } finally {
-            await fs.remove(file);
+            await fsp.rm(file, { recursive: true, force: true });
         }
     });
 
@@ -773,29 +1230,37 @@ suite('Session Communication', () => {
         try {
             await session.updateSessionDiscoveryFile(olderFile, oldEndpoint, terminalPid);
             await session.updateSessionDiscoveryFile(newerFile, oldEndpoint, terminalPid);
-            await fs.utimes(olderFile, olderTime, olderTime);
-            await fs.utimes(newerFile, newerTime, newerTime);
+            await fsp.utimes(olderFile, olderTime, olderTime);
+            await fsp.utimes(newerFile, newerTime, newerTime);
 
             const terminal = {
                 name: 'R Interactive',
                 processId: Promise.resolve(terminalPid),
                 creationOptions: { name: 'R Interactive' },
             } as unknown as vscode.Terminal;
+            sandbox.stub(vscode.window, 'terminals').value([terminal]);
             await session.refreshTerminalDiscoveryFiles(newEndpoint, [terminal]);
 
-            const olderDiscovery: unknown = await fs.readJson(olderFile);
-            const newerDiscovery: unknown = await fs.readJson(newerFile);
+            const olderDiscovery: unknown = await readJson(olderFile);
+            const newerDiscovery: unknown = await readJson(newerFile);
             assert.ok(typeof olderDiscovery === 'object' && olderDiscovery !== null && 'endpoint' in olderDiscovery);
             assert.ok(typeof newerDiscovery === 'object' && newerDiscovery !== null && 'endpoint' in newerDiscovery);
             assert.strictEqual(olderDiscovery.endpoint, oldEndpoint);
             assert.strictEqual(newerDiscovery.endpoint, newEndpoint);
         } finally {
-            await fs.remove(olderFile);
-            await fs.remove(newerFile);
+            await fsp.rm(olderFile, { recursive: true, force: true });
+            await fsp.rm(newerFile, { recursive: true, force: true });
         }
     });
 
     test('IPC protocol keys sessions by session_id and ignores close from a replaced socket', async () => {
+        sandbox.stub(extension, 'enableSessionWatcher').value(true);
+        const sendText = sandbox.stub();
+        const terminal = { processId: Promise.resolve(undefined), sendText } as unknown as vscode.Terminal;
+        sandbox.stub(vscode.window, 'terminals').value([terminal]);
+        sandbox.stub(util, 'config').returns({
+            get: (key: string) => key === 'source.focus' ? 'none' : undefined,
+        } as unknown as vscode.WorkspaceConfiguration);
         const endpoint = await session.getGlobalPipePath();
         const first = net.createConnection(endpoint);
         let second: net.Socket | undefined;
@@ -809,7 +1274,7 @@ suite('Session Communication', () => {
                 jsonrpc: '2.0',
                 method: 'attach',
                 params: {
-                    protocol_version: 1,
+                    protocol_version: 2,
                     session_id: 'stable-session-id',
                     host: 'remote-compute-node',
                     sess_version: '3.0.0',
@@ -831,6 +1296,7 @@ suite('Session Communication', () => {
             if (!originalSession) {
                 throw new Error('original session should have attached');
             }
+            assert.strictEqual(await session.activateSessionById(originalSession.sessionId, { terminal }), true);
 
             const reconnect = net.createConnection(endpoint);
             second = reconnect;
@@ -839,6 +1305,9 @@ suite('Session Communication', () => {
             assert.strictEqual(session.activeSession?.sessionId, 'stable-session-id');
             assert.strictEqual(session.activeSession?.pid, '9876');
             const replacementSession = session.activeSession;
+            assert.ok(replacementSession);
+            await assert.rejects(session.executeSessionCode(replacementSession, 'View(iris)'), /no attached terminal/);
+            assert.strictEqual(await session.activateSessionById(replacementSession.sessionId, { terminal }), true);
 
             await session.cleanupSession('stable-session-id', originalSession.socket);
             assert.strictEqual(session.activeSession, replacementSession, 'cleanup from the old socket must not remove the replacement session');
@@ -846,6 +1315,8 @@ suite('Session Communication', () => {
             first.destroy();
             await new Promise(resolve => setTimeout(resolve, 100));
             assert.strictEqual(session.activeSession, replacementSession, 'old socket close must not clear the replacement session');
+            await session.executeSessionCode(replacementSession, 'View(iris)');
+            sinon.assert.calledOnce(sendText);
 
             const otherSession = net.createConnection(endpoint);
             third = otherSession;
@@ -857,7 +1328,7 @@ suite('Session Communication', () => {
                 jsonrpc: '2.0',
                 method: 'attach',
                 params: {
-                    protocol_version: 1,
+                    protocol_version: 2,
                     session_id: 'other-session-id',
                     host: 'other-compute-node',
                     sess_version: '3.0.0',
@@ -892,7 +1363,7 @@ suite('Session Communication', () => {
             jsonrpc: '2.0',
             method: 'attach',
             params: {
-                protocol_version: 1,
+                protocol_version: 2,
                 session_id: sessionId,
                 host: 'remote-compute-node',
                 sess_version: '3.0.0',
@@ -940,11 +1411,38 @@ suite('Session Communication', () => {
             client.write(`${JSON.stringify({
                 jsonrpc: '2.0',
                 method: 'attach',
-                params: { protocol_version: 2, session_id: 'future-session' }
+                params: { protocol_version: 1, session_id: 'legacy-session' }
             })}\n`);
             await waitFor(() => showError.called);
-            assert.match(String(showError.firstCall.args[0]), /unsupported sess protocol version 2/);
-            assert.notStrictEqual(session.activeSession?.sessionId, 'future-session');
+            assert.match(String(showError.firstCall.args[0]), /unsupported sess protocol version 1; this extension requires protocol version 2/);
+            assert.notStrictEqual(session.activeSession?.sessionId, 'legacy-session');
+        } finally {
+            client.destroy();
+        }
+    }).timeout(10000);
+
+    test('rejects attach session paths that are not strings', async () => {
+        const showError = sandbox.stub(vscode.window, 'showErrorMessage');
+        const endpoint = await session.getGlobalPipePath();
+        const client = net.createConnection(endpoint);
+        try {
+            await new Promise<void>((resolve, reject) => {
+                client.once('connect', resolve);
+                client.once('error', reject);
+            });
+            client.write(`${JSON.stringify({
+                jsonrpc: '2.0',
+                method: 'attach',
+                params: {
+                    protocol_version: 2,
+                    session_id: 'malformed-session',
+                    tempdir: { path: os.tmpdir() },
+                    wd: os.tmpdir()
+                }
+            })}\n`);
+            await waitFor(() => showError.called);
+            assert.match(String(showError.firstCall.args[0]), /missing or invalid session paths/);
+            assert.notStrictEqual(session.activeSession?.sessionId, 'malformed-session');
         } finally {
             client.destroy();
         }

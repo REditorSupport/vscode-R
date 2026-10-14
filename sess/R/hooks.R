@@ -1,11 +1,13 @@
-#' Register VS Code runtime integrations
-#'
-#' @param use_rstudioapi Logical. Enable rstudioapi emulation.
-#' @param use_httpgd Logical. Enable httpgd plot device if available.
-#' @param use_jgd Logical. Enable jgd plot device if available.
-#' @export
-register_hooks <- function(use_rstudioapi = TRUE, use_httpgd = TRUE, use_jgd = FALSE) {
-  runtime_start(use_rstudioapi, use_httpgd, use_jgd)
+.resolve_plot_backend <- function(plot_backend) {
+  if (is.null(plot_backend)) return("auto")
+  match.arg(plot_backend, c("auto", "jgd", "httpgd", "standard", "native"))
+}
+
+.select_plot_backend <- function(plot_backend, has_httpgd, has_jgd) {
+  if (plot_backend == "native") return("native")
+  if (plot_backend %in% c("auto", "jgd") && has_jgd) return("jgd")
+  if (plot_backend %in% c("auto", "httpgd") && has_httpgd) return("httpgd")
+  "standard"
 }
 
 # Send runtime notifications after task callbacks return, so transport failure
@@ -25,13 +27,17 @@ register_hooks <- function(use_rstudioapi = TRUE, use_httpgd = TRUE, use_jgd = F
 }
 
 .workspace_update_task_callback <- function(..., schedule = later::later) {
+  # An attached arf terminal can edit the same object outside Interactive cells.
+  .sess_env$dataview_revision <- (.sess_env$dataview_revision %||% 0) + 1
   .defer_runtime_notification("workspace_updated", schedule)
 }
 
 #' Start the VS Code runtime integration (internal)
 #'
 #' @keywords internal
-runtime_start <- function(use_rstudioapi = TRUE, use_httpgd = TRUE, use_jgd = FALSE) {
+runtime_start <- function(use_rstudioapi = TRUE,
+                          plot_backend = c("auto", "jgd", "httpgd", "standard", "native")) {
+  plot_backend <- match.arg(plot_backend)
   .sess_env$runtime_start_phase <- "initialize"
   state <- .runtime_state()
   if (isTRUE(state$active)) {
@@ -56,45 +62,98 @@ runtime_start <- function(use_rstudioapi = TRUE, use_httpgd = TRUE, use_jgd = FA
   }
 
   show_dataview <- function(x, title = deparse(substitute(x))) {
-    # make sure title is computed.
+    # Capture the root before forcing x so View(x$a) shares the viewer for x.
+    original_expression <- substitute(x)
+    expression <- original_expression
+    while (is.call(expression) && is.symbol(expression[[1L]]) &&
+             as.character(expression[[1L]]) %in% c("$", "[[", "@")) {
+      expression <- expression[[2L]]
+    }
+    owner <- .sess_env$view_owner
+    if (is.null(owner) && missing(title) && is.symbol(expression)) {
+      owner <- as.character(expression)
+    }
     force(title)
 
-    if (dataview_is_table(x)) {
-      title_key <- paste(as.character(title), collapse = "\n")
-      dataview_registry <- .sess_env$dataview_registry
-      has_view_id <- nzchar(title_key) &&
-        exists(title_key, envir = dataview_registry, inherits = FALSE)
-      view_id <- if (has_view_id) {
-        get(title_key, envir = dataview_registry, inherits = FALSE)
-      } else {
-        id <- dataview_new_id()
-        if (nzchar(title_key)) {
-          assign(title_key, id, envir = dataview_registry)
+    if (is.null(.sess_env$view_owner) && isTRUE(.sess_env$interactive_connected) &&
+          .interactive_rich_value(x)) {
+      return(invisible(NULL))
+    }
+
+    view_type <- if (dataview_is_table(x)) {
+      "table"
+    } else if (listview_supported(x)) {
+      "list"
+    } else {
+      "object"
+    }
+    title_key <- paste(as.character(title), collapse = "\n")
+    owner <- owner %||% title_key
+    registry_key <- paste0(view_type, ":", owner)
+    dataview_registry <- .sess_env$dataview_registry
+    view_id <- if (nzchar(title_key) &&
+                     exists(registry_key, envir = dataview_registry, inherits = FALSE)) {
+      get(registry_key, envir = dataview_registry, inherits = FALSE)
+    } else {
+      id <- dataview_new_id()
+      if (nzchar(title_key)) {
+        assign(registry_key, id, envir = dataview_registry)
+      }
+      id
+    }
+
+    if (view_type == "table") {
+      total_rows <- NULL
+      workspace_dimensions <- .sess_env$workspace_dimensions
+      if (inherits(x, "arrow_dplyr_query") &&
+            !is.null(workspace_dimensions) &&
+            exists(title_key, envir = workspace_dimensions, inherits = FALSE)) {
+        workspace_dimension <- get(
+          title_key, envir = workspace_dimensions, inherits = FALSE
+        )
+        if (identical(workspace_dimension$object, x) &&
+              length(workspace_dimension$dim)) {
+          total_rows <- workspace_dimension$dim[[1L]]
         }
-        id
       }
 
-      registration <- dataview_register(x, view_id = view_id)
+      registration <- dataview_register(
+        x, view_id = view_id, total_rows = total_rows
+      )
 
       notify_client("dataview", list(
         title = title,
         source = "table",
         type = "json",
-        view_id = registration$view_id
+        view_id = registration$view_id,
+        state_generation = registration$state_generation
       ))
-    } else if (is.list(x)) {
-      file_path <- tempfile(tmpdir = .sess_env$tempdir, fileext = ".json")
-      jsonlite::write_json(x, file_path, auto_unbox = TRUE, null = "null", na = "string")
+    } else if (view_type == "list") {
+      context <- .sess_env$listview_context
+      if (is.null(context) && missing(title)) {
+        context <- listview_expression_context(original_expression, parent.frame(), owner, x)
+      }
+      root <- if (is.null(context)) listview_state(x, title_key, owner) else context$root
+      navigation <- if (is.null(context)) {
+        listview_navigation(listview_location(root))
+      } else {
+        context$navigation
+      }
+      root <- dataview_set_state(view_id, root)
       notify_client("dataview", list(
         title = title,
-        file = file_path,
-        source = "list",
-        type = "json"
+        source = view_type,
+        type = "json",
+        view_id = view_id,
+        state_generation = root$state_generation,
+        navigation = navigation
       ))
     } else {
       code <- if (is.primitive(x)) utils::capture.output(print(x)) else deparse(x)
-      file_path <- tempfile(tmpdir = .sess_env$tempdir, fileext = ".R")
+      file_path <- .sess_env$dataviews[[view_id]]$file %||%
+        tempfile(tmpdir = .sess_env$tempdir, fileext = ".R")
       writeLines(code, file_path)
+      .sess_env$dataviews[[view_id]] <- list(type = "object", file = file_path)
       notify_client("dataview", list(
         title = title,
         file = file_path,
@@ -168,9 +227,16 @@ runtime_start <- function(use_rstudioapi = TRUE, use_httpgd = TRUE, use_jgd = FA
     }
     invisible(x)
   }
-  # 4. Plot device: JGD > httpgd > Standard
+  # 4. Plot device: JGD > httpgd > Standard, or no plot integration for native
   .sess_env$runtime_start_phase <- "plot"
-  if (use_jgd && nzchar(Sys.getenv("JGD_SOCKET")) && requireNamespace("jgd", quietly = TRUE)) {
+  has_jgd <- plot_backend %in% c("auto", "jgd") &&
+    nzchar(Sys.getenv("JGD_SOCKET")) && requireNamespace("jgd", quietly = TRUE)
+  # The built-in client requires the 2.x renderer schema, including descr.
+  has_httpgd <- plot_backend %in% c("auto", "httpgd") &&
+    requireNamespace("httpgd", quietly = TRUE) &&
+    package_version(getNamespaceVersion("httpgd")) >= "2.0.1"
+  selected_backend <- .select_plot_backend(plot_backend, has_httpgd, has_jgd)
+  if (selected_backend == "jgd") {
     .runtime_set_option("device", function(...) {
       jgd::jgd()
       .runtime_track_device()
@@ -202,29 +268,29 @@ runtime_start <- function(use_rstudioapi = TRUE, use_httpgd = TRUE, use_jgd = FA
       invisible(TRUE)
     }
     reconnect_jgd_device()
-  } else if (use_httpgd && requireNamespace("httpgd", quietly = TRUE)) {
+  } else if (selected_backend == "httpgd") {
     .runtime_set_option("device", function(...) {
       httpgd::hgd(silent = TRUE)
       .runtime_track_device()
       notify_client("httpgd", list(url = httpgd::hgd_url()))
     })
-  } else {
+  } else if (selected_backend == "standard") {
     # If a specific interactive backend was explicitly requested but is
     # unavailable, warn before silently degrading to the standard viewer.
-    # (use_jgd && use_httpgd means "auto", which is meant to degrade quietly.)
-    if (xor(use_jgd, use_httpgd)) {
-      if (use_jgd && !requireNamespace("jgd", quietly = TRUE)) {
+    # Auto is meant to degrade quietly.
+    if (plot_backend %in% c("jgd", "httpgd")) {
+      if (plot_backend == "jgd" && !requireNamespace("jgd", quietly = TRUE)) {
         warning("[sess] Plot backend \"jgd\" was requested but the jgd package ",
                 "is not installed. Falling back to the standard plot viewer. ",
                 "Install jgd, or change the r.plot.backend setting.", call. = FALSE)
-      } else if (use_jgd) {
+      } else if (plot_backend == "jgd") {
         warning("[sess] Plot backend \"jgd\" was requested but no renderer ",
                 "connection is available. Falling back to the standard plot ",
                 "viewer.", call. = FALSE)
-      } else if (use_httpgd) {
-        warning("[sess] Plot backend \"httpgd\" was requested but the httpgd ",
-                "package is not installed. Falling back to the standard plot ",
-                "viewer. Install httpgd, or change the r.plot.backend setting.",
+      } else if (plot_backend == "httpgd") {
+        warning("[sess] Plot backend \"httpgd\" requires httpgd >= 2.0.1. ",
+                "Falling back to the standard plot viewer. ",
+                "Install or update httpgd, or change the r.plot.backend setting.",
                 call. = FALSE)
       }
     }

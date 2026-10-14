@@ -13,4 +13,11 @@ suite('lineCache Tests', () => {
         assert.strictEqual(cleanLine('abcde  "#abd"  # jr2 2r'), 'abcde  "#abd"');
         assert.strictEqual(cleanLine('abcde  "\'#abd\'"  #jr 22r" '), 'abcde  "\'#abd\'"');
     });
+
+    test('escaped quotes keep hashes inside strings and strip trailing comments', () => {
+        assert.strictEqual(cleanLine(String.raw`x <- "a\"#b" # comment`), String.raw`x <- "a\"#b"`);
+        assert.strictEqual(cleanLine(String.raw`x <- 'a\'#b' # comment`), String.raw`x <- 'a\'#b'`);
+        assert.strictEqual(cleanLine('x <- `a\\`#b` # comment'), 'x <- `a\\`#b`');
+        assert.strictEqual(cleanLine(String.raw`x <- "a\\" # comment`), String.raw`x <- "a\\"`);
+    });
 });

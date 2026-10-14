@@ -140,7 +140,7 @@ export class RLocalHelpPreviewer {
         // Prepare listeners
         const errorListener = () => {
             console.log(`Disposing previewer for pkgDir: ${this.packageDir}`);
-            void this.dispose(true);
+            this.dispose(true);
         };
         const descriptionListener: fs.WatchListener<string> = () => {
             this.cachedPackageInfo = undefined;

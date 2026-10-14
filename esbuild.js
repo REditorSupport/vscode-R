@@ -10,12 +10,13 @@ function copyResources() {
     fs.mkdirSync(destDir, { recursive: true });
 
     const resources = [
-        './node_modules/jquery/dist/jquery.min.js',
-        './node_modules/jquery.json-viewer/json-viewer/jquery.json-viewer.js',
-        './node_modules/jquery.json-viewer/json-viewer/jquery.json-viewer.css',
         './node_modules/ag-grid-community/dist/ag-grid-community.min.noStyle.js',
         './node_modules/ag-grid-community/styles/ag-grid.min.css',
-        './node_modules/ag-grid-community/styles/ag-theme-balham.min.css'
+        './node_modules/ag-grid-community/styles/ag-theme-balham.min.css',
+        './node_modules/@vscode/codicons/dist/codicon.css',
+        './node_modules/@vscode/codicons/dist/codicon.ttf',
+        './node_modules/@vscode/codicons/LICENSE',
+        './node_modules/@vscode/codicons/LICENSE-CODE'
     ];
 
     for (const res of resources) {
@@ -54,6 +55,11 @@ function copyWebviewAssets() {
 }
 
 async function main() {
+    // Remove the former standalone iframe bridge left by incremental builds.
+    for (const file of ['widget.js', 'widget.js.map']) {
+        fs.rmSync(path.join(__dirname, 'dist', 'webviews', 'webview', file), { force: true });
+    }
+    require('./scripts/prepare-sess').prepareBundledSess();
     copyResources();
     copyWebviewAssets();
 
@@ -69,6 +75,28 @@ async function main() {
         outfile: 'dist/extension.js',
         external: ['vscode', 'utf-8-validate', 'bufferutil'],
         logLevel: 'info',
+    });
+
+    // A session agent remains alive after the extension host exits.
+    const agentCtx = await esbuild.context({
+        entryPoints: ['./src/interactive/agentMain.ts'],
+        bundle: true,
+        format: 'cjs',
+        platform: 'node',
+        target: 'node18',
+        outfile: 'dist/interactive-agent.js',
+        sourcemap: !production,
+        logLevel: 'info',
+    });
+
+    const interactiveRendererCtx = await esbuild.context({
+        entryPoints: ['./src/interactive/renderer.ts'],
+        bundle: true,
+        format: 'esm',
+        platform: 'browser',
+        outfile: 'dist/interactive-renderer.js',
+        minify: production,
+        sourcemap: !production,
     });
 
     // Webview context (Browser)
@@ -90,13 +118,19 @@ async function main() {
     if (watch) {
         await Promise.all([
             extensionCtx.watch(),
+            agentCtx.watch(),
+            interactiveRendererCtx.watch(),
             webviewCtx.watch()
         ]);
         console.log('Watching for changes...');
     } else {
         await extensionCtx.rebuild();
+        await agentCtx.rebuild();
+        await interactiveRendererCtx.rebuild();
         await webviewCtx.rebuild();
         await extensionCtx.dispose();
+        await agentCtx.dispose();
+        await interactiveRendererCtx.dispose();
         await webviewCtx.dispose();
     }
 }

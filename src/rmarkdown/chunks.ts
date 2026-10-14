@@ -85,12 +85,26 @@ export function getChunks(document: vscode.TextDocument): RMarkdownChunk[] {
     let line = 0;
     let chunkId = 0;  // One-based index
     let chunkStartLine: number | undefined = undefined;
-    let chunkEndLine: number | undefined = undefined;
-    let codeEndLine: number | undefined = undefined;
     let chunkLanguage: string | undefined = undefined;
     let chunkOptions: string | undefined = undefined;
     let chunkEval: boolean | undefined = undefined;
     const isRDoc = isRDocument(document);
+
+    const finishChunk = (endLine: number, codeEndLine: number) => {
+        const startLine = chunkStartLine!;
+        const codeStart = codeEndLine > startLine
+            ? new vscode.Position(startLine + 1, 0)
+            : new vscode.Position(startLine, lines[startLine].length);
+        const codeEnd = codeEndLine > startLine
+            ? new vscode.Position(codeEndLine, lines[codeEndLine].length) : codeStart;
+        chunks.push({
+            id: chunkId, startLine, endLine, language: chunkLanguage,
+            options: chunkOptions, eval: chunkEval,
+            chunkRange: new vscode.Range(startLine, 0, endLine, lines[endLine].length),
+            codeRange: new vscode.Range(codeStart, codeEnd)
+        });
+        chunkStartLine = undefined;
+    };
 
     while (line < lines.length) {
         if (chunkStartLine === undefined) {
@@ -102,43 +116,17 @@ export function getChunks(document: vscode.TextDocument): RMarkdownChunk[] {
                 chunkEval = getChunkEval(chunkOptions);
             }
         } else {
-            // Second condition is for the last chunk in an .R file
-            const isRDocAndFinalLine = (isRDoc && line === lines.length - 1);
-            if (isChunkEndLine(lines[line], isRDoc) || isRDocAndFinalLine) {
-                chunkEndLine = line;
-                codeEndLine = line - 1;
-                
-                // isChunkEndLine looks for `# %%` in `.R` files, so if found, then need to go back one line to mark end of code chunk. 
-                if (isRDoc && !isRDocAndFinalLine) {
-                    chunkEndLine = chunkEndLine - 1;
-                    codeEndLine = chunkEndLine;
-                    line = line - 1;
-                }
-                
-                const chunkRange = new vscode.Range(
-                    new vscode.Position(chunkStartLine, 0),
-                    new vscode.Position(line, lines[line].length)
-                );
-                const codeRange = new vscode.Range(
-                    new vscode.Position(chunkStartLine + 1, 0),
-                    new vscode.Position(codeEndLine, lines[codeEndLine].length)
-                );
-
-                chunks.push({
-                    id: chunkId, // One-based index
-                    startLine: chunkStartLine,
-                    endLine: chunkEndLine,
-                    language: chunkLanguage,
-                    options: chunkOptions,
-                    eval: chunkEval,
-                    chunkRange: chunkRange,
-                    codeRange: codeRange
-                });
-
-                chunkStartLine = undefined;
+            if (isChunkEndLine(lines[line], isRDoc)) {
+                finishChunk(isRDoc ? line - 1 : line, line - 1);
+                // An R marker ends the previous chunk and starts the next one,
+                // including when the marker is the document's final line.
+                if (isRDoc) { line--; }
             }
         }
         line++;
+    }
+    if (isRDoc && chunkStartLine !== undefined) {
+        finishChunk(lines.length - 1, lines.length - 1);
     }
     return chunks;
 }

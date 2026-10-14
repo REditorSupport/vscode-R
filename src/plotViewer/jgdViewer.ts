@@ -188,7 +188,9 @@ export class JgdViewer implements PlotViewer {
             this.createPanel(preserveFocus);
         }
         const plot = this.history.currentPlot();
-        if (plot) this.sendPlotToWebview(plot);
+        if (plot) {
+            this.sendPlotToWebview(plot);
+        }
     }
 
     dispose(): void {
@@ -224,7 +226,9 @@ export class JgdViewer implements PlotViewer {
                 let plot = this.history.navigatePrevious();
                 while (plot) {
                     const prev = this.history.navigatePrevious();
-                    if (!prev) break;
+                    if (!prev) {
+                        break;
+                    }
                     plot = prev;
                 }
                 if (plot) {
@@ -238,7 +242,9 @@ export class JgdViewer implements PlotViewer {
                 let plot = this.history.navigateNext();
                 while (plot) {
                     const next = this.history.navigateNext();
-                    if (!next) break;
+                    if (!next) {
+                        break;
+                    }
                     plot = next;
                 }
                 if (plot) {
@@ -249,7 +255,9 @@ export class JgdViewer implements PlotViewer {
                 break;
             }
             case 'exportPlot': {
-                if (!this.panel) return;
+                if (!this.panel) {
+                    return;
+                }
                 const format = (args[0] as string) || 'png';
                 await this.handleExportRequest(format as 'png' | 'svg');
                 break;
@@ -284,7 +292,9 @@ export class JgdViewer implements PlotViewer {
     }
 
     showPlot(plot: PlotFrame) {
-        if (!this.panel) this.createPanel(true);
+        if (!this.panel) {
+            this.createPanel(true);
+        }
         this.sendPlotToWebview(plot);
         this.updateToolbar();
     }
@@ -302,9 +312,15 @@ export class JgdViewer implements PlotViewer {
     }
 
     private canonicalizeFamily(family: string | undefined): string {
-        if (!family || family === '' || family === 'sans') return 'sans-serif';
-        if (family === 'serif' || family === 'Times') return 'serif';
-        if (family === 'mono' || family === 'Courier') return 'monospace';
+        if (!family || family === '' || family === 'sans') {
+            return 'sans-serif';
+        }
+        if (family === 'serif' || family === 'Times') {
+            return 'serif';
+        }
+        if (family === 'mono' || family === 'Courier') {
+            return 'monospace';
+        }
         return family;
     }
 
@@ -403,8 +419,11 @@ export class JgdViewer implements PlotViewer {
         const viewColumnConfig = config().get<Record<string, string>>('session.viewers.viewColumn') ?? {};
         const plotColumn = viewColumnConfig['plot'] ?? 'Two';
         let viewColumn = vscode.ViewColumn.Two;
-        if (plotColumn === 'Active') viewColumn = vscode.ViewColumn.Active;
-        else if (plotColumn === 'Beside') viewColumn = vscode.ViewColumn.Beside;
+        if (plotColumn === 'Active') {
+            viewColumn = vscode.ViewColumn.Active;
+        } else if (plotColumn === 'Beside') {
+            viewColumn = vscode.ViewColumn.Beside;
+        }
 
         this.panel = vscode.window.createWebviewPanel(
             'jgd.plotPane',
@@ -488,14 +507,22 @@ export class JgdViewer implements PlotViewer {
             value: `${defaultW} x ${defaultH} @ ${defaultDpi}`,
             validateInput: (v) => {
                 const m = v.match(/^\s*([\d.]+)\s*[x×,]\s*([\d.]+)\s*(?:@\s*(\d+))?\s*$/i);
-                if (!m) return 'Enter as "7 x 5 @ 150" (inches @ DPI)';
+                if (!m) {
+                    return 'Enter as "7 x 5 @ 150" (inches @ DPI)';
+                }
                 const w = parseFloat(m[1]), h = parseFloat(m[2]), dpi = parseInt(m[3] || '150');
-                if (w < 0.5 || h < 0.5 || w > 50 || h > 50) return 'Dimensions must be 0.5–50 inches';
-                if (dpi < 36 || dpi > 600) return 'DPI must be 36–600';
+                if (w < 0.5 || h < 0.5 || w > 50 || h > 50) {
+                    return 'Dimensions must be 0.5–50 inches';
+                }
+                if (dpi < 36 || dpi > 600) {
+                    return 'DPI must be 36–600';
+                }
                 return null;
             }
         });
-        if (!input) return;
+        if (!input) {
+            return;
+        }
         const m = input.match(/^\s*([\d.]+)\s*[x×,]\s*([\d.]+)\s*(?:@\s*(\d+))?\s*$/i)!;
         const dpi = parseInt(m[3] || String(defaultDpi));
         const width = Math.round(parseFloat(m[1]) * dpi);
@@ -517,7 +544,9 @@ export class JgdViewer implements PlotViewer {
             filters: { [filters[ext]?.[0] ?? ext]: [ext] },
             defaultUri: vscode.Uri.file(`plot.${ext}`)
         });
-        if (!uri) return;
+        if (!uri) {
+            return;
+        }
 
         if (msg.data) {
             const buf = Buffer.from(msg.data, 'base64');

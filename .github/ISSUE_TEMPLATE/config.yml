@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Ask a question or get help
+    url: https://github.com/REditorSupport/vscode-R/discussions/new?category=q-a
+    about: Questions, setup help, and troubleshooting requests belong in GitHub Discussions.
+  - name: Suggest an idea
+    url: https://github.com/REditorSupport/vscode-R/discussions/new?category=ideas
+    about: Propose and discuss new features or behavior changes before opening an implementation issue.

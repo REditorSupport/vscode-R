@@ -5,7 +5,7 @@ import {
     workspace, WorkspaceEdit, Position, Range, Selection,
     QuickPickItem, QuickPickOptions, ViewColumn
 } from 'vscode';
-import { readJSON } from 'fs-extra';
+import { readJson } from './fileSystem';
 import * as path from 'path';
 import { sessionDir, sessionDirectoryExists } from './session';
 import { runTextInTerm, chooseTerminal } from './rTerminal';
@@ -96,6 +96,12 @@ export async function documentContext(id: string | null): Promise<RSDocumentCont
     };
 }
 
+async function applyEditorEdit(edit: WorkspaceEdit): Promise<void> {
+    if (!await workspace.applyEdit(edit)) {
+        throw new Error('Could not apply editor changes.');
+    }
+}
+
 export async function insertOrModifyText(query: RSEditOperation[], id: string | null = null): Promise<void> {
 
 
@@ -123,7 +129,7 @@ export async function insertOrModifyText(query: RSEditOperation[], id: string | 
         }
     });
 
-    void workspace.applyEdit(edit);
+    await applyEditorEdit(edit);
 }
 
 export async function replaceTextInCurrentSelection(text: string, id: string | null): Promise<void> {
@@ -135,7 +141,7 @@ export async function replaceTextInCurrentSelection(text: string, id: string | n
         getLastActiveTextEditor().selection,
         text
     );
-    await workspace.applyEdit(edit);
+    await applyEditorEdit(edit);
 }
 
 export function showDialog(message: string): void {
@@ -281,13 +287,12 @@ export async function documentNew(text: string, type: string, position: number[]
         )),
         text);
 
-    void workspace.applyEdit(edit).then(async () => {
-        const editor = await window.showTextDocument(targetDocument);
-        editor.selections = [new Selection(
-            parsePosition(position, targetDocument),
-            parsePosition(position, targetDocument)
-        )];
-    });
+    await applyEditorEdit(edit);
+    const editor = await window.showTextDocument(targetDocument);
+    editor.selections = [new Selection(
+        parsePosition(position, targetDocument),
+        parsePosition(position, targetDocument)
+    )];
 }
 
 // interface
@@ -309,9 +314,9 @@ interface RawAddin {
 export async function getAddinPickerItems(): Promise<AddinItem[]> {
 
     if (typeof addinQuickPicks === 'undefined') {
-        const addins: RawAddin[] = await readJSON(path.join(sessionDir, 'addins.json')).
+        const addins: RawAddin[] = await readJson(path.join(sessionDir, 'addins.json')).
             then(
-                (result: RawAddin[]) => result,
+                (result) => result as RawAddin[],
                 () => {
                     throw ('Could not find list of installed addins.' +
                         ' options(vsc.rstudioapi = TRUE) must be set in your .Rprofile to use ' +
@@ -438,12 +443,12 @@ function normaliseEditText(text: string, editLocation: RSPosition | RSRange,
     operation: string, targetDocument: TextDocument) {
     // in a document with lines, does the line position extend past the existing
     // lines in the document? rstudioapi adds a newline in this case, so must we.
-    // n_lines is a count, line is 0 indexed position hence + 1
+    // RStudio positions are one-based, as is the document's line count.
     const editStartLine = operation === 'insertText' ?
         (editLocation as RSPosition)[0] :
         (editLocation as RSRange).start[0];
     if (editStartLine === 'Inf' ||
-        (typeof editStartLine === 'number' && editStartLine + 1 > targetDocument.lineCount && targetDocument.lineCount > 0)) {
+        (typeof editStartLine === 'number' && editStartLine > targetDocument.lineCount && targetDocument.lineCount > 0)) {
         return (text + '\n');
     } else {
         return text;

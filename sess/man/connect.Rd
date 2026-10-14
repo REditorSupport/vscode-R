@@ -7,8 +7,9 @@
 connect(
   endpoint = NULL,
   use_rstudioapi = TRUE,
-  use_httpgd = TRUE,
-  use_jgd = FALSE
+  plot_backend = c("auto", "jgd", "httpgd", "standard", "native"),
+  attachment_id = NULL,
+  auto_activate = TRUE
 )
 }
 \arguments{
@@ -17,9 +18,21 @@ If NULL, uses SESS_ENDPOINT, then SESS_DISCOVERY_FILE.}
 
 \item{use_rstudioapi}{Logical. Enable rstudioapi emulation. Defaults to TRUE.}
 
-\item{use_httpgd}{Logical. Use httpgd for plotting if available. Defaults to TRUE.}
+\item{plot_backend}{Plot backend: \code{auto}, \code{jgd}, \code{httpgd}, \code{standard}, or
+\code{native}. NULL also selects \code{auto}.}
 
-\item{use_jgd}{Logical. Use jgd for plotting if available. Defaults to FALSE.}
+\item{attachment_id}{Optional opaque identifier supplied by an external
+terminal integration to correlate this attachment with its preparation.
+It must be 1-128 ASCII characters from \code{A-Z}, \code{a-z}, \code{0-9},
+\code{_}, and \code{-}. It is not an authentication token or an exclusive
+ownership claim.}
+
+\item{auto_activate}{Logical. Whether vscode-R should select this attachment
+automatically. \code{FALSE} requires \code{attachment_id}.}
+}
+\value{
+Invisibly returns \code{TRUE} when the IPC connection and runtime startup
+succeed, or \code{FALSE} when the IPC endpoint is unavailable.
 }
 \description{
 Connect to the VS Code IPC server
@@ -28,7 +41,8 @@ Connect to the VS Code IPC server
 When SESS_DISCOVERY_FILE describes the connected endpoint, an
 unexpected disconnect waits for a replacement endpoint in that file and
 reconnects with the same runtime options and session identity. The optional
-discovery jgdSocket string updates JGD_SOCKET when use_jgd is TRUE; an empty
+discovery jgdSocket string updates JGD_SOCKET when the resolved backend
+includes jgd; an empty
 string clears it, and an omitted field leaves it unchanged. Set
 \code{options(sess.quiet = TRUE)} to suppress the successful connection message.
 }

@@ -14,3 +14,7 @@
   }
   .sess_env$session_id
 }
+
+.onUnload <- function(libpath) {
+  .transport_disconnect(silent = TRUE)
+}

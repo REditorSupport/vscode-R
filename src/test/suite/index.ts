@@ -1,6 +1,3 @@
-/* eslint-disable @typescript-eslint/ban-ts-comment */
-/* eslint-disable @typescript-eslint/no-unsafe-member-access */
-/* eslint-disable @typescript-eslint/no-unsafe-call */
 
 import * as path from 'path';
 import Mocha from 'mocha';
@@ -13,7 +10,7 @@ export function run(): Promise<void> {
         color: true
     });
 
-    const testsRoot = path.resolve(__dirname, '..');
+    const testsRoot = __dirname;
 
     return new Promise((c, e) => {
         glob('**/**.test.js', { cwd: testsRoot })

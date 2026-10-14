@@ -4,6 +4,7 @@ add_lib_paths <- Sys.getenv("VSCR_LIB_PATHS")
 if (nzchar(add_lib_paths)) {
     add_lib_paths <- strsplit(add_lib_paths, "\n", fixed = TRUE)[[1L]]
     .paths <- c(.paths, add_lib_paths)
+    .libPaths(.paths)
 }
 
 use_renv_lib_path <- Sys.getenv("VSCR_USE_RENV_LIB_PATH")
@@ -28,5 +29,17 @@ port <- Sys.getenv("VSCR_LSP_PORT")
 
 debug <- if (nzchar(debug)) as.logical(debug) else FALSE
 port <- if (nzchar(port)) as.integer(port) else NULL
+
+if (identical(Sys.getenv("VSCR_LSP_VIRTUAL_DOCUMENTS"), "TRUE")) {
+    # lintr's disk cache reads the source filename, but virtual cells have no
+    # corresponding R file. Keep diagnostics enabled and lint their live text.
+    options(languageserver.lint_cache = FALSE)
+}
+
+if (identical(Sys.getenv("VSCR_LSP_SYNTHETIC_WORKSPACE"), "TRUE")) {
+    # A session directory supplies context for virtual documents, but is not an
+    # opened project. Avoid recursively indexing it (it may be the home folder).
+    options(languageserver.index_mode = "off")
+}
 
 languageserver::run(port = port, debug = debug)
