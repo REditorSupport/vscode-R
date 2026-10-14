@@ -3,8 +3,7 @@ dataview_is_dbi_lazy <- function(data) {
 }
 
 dataview_dbi_is_bare_table <- function(data) {
-  table <- dbplyr::remote_table(data)
-  !is.null(table) && !dbplyr::is.sql(table)
+  !is.null(dbplyr::remote_name(data))
 }
 
 dataview_dbi_cache_block_size <- 1000L
@@ -78,7 +77,9 @@ dataview_dbi_source <- function(data) {
   bare_table <- dataview_dbi_is_bare_table(data)
   order <- dbplyr::op_sort(data)
   source_sql <- if (bare_table) {
-    dbplyr::remote_table(data)
+    # remote_table() returns SQL even for an identifier. Preserve its qualified
+    # path so dbplyr wraps it as a table rather than as a query subexpression.
+    dbplyr::as_table_path(I(as.character(dbplyr::remote_table(data))), con)
   } else {
     suppressWarnings(dbplyr::sql_render(data, subquery = TRUE))
   }

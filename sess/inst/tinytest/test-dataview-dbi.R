@@ -34,6 +34,7 @@ if (requireNamespace("DBI", quietly = TRUE) && requireNamespace("dbplyr", quietl
   result_statement <- NULL
   result_next <- NULL
   result_open <- FALSE
+  result_metadata <- FALSE
   fixture <- data.frame(
     id = seq_len(6010L),
     " day " = rep(as.Date(c("2024-02-29", NA_character_)), 3005L),
@@ -79,11 +80,18 @@ if (requireNamespace("DBI", quietly = TRUE) && requireNamespace("dbplyr", quietl
       stop(structure(list(message = "cancelled", call = NULL), class = c("interrupt", "condition")))
     }
     result_statement <<- statement
-    result_next <<- as.integer(sub(".* offset ([0-9]+) rows.*", "\\1", statement)) + 1L
+    result_metadata <<- grepl("[sys].[indexes]", statement, fixed = TRUE)
+    result_next <<- if (grepl(" offset [0-9]+ rows$", statement)) {
+      as.integer(sub(".* offset ([0-9]+) rows$", "\\1", statement)) + 1L
+    } else {
+      1L
+    }
     result_open <<- TRUE
     methods::new("dataview_dbi_test_result")
   })
   method("dbFetch", "dataview_dbi_test_result", function(res, n = -1, ...) {
+    # Metadata lookup returns no primary key; separate tests cover actual keys.
+    if (result_metadata) return(data.frame(column_name = character()))
     if (isTRUE(fail)) stop("test database failure")
     if (identical(fail, "interrupt")) {
       stop(structure(list(message = "cancelled", call = NULL), class = c("interrupt", "condition")))
@@ -97,6 +105,9 @@ if (requireNamespace("DBI", quietly = TRUE) && requireNamespace("dbplyr", quietl
     result_next <<- last + 1L
     fixture[rows, positions, drop = FALSE]
   })
+  method("dbHasCompleted", "dataview_dbi_test_result", function(res, ...) {
+    result_metadata || result_next > nrow(fixture)
+  })
   method("dbClearResult", "dataview_dbi_test_result", function(res, ...) {
     result_statement <<- NULL
     result_next <<- NULL
@@ -106,7 +117,18 @@ if (requireNamespace("DBI", quietly = TRUE) && requireNamespace("dbplyr", quietl
 
   tbl <- dplyr::tbl(con, "fixture")
   expect_true(sess:::dataview_is_table(tbl))
+  expect_true(sess:::dataview_dbi_is_bare_table(tbl))
+  qualified <- dplyr::tbl(con, DBI::Id(schema = "odd]schema", table = "fixture"))
+  expect_true(sess:::dataview_dbi_is_bare_table(qualified))
+  expect_identical(
+    sess:::dataview_to_state(qualified)$dbi$from_sql,
+    "[odd]]schema].[fixture] AS [dataview_source]"
+  )
+  expect_false(sess:::dataview_dbi_is_bare_table(dplyr::tbl(
+    con, dbplyr::sql("SELECT * FROM fixture"), vars = names(fixture)
+  )))
   state <- sess:::dataview_to_state(tbl)
+  expect_false(state$disable_sort_filter)
   expect_true(grepl("[fixture]", state$dbi$from_sql, fixed = TRUE))
   expect_false(grepl("select", state$dbi$from_sql, ignore.case = TRUE))
   expect_equal(state$total_rows, nrow(fixture))
@@ -248,19 +270,13 @@ if (requireNamespace("DBI", quietly = TRUE) && requireNamespace("dbplyr", quietl
   )
   expect_identical(
     sess:::dataview_dbi_order_sql(arranged_state, sort),
-    paste0(
-      " order by case when dataview_source.[id] is null then 1 else 0 end, ",
-      "dataview_source.[id] asc"
-    )
+    " order by [id] DESC"
   )
   expect_identical(
     sess:::dataview_dbi_order_sql(
       arranged_state, list(list(colId = "1", sort = "desc"))
     ),
-    paste0(
-      " order by case when dataview_source.[id] is null then 1 else 0 end, ",
-      "dataview_source.[id] desc"
-    )
+    " order by [id] DESC"
   )
 
   filtered_arranged <- tbl |>
@@ -289,16 +305,71 @@ if (requireNamespace("DBI", quietly = TRUE) && requireNamespace("dbplyr", quietl
     sess:::dataview_dbi_order_sql(
       grouped_arranged_state, list(list(colId = "8", sort = "asc"))
     ),
-    paste0(
-      " order by case when dataview_source.[flag] is null then 1 else 0 end, ",
-      "dataview_source.[flag] asc, [id] DESC"
-    )
+    " order by [flag], [id] DESC"
   )
 
   # Exercise handler routing and JSON serialization, including nulls and exact bigint.
   env <- sess:::.sess_env
   old <- env$dataviews
   on.exit(env$dataviews <- old, add = TRUE)
+
+  # Transformed queries use one cursor without OFFSET or an upfront row count.
+  # Cache every returned column so backward reads and projection changes reuse it.
+  if (requireNamespace("arrow", quietly = TRUE)) local({
+    original_fixture <- fixture
+    fixture <<- fixture[rep(seq_len(nrow(fixture)), length.out = 25010L), , drop = FALSE]
+    fixture$id <<- seq_len(nrow(fixture))
+    view <- NULL
+    on.exit({
+      if (!is.null(view)) sess:::handle_dataview_dispose(list(
+        view_id = view$view_id, state_generation = view$state_generation
+      ))
+      fixture <<- original_fixture
+    }, add = TRUE)
+    before <- length(calls)
+    view <- sess:::dataview_register(dplyr::filter(tbl, id > 0L))
+    init <- sess:::handle_dataview_init(list(view_id = view$view_id))
+    expect_null(init$totalRows)
+    expect_true(all(vapply(init$columns[-1L], function(column) {
+      isFALSE(column$filter) && isFALSE(column$sortable)
+    }, logical(1))))
+    expect_false(any(grepl("count_big", calls[-seq_len(before)], fixed = TRUE)))
+
+    page <- function(start, end, fields = "1") {
+      sess:::handle_dataview_page(list(
+        view_id = view$view_id, startRow = start, endRow = end, fields = fields,
+        sortModel = list(list(colId = "1", sort = "desc")),
+        filterModel = list("1" = list(type = "lessThan", filter = 0L))
+      ))
+    }
+    first <- page(0L, 2L)
+    expect_identical(first$rows[["1"]], 1:2)
+    expect_identical(first$lastRow, -1L)
+    expect_false(grepl(" offset ", tail(calls, 1L), fixed = TRUE))
+    after_first <- length(calls)
+    expect_identical(page(100L, 102L, "7")$rows[["7"]], fixture$note[101:102])
+    expect_equal(length(calls), after_first)
+
+    last <- page(25000L, 25020L)
+    expect_identical(last$rows[["1"]], 25001:25010)
+    expect_equal(last$totalRows, 25010L)
+    expect_equal(last$lastRow, 25010L)
+    expect_false(result_open)
+    cache <- sess:::dataview_get_state(view$view_id)$dbi_cache
+    expect_true(any(vapply(cache$result_cache_blocks, function(block) {
+      !is.null(block$path) && file.exists(block$path)
+    }, logical(1))))
+    expect_identical(page(0L, 2L)$rows[["1"]], first$rows[["1"]])
+    expect_equal(length(calls), after_first)
+    cache_dir <- cache$result_cache_dir
+    sess:::handle_dataview_dispose(list(
+      view_id = view$view_id, state_generation = view$state_generation
+    ))
+    expect_false(dir.exists(cache_dir))
+    expect_true(DBI::dbIsValid(con))
+    view <- NULL
+  })
+
   view <- sess:::dataview_register(tbl)
   expect_true(sess:::handle_dataview_init(list(view_id = view$view_id))$columnProjection)
   result <- sess:::handle_dataview_page(list(
