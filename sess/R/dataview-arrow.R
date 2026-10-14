@@ -539,7 +539,7 @@ dataview_arrow_result_cache_slice <- function(state, row_idx) {
         col_select = fields,
         as_data_frame = FALSE
       )
-      dataview_arrow_data_frame(data)[positions, , drop = FALSE]
+      dataview_arrow_data_frame(data$Take(positions - 1L))
     }
     pages[[length(pages) + 1L]] <- page
     page_rows <- c(page_rows, selected)

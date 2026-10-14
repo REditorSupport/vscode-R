@@ -96,10 +96,16 @@ if (requireNamespace("DBI", quietly = TRUE) && requireNamespace("dbplyr", quietl
     if (identical(fail, "interrupt")) {
       stop(structure(list(message = "cancelled", call = NULL), class = c("interrupt", "condition")))
     }
-    projection <- strsplit(result_statement, " from ", fixed = TRUE)[[1L]][[1L]]
-    positions <- which(vapply(names(fixture), function(name) {
-      grepl(paste0("dataview_source.[", name, "]"), projection, fixed = TRUE)
-    }, logical(1)))
+    positions <- if (startsWith(result_statement, "SELECT")) {
+      # Direct lazy SQL returns the fixture as its result. Its exact SQL is
+      # asserted separately; this mock does not execute SQL expressions.
+      seq_along(fixture)
+    } else {
+      projection <- strsplit(result_statement, " from ", fixed = TRUE)[[1L]][[1L]]
+      which(vapply(names(fixture), function(name) {
+        grepl(paste0("dataview_source.[", name, "]"), projection, fixed = TRUE)
+      }, logical(1)))
+    }
     last <- min(nrow(fixture), result_next + n - 1L)
     rows <- if (result_next > last) integer() else seq.int(result_next, last)
     result_next <<- last + 1L
@@ -327,7 +333,8 @@ if (requireNamespace("DBI", quietly = TRUE) && requireNamespace("dbplyr", quietl
       fixture <<- original_fixture
     }, add = TRUE)
     before <- length(calls)
-    view <- sess:::dataview_register(dplyr::filter(tbl, id > 0L))
+    query <- dplyr::filter(tbl, id > 0L)
+    view <- sess:::dataview_register(query)
     init <- sess:::handle_dataview_init(list(view_id = view$view_id))
     expect_null(init$totalRows)
     expect_true(all(vapply(init$columns[-1L], function(column) {
@@ -345,6 +352,7 @@ if (requireNamespace("DBI", quietly = TRUE) && requireNamespace("dbplyr", quietl
     first <- page(0L, 2L)
     expect_identical(first$rows[["1"]], 1:2)
     expect_identical(first$lastRow, -1L)
+    expect_identical(tail(calls, 1L), as.character(dbplyr::sql_render(query)))
     expect_false(grepl(" offset ", tail(calls, 1L), fixed = TRUE))
     after_first <- length(calls)
     expect_identical(page(100L, 102L, "7")$rows[["7"]], fixture$note[101:102])
@@ -368,6 +376,71 @@ if (requireNamespace("DBI", quietly = TRUE) && requireNamespace("dbplyr", quietl
     expect_false(dir.exists(cache_dir))
     expect_true(DBI::dbIsValid(con))
     view <- NULL
+
+    # Failed or interrupted fetches must discard the entire old execution,
+    # including spilled blocks, before a retry starts from the beginning.
+    on.exit(fail <<- FALSE, add = TRUE)
+    for (failure in list(TRUE, "interrupt")) {
+      view <- sess:::dataview_register(query)
+      page(0L, 2L)
+      if (identical(failure, "interrupt")) page(20000L, 20002L)
+      cache <- sess:::dataview_get_state(view$view_id)$dbi_cache
+      target <- cache$result_cache_rows
+      cache_dir <- cache$result_cache_dir
+      spilled <- list.files(cache_dir, full.names = TRUE)
+      if (identical(failure, "interrupt")) expect_true(length(spilled) > 0L)
+      fail <<- failure
+      caught <- tryCatch(page(target, target + 2L), error = identity, interrupt = identity)
+      fail <<- FALSE
+      expect_true(inherits(caught, if (isTRUE(failure)) "error" else "interrupt"))
+      expect_false(result_open)
+      expect_equal(cache$result_cache_rows, 0L)
+      expect_length(cache$result_cache_blocks, 0L)
+      expect_false(cache$result_complete)
+      expect_false(any(file.exists(spilled)))
+      expect_true(dir.exists(cache_dir))
+      expect_true(DBI::dbIsValid(con))
+      before_retry <- length(calls)
+      expect_identical(page(6000L, 6002L)$rows[["1"]], 6001:6002)
+      expect_equal(length(calls), before_retry + 1L)
+      expect_identical(page(0L, 2L)$rows[["1"]], 1:2)
+      expect_equal(page(25000L, 25020L)$lastRow, nrow(fixture))
+      sess:::handle_dataview_dispose(list(
+        view_id = view$view_id, state_generation = view$state_generation
+      ))
+      expect_false(dir.exists(cache_dir))
+      view <- NULL
+    }
+
+    # Preserve top-level SQL even when the sort key is no longer projected.
+    # Also keep aliases, limits, and aggregations in the original query.
+    queries <- list(
+      arranged |> dplyr::select(flag),
+      arranged |> dplyr::rename(key = id),
+      head(arranged, 5L),
+      tbl |> dplyr::group_by(flag) |> dplyr::summarise(total = sum(id)) |>
+        dplyr::arrange(dplyr::desc(total))
+    )
+    expect_length(dbplyr::op_sort(queries[[1L]]), 0L)
+    expect_true(grepl("ORDER BY [id] DESC", dbplyr::sql_render(queries[[1L]]), fixed = TRUE))
+    query_results <- list(
+      original_fixture[5:1, "flag", drop = FALSE],
+      dplyr::rename(original_fixture[5:1, ], key = id),
+      original_fixture[5:1, ],
+      data.frame(flag = c(TRUE, FALSE), total = c(10L, 20L))
+    )
+    for (i in seq_along(queries)) {
+      query <- queries[[i]]
+      # Supply result-shaped metadata; query semantics are checked by the SQL.
+      fixture <<- query_results[[i]]
+      view <- sess:::dataview_register(query)
+      page(0L, 2L)
+      expect_identical(tail(calls, 1L), as.character(dbplyr::sql_render(query)))
+      sess:::handle_dataview_dispose(list(
+        view_id = view$view_id, state_generation = view$state_generation
+      ))
+      view <- NULL
+    }
   })
 
   view <- sess:::dataview_register(tbl)

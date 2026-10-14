@@ -73,7 +73,8 @@ dataview_dbi_source <- function(data) {
   }
   # Extension point for other database backends / SQL dialects: end
 
-  # Keep the source ordering for the outer Data Viewer query, not inside the subquery.
+  # The wrapped SQL is used for metadata and bare-table paging. Transformed
+  # queries execute their original top-level SQL, including its ordering.
   bare_table <- dataview_dbi_is_bare_table(data)
   order <- dbplyr::op_sort(data)
   source_sql <- if (bare_table) {
@@ -118,6 +119,7 @@ dataview_dbi_source <- function(data) {
   }
   list(
     con = con,
+    query_sql = if (!bare_table) as.character(dbplyr::sql_render(data)) else NULL,
     from_sql = from_sql,
     page_from_sql = from_sql,
     source_order = source_order,
@@ -184,12 +186,21 @@ dataview_dbi_cache_state <- function() {
   state
 }
 
-dataview_dbi_result_reset <- function(cache_state) {
+dataview_dbi_result_reset <- function(cache_state, clear_cache = FALSE) {
   if (!is.null(cache_state$result)) {
     try(DBI::dbClearResult(cache_state$result), silent = TRUE)
   }
   cache_state$result <- NULL
   cache_state$next_row <- NULL
+  if (clear_cache) {
+    # A new execution must never append to rows from the failed cursor.
+    for (block in cache_state$result_cache_blocks) {
+      if (!is.null(block$path)) unlink(block$path, force = TRUE)
+    }
+    cache_state$result_cache_blocks <- list()
+    cache_state$result_cache_rows <- 0L
+    cache_state$result_complete <- FALSE
+  }
 }
 
 dataview_dbi_cache_get <- function(cache_state, block_start) {
@@ -308,17 +319,8 @@ dataview_dbi_result_cache_slice <- function(state, row_idx, positions) {
   if (target > cache_state$result_cache_rows &&
         !isTRUE(cache_state$result_complete)) {
     if (is.null(cache_state$result)) {
-      projection <- paste(vapply(seq_along(state$column_names), function(position) {
-        column <- dataview_dbi_identifier(state, as.character(position))
-        paste0("dataview_source.", column)
-      }, character(1)), collapse = ", ")
       cache_state$result <- DBI::dbSendQuery(
-        state$dbi$con,
-        paste0(
-          "select ", projection,
-          " from ", state$dbi$page_from_sql,
-          dataview_dbi_order_sql(state, list())
-        )
+        state$dbi$con, state$dbi$query_sql
       )
     }
 
@@ -327,11 +329,11 @@ dataview_dbi_result_cache_slice <- function(state, row_idx, positions) {
       block <- tryCatch(
         DBI::dbFetch(cache_state$result, n = dataview_dbi_sort_block_size),
         error = function(e) {
-          dataview_dbi_result_reset(cache_state)
+          dataview_dbi_result_reset(cache_state, clear_cache = TRUE)
           stop(e)
         },
         interrupt = function(e) {
-          dataview_dbi_result_reset(cache_state)
+          dataview_dbi_result_reset(cache_state, clear_cache = TRUE)
           stop(e)
         }
       )
@@ -367,7 +369,7 @@ dataview_dbi_result_cache_slice <- function(state, row_idx, positions) {
         col_select = state$column_names[positions],
         as_data_frame = FALSE
       )
-      dataview_arrow_data_frame(data)[rows, , drop = FALSE]
+      dataview_arrow_data_frame(data$Take(rows - 1L))
     }
     pages[[length(pages) + 1L]] <- page
     page_rows <- c(page_rows, selected)

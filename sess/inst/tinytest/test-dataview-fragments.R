@@ -14,6 +14,81 @@ local({
 })
 
 if (requireNamespace("arrow", quietly = TRUE)) local({
+  path <- tempfile("dataview-cached-result-", fileext = ".parquet")
+  on.exit(unlink(path), add = TRUE)
+  ids <- seq_len(50000L)
+  df <- data.frame(
+    id = ids, label = rep(c("a", NA_character_), length.out = length(ids)),
+    date = as.Date("2020-01-01") + ids,
+    time = as.POSIXct("2020-01-01", tz = "Australia/Sydney") + ids
+  )
+  if (requireNamespace("bit64", quietly = TRUE)) {
+    df$big <- bit64::as.integer64("9007199254740993") + bit64::as.integer64(ids)
+  }
+  arrow::write_parquet(df, path, chunk_size = 10000L)
+  query <- dplyr::filter(arrow::open_dataset(path), id > 0L)
+  view <- sess:::dataview_register(query)
+  on.exit(sess:::handle_dataview_dispose(list(
+    view_id = view$view_id, state_generation = view$state_generation
+  )), add = TRUE)
+  # Finish one execution and spill its earlier batches before reading backward.
+  last <- sess:::handle_dataview_page(list(
+    view_id = view$view_id, startRow = 49990L, endRow = 50010L
+  ))
+  expect_equal(last$lastRow, nrow(df))
+  arrow_state <- sess:::dataview_get_state(view$view_id)
+  expect_true(any(vapply(arrow_state$arrow_reader$result_cache_batches, function(batch) {
+    !is.null(batch$path) && file.exists(batch$path)
+  }, logical(1))))
+
+  # DBI uses the same IPC storage after fetching its result into R blocks.
+  dbi_state <- list(
+    disable_sort_filter = TRUE, column_names = names(df),
+    dbi = list(schema = df[0L, ]), dbi_cache = sess:::dataview_dbi_cache_state()
+  )
+  sess:::dataview_dbi_result_cache_init(dbi_state, "conversion-test")
+  on.exit(sess:::dataview_dbi_result_cache_cleanup(dbi_state), add = TRUE)
+  for (start in seq.int(1L, nrow(df), by = 5000L)) {
+    sess:::dataview_dbi_result_cache_add(dbi_state$dbi_cache, df[start:(start + 4999L), ])
+  }
+  dbi_state$dbi_cache$result_complete <- TRUE
+
+  # Instrument only a local copy of each reader, checking the R conversion
+  # boundary as well as values, types, duplicates, and cross-block ordering.
+  for (backend in c("arrow", "dbi")) {
+    slice <- if (backend == "arrow") {
+      sess:::dataview_arrow_result_cache_slice
+    } else {
+      sess:::dataview_dbi_result_cache_slice
+    }
+    probe <- new.env(parent = environment(slice))
+    probe$converted <- integer()
+    probe$dataview_arrow_data_frame <- function(data, conversion = NULL) {
+      probe$converted <- c(probe$converted, nrow(data))
+      sess:::dataview_arrow_data_frame(data, conversion)
+    }
+    environment(slice) <- probe
+    for (positions in list(seq_along(df), 3:4, integer())) {
+      for (rows in list(1:2, 4991:5010, c(20001L, 1L, 10000L, 10001L, 1L, 50000L))) {
+        probe$converted <- integer()
+        page <- if (backend == "arrow") {
+          arrow_state$arrow_reader$projection <- positions
+          slice(arrow_state, rows)
+        } else {
+          slice(dbi_state, rows, positions)
+        }
+        page <- as.data.frame(page)
+        reference <- df[rows, positions, drop = FALSE]
+        rownames(page) <- rownames(reference) <- NULL
+        expect_equal(page, reference, info = backend)
+        expect_true(sum(probe$converted) <= length(rows), info = backend)
+        if (length(positions)) expect_true(length(probe$converted) > 0L, info = backend)
+      }
+    }
+  }
+})
+
+if (requireNamespace("arrow", quietly = TRUE)) local({
   root <- tempfile("dataview-row-group-selection-")
   dir.create(root)
   path <- file.path(root, "year=2025")
