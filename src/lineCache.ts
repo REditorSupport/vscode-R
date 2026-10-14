@@ -51,6 +51,11 @@ export function cleanLine(text: string): string {
     let withinQuotes = null;
     for (let i = 0; i < text.length; i++) {
         const c = text[i];
+        if (withinQuotes && c === '\\') {
+            cleaned += c;
+            if (i + 1 < text.length) { cleaned += text[++i]; }
+            continue;
+        }
         if (isQuote(c)) {
             if (withinQuotes === null) {
                 withinQuotes = c;
