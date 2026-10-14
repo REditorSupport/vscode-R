@@ -114,10 +114,11 @@ export class RMarkdownCodeLensProvider implements vscode.CodeLensProvider {
 
         // Highlight chunks
         this.highlight(chunks, document);        
-
+        
         // Loop through chunks and setup
+        const isRDoc = isRDocument(document);
         const codeLenses = getCodeLenses(
-            chunks, token
+            chunks, token, isRDoc
         );
 
         return codeLenses;
