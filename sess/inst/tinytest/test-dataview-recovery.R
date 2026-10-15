@@ -1,21 +1,22 @@
 # These regressions use actual Arrow execution and the public View() hook.
 if (requireNamespace("arrow", quietly = TRUE) &&
       requireNamespace("dplyr", quietly = TRUE)) local({
-  paths <- character()
-  views <- list()
+  fixtures <- new.env(parent = emptyenv())
+  fixtures$paths <- character()
+  fixtures$views <- list()
   on.exit({
-    for (view in views) sess:::handle_dataview_dispose(view)
-    unlink(paths)
+    for (view in fixtures$views) sess:::handle_dataview_dispose(view)
+    unlink(fixtures$paths)
   }, add = TRUE)
   dataset <- function(data) {
     path <- tempfile(fileext = ".parquet")
-    paths <<- c(paths, path)
+    fixtures$paths <- c(fixtures$paths, path)
     arrow::write_parquet(data, path, chunk_size = 5000L)
     arrow::open_dataset(path)
   }
   register <- function(data, ...) {
     view <- sess:::dataview_register(data, ...)
-    views[[length(views) + 1L]] <<- view
+    fixtures$views[[length(fixtures$views) + 1L]] <- view
     view
   }
   page <- function(view, start = 0L, fields = NULL, sort = list()) {
@@ -44,11 +45,17 @@ if (requireNamespace("arrow", quietly = TRUE) &&
   # Cancellation and transient errors must restart from row one without mixing
   # executions, and must remove any previously spilled blocks.
   df$text[[25001L]] <- "25001"
-  query <- dplyr::mutate(dataset(df), number = as.integer(text))
+  query <- dplyr::arrange(dplyr::mutate(dataset(df), number = as.integer(text)), id)
   for (condition in c("error", "interrupt")) {
     view <- register(query)
     state <- sess:::dataview_get_state(view$view_id)
     cache <- state$arrow_reader
+    # Sorting may coalesce the entire result into one batch. Use fixed batches
+    # for the spill/cancellation setup; retry still executes the real query.
+    cache$reader <- arrow::RecordBatchReader$create(batches = lapply(0:5, function(i) {
+      rows <- seq.int(i * 5000L + 1L, (i + 1L) * 5000L)
+      arrow::as_record_batch(data.frame(df[rows, ], number = rows))
+    }))
     sess:::dataview_arrow_result_cache_slice(state, 25000L)
     expect_true(length(list.files(cache$result_cache_dir)) > 0L)
     reader <- cache$reader

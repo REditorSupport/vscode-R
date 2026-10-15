@@ -29,6 +29,23 @@ if (requireNamespace("arrow", quietly = TRUE)) local({
   expected <- df[df$id > 10L, ]
   rownames(expected) <- NULL
   view <- register(query)
+  stream_view_id <- view$view_id
+  stream_reader <- sess:::dataview_arrow_reader_open(query)
+  observed <- list()
+  observed_rows <- 0L
+  reference_rows <- -1L
+  stream_cache <- sess:::dataview_get_state(view$view_id)$arrow_reader
+  stream_cache$reader <- list(
+    read_next_batch = function() {
+      batch <- stream_reader$read_next_batch()
+      if (!is.null(batch)) {
+        observed[[length(observed) + 1L]] <<- sess:::dataview_arrow_data_frame(batch)
+        observed_rows <<- observed_rows + nrow(batch)
+      }
+      batch
+    },
+    Close = stream_reader$Close
+  )
   reference <- register(expected)
   columns <- sess:::handle_dataview_init(list(view_id = view$view_id))$columns
   expect_true(all(vapply(columns[-1L], function(column) {
@@ -38,6 +55,13 @@ if (requireNamespace("arrow", quietly = TRUE)) local({
   request <- function(model = list(), start = 0L, fields = NULL) {
     params <- c(list(startRow = start, endRow = start + 20L, fields = fields), model)
     actual <- sess:::handle_dataview_page(c(list(view_id = view$view_id), params))
+    # Preserve the order of THIS execution, including stable sort ties and
+    # row labels. A separate collect() may deliver batches in another order.
+    if (identical(view$view_id, stream_view_id) && reference_rows != observed_rows) {
+      expected <<- sess:::dataview_arrow_bind_pages(observed)
+      reference <<- register(expected)
+      reference_rows <<- observed_rows
+    }
     expected_page <- sess:::handle_dataview_page(c(list(view_id = reference$view_id), params))
     if (!is.null(fields)) {
       selected <- names(expected_page$rows) %in% c("0", fields)
@@ -60,6 +84,11 @@ if (requireNamespace("arrow", quietly = TRUE)) local({
   ))
   request(sort, fields = field("id"))
   expect_true(cache$result_complete)
+  contents <- expected[order(expected$id), , drop = FALSE]
+  rownames(contents) <- NULL
+  source_contents <- df[df$id > 10L, ]
+  rownames(source_contents) <- NULL
+  expect_equal(contents, source_contents)
   expect_identical(cache$reader, reader)
   expect_true(any(vapply(cache$result_cache_batches, function(batch) {
     !is.null(batch$path) && file.exists(batch$path)
@@ -74,7 +103,7 @@ if (requireNamespace("arrow", quietly = TRUE)) local({
   # TOP N and aggregation remain inside the original query's result boundary.
   for (q in list(
     head(dplyr::arrange(query, dplyr::desc(id)), 100L),
-    dplyr::summarise(dplyr::group_by(query, flag), total = sum(id)),
+    dplyr::arrange(dplyr::summarise(dplyr::group_by(query, flag), total = sum(id)), flag),
     dplyr::filter(query, id < 0L)
   )) {
     saved_view <- view
@@ -124,5 +153,46 @@ if (requireNamespace("arrow", quietly = TRUE)) local({
     expect_identical(cache$reader, reader)
   }
   request()
+  expect_null(cache$result_query_indices)
+})
+
+# Exercise a non-file-order stream on every OS, independent of thread timing.
+if (requireNamespace("arrow", quietly = TRUE)) local({
+  df <- data.frame(id = 1:25000, key = rep(1:5, 5000), text = as.character(1:25000))
+  blocks <- lapply(c(3L, 1L, 5L, 2L, 4L), function(i) {
+    df[seq.int((i - 1L) * 5000L + 1L, i * 5000L), , drop = FALSE]
+  })
+  expected <- do.call(rbind, blocks)
+  rownames(expected) <- NULL
+  query <- dplyr::filter(arrow::Table$create(df), id > 0L)
+  view <- sess:::dataview_register(query)
+  reference <- sess:::dataview_register(expected)
+  on.exit({
+    sess:::handle_dataview_dispose(view)
+    sess:::handle_dataview_dispose(reference)
+  }, add = TRUE)
+  cache <- sess:::dataview_get_state(view$view_id)$arrow_reader
+  cache$reader <- arrow::RecordBatchReader$create(
+    batches = lapply(blocks, arrow::as_record_batch)
+  )
+  request <- function(start, model = list(), fields = NULL) {
+    params <- c(list(startRow = start, endRow = start + 20L, fields = fields), model)
+    actual <- sess:::handle_dataview_page(c(list(view_id = view$view_id), params))
+    wanted <- sess:::handle_dataview_page(c(list(view_id = reference$view_id), params))
+    if (!is.null(fields)) wanted$rows <- wanted$rows[, c("0", fields), drop = FALSE]
+    expect_equal(actual$rows, wanted$rows)
+    if (actual$lastRow >= 0L) expect_equal(actual$totalRows, wanted$totalRows)
+  }
+  request(0L)
+  expect_false(cache$result_complete)
+  sort <- list(sortModel = list(list(colId = "2", sort = "asc")))
+  filter <- list(filterModel = list("2" = list(type = "equals", filter = 3L)))
+  for (model in list(sort, filter, c(filter, sort), list())) {
+    for (start in c(0L, 4990L, 24980L, 0L)) request(start, model, c("1", "3"))
+  }
+  expect_true(cache$result_complete)
+  expect_true(any(vapply(cache$result_cache_batches, function(batch) {
+    !is.null(batch$path) && file.exists(batch$path)
+  }, logical(1))))
   expect_null(cache$result_query_indices)
 })

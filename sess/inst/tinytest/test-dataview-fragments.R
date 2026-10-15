@@ -31,12 +31,30 @@ if (requireNamespace("arrow", quietly = TRUE)) local({
   on.exit(sess:::handle_dataview_dispose(list(
     view_id = view$view_id, state_generation = view$state_generation
   )), add = TRUE)
+  # An unordered query can deliver Parquet batches in a different order on
+  # each platform/execution. Observe this execution, not a second collect().
+  arrow_state <- sess:::dataview_get_state(view$view_id)
+  reader <- sess:::dataview_arrow_reader_open(query)
+  observed <- list()
+  arrow_state$arrow_reader$reader <- list(
+    read_next_batch = function() {
+      batch <- reader$read_next_batch()
+      if (!is.null(batch)) {
+        observed[[length(observed) + 1L]] <<- sess:::dataview_arrow_data_frame(batch)
+      }
+      batch
+    },
+    Close = reader$Close
+  )
   # Finish one execution and spill its earlier batches before reading backward.
   last <- sess:::handle_dataview_page(list(
     view_id = view$view_id, startRow = 49990L, endRow = 50010L
   ))
   expect_equal(last$lastRow, nrow(df))
-  arrow_state <- sess:::dataview_get_state(view$view_id)
+  streamed <- sess:::dataview_arrow_bind_pages(observed)
+  contents <- streamed[order(streamed$id), , drop = FALSE]
+  rownames(contents) <- NULL
+  expect_equal(contents, df) # Check membership independently of arrival order.
   expect_true(any(vapply(arrow_state$arrow_reader$result_cache_batches, function(batch) {
     !is.null(batch$path) && file.exists(batch$path)
   }, logical(1))))
@@ -78,7 +96,8 @@ if (requireNamespace("arrow", quietly = TRUE)) local({
           slice(dbi_state, rows, positions)
         }
         page <- as.data.frame(page)
-        reference <- df[rows, positions, drop = FALSE]
+        source <- if (backend == "arrow") streamed else df
+        reference <- source[rows, positions, drop = FALSE]
         rownames(page) <- rownames(reference) <- NULL
         expect_equal(page, reference, info = backend)
         expect_true(sum(probe$converted) <= length(rows), info = backend)
