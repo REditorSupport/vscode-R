@@ -18,11 +18,15 @@ dataview_query_positions <- function(state, sort_model, filter_model) {
 }
 
 dataview_lazy_cache <- function(state) {
-  state$dbi_cache
+  if (!is.null(state$dbi)) state$dbi_cache else state$arrow_reader
 }
 
 dataview_lazy_cache_slice <- function(state, rows, positions) {
-  dataview_dbi_result_cache_slice(state, rows, positions)
+  if (!is.null(state$dbi)) {
+    dataview_dbi_result_cache_slice(state, rows, positions)
+  } else {
+    dataview_arrow_result_cache_slice(state, rows, positions)
+  }
 }
 
 dataview_lazy_page_indices <- function(state, start_row, end_row, sort_model, filter_model) {

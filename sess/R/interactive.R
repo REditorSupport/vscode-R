@@ -372,7 +372,7 @@ interactive_execute <- function(id, code, source = NULL) {
 .interactive_rich_value <- function(value) {
   # Lazy queries can have unknown totals and require their own paging/cache
   # lifecycle. Let View() open the paged viewer instead of a live R snapshot.
-  if (dataview_is_dbi_lazy(value)) return(FALSE)
+  if (inherits(value, "arrow_dplyr_query") || dataview_is_dbi_lazy(value)) return(FALSE)
   if (dataview_is_table(value)) {
     snapshot <- .interactive_table_snapshot(value)
     registration <- dataview_register(snapshot$value)

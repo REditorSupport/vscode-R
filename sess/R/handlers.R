@@ -39,6 +39,7 @@ workspace_child_count <- function(object) {
 get_workspace_data <- function() {
   env <- .GlobalEnv
   all_names <- workspace_env_names(env)
+  workspace_dimensions <- new.env(parent = emptyenv())
 
   objs <- lapply(all_names, function(name) {
     if (bindingIsActive(name, env)) {
@@ -56,6 +57,13 @@ get_workspace_data <- function() {
     obj_type <- typeof(obj)
     obj_length <- length(obj)
     obj_dim <- dim(obj)
+    if (inherits(obj, "arrow_dplyr_query") && !is.null(obj_dim)) {
+      assign(
+        name,
+        list(object = obj, dim = obj_dim),
+        envir = workspace_dimensions
+      )
+    }
     first_class <- if (length(obj_class)) obj_class[[1]] else obj_type
     info <- list(
       class = class(obj),
@@ -94,6 +102,7 @@ get_workspace_data <- function() {
     info
   })
   names(objs) <- all_names
+  .sess_env$workspace_dimensions <- workspace_dimensions
 
   list(
     globalenv = objs,
@@ -696,13 +705,25 @@ dataview_is_table <- function(data) {
   is.data.frame(data) ||
     is.matrix(data) ||
     inherits(data, "ArrowTabular") ||
+    dataview_is_arrow_lazy(data) ||
     dataview_is_dbi_lazy(data) ||
     inherits(data, "polars_data_frame")
 }
 
 dataview_schema <- function(data) {
+  if (inherits(data, "ArrowTabular") || dataview_is_arrow_lazy(data)) {
+    old_options <- options(arrow.int64_downcast = FALSE)
+    on.exit(options(old_options), add = TRUE)
+  }
+
   if (inherits(data, "ArrowTabular")) {
-    return(data$Slice(0L, 0L)$to_data_frame())
+    return(dataview_arrow_data_frame(data$Slice(0L, 0L)))
+  }
+  if (inherits(data, "arrow_dplyr_query")) {
+    return(dataview_arrow_data_frame(utils::head(data, 0L)))
+  }
+  if (dataview_is_arrow_lazy(data)) {
+    return(dataview_arrow_data_frame(data[integer(0), ]))
   }
   if (inherits(data, "polars_data_frame")) {
     return(as.data.frame(data$slice(0L, 0L)))
@@ -710,12 +731,27 @@ dataview_schema <- function(data) {
   data[0, , drop = FALSE]
 }
 
-dataview_slice <- function(data, row_idx) {
+dataview_slice <- function(data, row_idx, conversion = NULL) {
   if (inherits(data, "ArrowTabular")) {
     if (!length(row_idx)) {
-      return(data$Slice(0L, 0L)$to_data_frame())
+      return(dataview_arrow_data_frame(data$Slice(0L, 0L)))
     }
-    return(data[row_idx, ]$to_data_frame())
+    return(dataview_arrow_data_frame(data[row_idx, ], conversion))
+  }
+  if (dataview_is_arrow_lazy(data)) {
+    if (!length(row_idx)) {
+      return(dataview_schema(data))
+    }
+    if (inherits(data, "arrow_dplyr_query")) {
+      reader_state <- dataview_arrow_reader_state()
+      reader_state$conversion <- conversion
+      reader_state$reader <- dataview_arrow_reader_open(data)
+      on.exit(try(reader_state$reader$Close(), silent = TRUE), add = TRUE)
+      selected <- sort(unique(row_idx))
+      page <- dataview_arrow_reader_select(reader_state, selected)
+      return(page[match(row_idx, selected), , drop = FALSE])
+    }
+    return(dataview_arrow_data_frame(data[row_idx, , drop = FALSE], conversion))
   }
   if (inherits(data, "polars_data_frame")) {
     if (!length(row_idx)) {
@@ -740,6 +776,13 @@ dataview_column <- function(data, position) {
   if (inherits(data, "ArrowTabular")) {
     return(as.vector(data[[position]]))
   }
+  if (inherits(data, "Dataset") && !is.data.frame(data)) {
+    return(dataview_arrow_column(data, position))
+  }
+  if (dataview_is_arrow_lazy(data)) {
+    name <- names(data)[[position]]
+    return(as.data.frame(data[, name, drop = FALSE])[[name]])
+  }
   if (inherits(data, "polars_data_frame")) {
     return(as.data.frame(data[, position])[[1L]])
   }
@@ -752,11 +795,15 @@ dataview_column <- function(data, position) {
 dataview_to_state <- function(data) {
   if (dataview_is_dbi_lazy(data)) return(dataview_dbi_to_state(data))
   if (!dataview_is_table(data)) {
-    stop("data must be a data frame, matrix, Arrow table, or Polars data frame")
+    stop("data must be a data frame, matrix, Arrow table/dataset/query, or Polars data frame")
   }
 
-  n <- nrow(data)
+  n <- if (inherits(data, "arrow_dplyr_query")) NULL else nrow(data)
+  if (!is.null(n) && (length(n) != 1L || is.na(n))) {
+    stop("unable to determine the number of rows")
+  }
   colnames <- if (inherits(data, "ArrowTabular") ||
+                    dataview_is_arrow_lazy(data) ||
                     inherits(data, "polars_data_frame")) {
     names(data)
   } else {
@@ -785,18 +832,29 @@ dataview_to_state <- function(data) {
       dataview_column(schema, position)
     })
   )
+  columns <- .mapply(
+    get_column_def,
+    list(headers, fields, cols),
+    NULL
+  )
+  if (inherits(data, "ArrowTabular") || dataview_is_arrow_lazy(data)) {
+    nested <- dataview_arrow_nested_columns(data)
+    for (position in which(nested)) {
+      columns[[position + 1L]]$filter <- jsonlite::unbox(FALSE)
+      columns[[position + 1L]]$sortable <- jsonlite::unbox(FALSE)
+    }
+  }
 
   list(
     data = data,
     row_index = row_index,
-    columns = .mapply(
-      get_column_def,
-      list(headers, fields, cols),
-      NULL
-    ),
+    columns = columns,
     total_rows = n,
     query_key = NULL,
-    query_indices = NULL
+    query_indices = NULL,
+    query_has_sort = FALSE,
+    uses_result_cache = inherits(data, "arrow_dplyr_query"),
+    arrow_reader = if (dataview_is_arrow_lazy(data)) dataview_arrow_reader_state(data) else NULL
   )
 }
 
@@ -824,17 +882,27 @@ dataview_set_state <- function(view_id, state) {
   state
 }
 
-dataview_register <- function(data, view_id = NULL, live = FALSE) {
+dataview_register <- function(data, view_id = NULL, live = FALSE, total_rows = NULL) {
   if (is.null(view_id)) {
     view_id <- dataview_new_id()
   }
 
   state <- dataview_to_state(data)
+  if (inherits(data, "arrow_dplyr_query")) {
+    if (is.numeric(total_rows) && length(total_rows) == 1L &&
+          is.finite(total_rows) && total_rows >= 0 && total_rows == floor(total_rows)) {
+      state$total_rows <- total_rows
+    }
+    dataview_arrow_result_cache_init(state, view_id)
+  }
   if (!is.null(state$dbi) && isTRUE(state$uses_result_cache)) {
     dataview_dbi_result_cache_init(state, view_id)
   }
 
   previous_state <- .sess_env$dataviews[[view_id]]
+  if (!is.null(previous_state$arrow_reader)) {
+    dataview_arrow_result_cache_cleanup(previous_state)
+  }
   if (!is.null(previous_state$dbi_cache)) {
     dataview_dbi_result_cache_cleanup(previous_state)
   }
@@ -940,6 +1008,14 @@ dataview_format_column <- function(values, truncate = TRUE) {
     formatted <- format(values, trim = TRUE, justify = "none")
     formatted[is.na(values)] <- NA_character_
     return(formatted)
+  }
+  if (is.data.frame(values)) {
+    return(lapply(seq_len(nrow(values)), function(row) {
+      lapply(as.list(values[row, , drop = FALSE]), function(value) {
+        value <- dataview_format_column(value)
+        if (length(value) == 1L) value[[1L]] else value
+      })
+    }))
   }
   if (is.list(values) && is.null(dim(values)) && !inherits(values, "POSIXlt")) {
     return(lapply(values, dataview_cell_preview))
@@ -1227,16 +1303,42 @@ dataview_query_indices <- function(state, sort_model, filter_model) {
     return(NULL)
   }
 
+  if (dataview_is_arrow_lazy(state$data)) {
+    # Request-local only: share one projected scan across filtering and sorting.
+    state$query_columns <- dataview_arrow_query_columns(state, sort_model, filter_model)
+  }
   # NULL means the original order. Avoid materializing an identity index and
   # subsetting every full column just to reproduce its existing values.
   row_idx <- dataview_apply_filter_model(state, filter_model, NULL)
   dataview_apply_sort_model(state, sort_model, row_idx)
 }
 
-dataview_rows <- function(state, row_idx) {
-  page <- dataview_slice(state$data, row_idx)
+dataview_rows <- function(
+  state,
+  row_idx,
+  use_arrow_reader = FALSE,
+  use_arrow_query_cache = FALSE,
+  display_idx = row_idx
+) {
+  page <- if (identical(state$column_fields, character())) {
+    if (use_arrow_reader && inherits(state$data, "arrow_dplyr_query")) {
+      data <- dataview_arrow_slice(state, row_idx)
+      data.frame(row.names = seq_len(nrow(data)))
+    } else {
+      data.frame(row.names = seq_along(row_idx))
+    }
+  } else if (use_arrow_reader) {
+    dataview_arrow_slice(state, row_idx)
+  } else if (use_arrow_query_cache) {
+    dataview_arrow_query_slice(state, display_idx)
+  } else {
+    dataview_slice(state$data, row_idx)
+  }
   if (is.matrix(page)) {
     page <- as.data.frame(page, optional = TRUE)
+  }
+  if (is.data.frame(page) && nrow(page) < length(row_idx)) {
+    row_idx <- row_idx[seq_len(nrow(page))]
   }
   if (is.data.frame(page)) {
     for (position in seq_len(ncol(page))) {
@@ -1250,16 +1352,11 @@ dataview_rows <- function(state, row_idx) {
       }
     }
   }
-  rows <- cbind(
-    data.frame(
-      dataview_column_values(state, 1L, row_idx),
-      check.names = FALSE
-    ),
-    page
+  dataview_bind_rows(
+    page,
+    dataview_column_values(state, 1L, row_idx),
+    state$column_fields %||% as.character(seq_len(ncol(page)))
   )
-  names(rows) <- as.character(seq_len(ncol(rows)) - 1L)
-  rownames(rows) <- NULL
-  rows
 }
 
 handle_dataview_init <- function(params) {
@@ -1270,7 +1367,7 @@ handle_dataview_init <- function(params) {
     if (!is.null(state$total_rows)) list(totalRows = state$total_rows),
     list(
       live = isTRUE(state$live),
-      columnProjection = !is.null(state$dbi)
+      columnProjection = !is.null(state$dbi) || dataview_is_arrow_lazy(state$data)
     )
   )
 }
@@ -1294,10 +1391,27 @@ handle_dataview_page <- function(params) {
   if (!is.null(state$dbi)) {
     return(dataview_dbi_page(state, start_row, end_row, sort_model, filter_model, params$fields))
   }
+  if (inherits(state$data, "arrow_dplyr_query")) {
+    page_idx <- dataview_lazy_page_indices(state, start_row, end_row, sort_model, filter_model)
+    page_state <- dataview_arrow_page_state(state, params$fields)
+    rows <- dataview_rows(
+      page_state,
+      page_idx,
+      use_arrow_reader = TRUE
+    )
+    return(c(list(rows = rows), dataview_lazy_totals(state)))
+  }
+
   query_key <- dataview_query_key(sort_model, filter_model)
   if (!identical(query_key, state$query_key)) {
     state$query_key <- query_key
     state$query_indices <- dataview_query_indices(state, sort_model, filter_model)
+    state$query_has_sort <- !is.null(sort_model) && length(sort_model) > 0L
+    if (dataview_is_arrow_lazy(state$data)) {
+      dataview_arrow_reader_reset(state)
+      state$arrow_reader$row_cache <- list()
+      state$arrow_reader$query_cache <- list()
+    }
     .sess_env$dataviews[[view_id]] <- state
   }
 
@@ -1306,21 +1420,28 @@ handle_dataview_page <- function(params) {
   } else {
     length(state$query_indices)
   }
-  end_exclusive <- min(total, end_row)
-  if (start_row >= total || start_row >= end_exclusive) {
-    display_idx <- integer(0)
-    page_idx <- integer(0)
+  display_idx <- dataview_page_indices(start_row, end_row, total)
+  page_idx <- if (is.null(state$query_indices)) {
+    display_idx
   } else {
-    display_idx <- seq.int(start_row + 1L, end_exclusive)
-    page_idx <- if (is.null(state$query_indices)) {
-      display_idx
-    } else {
-      state$query_indices[display_idx]
-    }
+    state$query_indices[display_idx]
   }
 
+  page_state <- if (dataview_is_arrow_lazy(state$data)) {
+    dataview_arrow_page_state(state, params$fields)
+  } else {
+    state
+  }
   result <- list(
-    rows = dataview_rows(state, page_idx),
+    rows = dataview_rows(
+      page_state,
+      page_idx,
+      use_arrow_reader = dataview_is_arrow_lazy(state$data) &&
+        is.null(state$query_indices),
+      use_arrow_query_cache = dataview_is_arrow_lazy(state$data) &&
+        !is.null(state$query_indices),
+      display_idx = display_idx
+    ),
     totalRows = total,
     totalUnfiltered = state$total_rows,
     lastRow = total
@@ -1328,9 +1449,10 @@ handle_dataview_page <- function(params) {
   if (isTRUE(params$formatNumbers)) {
     # Format only the requested page, using the session's digits, scipen and OutDec.
     # Keep raw rows unchanged for sorting, filtering and full-precision inspection.
-    numeric_fields <- vapply(state$columns, function(column) {
+    numeric_fields <- vapply(Filter(function(column) {
       column$type == "numericColumn" && column$field != "0"
-    }, logical(1))
+    }, state$columns), function(column) as.character(column$field), character(1))
+    numeric_fields <- intersect(numeric_fields, names(result$rows))
     result$formattedColumns <- lapply(result$rows[numeric_fields], function(values) {
       I(format(values, trim = TRUE, justify = "none"))
     })
@@ -1343,6 +1465,9 @@ handle_dataview_dispose <- function(params) {
   state <- if (is.null(.sess_env$dataviews)) NULL else .sess_env$dataviews[[view_id]]
   state_generation <- suppressWarnings(as.integer(params$state_generation %||% NA_integer_))
   if (!is.null(state) && identical(state$state_generation, state_generation)) {
+    if (!is.null(state$arrow_reader)) {
+      dataview_arrow_result_cache_cleanup(state)
+    }
     if (!is.null(state$dbi_cache)) {
       dataview_dbi_result_cache_cleanup(state)
     }
