@@ -889,7 +889,10 @@ dataview_register <- function(data, view_id = NULL, live = FALSE, total_rows = N
 
   state <- dataview_to_state(data)
   if (inherits(data, "arrow_dplyr_query")) {
-    if (!is.null(total_rows)) state$total_rows <- total_rows
+    if (is.numeric(total_rows) && length(total_rows) == 1L &&
+          is.finite(total_rows) && total_rows >= 0 && total_rows == floor(total_rows)) {
+      state$total_rows <- total_rows
+    }
     dataview_arrow_result_cache_init(state, view_id)
   }
   if (!is.null(state$dbi) && isTRUE(state$uses_result_cache)) {

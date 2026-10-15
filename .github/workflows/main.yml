@@ -49,7 +49,7 @@ jobs:
           source("R/sess_source.R")
           stopifnot(!sess_install_required("dist/resources/sess"))
         shell: Rscript {0}
-      - name: Run sess tests
+      - name: Run sess tests including lazy Data Viewer regressions
         run: |
           stopifnot(all(vapply(c("arrow", "DBI", "dbplyr", "dplyr", "bit64"),
                               requireNamespace, logical(1), quietly = TRUE)))

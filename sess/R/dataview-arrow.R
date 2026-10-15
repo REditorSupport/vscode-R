@@ -17,7 +17,7 @@ dataview_arrow_require <- function() {
 }
 
 dataview_arrow_nested_columns <- function(data) {
-  schema <- getExportedValue("arrow", "infer_schema")(data)
+  schema <- if (inherits(data, "Schema")) data else getExportedValue("arrow", "infer_schema")(data)
   vapply(schema$fields, function(field) {
     inherits(
       field$type,
@@ -310,7 +310,7 @@ dataview_arrow_query_columns <- function(state, sort_model, filter_model) {
   setNames(as.list(columns), as.character(positions))
 }
 
-dataview_arrow_reader_reset <- function(state) {
+dataview_arrow_reader_reset <- function(state, clear_cache = FALSE) {
   reader_state <- state$arrow_reader
   if (!is.null(reader_state$reader)) {
     try(reader_state$reader$Close(), silent = TRUE)
@@ -319,6 +319,18 @@ dataview_arrow_reader_reset <- function(state) {
   reader_state$batch <- NULL
   reader_state$batch_row <- 0L
   reader_state$next_row <- 1L
+  if (clear_cache) {
+    for (batch in reader_state$result_cache_batches) {
+      if (!is.null(batch$path)) unlink(batch$path, force = TRUE)
+    }
+    reader_state$result_cache_batches <- list()
+    reader_state$result_cache_rows <- 0L
+    reader_state$result_complete <- FALSE
+    reader_state$result_query_key <- NULL
+    reader_state$result_query_indices <- NULL
+    reader_state$row_cache <- list()
+    reader_state$query_cache <- list()
+  }
 }
 
 dataview_arrow_reader_open <- function(data) {
@@ -399,17 +411,25 @@ dataview_arrow_result_cache_add <- function(reader_state, batch) {
 }
 
 dataview_arrow_reader_ensure_batch <- function(reader_state) {
-  while (is.null(reader_state$batch) ||
-           reader_state$batch_row >= nrow(reader_state$batch)) {
-    reader_state$batch <- reader_state$reader$read_next_batch()
-    reader_state$batch_row <- 0L
-    if (is.null(reader_state$batch)) {
-      reader_state$result_complete <- TRUE
-      return(FALSE)
-    }
-    dataview_arrow_result_cache_add(reader_state, reader_state$batch)
+  failed <- function(e) {
+    # A failed reader may return EOF on its next call. Never publish its partial
+    # result as complete, or append a new execution to the old cached rows.
+    dataview_arrow_reader_reset(list(arrow_reader = reader_state), clear_cache = TRUE)
+    stop(e)
   }
-  TRUE
+  tryCatch({
+    while (is.null(reader_state$batch) ||
+             reader_state$batch_row >= nrow(reader_state$batch)) {
+      reader_state$batch <- reader_state$reader$read_next_batch()
+      reader_state$batch_row <- 0L
+      if (is.null(reader_state$batch)) {
+        reader_state$result_complete <- TRUE
+        return(FALSE)
+      }
+      dataview_arrow_result_cache_add(reader_state, reader_state$batch)
+    }
+    TRUE
+  }, error = failed, interrupt = failed)
 }
 dataview_arrow_reader_take <- function(reader_state, n, collect = TRUE) {
   pages <- list()
@@ -684,7 +704,10 @@ dataview_arrow_row_group_index <- function(state) {
     ),
     error = function(e) NULL
   )
-  if (is.null(reader) || reader$num_row_groups < 2L) {
+  if (is.null(reader) || reader$num_row_groups < 2L ||
+        any(dataview_arrow_nested_columns(reader$GetSchema()))) {
+    # ReadRowGroups indexes Parquet leaf columns, not top-level Arrow fields.
+    # Inspect the physical schema even if the Dataset hides nested columns.
     reader_state$row_group_index <- FALSE
     return(NULL)
   }

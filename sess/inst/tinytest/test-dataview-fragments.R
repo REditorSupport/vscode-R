@@ -101,7 +101,8 @@ if (requireNamespace("arrow", quietly = TRUE)) local({
     time = as.POSIXct("2020-01-01", tz = "Australia/Sydney") + ids,
     label = rep(c("a", NA_character_), length.out = length(ids))
   )
-  df$struct <- data.frame(value = ids)
+  # Flat schemas use the direct row-group path. Nested schemas are covered by
+  # the scanner-fallback regressions in test-dataview-recovery.R.
   if (requireNamespace("bit64", quietly = TRUE)) {
     df$big <- bit64::as.integer64("9007199254740993") + bit64::as.integer64(ids)
   }
