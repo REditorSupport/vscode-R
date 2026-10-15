@@ -131,8 +131,8 @@ dataview_dbi_source <- function(data) {
 
 dataview_dbi_to_state <- function(data) {
   source <- dataview_dbi_source(data)
-  disable_sort_filter <- !dataview_dbi_is_bare_table(data)
-  total_rows <- if (disable_sort_filter) {
+  uses_result_cache <- !dataview_dbi_is_bare_table(data)
+  total_rows <- if (uses_result_cache) {
     NULL
   } else {
     total <- DBI::dbGetQuery(
@@ -154,19 +154,13 @@ dataview_dbi_to_state <- function(data) {
     lapply(seq_len(ncol(source$schema)), function(position) source$schema[[position]])
   )
   columns <- .mapply(get_column_def, list(headers, fields, cols), NULL)
-  if (disable_sort_filter) {
-    for (position in seq_len(ncol(source$schema))) {
-      columns[[position + 1L]]$filter <- jsonlite::unbox(FALSE)
-      columns[[position + 1L]]$sortable <- jsonlite::unbox(FALSE)
-    }
-  }
 
   list(
     dbi = source,
     columns = columns,
     column_names = colnames,
     total_rows = total_rows,
-    disable_sort_filter = disable_sort_filter,
+    uses_result_cache = uses_result_cache,
     dbi_cache = dataview_dbi_cache_state()
   )
 }
@@ -200,6 +194,8 @@ dataview_dbi_result_reset <- function(cache_state, clear_cache = FALSE) {
     cache_state$result_cache_blocks <- list()
     cache_state$result_cache_rows <- 0L
     cache_state$result_complete <- FALSE
+    cache_state$result_query_key <- NULL
+    cache_state$result_query_indices <- NULL
   }
 }
 
@@ -224,7 +220,7 @@ dataview_dbi_cache_add <- function(cache_state, block_start, block) {
 
 
 dataview_dbi_result_cache_init <- function(state, view_id) {
-  if (!isTRUE(state$disable_sort_filter)) return(invisible(NULL))
+  if (!isTRUE(state$uses_result_cache)) return(invisible(NULL))
   if (!requireNamespace("arrow", quietly = TRUE)) {
     stop("Viewing transformed lazy database queries requires the optional 'arrow' package")
   }
@@ -242,6 +238,8 @@ dataview_dbi_result_cache_init <- function(state, view_id) {
   state$dbi_cache$result_cache_blocks <- list()
   state$dbi_cache$result_cache_rows <- 0L
   state$dbi_cache$result_complete <- FALSE
+  state$dbi_cache$result_query_key <- NULL
+  state$dbi_cache$result_query_indices <- NULL
   invisible(NULL)
 }
 
@@ -257,6 +255,8 @@ dataview_dbi_result_cache_cleanup <- function(state) {
   state$dbi_cache$result_cache_blocks <- list()
   state$dbi_cache$result_cache_rows <- 0L
   state$dbi_cache$result_complete <- FALSE
+  state$dbi_cache$result_query_key <- NULL
+  state$dbi_cache$result_query_indices <- NULL
   invisible(NULL)
 }
 
@@ -379,13 +379,11 @@ dataview_dbi_result_cache_slice <- function(state, row_idx, positions) {
   page[match(available, page_rows), , drop = FALSE]
 }
 
-dataview_dbi_lazy_page <- function(state, start_row, end_row, fields = NULL) {
+dataview_dbi_lazy_page <- function(
+  state, start_row, end_row, sort_model, filter_model, fields = NULL
+) {
   positions <- dataview_page_positions(state, fields)
-  row_idx <- if (start_row < end_row) {
-    seq.int(start_row + 1L, end_row)
-  } else {
-    integer()
-  }
+  row_idx <- dataview_lazy_page_indices(state, start_row, end_row, sort_model, filter_model)
   page <- dataview_dbi_result_cache_slice(state, row_idx, positions)
 
   for (position in seq_len(ncol(page))) {
@@ -402,23 +400,9 @@ dataview_dbi_lazy_page <- function(state, start_row, end_row, fields = NULL) {
     }
   }
 
-  page_row_idx <- if (nrow(page)) {
-    seq.int(start_row + 1L, length.out = nrow(page))
-  } else {
-    integer()
-  }
+  page_row_idx <- row_idx[seq_len(nrow(page))]
   rows <- dataview_bind_rows(page, page_row_idx, as.character(positions))
-  last_row <- if (isTRUE(state$dbi_cache$result_complete)) {
-    state$dbi_cache$result_cache_rows
-  } else {
-    -1L
-  }
-  c(
-    list(rows = rows, lastRow = last_row),
-    if (last_row >= 0L) {
-      list(totalRows = last_row, totalUnfiltered = last_row)
-    }
-  )
+  c(list(rows = rows), dataview_lazy_totals(state))
 }
 
 
@@ -618,8 +602,8 @@ dataview_dbi_order_sql <- function(state, sort_model) {
 }
 
 dataview_dbi_page <- function(state, start_row, end_row, sort_model, filter_model, fields = NULL) {
-  if (isTRUE(state$disable_sort_filter)) {
-    return(dataview_dbi_lazy_page(state, start_row, end_row, fields))
+  if (isTRUE(state$uses_result_cache)) {
+    return(dataview_dbi_lazy_page(state, start_row, end_row, sort_model, filter_model, fields))
   }
 
   positions <- dataview_page_positions(state, fields)

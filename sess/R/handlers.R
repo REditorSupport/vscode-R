@@ -845,14 +845,6 @@ dataview_to_state <- function(data) {
     }
   }
 
-  disable_sort_filter <- inherits(data, "arrow_dplyr_query")
-  if (disable_sort_filter) {
-    for (position in seq_len(ncol(schema))) {
-      columns[[position + 1L]]$filter <- jsonlite::unbox(FALSE)
-      columns[[position + 1L]]$sortable <- jsonlite::unbox(FALSE)
-    }
-  }
-
   list(
     data = data,
     row_index = row_index,
@@ -861,7 +853,7 @@ dataview_to_state <- function(data) {
     query_key = NULL,
     query_indices = NULL,
     query_has_sort = FALSE,
-    disable_sort_filter = disable_sort_filter,
+    uses_result_cache = inherits(data, "arrow_dplyr_query"),
     arrow_reader = if (dataview_is_arrow_lazy(data)) dataview_arrow_reader_state(data) else NULL
   )
 }
@@ -900,7 +892,7 @@ dataview_register <- function(data, view_id = NULL, live = FALSE, total_rows = N
     if (!is.null(total_rows)) state$total_rows <- total_rows
     dataview_arrow_result_cache_init(state, view_id)
   }
-  if (!is.null(state$dbi) && isTRUE(state$disable_sort_filter)) {
+  if (!is.null(state$dbi) && isTRUE(state$uses_result_cache)) {
     dataview_dbi_result_cache_init(state, view_id)
   }
 
@@ -1393,41 +1385,18 @@ handle_dataview_page <- function(params) {
 
   sort_model <- params$sortModel %||% list()
   filter_model <- params$filterModel %||% list()
-  if (isTRUE(state$disable_sort_filter)) {
-    sort_model <- list()
-    filter_model <- list()
-  }
   if (!is.null(state$dbi)) {
     return(dataview_dbi_page(state, start_row, end_row, sort_model, filter_model, params$fields))
   }
   if (inherits(state$data, "arrow_dplyr_query")) {
-    page_idx <- if (is.null(state$total_rows)) {
-      if (start_row < end_row) seq.int(start_row + 1L, end_row) else integer()
-    } else {
-      dataview_page_indices(start_row, end_row, state$total_rows)
-    }
+    page_idx <- dataview_lazy_page_indices(state, start_row, end_row, sort_model, filter_model)
     page_state <- dataview_arrow_page_state(state, params$fields)
     rows <- dataview_rows(
       page_state,
       page_idx,
       use_arrow_reader = TRUE
     )
-    last_row <- if (!is.null(state$total_rows)) {
-      state$total_rows
-    } else if (isTRUE(state$arrow_reader$result_complete)) {
-      state$arrow_reader$result_cache_rows
-    } else {
-      -1L
-    }
-    return(c(
-      list(rows = rows, lastRow = last_row),
-      if (!is.null(state$total_rows)) {
-        list(
-          totalRows = state$total_rows,
-          totalUnfiltered = state$total_rows
-        )
-      }
-    ))
+    return(c(list(rows = rows), dataview_lazy_totals(state)))
   }
 
   query_key <- dataview_query_key(sort_model, filter_model)

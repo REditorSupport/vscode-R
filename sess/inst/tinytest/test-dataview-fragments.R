@@ -43,7 +43,7 @@ if (requireNamespace("arrow", quietly = TRUE)) local({
 
   # DBI uses the same IPC storage after fetching its result into R blocks.
   dbi_state <- list(
-    disable_sort_filter = TRUE, column_names = names(df),
+    uses_result_cache = TRUE, column_names = names(df),
     dbi = list(schema = df[0L, ]), dbi_cache = sess:::dataview_dbi_cache_state()
   )
   sess:::dataview_dbi_result_cache_init(dbi_state, "conversion-test")

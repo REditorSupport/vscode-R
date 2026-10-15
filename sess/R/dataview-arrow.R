@@ -148,6 +148,8 @@ dataview_arrow_result_cache_init <- function(state, view_id) {
   state$arrow_reader$result_cache_batches <- list()
   state$arrow_reader$result_cache_rows <- 0L
   state$arrow_reader$result_complete <- FALSE
+  state$arrow_reader$result_query_key <- NULL
+  state$arrow_reader$result_query_indices <- NULL
   invisible(NULL)
 }
 
@@ -163,6 +165,8 @@ dataview_arrow_result_cache_cleanup <- function(state) {
   state$arrow_reader$result_cache_batches <- list()
   state$arrow_reader$result_cache_rows <- 0L
   state$arrow_reader$result_complete <- FALSE
+  state$arrow_reader$result_query_key <- NULL
+  state$arrow_reader$result_query_indices <- NULL
   invisible(NULL)
 }
 
@@ -283,20 +287,7 @@ dataview_arrow_page_state <- function(state, fields = NULL) {
 }
 
 dataview_arrow_query_columns <- function(state, sort_model, filter_model) {
-  positions <- integer()
-  for (field in names(filter_model)) {
-    pos <- dataview_field_position(field, length(state$columns))
-    if (!is.na(pos) && pos > 1L && !isFALSE(state$columns[[pos]]$filter)) {
-      positions <- c(positions, pos)
-    }
-  }
-  for (item in sort_model) {
-    pos <- dataview_field_position(as.character(item$colId %||% ""), length(state$columns))
-    if (!is.na(pos) && pos > 1L && !isFALSE(state$columns[[pos]]$sortable)) {
-      positions <- c(positions, pos)
-    }
-  }
-  positions <- unique(positions)
+  positions <- dataview_query_positions(state, sort_model, filter_model)
   if (!length(positions)) return(list())
   names <- names(state$data)[positions - 1L]
   reader <- if (inherits(state$data, "arrow_dplyr_query")) {
@@ -489,7 +480,7 @@ dataview_arrow_reader_select <- function(reader_state, row_idx) {
   dataview_arrow_bind_pages(pages)
 }
 
-dataview_arrow_result_cache_slice <- function(state, row_idx) {
+dataview_arrow_result_cache_slice <- function(state, row_idx, projection = NULL) {
   reader_state <- state$arrow_reader
   if (is.null(reader_state$result_cache_dir) || !length(row_idx)) return(NULL)
 
@@ -509,7 +500,7 @@ dataview_arrow_result_cache_slice <- function(state, row_idx) {
   }
 
   available <- row_idx[row_idx <= reader_state$result_cache_rows]
-  projection <- reader_state$projection
+  if (is.null(projection)) projection <- reader_state$projection
   if (is.null(projection)) projection <- seq_len(ncol(state$data))
   fields <- names(state$data)[projection]
   if (!length(available)) {
@@ -876,7 +867,12 @@ dataview_arrow_block_slice <- function(state, row_idx) {
 dataview_arrow_slice <- function(state, row_idx) {
   # Fetch source rows directly, using block caching for contiguous requests.
   if (!length(row_idx)) {
-    return(dataview_schema(state$data))
+    schema <- dataview_schema(state$data)
+    if (inherits(state$data, "arrow_dplyr_query")) {
+      positions <- state$arrow_reader$projection %||% seq_len(ncol(schema))
+      schema <- schema[, positions, drop = FALSE]
+    }
+    return(schema)
   }
   reader_state <- state$arrow_reader
 

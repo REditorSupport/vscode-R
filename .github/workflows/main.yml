@@ -39,7 +39,9 @@ jobs:
       - name: Verify sess source identity and bootstrap
         run: pnpm run test:sess-source
       - name: Install R test dependencies
-        run: install.packages(c("remotes", "pkgbuild", "languageserver", "lintr", "renv"))
+        run: |
+          install.packages(c("remotes", "pkgbuild", "languageserver", "lintr", "renv",
+                             "tinytest", "arrow", "DBI", "dbplyr", "dplyr", "bit64"))
         shell: Rscript {0}
       - run: pnpm run build
       - name: Verify installed sess identity
@@ -48,7 +50,11 @@ jobs:
           stopifnot(!sess_install_required("dist/resources/sess"))
         shell: Rscript {0}
       - name: Run sess tests
-        run: tinytest::test_package("sess")
+        run: |
+          stopifnot(all(vapply(c("arrow", "DBI", "dbplyr", "dplyr", "bit64"),
+                              requireNamespace, logical(1), quietly = TRUE)))
+          results <- tinytest::test_package("sess")
+          stopifnot(all(as.logical(results)))
         shell: Rscript {0}
       - name: Compile test files
         run: pnpm run clean && pnpm exec tsc
