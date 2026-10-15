@@ -67,7 +67,9 @@ connect <- function(endpoint = NULL, use_rstudioapi = TRUE,
   # Only follow discovery if it describes this connection, including explicit
   # endpoints from the generated attach script. Never redirect an unrelated client.
   discovery <- if (nzchar(discovery_file)) .read_discovery(discovery_file) else NULL
+  .sess_env$terminal_pid <- NULL
   if (!is.null(discovery) && identical(discovery$endpoint, endpoint)) {
+    .sess_env$terminal_pid <- discovery$terminalPid
     .configure_discovery_jgd(discovery, plot_backend %in% c("auto", "jgd"))
     .sess_env$reconnect <- list(
       path = discovery_file, endpoint = endpoint,
@@ -277,6 +279,7 @@ connect <- function(endpoint = NULL, use_rstudioapi = TRUE,
     host = unname(host),
     version = sprintf("%s.%s", R.version$major, R.version$minor),
     pid = Sys.getpid(),
+    terminal_pid = .sess_env$terminal_pid,
     tempdir = .sess_env$tempdir,
     wd = getwd(),
     info = list(
@@ -387,6 +390,11 @@ poll_connection <- function(generation = .sess_env$transport_generation) {
         !identical(.sess_env$interactive_pid, Sys.getpid())) return()
   con <- .sess_env$con
   if (is.null(con) || !identical(generation, .sess_env$transport_generation)) return()
+  on.exit(suspendInterrupts({
+    if (!is.null(.sess_env$con) && identical(generation, .sess_env$transport_generation)) {
+      later::later(function() poll_connection(generation), 0.01)
+    }
+  }), add = TRUE)
 
   # Non-blocking poll: 0 ms timeout
   ready <- tryCatch(
@@ -402,7 +410,7 @@ poll_connection <- function(generation = .sess_env$transport_generation) {
     return()
   }
 
-  # A NULL poll result is transient; keep the loop alive and reschedule below.
+  # A NULL poll result is transient; keep the loop alive.
   if (!is.null(ready) && length(ready) > 0 && identical(ready[[1]], "ready")) {
     chunk <- tryCatch(
       processx::conn_read_chars(con),
@@ -417,7 +425,6 @@ poll_connection <- function(generation = .sess_env$transport_generation) {
     if (!has_data) {
       if (.transport_empty_read_is_eof(con)) {
         .transport_disconnect(silent = TRUE, reconnect = TRUE)
-        return()
       }
     } else {
       .sess_env$read_buffer <- paste0(.sess_env$read_buffer, paste0(chunk, collapse = ""))
@@ -445,11 +452,6 @@ poll_connection <- function(generation = .sess_env$transport_generation) {
     }
   } else if (length(ready) > 0 && ready[[1]] %in% c("closed", "error")) {
     .transport_disconnect(silent = TRUE, reconnect = TRUE)
-    return()
-  }
-
-  if (!is.null(.sess_env$con) && identical(generation, .sess_env$transport_generation)) {
-    later::later(function() poll_connection(generation), 0.01)
   }
 }
 
@@ -494,7 +496,15 @@ dispatch_message <- function(line) {
     if (payload$method %in% names(handlers)) {
       tryCatch(
         {
-          res <- handlers[[payload$method]](payload$params)
+          if (identical(payload$method, "dataview_page") && isTRUE(payload$params$notify_busy)) {
+            on.exit(
+              suspendInterrupts(notify_client("dataview_busy", list(view_id = NULL))), add = TRUE
+            )
+            notify_client("dataview_busy", list(view_id = payload$params$view_id))
+          }
+          # Event-loop callbacks may inherit suspended interrupts from R's
+          # input processing. Explicitly allow cancellation during the work.
+          res <- allowInterrupts(handlers[[payload$method]](payload$params))
           rpc_reply(payload$id, result = res)
         },
         error = function(e) {
@@ -502,9 +512,11 @@ dispatch_message <- function(line) {
           warning(sprintf("[sess] Error in handler for '%s': %s", payload$method, e$message))
         },
         interrupt = function(e) {
-          # Return a terminal reply without unwinding poll_connection(), which
-          # must reschedule itself and dispatch the remaining buffered requests.
-          rpc_reply(payload$id, error = list(code = -32000L, message = "R request interrupted"))
+          # Keep the polling loop alive after a cancelled page. Otherwise the
+          # queued disposal and all subsequent session requests stop being read.
+          suspendInterrupts(
+            rpc_reply(payload$id, error = list(code = -32000L, message = "R request interrupted"))
+          )
         }
       )
     } else {
