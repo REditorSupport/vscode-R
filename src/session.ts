@@ -79,6 +79,7 @@ interface IpcSocket extends net.Socket {
 }
 
 export class Session {
+    public busyDataView: string | undefined;
     private exited = false;
     public get processExited(): boolean { return this.exited; }
     public set processExited(value: boolean) {
@@ -492,13 +493,15 @@ interface DataViewColumnDef {
 
 interface DataViewInitResult {
     columns: DataViewColumnDef[];
-    totalRows: number;
+    totalRows?: number;
+    columnProjection?: boolean;
+    live?: boolean;
 }
 
 interface DataViewPageResult {
     rows: Record<string, unknown>[];
-    totalRows: number;
-    totalUnfiltered: number;
+    totalRows?: number;
+    totalUnfiltered?: number;
     lastRow: number;
 }
 
@@ -511,6 +514,7 @@ interface DataViewRequestMessage {
     endRow?: number;
     sortModel?: unknown[];
     filterModel?: Record<string, unknown>;
+    fields?: string[];
 }
 
 const dynamicDataViewPanels = new Map<string, vscode.WebviewPanel>();
@@ -547,6 +551,8 @@ function registerDataViewPanel(
             return;
         }
         dynamicDataViewPanels.delete(key);
+        const owner = sessions.get(sessionId ?? '');
+        if (owner) { void interruptDataView(owner, viewId); }
         // Interactive transcripts retain this handle after the expanded viewer closes.
         if (currentStateGeneration === undefined && sessions.get(sessionId ?? '')?.requester) { return; }
         void sessionRequest({
@@ -558,10 +564,13 @@ function registerDataViewPanel(
 
 function attachDynamicDataViewBridge(panel: vscode.WebviewPanel, viewId: string, sessionId: string | null): void {
     const webview = panel.webview;
+    let disposed = false;
+    let pageQueue = Promise.resolve();
+    panel.onDidDispose(() => { disposed = true; });
     const postResponse = (
         documentGeneration: number, requestId: number, ok: boolean, result?: unknown, error?: string
     ) => {
-        if (documentGeneration !== documentGenerations.get(webview)) {
+        if (disposed || documentGeneration !== documentGenerations.get(webview)) {
             return;
         }
         void webview.postMessage({
@@ -581,6 +590,9 @@ function attachDynamicDataViewBridge(panel: vscode.WebviewPanel, viewId: string,
             msg.documentGeneration !== documentGenerations.get(webview)) {
             return;
         }
+        if (disposed) {
+            return;
+        }
 
         try {
             if (msg.action === 'init') {
@@ -588,7 +600,11 @@ function attachDynamicDataViewBridge(panel: vscode.WebviewPanel, viewId: string,
                     method: 'dataview_init',
                     params: { view_id: viewId },
                 }, sessionId) as DataViewInitResult | undefined;
-                if (!result || !Array.isArray(result.columns) || typeof result.totalRows !== 'number') {
+                if (disposed) {
+                    return;
+                }
+                if (!result || !Array.isArray(result.columns) ||
+                    (result.totalRows !== undefined && typeof result.totalRows !== 'number')) {
                     throw new Error('Invalid dataview_init response');
                 }
                 postResponse(msg.documentGeneration, msg.requestId, true, result);
@@ -596,22 +612,42 @@ function attachDynamicDataViewBridge(panel: vscode.WebviewPanel, viewId: string,
             }
 
             if (msg.action === 'page') {
-                const result = await sessionRequest({
-                    method: 'dataview_page',
-                    params: {
-                        view_id: viewId,
-                        startRow: Number(msg.startRow ?? 0),
-                        endRow: Number(msg.endRow ?? 0),
-                        sortModel: Array.isArray(msg.sortModel) ? msg.sortModel : [],
-                        filterModel: msg.filterModel ?? {},
-                    },
-                }, sessionId) as DataViewPageResult | undefined;
-                if (!result || !Array.isArray(result.rows) ||
-                    typeof result.totalRows !== 'number' ||
-                    typeof result.totalUnfiltered !== 'number') {
-                    throw new Error('Invalid dataview_page response');
+                // Send one page at a time, so closing can discard queued pages
+                // without leaving additional expensive reads in R's IPC queue.
+                const previous = pageQueue;
+                let release!: () => void;
+                pageQueue = new Promise<void>(resolve => { release = resolve; });
+                try {
+                    await previous;
+                    if (disposed || msg.documentGeneration !== documentGenerations.get(webview)) {
+                        return;
+                    }
+                    const result = await sessionRequest({
+                        method: 'dataview_page',
+                        params: {
+                            view_id: viewId,
+                            startRow: Number(msg.startRow ?? 0),
+                            endRow: Number(msg.endRow ?? 0),
+                            sortModel: Array.isArray(msg.sortModel) ? msg.sortModel : [],
+                            filterModel: msg.filterModel ?? {},
+                            fields: Array.isArray(msg.fields) ? msg.fields : undefined,
+                            notify_busy: true,
+                        },
+                    }, sessionId, 0) as DataViewPageResult | undefined;
+                    if (!result || !Array.isArray(result.rows) ||
+                        typeof result.lastRow !== 'number' ||
+                        (result.totalRows !== undefined && typeof result.totalRows !== 'number') ||
+                        (result.totalUnfiltered !== undefined &&
+                            typeof result.totalUnfiltered !== 'number')) {
+                        throw new Error('Invalid dataview_page response');
+                    }
+                    if (disposed || msg.documentGeneration !== documentGenerations.get(webview)) {
+                        return;
+                    }
+                    postResponse(msg.documentGeneration, msg.requestId, true, result);
+                } finally {
+                    release();
                 }
-                postResponse(msg.documentGeneration, msg.requestId, true, result);
                 return;
             }
 
@@ -620,6 +656,24 @@ function attachDynamicDataViewBridge(panel: vscode.WebviewPanel, viewId: string,
             postResponse(msg.documentGeneration, msg.requestId, false, undefined, e instanceof Error ? e.message : String(e));
         }
     });
+}
+
+async function interruptDataView(session: Session, viewId: string): Promise<void> {
+    const isReading = () => session.busyDataView === viewId && !session.socket.destroyed;
+    if (!isReading()) {
+        return;
+    }
+    for (const terminal of window.terminals) {
+        const terminalPid = await terminal.processId;
+        if (!isReading()) {
+            return;
+        }
+        if (terminalPid !== undefined &&
+            (terminalRegistry.ownerOf(terminal) === session || String(terminalPid) === session.pid)) {
+            terminal.sendText('\x03', false);
+            return;
+        }
+    }
 }
 
 export function deploySessionWatcher(extensionPath: string): void {
@@ -2191,6 +2245,7 @@ export async function getTableHtml(
     let longFetchTimer;
     let filteredRows = 0;
     let totalRows = 0;
+    let rowCountKnown = false;
     let isFiltered = false;
     let verticalScrollbar;
     let scrollbarPositionAttached = false;
@@ -2284,7 +2339,7 @@ export async function getTableHtml(
 
         const positionEl = document.querySelector('#scrollPosition');
         const containerEl = document.querySelector('#gridContainer');
-        if (!positionEl || !containerEl || filteredRows < 1) {
+        if (!positionEl || !containerEl) {
             return;
         }
 
@@ -2294,26 +2349,33 @@ export async function getTableHtml(
             ? Math.max(0, Math.min(1, verticalScrollbar.scrollTop / maximumScroll))
             : 0;
 
-        let pageStart = 0;
-        let rowsInView = filteredRows;
-        if (${pageSize > 0 ? 'true' : 'false'} &&
-            typeof gridApi.paginationGetCurrentPage === 'function' &&
-            typeof gridApi.paginationGetPageSize === 'function') {
-            pageStart =
-                gridApi.paginationGetCurrentPage() * gridApi.paginationGetPageSize();
-            pageStart = Math.min(pageStart, Math.max(0, filteredRows - 1));
-            rowsInView = Math.min(
-                gridApi.paginationGetPageSize(),
-                filteredRows - pageStart
+        if (rowCountKnown && filteredRows > 0) {
+            let pageStart = 0;
+            let rowsInView = filteredRows;
+            if (${pageSize > 0 ? 'true' : 'false'} &&
+                typeof gridApi.paginationGetCurrentPage === 'function' &&
+                typeof gridApi.paginationGetPageSize === 'function') {
+                pageStart =
+                    gridApi.paginationGetCurrentPage() * gridApi.paginationGetPageSize();
+                pageStart = Math.min(pageStart, Math.max(0, filteredRows - 1));
+                rowsInView = Math.min(
+                    gridApi.paginationGetPageSize(),
+                    filteredRows - pageStart
+                );
+            }
+            const currentRow = Math.min(
+                filteredRows,
+                pageStart + Math.round(scrollRatio * Math.max(0, rowsInView - 1)) + 1
             );
+            positionEl.textContent =
+                rowNumberFormatter.format(currentRow) +
+                ' of ' + rowNumberFormatter.format(filteredRows);
+        } else {
+            const firstDisplayed = typeof gridApi.getFirstDisplayedRowIndex === 'function'
+                ? gridApi.getFirstDisplayedRowIndex() : 0;
+            positionEl.textContent =
+                rowNumberFormatter.format(Math.max(1, firstDisplayed + 1));
         }
-        const currentRow = Math.min(
-            filteredRows,
-            pageStart + Math.round(scrollRatio * Math.max(0, rowsInView - 1)) + 1
-        );
-        positionEl.textContent =
-            rowNumberFormatter.format(currentRow) +
-            ' of ' + rowNumberFormatter.format(filteredRows);
 
         const scrollbarRect = verticalScrollbar.getBoundingClientRect();
         const containerRect = containerEl.getBoundingClientRect();
@@ -2414,8 +2476,11 @@ export async function getTableHtml(
         }
 
         const columns = Array.isArray(init.columns) ? init.columns : [];
-        filteredRows = init.totalRows;
-        totalRows = init.totalRows;
+        rowCountKnown = Number.isFinite(init.totalRows);
+        if (rowCountKnown) {
+            filteredRows = init.totalRows;
+            totalRows = init.totalRows;
+        }
         if (init.live) {
             const info = document.createElement('span');
             info.textContent = 'Full data';
@@ -2423,7 +2488,9 @@ export async function getTableHtml(
             document.querySelector('#viewerControls').append(info);
         }
         const bigintFields = prepareViewerColumns(columns);
-        updateViewerRowCount(filteredRows, totalRows);
+        if (rowCountKnown) {
+            updateViewerRowCount(filteredRows, totalRows);
+        }
         const rowIndexColumn = columns.find(column => column.field === '0');
         if (rowIndexColumn) {
             rowIndexColumn.headerValueGetter = () => isFiltered
@@ -2432,9 +2499,41 @@ export async function getTableHtml(
         }
 
         const blockSize = ${pageSize > 0 ? pageSize : 500};
+        let cachedFieldsKey;
+        let projectionRefreshTimer;
+        function pageFields() {
+            if (!init.columnProjection) {
+                return undefined;
+            }
+            const displayed = gridApi?.getAllDisplayedColumns();
+            return (displayed
+                ? displayed.map(column => column.getColId())
+                : columns.filter(column => !column.hide).map(column => column.field)
+            ).sort();
+        }
+        function displayedColumnsChanged() {
+            updateFetchStatusPosition();
+            if (!init.columnProjection) {
+                return;
+            }
+            clearTimeout(projectionRefreshTimer);
+            // Column events can fire during grid setup or a batch of visibility
+            // changes. Refresh once, after the column model has settled.
+            projectionRefreshTimer = setTimeout(() => {
+                const key = JSON.stringify(pageFields());
+                if (gridApi && cachedFieldsKey !== undefined && key !== cachedFieldsKey) {
+                    cachedFieldsKey = key;
+                    gridApi.purgeInfiniteCache();
+                }
+            }, 0);
+        }
 
         const datasource = {
             getRows: async function(params) {
+                const fields = pageFields();
+                if (cachedFieldsKey === undefined) {
+                    cachedFieldsKey = JSON.stringify(fields);
+                }
                 beginFetch('Fetching rows from R session...');
                 try {
                     const result = await request('page', {
@@ -2442,16 +2541,32 @@ export async function getTableHtml(
                         endRow: params.endRow,
                         sortModel: params.sortModel,
                         filterModel: params.filterModel,
+                        fields,
                     });
-                    filteredRows = result.totalRows;
-                    totalRows = result.totalUnfiltered;
-                    isFiltered = Object.keys(params.filterModel || {}).length > 0;
-                    updateViewerRowCount(filteredRows, totalRows);
-                    gridApi?.refreshHeader();
+                    if (JSON.stringify(fields) !== JSON.stringify(pageFields())) {
+                        params.failCallback();
+                        finishFetch(true);
+                        return;
+                    }
+                    if (Number.isFinite(result.totalRows)) {
+                        filteredRows = result.totalRows;
+                        totalRows = Number.isFinite(result.totalUnfiltered)
+                            ? result.totalUnfiltered : result.totalRows;
+                        rowCountKnown = true;
+                    } else if (!rowCountKnown &&
+                        Number.isFinite(result.lastRow) && result.lastRow >= 0) {
+                        filteredRows = result.lastRow;
+                        totalRows = result.lastRow;
+                        rowCountKnown = true;
+                    }
+                    if (rowCountKnown) {
+                        isFiltered = Object.keys(params.filterModel || {}).length > 0;
+                        updateViewerRowCount(filteredRows, totalRows);
+                        gridApi?.refreshHeader();
+                    }
                     updateScrollPosition();
-                    const resolvedLastRow = Number.isFinite(result.totalRows) ? result.totalRows : result.lastRow;
                     const rows = prepareViewerRows(result.rows || [], bigintFields);
-                    params.successCallback(rows, resolvedLastRow);
+                    params.successCallback(rows, result.lastRow);
                     finishFetch(true);
                 } catch (e) {
                     console.error('[dataview] Failed to load page', e);
@@ -2470,7 +2585,7 @@ export async function getTableHtml(
             cacheBlockSize: blockSize,
             onPaginationChanged: updateScrollPosition,
             onGridSizeChanged: updateFetchStatusPosition,
-            onDisplayedColumnsChanged: updateFetchStatusPosition,
+            onDisplayedColumnsChanged: displayedColumnsChanged,
             onFirstDataRendered: function() {
                 updateFetchStatusPosition();
                 attachScrollbarPositionIndicator();
@@ -2908,6 +3023,17 @@ async function handleNotification(message: Record<string, unknown>, socket: IpcS
     const params = (message.params as Record<string, unknown>) || {};
 
     switch (method) {
+        case 'dataview_busy': {
+            const session = sessions.get(socket._sessionId ?? '');
+            if (session) {
+                session.busyDataView = typeof params.view_id === 'string' ? params.view_id : undefined;
+                // A page may begin after its panel was closed while R was busy.
+                if (session.busyDataView && !dynamicDataViewPanels.has(JSON.stringify([session.sessionId, session.busyDataView]))) {
+                    void interruptDataView(session, session.busyDataView);
+                }
+            }
+            break;
+        }
         case 'attach': {
             if (!isLiveSessionSocket(socket)) { socket.destroy(); return; }
             const protocolVersion = params.protocol_version;
@@ -3275,6 +3401,7 @@ export async function cleanupSession(sessionId: string, closingSocket?: IpcSocke
 
 export async function sessionRequest(
     data: Record<string, unknown>, target: Session | string | null | undefined = activeSession,
+    timeout = 5000,
 ): Promise<unknown> {
     try {
         const owner = typeof target === 'string' ? sessions.get(target) : target;
@@ -3302,12 +3429,14 @@ export async function sessionRequest(
                 reject(e);
             }
 
-            setTimeout(() => {
-                if (pendingRequests.has(id)) {
-                    pendingRequests.delete(id);
-                    reject(new Error('Request timed out'));
-                }
-            }, 5000);
+            if (timeout > 0) {
+                setTimeout(() => {
+                    if (pendingRequests.has(id)) {
+                        pendingRequests.delete(id);
+                        reject(new Error('Request timed out'));
+                    }
+                }, timeout);
+            }
         });
     } catch (error) {
         if (error instanceof Error) {

@@ -696,6 +696,7 @@ dataview_is_table <- function(data) {
   is.data.frame(data) ||
     is.matrix(data) ||
     inherits(data, "ArrowTabular") ||
+    dataview_is_dbi_lazy(data) ||
     inherits(data, "polars_data_frame")
 }
 
@@ -749,6 +750,7 @@ dataview_column <- function(data, position) {
 }
 
 dataview_to_state <- function(data) {
+  if (dataview_is_dbi_lazy(data)) return(dataview_dbi_to_state(data))
   if (!dataview_is_table(data)) {
     stop("data must be a data frame, matrix, Arrow table, or Polars data frame")
   }
@@ -828,14 +830,21 @@ dataview_register <- function(data, view_id = NULL, live = FALSE) {
   }
 
   state <- dataview_to_state(data)
+  if (!is.null(state$dbi) && isTRUE(state$uses_result_cache)) {
+    dataview_dbi_result_cache_init(state, view_id)
+  }
+
+  previous_state <- .sess_env$dataviews[[view_id]]
+  if (!is.null(previous_state$dbi_cache)) {
+    dataview_dbi_result_cache_cleanup(previous_state)
+  }
   state$live <- live
   state$revision <- .sess_env$dataview_revision %||% 0
   state <- dataview_set_state(view_id, state)
-  list(
-    view_id = view_id,
-    state_generation = state$state_generation,
-    total_rows = state$total_rows,
-    columns = dataview_columns(state)
+  c(
+    list(view_id = view_id, state_generation = state$state_generation),
+    if (!is.null(state$total_rows)) list(total_rows = state$total_rows),
+    list(columns = dataview_columns(state))
   )
 }
 
@@ -874,7 +883,8 @@ dataview_column_values <- function(state, position, row_idx = NULL) {
   if (!is.null(row_idx) && is.matrix(state$data)) {
     return(state$data[row_idx, position - 1L])
   }
-  values <- dataview_column(state$data, position - 1L)
+  values <- state$query_columns[[as.character(position)]]
+  if (is.null(values)) values <- dataview_column(state$data, position - 1L)
   if (is.null(row_idx)) values else values[row_idx]
 }
 
@@ -980,7 +990,11 @@ dataview_match_condition <- function(values, cond) {
     if (inherits(values, "Date")) {
       ds <- as.Date(values)
       d1 <- as.Date(if (is.null(cond$dateFrom)) cond$filter else cond$dateFrom)
-      d2 <- as.Date(if (is.null(cond$dateTo)) cond$filterTo else cond$dateTo)
+      d2 <- if (cond_type == "inRange") {
+        as.Date(if (is.null(cond$dateTo)) cond$filterTo else cond$dateTo)
+      } else {
+        NULL
+      }
     } else {
       ds <- as.POSIXct(values)
       tz <- attr(ds, "tzone", exact = TRUE) %||% ""
@@ -988,10 +1002,14 @@ dataview_match_condition <- function(values, cond) {
         if (is.null(cond$dateFrom)) cond$filter else cond$dateFrom,
         tz = tz
       )
-      d2 <- as.POSIXct(
-        if (is.null(cond$dateTo)) cond$filterTo else cond$dateTo,
-        tz = tz
-      )
+      d2 <- if (cond_type == "inRange") {
+        as.POSIXct(
+          if (is.null(cond$dateTo)) cond$filterTo else cond$dateTo,
+          tz = tz
+        )
+      } else {
+        NULL
+      }
     }
     result <- switch(cond_type,
       equals = ds == d1,
@@ -1070,6 +1088,37 @@ dataview_field_position <- function(field, column_count) {
     return(NA_integer_)
   }
   position
+}
+
+dataview_page_positions <- function(state, fields = NULL) {
+  positions <- seq_len(length(state$columns) - 1L)
+  if (!is.null(fields)) {
+    fields <- unlist(fields, use.names = FALSE)
+    positions <- positions[as.character(positions) %in% fields]
+  }
+  positions
+}
+
+dataview_page_indices <- function(start_row, end_row, total) {
+  end_row <- min(total, end_row)
+  if (start_row >= total || start_row >= end_row) {
+    return(integer())
+  }
+  seq.int(start_row + 1L, end_row)
+}
+
+dataview_block_starts <- function(row_idx, block_size) {
+  if (!length(row_idx)) {
+    return(integer())
+  }
+  unique((row_idx - 1L) %/% block_size * block_size + 1L)
+}
+
+dataview_bind_rows <- function(page, row_idx, fields) {
+  rows <- cbind(data.frame(row_idx, check.names = FALSE), page)
+  names(rows) <- c("0", fields)
+  rownames(rows) <- NULL
+  rows
 }
 
 dataview_apply_filter_model <- function(state, filter_model, row_idx) {
@@ -1216,10 +1265,13 @@ dataview_rows <- function(state, row_idx) {
 handle_dataview_init <- function(params) {
   view_id <- as.character(params$view_id %||% "")
   state <- dataview_get_state(view_id, refresh = TRUE)
-  list(
-    columns = dataview_columns(state),
-    totalRows = state$total_rows,
-    live = isTRUE(state$live)
+  c(
+    list(columns = dataview_columns(state)),
+    if (!is.null(state$total_rows)) list(totalRows = state$total_rows),
+    list(
+      live = isTRUE(state$live),
+      columnProjection = !is.null(state$dbi)
+    )
   )
 }
 
@@ -1228,7 +1280,8 @@ handle_dataview_page <- function(params) {
   state <- dataview_get_state(view_id)
 
   start_row <- suppressWarnings(as.integer(params$startRow %||% 0L))
-  end_row <- suppressWarnings(as.integer(params$endRow %||% min(state$total_rows, 500L)))
+  default_end_row <- if (is.null(state$total_rows)) 500L else min(state$total_rows, 500L)
+  end_row <- suppressWarnings(as.integer(params$endRow %||% default_end_row))
   if (is.na(start_row) || start_row < 0L) {
     start_row <- 0L
   }
@@ -1238,6 +1291,9 @@ handle_dataview_page <- function(params) {
 
   sort_model <- params$sortModel %||% list()
   filter_model <- params$filterModel %||% list()
+  if (!is.null(state$dbi)) {
+    return(dataview_dbi_page(state, start_row, end_row, sort_model, filter_model, params$fields))
+  }
   query_key <- dataview_query_key(sort_model, filter_model)
   if (!identical(query_key, state$query_key)) {
     state$query_key <- query_key
@@ -1287,6 +1343,9 @@ handle_dataview_dispose <- function(params) {
   state <- if (is.null(.sess_env$dataviews)) NULL else .sess_env$dataviews[[view_id]]
   state_generation <- suppressWarnings(as.integer(params$state_generation %||% NA_integer_))
   if (!is.null(state) && identical(state$state_generation, state_generation)) {
+    if (!is.null(state$dbi_cache)) {
+      dataview_dbi_result_cache_cleanup(state)
+    }
     .sess_env$dataviews[[view_id]] <- NULL
   }
   TRUE

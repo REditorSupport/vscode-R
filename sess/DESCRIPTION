@@ -39,7 +39,11 @@ Suggests:
     httpgd,
     jgd,
     svglite,
-    tinytest
+    tinytest,
+    arrow,
+    DBI,
+    dbplyr,
+    dplyr
 NeedsCompilation: no
 Config/vscode-R/Interactive: 1
 Config/roxygen2/markdown: TRUE
