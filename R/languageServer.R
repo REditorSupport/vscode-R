@@ -42,4 +42,44 @@ if (identical(Sys.getenv("VSCR_LSP_SYNTHETIC_WORKSPACE"), "TRUE")) {
     options(languageserver.index_mode = "off")
 }
 
-languageserver::run(port = port, debug = debug)
+tools::Rd2txt_options(underline_titles = FALSE)
+tools::Rd2txt_options(itemBullet = "* ")
+languageserver:::lsp_settings$update_from_options()
+if (isTRUE(debug)) {
+    languageserver:::lsp_settings$set("debug", TRUE)
+    languageserver:::lsp_settings$set("log_file", NULL)
+}
+
+normalize_character <- function(value) {
+    if (is.list(value)) {
+        value <- unlist(value, use.names = FALSE)
+    }
+    if (!is.character(value)) {
+        return(character())
+    }
+    unique(value[nzchar(value)])
+}
+
+server <- languageserver:::LanguageServer$new("localhost", port)
+server$request_handlers[["r/syncSessionState"]] <- function(self, id, params) {
+    attached_packages <- normalize_character(params$attachedPackages)
+    loaded_namespaces <- normalize_character(params$loadedNamespaces)
+
+    for (workspace in self$workspaces$values()) {
+        workspace$startup_packages <- if (length(attached_packages)) {
+            # languageserver resolves package conflicts from the end of this list.
+            rev(attached_packages)
+        } else {
+            languageserver:::workspace_startup_packages()
+        }
+        workspace$update_loaded_packages()
+
+        for (pkg in unique(c(attached_packages, loaded_namespaces))) {
+            try(workspace$get_namespace(pkg), silent = TRUE)
+        }
+    }
+
+    self$deliver(languageserver:::Response$new(id, result = TRUE))
+}
+
+server$run()

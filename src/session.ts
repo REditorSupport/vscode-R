@@ -20,7 +20,7 @@ import { sessionProcessIdentity } from './sessionIdentity';
 import { NativeTerminalPidWaitRegistry } from './nativeTerminalPidWait';
 import { purgeAddinPickerItems, RSEditOperation, RSRange } from './rstudioapi';
 
-import { extensionContext, rWorkspace, globalRHelp, globalPlotManager, sessionStatusBarItem, enableSessionWatcher } from './extension';
+import { extensionContext, rWorkspace, globalRHelp, globalPlotManager, sessionStatusBarItem, enableSessionWatcher, rLanguageService } from './extension';
 import { resolveBackend, jgdEnabled, CommonPlotManager } from './plotViewer';
 import type {
     RExternalTerminalIntegration,
@@ -103,6 +103,7 @@ export class Session {
     public info: SessionInfo;
     public sessionDir: string;
     public workingDir: string;
+    public resource: Uri | undefined;
     public workspaceData: WorkspaceData;
 
     constructor(sessionId: string, host: string, sessVersion: string, pipePath: string, socket: IpcSocket) {
@@ -116,6 +117,7 @@ export class Session {
         this.info = { version: '', command: '', start_time: '' };
         this.sessionDir = '';
         this.workingDir = '';
+        this.resource = undefined;
         this.workspaceData = { search: [], loaded_namespaces: [], globalenv: {} };
     }
 }
@@ -229,6 +231,7 @@ export function bindSessionDocument(uri: Uri, session: Session): void {
 export function unbindSessionDocument(uri: Uri): void { documentSessions.delete(uri.toString()); }
 
 export function unregisterSessionTransport(target: Session): void {
+    rLanguageService?.syncSessionState(undefined, target.resource, target.sessionId);
     for (const [uri, owner] of documentSessions) { if (owner === target) { documentSessions.delete(uri); } }
     terminalRegistry.releaseSession(target);
     const current = sessions.get(target.sessionId) === target;
@@ -280,6 +283,7 @@ export async function executeSessionCode(target: Session, code: string): Promise
 
 export function updateSessionWorkspace(target: Session, data: WorkspaceData): void {
     target.workspaceData = data;
+    rLanguageService?.syncSessionState(data, target.resource, target.sessionId, false);
     if (activeSession === target) {
         void refreshActiveSession(target);
     }
@@ -287,6 +291,7 @@ export function updateSessionWorkspace(target: Session, data: WorkspaceData): vo
 
 /** Move document routing to a new process; existing data viewers keep their old owner. */
 export function replaceSessionTransport(previous: Session, next: Session): void {
+    rLanguageService?.syncSessionState(undefined, previous.resource, previous.sessionId);
     for (const [uri, owner] of documentSessions) { if (owner === previous) { documentSessions.set(uri, next); } }
     terminalRegistry.releaseSession(previous);
     const current = sessions.get(previous.sessionId) === previous;
@@ -304,6 +309,7 @@ export function registerSessionTransport(id: string, host: string, directory: st
         : previous ?? new Session(id, host, '', '', new net.Socket());
     target.requester = requester;
     target.workingDir = directory;
+    target.resource = vscode.workspace.getWorkspaceFolder(Uri.file(directory))?.uri;
     sessions.set(id, target);
     if (previous && previous !== target) {
         for (const [uri, owner] of documentSessions) {
@@ -2793,6 +2799,7 @@ async function refreshActiveSession(session: Session): Promise<void> {
     sessionDir = session.sessionDir;
     workingDir = session.workingDir;
     workspaceData = session.workspaceData;
+    rLanguageService?.syncSessionState(workspaceData, session.resource, session.sessionId);
 
     if (sessionStatusBarItem) {
         sessionStatusBarItem.text = formatSessionLabel(rVer, pid);
@@ -3031,6 +3038,8 @@ async function handleNotification(message: Record<string, unknown>, socket: IpcS
             session.info = (params.info as SessionInfo | undefined) ?? { version: session.rVer, command: '', start_time: '' };
             session.sessionDir = params.tempdir;
             session.workingDir = params.wd;
+            session.resource = (native ? rTerminal.getTerminalResource(native.terminal) : undefined)
+                ?? (isLocalHost(host) ? vscode.workspace.getWorkspaceFolder(Uri.file(params.wd))?.uri : undefined);
 
             const terminalPid = native && terminalRegistry.attachNative(native.terminal, session) ? native.pid : undefined;
             if (terminalPid) { socket._terminalPid = Number(terminalPid); }
@@ -3268,6 +3277,7 @@ export async function cleanupSession(sessionId: string, closingSocket?: IpcSocke
     if (!session.socket.destroyed && session.socket !== closingSocket) {
         session.socket.destroy();
     }
+    rLanguageService?.syncSessionState(undefined, session.resource, session.sessionId);
     const clearActive = activeSession === session ? clearActiveSession() : undefined;
     if (disconnected) { enqueueSessionConnectionChanges([disconnected]); }
     await clearActive;
