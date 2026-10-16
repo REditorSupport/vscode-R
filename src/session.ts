@@ -35,6 +35,7 @@ import type {
 import { showWebView } from './webViewer';
 import { getListViewerScript, listViewerStyle, ListViewNavigation } from './listViewer';
 import { getDataViewerScript, getDataViewerStyle, getDataViewerToolbarHtml } from './dataViewer';
+import { showJdvNotification } from './jdvViewer';
 import { getDataViewerColumnPanelHtml, getDataViewerColumnPanelScript, getDataViewerColumnPanelStyle } from './dataViewerColumnPanel';
 import { createViewerSessionContext, formatSessionLabel, getViewerSessionScript, ViewerSessionContext, ViewerSessionSource } from './viewerSession';
 import { SessConsentChoice, SessConsentService } from './sessConsent';
@@ -517,6 +518,11 @@ const dynamicDataViewPanels = new Map<string, vscode.WebviewPanel>();
 const dynamicDataViewStateGenerations = new WeakMap<vscode.WebviewPanel, number>();
 const documentGenerations = new WeakMap<Webview, number>();
 let documentGenerationRevision = 0;
+
+/** The generation of the HTML document currently loaded in a viewer webview. */
+export function getDocumentGeneration(webview: Webview): number | undefined {
+    return documentGenerations.get(webview);
+}
 
 function escapeHtml(text: string): string {
     const map: Record<string, string> = {
@@ -1982,7 +1988,7 @@ function getViewerSessionHtml(sessionId: string | null): string {
     return getViewerSessionContext(sessionId)?.getHtml() ?? '';
 }
 
-function attachViewerSessionBridge(panel: vscode.WebviewPanel, sessionId: string | null): void {
+export function attachViewerSessionBridge(panel: vscode.WebviewPanel, sessionId: string | null): void {
     getViewerSessionContext(sessionId)?.attach(panel);
 }
 
@@ -3114,6 +3120,10 @@ async function handleNotification(message: Record<string, unknown>, socket: IpcS
             break;
         }
         case 'dataview': {
+            if (params.source === 'jdv') {
+                await showJdvNotification(params, socket._sessionId ?? null);
+                break;
+            }
             // R's deparse() can return several title lines. Preserve the
             // comma-separated title previously produced by String(array).
             const title = typeof params.title === 'string' ? params.title

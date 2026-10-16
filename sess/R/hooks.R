@@ -88,6 +88,9 @@ runtime_start <- function(use_rstudioapi = TRUE,
       "object"
     }
     title_key <- paste(as.character(title), collapse = "\n")
+    if (view_type %in% c("table", "list") && .dataview_use_jdv(x)) {
+      return(invisible(.jdv_show_view(x, title, title_key)))
+    }
     owner <- owner %||% title_key
     registry_key <- paste0(view_type, ":", owner)
     dataview_registry <- .sess_env$dataview_registry

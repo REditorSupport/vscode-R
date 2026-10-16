@@ -1291,3 +1291,57 @@ handle_dataview_dispose <- function(params) {
   }
   TRUE
 }
+
+# jdv data viewer backend (experimental) -----------------------------------
+#
+# When the jdv package is available, View() registers data frames, matrices and
+# lists with jdv instead of the sess data viewer. vscode-R relays the jdv
+# protocol through the `jdv_rpc` request. Set `options(sess.dataviewer = "sess")`
+# to keep using the sess data viewer.
+
+.dataview_use_jdv <- function(x) {
+  backend <- getOption("sess.dataviewer", "auto")
+  if (identical(backend, "sess")) {
+    return(FALSE)
+  }
+  # Arrow data is not converted to data frames for jdv; the vscode-R client does
+  # not support jdv's sequential Arrow views yet.
+  if (inherits(x, c("ArrowTabular", "RecordBatchReader", "nanoarrow_array_stream",
+                    "polars_data_frame"))) {
+    return(FALSE)
+  }
+  requireNamespace("jdv", quietly = TRUE)
+}
+
+.jdv_show_view <- function(x, title, title_key) {
+  # The title is jdv's display slot: View() with the same title replaces the
+  # view and increments its generation.
+  registration <- jdv::jdv_register(
+    x,
+    title = if (nzchar(title_key)) title_key else NULL,
+    mode = "paged"
+  )
+  notify_client("dataview", list(
+    title = title,
+    source = "jdv",
+    type = "json",
+    open = registration$open,
+    notifications = I(as.character(registration$notifications))
+  ))
+  registration$id
+}
+
+handle_jdv_rpc <- function(request) {
+  if (!is.character(request) || length(request) != 1L || is.na(request)) {
+    stop("Invalid jdv request")
+  }
+  if (!requireNamespace("jdv", quietly = TRUE)) {
+    stop("The jdv package is not available")
+  }
+  # Child views opened from lists use jdv's automatic mode; keep them paged so
+  # sorting and filtering stay in R.
+  op <- options(jdv.snapshot_max_cells = 0)
+  on.exit(options(op), add = TRUE)
+  response <- jdv::jdv_rpc(request)
+  if (is.null(response)) NULL else as.character(response)
+}

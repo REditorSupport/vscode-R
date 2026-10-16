@@ -132,6 +132,25 @@ export function getDataViewerScript(): string {
                 column.suppressSizeToFit = true;
                 column.initialFlex = 0;
             }
+            if (column.jdv) {
+                // jdv cells hold R-formatted display text, and R evaluates filters.
+                // Offer only the operators jdv implements for this column.
+                const naOptions = column.jdv.naOptions ? [
+                    { displayKey: 'jdvIsNa', displayName: 'Is NA', predicate: () => true, numberOfInputs: 0 },
+                    { displayKey: 'jdvNotNa', displayName: 'Is not NA', predicate: () => true, numberOfInputs: 0 }
+                ] : [];
+                delete column.cellDataType;
+                if (column.type === 'bigintColumn') {
+                    bigintFields.pop();
+                }
+                column.filterParams = {
+                    ...column.filterParams,
+                    buttons: ['reset', 'apply'],
+                    filterOptions: [...column.jdv.filterOptions, ...naOptions],
+                    inRangeInclusive: true
+                };
+                delete column.jdv;
+            }
             if (column.type !== 'numericColumn') {
                 delete column.type;
             }
