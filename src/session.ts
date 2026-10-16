@@ -35,7 +35,7 @@ import type {
 import { showWebView } from './webViewer';
 import { getListViewerScript, listViewerStyle, ListViewNavigation } from './listViewer';
 import { getDataViewerScript, getDataViewerStyle, getDataViewerToolbarHtml } from './dataViewer';
-import { showJdvNotification } from './jdvViewer';
+import { disposeJdvHost, getJdvAddress, showJdvNotification } from './jdvViewer';
 import { getDataViewerColumnPanelHtml, getDataViewerColumnPanelScript, getDataViewerColumnPanelStyle } from './dataViewerColumnPanel';
 import { createViewerSessionContext, formatSessionLabel, getViewerSessionScript, ViewerSessionContext, ViewerSessionSource } from './viewerSession';
 import { SessConsentChoice, SessConsentService } from './sessConsent';
@@ -2428,6 +2428,12 @@ export async function getTableHtml(
             info.title = 'This view retains the full object without a copy. Reference edits may appear here. Reopen from the cell to refresh after edits. Sorting and filtering scan the full data.';
             document.querySelector('#viewerControls').append(info);
         }
+        if (init.sequential) {
+            const info = document.createElement('span');
+            info.textContent = 'Arrow stream';
+            info.title = 'Rows are read from the Arrow stream as you scroll. The total is unknown until the stream ends. Sorting and filtering are not available.';
+            document.querySelector('#viewerControls').append(info);
+        }
         const bigintFields = prepareViewerColumns(columns);
         updateViewerRowCount(filteredRows, totalRows);
         const rowIndexColumn = columns.find(column => column.field === '0');
@@ -2449,10 +2455,17 @@ export async function getTableHtml(
                         sortModel: params.sortModel,
                         filterModel: params.filterModel,
                     });
-                    filteredRows = result.totalRows;
-                    totalRows = result.totalUnfiltered;
+                    filteredRows = Number.isFinite(result.totalRows) ? result.totalRows : result.loadedRows;
+                    totalRows = Number.isFinite(result.totalUnfiltered) ? result.totalUnfiltered : result.loadedRows;
                     isFiltered = Object.keys(params.filterModel || {}).length > 0;
                     updateViewerRowCount(filteredRows, totalRows);
+                    if (init.sequential && !Number.isFinite(result.totalRows)) {
+                        document.querySelector('#viewerRowCount').textContent =
+                            rowNumberFormatter.format(result.loadedRows) + '+ rows loaded';
+                    }
+                    if (init.sequential && result.notice) {
+                        document.querySelector('#viewerRowCount').title = result.notice;
+                    }
                     gridApi?.refreshHeader();
                     updateScrollPosition();
                     const resolvedLastRow = Number.isFinite(result.totalRows) ? result.totalRows : result.lastRow;
@@ -2488,6 +2501,10 @@ export async function getTableHtml(
             console.log('[dataview] Creating grid with options:', gridOptions);
             gridApi = window.agGrid.createGrid(gridDiv, gridOptions);
             initializeViewerToolbar();
+            if (init.sequential) {
+                // Arrow streams are read forward only; jdv offers no sorting or filtering.
+                document.querySelector('#viewerFilters').disabled = true;
+            }
             console.log('[dataview] Grid created successfully');
             updateFetchStatusPosition();
         } catch (e) {
@@ -3193,6 +3210,14 @@ async function handleRequest(message: Record<string, unknown>, socket?: IpcSocke
 
         try {
             switch (method) {
+                case 'jdv/address': {
+                    // The jdv transport for this session; sess sets it only while calling jdv.
+                    const owner = sessions.get(socket?._sessionId ?? '');
+                    if (!owner) { throw new Error('The jdv transport requires an attached session'); }
+                    const pid = Number(owner.pid);
+                    result = { address: await getJdvAddress(owner.sessionId, Number.isSafeInteger(pid) ? pid : undefined) };
+                    break;
+                }
                 case 'rstudioapi/active_editor_context':
                     result = rstudioapi.activeEditorContext();
                     break;
@@ -3270,6 +3295,7 @@ export async function cleanupSession(sessionId: string, closingSocket?: IpcSocke
         return;
     }
     sessions.delete(sessionId);
+    disposeJdvHost(sessionId);
     terminalRegistry.releaseSession(session);
     const disconnected = invalidateSessionConnection(session);
     if (pipeClient === session.socket) {

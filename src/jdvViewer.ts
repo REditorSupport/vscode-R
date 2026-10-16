@@ -10,6 +10,8 @@ import {
     GridPage, JdvChannel, JdvDescriptor, JdvRequestError, JsonObject, TreeAdapter, gridColumnDefs,
     gridPageFromRows, parseClosedNotifications, parseDescriptor, tableRowsParams, unwrapResponse,
 } from './jdvAdapter';
+import { SequentialStream } from './jdvArrow';
+import { JdvHost, JdvPeer } from './jdvTransport';
 import { extensionContext } from './extension';
 import * as session from './session';
 import { config, UriIcon } from './util';
@@ -18,16 +20,82 @@ interface JdvPanel {
     readonly key: string;
     readonly panel: vscode.WebviewPanel;
     readonly sessionId: string | null;
-    readonly channel: JdvChannel;
+    /** A title can move between the sess relay and the jdv transport. */
+    channel: JdvChannel;
     descriptor: JdvDescriptor;
     title: string;
     tree?: TreeAdapter;
+    /** Received Arrow pages of a sequential view. */
+    stream?: SequentialStream;
     /** Set when R closed or evicted this view generation. */
     closed?: string;
 }
 
 const panels = new Map<string, JdvPanel>();
+const hosts = new Map<string, Promise<JdvHost>>();
 let requestSequence = 0;
+
+/**
+ * The jdv transport address for a session, creating its listener on first use.
+ * Sequential Arrow views need this transport; `jdv_rpc()` cannot carry Arrow IPC.
+ */
+export function getJdvAddress(sessionId: string, pid: number | undefined): Promise<string> {
+    let host = hosts.get(sessionId);
+    if (!host) {
+        host = JdvHost.create(pid, {
+            viewOpen: (peer, params) => {
+                let descriptor: JdvDescriptor;
+                try {
+                    descriptor = parseDescriptor(params);
+                } catch (e) {
+                    void window.showErrorMessage(`Unable to open the data viewer: ${errorMessage(e)}`);
+                    return;
+                }
+                const viewer = viewerColumn();
+                if (viewer) {
+                    void openJdvView(descriptor, descriptor.title ?? 'View', sessionId, viewer, peer);
+                } else {
+                    void peer.request('view/close', { view: descriptor.view, generation: descriptor.generation })
+                        .catch(() => undefined);
+                }
+            },
+            viewClosed: (_peer, view, generation) => markClosed(sessionId, view, generation),
+            disconnected: (peer) => {
+                for (const state of panels.values()) {
+                    if (state.channel === peer && !state.closed) {
+                        state.closed = 'The R session disconnected from the data viewer.';
+                    }
+                }
+            },
+        });
+        hosts.set(sessionId, host);
+        host.catch(() => hosts.delete(sessionId));
+    }
+    return host.then(value => value.address);
+}
+
+/** Close the session's jdv listener when the session ends. */
+export function disposeJdvHost(sessionId: string): void {
+    const host = hosts.get(sessionId);
+    hosts.delete(sessionId);
+    void host?.then(value => value.dispose(), () => undefined);
+}
+
+function markClosed(sessionId: string | null, view: string, generation: number): void {
+    const state = panels.get(panelKey(sessionId, view));
+    if (state && state.descriptor.generation === generation) {
+        state.closed = 'This view was closed in R. Run View() again to refresh it.';
+    }
+}
+
+function createStream(descriptor: JdvDescriptor, channel: JdvChannel): SequentialStream | undefined {
+    if (descriptor.access !== 'sequential' || !(channel instanceof JdvPeer)) {
+        return undefined;
+    }
+    const { view, generation } = descriptor;
+    return new SequentialStream(descriptor,
+        maxRows => channel.requestWithBody('stream/next', { view, generation, max_rows: maxRows }));
+}
 
 /** Sends jdv requests through the session's existing sess RPC connection. */
 function sessChannel(sessionId: string | null): JdvChannel {
@@ -70,10 +138,7 @@ export async function showJdvNotification(params: Record<string, unknown>, sessi
     }
     // Notifications precede the view they belong to; see jdv_register().
     for (const closed of parseClosedNotifications(params.notifications)) {
-        const state = panels.get(panelKey(sessionId, closed.view));
-        if (state && state.descriptor.generation === closed.generation) {
-            state.closed = 'This view was closed in R. Run View() again to refresh it.';
-        }
+        markClosed(sessionId, closed.view, closed.generation);
     }
     const title = typeof params.title === 'string' ? params.title
         : Array.isArray(params.title) ? params.title.map(String).join(',') : descriptor.title ?? 'View';
@@ -86,8 +151,9 @@ export async function showJdvNotification(params: Record<string, unknown>, sessi
 async function openJdvView(
     descriptor: JdvDescriptor, title: string, sessionId: string | null, viewer: string, channel: JdvChannel,
 ): Promise<void> {
-    if (descriptor.kind === 'grid' && descriptor.access !== 'random') {
-        // Snapshot and sequential (Arrow) grids are not integrated yet; release the view.
+    const sequential = descriptor.access === 'sequential' && channel instanceof JdvPeer;
+    if (descriptor.kind === 'grid' && descriptor.access !== 'random' && !sequential) {
+        // Snapshot grids, and sequential grids without the jdv transport, are not supported; release the view.
         void channel.request('view/close', { view: descriptor.view, generation: descriptor.generation }).catch(() => undefined);
         void window.showWarningMessage(`The data viewer cannot display "${title}" yet (${descriptor.access} view).`);
         return;
@@ -99,9 +165,12 @@ async function openJdvView(
             return;
         }
         existing.descriptor = descriptor;
+        existing.channel = channel;
         existing.title = title;
         existing.closed = undefined;
         existing.tree = descriptor.kind === 'tree' ? new TreeAdapter(descriptor, title) : undefined;
+        existing.stream?.dispose();
+        existing.stream = createStream(descriptor, existing.channel);
         existing.panel.title = title;
         existing.panel.reveal(existing.panel.viewColumn, true);
         existing.panel.webview.html = await renderPanel(existing);
@@ -125,6 +194,7 @@ async function openJdvView(
     const state: JdvPanel = {
         key, panel, sessionId, channel, descriptor, title,
         tree: descriptor.kind === 'tree' ? new TreeAdapter(descriptor, title) : undefined,
+        stream: createStream(descriptor, channel),
     };
     panels.set(key, state);
     // The panel's webview getter throws once onDidDispose fires.
@@ -133,9 +203,10 @@ async function openJdvView(
         if (panels.get(key) === state) {
             panels.delete(key);
         }
+        state.stream?.dispose();
         if (!state.closed) {
             const { view, generation } = state.descriptor;
-            void channel.request('view/close', { view, generation }).catch(() => undefined);
+            void state.channel.request('view/close', { view, generation }).catch(() => undefined);
         }
     });
     webview.onDidReceiveMessage((message: unknown) => {
@@ -171,6 +242,15 @@ async function handleMessage(state: JdvPanel, webview: vscode.Webview, message: 
             }
         };
         try {
+            if (state.stream) {
+                // Rows already received stay viewable after R closes the view.
+                if (message.action === 'init') {
+                    reply(true, { columns: gridColumnDefs(state.descriptor), totalRows: 0, sequential: true });
+                } else if (message.action === 'page') {
+                    reply(true, await fetchSequentialPage(state, state.stream, message));
+                }
+                return;
+            }
             if (state.closed) {
                 throw new Error(state.closed);
             }
@@ -265,4 +345,27 @@ async function fetchGridPage(state: JdvPanel, message: JsonObject): Promise<Omit
         throw new JdvRequestError('invalid_request', 'Empty page request');
     }
     return { rows: page.rows, totalRows: page.totalRows, totalUnfiltered: page.totalUnfiltered, lastRow: page.totalRows };
+}
+
+/** Serve an AG Grid block from received Arrow pages, reading the stream forward as needed. */
+async function fetchSequentialPage(
+    state: JdvPanel, stream: SequentialStream, message: JsonObject,
+): Promise<JsonObject> {
+    const startRow = Math.max(0, Number(message.startRow ?? 0));
+    const endRow = Math.max(startRow, Number(message.endRow ?? 0));
+    if (!state.closed) {
+        await stream.ensure(endRow);
+    }
+    // After the stream ends, or once R has closed the view, the received rows are final.
+    const known = stream.done || state.closed !== undefined;
+    return {
+        rows: stream.rows(startRow, endRow),
+        totalRows: known ? stream.rowsSeen : null,
+        totalUnfiltered: known ? stream.rowsSeen : null,
+        lastRow: known ? stream.rowsSeen : -1,
+        loadedRows: stream.rowsSeen,
+        done: stream.done,
+        unavailableBefore: stream.unavailableBefore,
+        notice: state.closed,
+    };
 }

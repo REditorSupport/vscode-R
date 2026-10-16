@@ -163,8 +163,10 @@ function columnTooltip(column: JdvColumnSchema): string {
     return tooltip;
 }
 
-export function gridColumnDefs(descriptor: JdvDescriptor): GridColumnDef[] {
-    const columns: GridColumnDef[] = [{
+const ARROW_NUMERIC_FORMATS = new Set(['c', 'C', 's', 'S', 'i', 'I', 'l', 'L', 'e', 'f', 'g']);
+
+function rowLabelColumn(): GridColumnDef {
+    return {
         headerName: '',
         field: ROW_LABEL_FIELD,
         type: 'textColumn',
@@ -172,7 +174,38 @@ export function gridColumnDefs(descriptor: JdvDescriptor): GridColumnDef[] {
         sortable: false,
         lockPosition: 'left',
         suppressHeaderMenuButton: true,
-    }];
+    };
+}
+
+/** Columns of a sequential Arrow view; they can be neither sorted nor filtered. */
+function sequentialColumnDefs(descriptor: JdvDescriptor): GridColumnDef[] {
+    const columns = [rowLabelColumn()];
+    const schema = (descriptor as unknown as { schema?: { children?: { dictionary?: unknown }[] } }).schema;
+    for (const column of (descriptor.columns ?? []) as unknown as {
+        index?: number; position: number; name: string; type: string; unsupported: string | null;
+    }[]) {
+        // A dictionary column's format is its index type; its values are the dictionary's.
+        const dictionary = schema?.children?.[column.index ?? column.position]?.dictionary;
+        const numeric = !dictionary && (ARROW_NUMERIC_FORMATS.has(column.type) || column.type.startsWith('d:'));
+        columns.push({
+            headerName: column.name,
+            headerTooltip: column.unsupported
+                ? `${column.name}, unsupported: ${column.unsupported}`
+                : `${column.name}, Arrow format: ${column.type}`,
+            field: String(column.position + 1),
+            type: numeric ? 'numericColumn' : 'textColumn',
+            filter: false,
+            sortable: false,
+        });
+    }
+    return columns;
+}
+
+export function gridColumnDefs(descriptor: JdvDescriptor): GridColumnDef[] {
+    if (descriptor.access === 'sequential') {
+        return sequentialColumnDefs(descriptor);
+    }
+    const columns: GridColumnDef[] = [rowLabelColumn()];
     for (const column of descriptor.columns ?? []) {
         const sortable = descriptor.capabilities.sort && column.sortable;
         const filterEnabled = descriptor.capabilities.filter;

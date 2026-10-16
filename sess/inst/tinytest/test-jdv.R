@@ -90,6 +90,10 @@ local({
   options(sess.dataviewer = "sess")
   utils::View(sample)
   expect_identical(last_view()$source, "table")
+  arrow_like <- structure(list(), class = "polars_data_frame")
+  expect_true(sess:::.jdv_is_arrow(arrow_like))
+  expect_false(sess:::.jdv_show_arrow(arrow_like, "arrow"))
   options(sess.dataviewer = NULL)
-  expect_false(sess:::.dataview_use_jdv(structure(list(), class = "polars_data_frame")))
+  # Arrow data never goes through the jdv_rpc relay, which cannot carry Arrow IPC.
+  expect_false(sess:::.dataview_use_jdv(arrow_like))
 })

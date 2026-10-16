@@ -88,6 +88,9 @@ runtime_start <- function(use_rstudioapi = TRUE,
       "object"
     }
     title_key <- paste(as.character(title), collapse = "\n")
+    if (.jdv_is_arrow(x) && .jdv_show_arrow(x, title_key)) {
+      return(invisible(NULL))
+    }
     if (view_type %in% c("table", "list") && .dataview_use_jdv(x)) {
       return(invisible(.jdv_show_view(x, title, title_key)))
     }

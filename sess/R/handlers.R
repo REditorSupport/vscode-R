@@ -1296,21 +1296,48 @@ handle_dataview_dispose <- function(params) {
 #
 # When the jdv package is available, View() registers data frames, matrices and
 # lists with jdv instead of the sess data viewer. vscode-R relays the jdv
-# protocol through the `jdv_rpc` request. Set `options(sess.dataviewer = "sess")`
-# to keep using the sess data viewer.
+# protocol through the `jdv_rpc` request. Arrow data is viewed as a forward-only
+# Arrow stream over jdv's own transport, whose address VS Code provides per
+# session. Set `options(sess.dataviewer = "sess")` to keep using the sess data
+# viewer.
+
+.jdv_arrow_classes <- c("ArrowTabular", "RecordBatchReader", "nanoarrow_array_stream",
+                        "polars_data_frame")
+
+.jdv_is_arrow <- function(x) {
+  inherits(x, .jdv_arrow_classes)
+}
 
 .dataview_use_jdv <- function(x) {
   backend <- getOption("sess.dataviewer", "auto")
   if (identical(backend, "sess")) {
     return(FALSE)
   }
-  # Arrow data is not converted to data frames for jdv; the vscode-R client does
-  # not support jdv's sequential Arrow views yet.
-  if (inherits(x, c("ArrowTabular", "RecordBatchReader", "nanoarrow_array_stream",
-                    "polars_data_frame"))) {
+  # Arrow data needs the jdv transport; see .jdv_show_arrow().
+  if (.jdv_is_arrow(x)) {
     return(FALSE)
   }
   requireNamespace("jdv", quietly = TRUE)
+}
+
+# Show Arrow data with jdv without converting it to a data frame. Returns FALSE
+# when jdv cannot be used, so the caller falls back to the sess data viewer.
+.jdv_show_arrow <- function(x, title_key) {
+  if (identical(getOption("sess.dataviewer", "auto"), "sess") ||
+        !requireNamespace("jdv", quietly = TRUE) ||
+        !requireNamespace("nanoarrow", quietly = TRUE)) {
+    return(FALSE)
+  }
+  address <- tryCatch(request_client("jdv/address")$address, error = function(e) NULL)
+  if (!is.character(address) || length(address) != 1L || !nzchar(address)) {
+    return(FALSE)
+  }
+  # jdv reads the address when it opens its connection; do not change the
+  # option for other jdv hosts the user may run.
+  op <- options(jdv.address = address)
+  on.exit(options(op), add = TRUE)
+  jdv::jdv_view(x, title = if (nzchar(title_key)) title_key else NULL)
+  TRUE
 }
 
 .jdv_show_view <- function(x, title, title_key) {
