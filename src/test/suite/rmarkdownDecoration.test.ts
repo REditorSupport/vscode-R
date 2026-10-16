@@ -1,6 +1,5 @@
 import * as assert from 'assert';
 import * as vscode from 'vscode';
-import sinon = require('sinon');
 
 import { RMarkdownCodeLensProvider } from '../../rmarkdown';
 
@@ -13,11 +12,21 @@ suite('R Markdown chunk decorations', () => {
         const editor = await vscode.window.showTextDocument(document);
         editor.selection = new vscode.Selection(1, 0, 1, 0);
 
-        const provider = new RMarkdownCodeLensProvider();
-        const setDecorations = sinon.spy(editor, 'setDecorations');
+        const decorationCalls: Array<readonly vscode.Range[]> = [];
+        const editorWrapper = Object.create(editor) as vscode.TextEditor;
+        Object.defineProperty(editorWrapper, 'setDecorations', {
+            configurable: true,
+            value: (
+                _decorationType: vscode.TextEditorDecorationType,
+                ranges: readonly vscode.Range[]
+            ) => {
+                decorationCalls.push(ranges);
+            }
+        });
+        const provider = new RMarkdownCodeLensProvider(() => [editorWrapper]);
         try {
-            provider.provideCodeLenses(document, vscode.CancellationToken.None);
-            assert.strictEqual(setDecorations.callCount, 2);
+            provider.provideCodeLenses(document, new vscode.CancellationTokenSource().token);
+            assert.strictEqual(decorationCalls.length, 2);
 
             const edit = new vscode.WorkspaceEdit();
             edit.delete(document.uri, new vscode.Range(
@@ -26,14 +35,13 @@ suite('R Markdown chunk decorations', () => {
             ));
             assert.strictEqual(await vscode.workspace.applyEdit(edit), true);
 
-            setDecorations.resetHistory();
-            provider.provideCodeLenses(document, vscode.CancellationToken.None);
+            decorationCalls.length = 0;
+            provider.provideCodeLenses(document, new vscode.CancellationTokenSource().token);
             assert.deepStrictEqual(
-                setDecorations.getCalls().map(call => call.args[1]),
+                decorationCalls,
                 [[], []]
             );
         } finally {
-            setDecorations.restore();
             provider.dispose();
         }
     });
