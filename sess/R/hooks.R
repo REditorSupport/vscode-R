@@ -91,7 +91,8 @@ runtime_start <- function(use_rstudioapi = TRUE,
       "object"
     }
     title_key <- paste(as.character(title), collapse = "\n")
-    if ((view_type %in% c("table", "list") || .jdv_is_arrow(x)) && .jdv_show(x, title_key, tracked_binding)) {
+    if ((view_type %in% c("table", "list") || .jdv_is_arrow(x)) &&
+          .jdv_show(x, title_key, tracked_binding)) {
       return(invisible(NULL))
     }
     owner <- owner %||% title_key

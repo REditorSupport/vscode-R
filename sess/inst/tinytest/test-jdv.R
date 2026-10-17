@@ -41,7 +41,8 @@ local({
     lapply(messages[nzchar(messages)], jsonlite::fromJSON, simplifyVector = FALSE)
   }
   used_sess_viewer <- function() {
-    any(vapply(read_messages(), function(message) identical(message$method, "dataview"), logical(1L)))
+    any(vapply(read_messages(), function(message) identical(message$method, "dataview"),
+               logical(1L)))
   }
 
   sample <- data.frame(x = c(2, 1, NA), y = c("b", "a", "c"))
