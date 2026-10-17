@@ -12,6 +12,7 @@ export interface JdvCapabilities {
     known_total: boolean;
     next: boolean;
     children: boolean;
+    refresh?: boolean;
 }
 
 export interface JdvColumnSchema {
@@ -40,7 +41,9 @@ export interface JdvDescriptor {
     ncol?: number;
     columns?: JdvColumnSchema[];
     path?: JdvPathStep[];
+    /** Tree views: `class()` and `typeof()` of the root object. */
     class?: string[];
+    type?: string;
     parent?: string;
 }
 
@@ -48,20 +51,10 @@ export type JdvPathStep =
     | { type: 'index'; index: number }
     | { type: 'binding' | 'slot' | 'attr'; name: string };
 
-export interface JdvError {
-    code: string;
-    message: string;
-}
-
 export class JdvRequestError extends Error {
     constructor(readonly code: string, message: string) {
         super(message);
     }
-}
-
-/** A channel that sends one jdv request and returns its `result`. */
-export interface JdvChannel {
-    request(method: string, params: JsonObject): Promise<unknown>;
 }
 
 function isObject(value: unknown): value is JsonObject {
@@ -74,52 +67,16 @@ function scalarText(value: unknown): string {
         typeof value === 'boolean' ? String(value) : '';
 }
 
-/** Parse a `view/open` message or a direct descriptor (as returned by `object/open`). */
+/** Validate the params of a `view/open` notification. */
 export function parseDescriptor(value: unknown): JdvDescriptor {
-    const message = typeof value === 'string' ? JSON.parse(value) as unknown : value;
-    const params = isObject(message) && message.method === 'view/open' ? message.params : message;
-    if (!isObject(params) || typeof params.view !== 'string' || typeof params.generation !== 'number' ||
-        (params.kind !== 'grid' && params.kind !== 'tree') || !isObject(params.capabilities)) {
+    if (!isObject(value) || typeof value.view !== 'string' || typeof value.generation !== 'number' ||
+        (value.kind !== 'grid' && value.kind !== 'tree') || !isObject(value.capabilities)) {
         throw new Error('Invalid jdv view descriptor');
     }
-    if (params.kind === 'grid' && !Array.isArray(params.columns)) {
+    if (value.kind === 'grid' && !Array.isArray(value.columns)) {
         throw new Error('Invalid jdv grid descriptor');
     }
-    return params as unknown as JdvDescriptor;
-}
-
-/** Return the view ids and generations announced by `view/closed` notifications. */
-export function parseClosedNotifications(values: unknown): { view: string; generation: number }[] {
-    const list: unknown[] = Array.isArray(values) ? values : typeof values === 'string' ? [values] : [];
-    const closed: { view: string; generation: number }[] = [];
-    for (const value of list) {
-        try {
-            const message = typeof value === 'string' ? JSON.parse(value) as unknown : value;
-            if (isObject(message) && message.method === 'view/closed' && isObject(message.params) &&
-                typeof message.params.view === 'string' && typeof message.params.generation === 'number') {
-                closed.push({ view: message.params.view, generation: message.params.generation });
-            }
-        } catch {
-            // Ignore malformed notifications; they cannot identify a view.
-        }
-    }
-    return closed;
-}
-
-/** Unwrap a jdv response envelope, throwing its error code and message. */
-export function unwrapResponse(response: unknown): unknown {
-    const message = typeof response === 'string' ? JSON.parse(response) as unknown : response;
-    if (!isObject(message)) {
-        throw new Error('Invalid jdv response');
-    }
-    if (isObject(message.error)) {
-        const error = message.error as Partial<JdvError>;
-        throw new JdvRequestError(String(error.code ?? 'unknown'), String(error.message ?? 'jdv request failed'));
-    }
-    if (!('result' in message)) {
-        throw new Error('Invalid jdv response');
-    }
-    return message.result;
+    return value as unknown as JdvDescriptor;
 }
 
 // ---------------------------------------------------------------------------
@@ -579,6 +536,7 @@ interface TreeNode {
     label: string;
     title: string;
     class: string[];
+    type?: string;
     hasChildren: boolean;
     viewable: boolean;
 }
@@ -587,6 +545,7 @@ interface TreeChild {
     index: number;
     label: string;
     class?: string[];
+    type?: string;
     summary?: string;
     has_children?: boolean;
     viewable?: boolean;
@@ -596,16 +555,12 @@ interface TreeChild {
 
 export const TREE_PAGE_SIZE = 200;
 
-const ATOMIC_CLASSES = new Set([
-    'logical', 'integer', 'numeric', 'double', 'character', 'complex', 'raw',
-    'factor', 'Date', 'POSIXct', 'difftime', 'integer64',
-]);
 const TABLE_CLASSES = new Set(['data.frame', 'matrix']);
+const ATOMIC_TYPES = new Set(['logical', 'integer', 'double', 'complex', 'character', 'raw']);
 
 /** Atomic vectors are shown as value rows, as in the previous List Viewer. */
-export function isVectorClass(classes: string[]): boolean {
-    return classes.length > 0 && classes.every(cls => ATOMIC_CLASSES.has(cls) || cls === 'array' || cls === 'ordered') &&
-        !classes.includes('matrix');
+export function isVectorType(type: string | undefined, classes: string[]): boolean {
+    return type !== undefined && ATOMIC_TYPES.has(type) && !classes.includes('matrix');
 }
 
 export function isTableClass(classes: string[]): boolean {
@@ -631,7 +586,7 @@ export class TreeAdapter {
 
     constructor(public descriptor: JdvDescriptor, private readonly title: string) {
         this.nodes.set('[]', {
-            path: [], label: title, title, class: descriptor.class ?? [], hasChildren: true, viewable: true,
+            path: [], label: title, title, class: descriptor.class ?? [], type: descriptor.type, hasChildren: true, viewable: true,
         });
     }
 
@@ -650,7 +605,7 @@ export class TreeAdapter {
             const prefix = path.slice(0, depth);
             breadcrumbs.push({ label: this.node(prefix).label, path: prefix });
         }
-        return { title: node.title, path, breadcrumbs, vector: isVectorClass(node.class) };
+        return { title: node.title, path, breadcrumbs, vector: isVectorType(node.type, node.class) };
     }
 
     childrenParams(path: number[], start: number): JsonObject {
@@ -661,6 +616,8 @@ export class TreeAdapter {
             path: node.path,
             offset: Math.max(0, start - 1),
             limit: TREE_PAGE_SIZE,
+            // Like the previous List Viewer, show elements without attributes such as `names`.
+            attributes: false,
         };
     }
 
@@ -671,7 +628,7 @@ export class TreeAdapter {
             throw new Error('Invalid jdv object/children result');
         }
         const parent = this.node(path);
-        const vector = isVectorClass(parent.class);
+        const vector = isVectorType(parent.type, parent.class);
         const children = (result.children as TreeChild[]).map(child => {
             const addressable = Array.isArray(child.path) && child.viewable !== false;
             if (addressable) {
@@ -680,18 +637,20 @@ export class TreeAdapter {
                     label: child.label,
                     title: childTitle(parent, child),
                     class: child.class ?? [],
+                    type: child.type,
                     hasChildren: child.has_children === true,
                     viewable: child.viewable !== false,
                 });
             }
+            const hasChildren = child.has_children === true;
             const summary = child.unavailable ? `(${child.unavailable})` : child.summary ?? '';
             return {
                 label: child.label,
                 str: summary,
                 index: child.index,
-                // Vector elements are terminal rows in the List Viewer.
-                viewable: addressable && !vector,
-                has_children: !vector && child.has_children === true,
+                // Vector elements are terminal rows; other leaves have nothing to open.
+                viewable: addressable && !vector && (hasChildren || isTableClass(child.class ?? [])),
+                has_children: hasChildren,
             };
         });
         const end = result.offset + children.length;
@@ -710,7 +669,8 @@ export class TreeAdapter {
             return {
                 kind: 'object',
                 title: node.title,
-                params: { view: this.descriptor.view, generation: this.descriptor.generation, path: node.path },
+                // Paged keeps sorting and filtering in R, as for top-level grids.
+                params: { view: this.descriptor.view, generation: this.descriptor.generation, path: node.path, mode: 'paged' },
             };
         }
         return { kind: 'navigate', navigation: this.navigation(childPath) };

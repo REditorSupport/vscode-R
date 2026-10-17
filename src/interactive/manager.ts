@@ -17,7 +17,6 @@ import { setInteractiveExecutor } from './executionTarget';
 import * as session from '../session';
 import * as util from '../util';
 import type { ListViewNavigation } from '../listViewer';
-import { showJdvNotification } from '../jdvViewer';
 import { escapeXml } from './plotSvg';
 import { ensureWorkspaceViewer } from '../extension';
 import { queryTablePage } from './tableQuery';
@@ -980,9 +979,6 @@ export class InteractiveManager implements vscode.Disposable, vscode.TreeDataPro
             void this.prompt(view, event.data);
         } else if (event.type === 'clientRequest' && view.client.control) {
             void this.clientRequest(view, event.data);
-        } else if (event.type === 'viewer' && event.data.method === 'dataview' &&
-            object(event.data.params ?? {}).source === 'jdv') {
-            await showJdvNotification(object(event.data.params ?? {}), view.target.sessionId);
         } else if (event.type === 'viewer' && event.data.method === 'dataview') {
             const params = object(event.data.params ?? {});
             const title = typeof params.title === 'string' ? params.title

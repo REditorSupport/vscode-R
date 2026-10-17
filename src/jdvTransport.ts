@@ -9,7 +9,7 @@ import * as fs from 'fs';
 import * as net from 'net';
 import * as os from 'os';
 import * as path from 'path';
-import { JdvChannel, JdvRequestError, JsonObject } from './jdvAdapter';
+import { JdvRequestError, JsonObject } from './jdvAdapter';
 
 const PROTOCOL_MAJOR = 1;
 const MAX_LIVE_REQUESTS = 32;
@@ -52,7 +52,7 @@ function positiveInteger(value: unknown, fallback: number): number {
 }
 
 /** One R connection. Implements the host obligations of the jdv transport. */
-export class JdvPeer implements JdvChannel {
+export class JdvPeer {
     private buffer: Buffer = Buffer.alloc(0);
     private body?: { header: JsonObject; length: number; timer: NodeJS.Timeout };
     private limits?: RLimits;

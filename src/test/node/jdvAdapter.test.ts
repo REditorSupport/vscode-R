@@ -1,41 +1,30 @@
 import * as assert from 'node:assert/strict';
 import {
-    JdvDescriptor, JdvRequestError, TreeAdapter, gridColumnDefs, gridPageFromRows, isVectorClass,
-    parseClosedNotifications, parseDescriptor, tableRowsParams, toJdvFilter, unwrapResponse,
+    JdvDescriptor, JdvRequestError, TreeAdapter, gridColumnDefs, gridPageFromRows, isVectorType,
+    parseDescriptor, tableRowsParams, toJdvFilter,
 } from '../../jdvAdapter';
 
-const capabilities = { seek: true, sort: true, filter: true, known_total: true, next: false, children: false };
+const capabilities = { seek: true, sort: true, filter: true, known_total: true, next: false, children: false, refresh: true };
 
-const grid: JdvDescriptor = parseDescriptor(JSON.stringify({
-    method: 'view/open',
-    params: {
-        view: 'v-1', generation: 2, kind: 'grid', access: 'random', encoding: 'r-json', capabilities,
-        title: 'df', mode: 'paged', nrow: 3, ncol: 6, row_names: null,
-        columns: [
-            { position: 0, name: 'a', type: 'number', class: ['numeric'], sortable: true, filterable: true },
-            { position: 1, name: 'b', type: 'factor', class: ['factor'], sortable: true, filterable: true, levels: ['x', 'y'] },
-            { position: 2, name: 'd', type: 'date', class: ['Date'], sortable: true, filterable: true },
-            { position: 3, name: 't', type: 'datetime', class: ['POSIXct', 'POSIXt'], sortable: true, filterable: true, tz: 'UTC' },
-            { position: 4, name: 'i', type: 'int64', class: ['integer64'], sortable: true, filterable: true },
-            { position: 5, name: 'a', type: 'other', class: ['AsIs'], sortable: false, filterable: false, drillable: true },
-        ],
-    },
-}));
+const grid: JdvDescriptor = parseDescriptor({
+    view: 'v-1', generation: 2, kind: 'grid', access: 'random', encoding: 'r-json', capabilities,
+    title: 'df', mode: 'paged', nrow: 3, ncol: 6, row_names: null,
+    columns: [
+        { position: 0, name: 'a', type: 'number', class: ['numeric'], sortable: true, filterable: true },
+        { position: 1, name: 'b', type: 'factor', class: ['factor'], sortable: true, filterable: true, levels: ['x', 'y'] },
+        { position: 2, name: 'd', type: 'date', class: ['Date'], sortable: true, filterable: true },
+        { position: 3, name: 't', type: 'datetime', class: ['POSIXct', 'POSIXt'], sortable: true, filterable: true, tz: 'UTC' },
+        { position: 4, name: 'i', type: 'int64', class: ['integer64'], sortable: true, filterable: true },
+        { position: 5, name: 'a', type: 'other', class: ['AsIs'], sortable: false, filterable: false, drillable: true },
+    ],
+});
 
 suite('jdv adapter', () => {
-    test('parses descriptors and closed notifications', () => {
+    test('validates descriptors', () => {
         assert.equal(grid.view, 'v-1');
         assert.equal(grid.generation, 2);
-        assert.throws(() => parseDescriptor('{"method":"view/open","params":{}}'));
-        assert.deepEqual(parseClosedNotifications([
-            '{"method":"view/closed","params":{"view":"v-3","generation":1}}', 'not json',
-        ]), [{ view: 'v-3', generation: 1 }]);
-    });
-
-    test('unwraps responses and keeps error codes', () => {
-        assert.deepEqual(unwrapResponse('{"id":"a","result":{"x":1},"warnings":[]}'), { x: 1 });
-        assert.throws(() => unwrapResponse('{"id":"a","error":{"code":"stale_generation","message":"old"},"warnings":[]}'),
-            (e: unknown) => e instanceof JdvRequestError && e.code === 'stale_generation');
+        assert.throws(() => parseDescriptor({}));
+        assert.throws(() => parseDescriptor({ ...grid, columns: undefined }));
     });
 
     test('builds column definitions from the schema', () => {
@@ -122,14 +111,14 @@ suite('jdv adapter', () => {
     test('maps List Viewer paths to typed tree paths', () => {
         const tree = new TreeAdapter(parseDescriptor({
             view: 'v-2', generation: 1, kind: 'tree', access: 'random', encoding: 'r-json',
-            capabilities: { ...capabilities, sort: false, filter: false, children: true }, path: [], class: ['list'],
+            capabilities: { ...capabilities, sort: false, filter: false, children: true }, path: [], class: ['list'], type: 'list',
         }), 'x');
-        assert.deepEqual(tree.childrenParams([], 1), { view: 'v-2', generation: 1, path: [], offset: 0, limit: 200 });
+        assert.deepEqual(tree.childrenParams([], 1), { view: 'v-2', generation: 1, path: [], offset: 0, limit: 200, attributes: false });
         const page = tree.children([], {
             path: [], offset: 0, total_children: 4, children: [
-                { index: 1, label: 'a', class: ['integer'], summary: 'integer (3): 1, 2, 3', has_children: true, viewable: true, path: [{ type: 'index', index: 1 }] },
-                { index: 2, label: 'b', class: ['list'], summary: 'list (1)', has_children: true, viewable: true, path: [{ type: 'index', index: 2 }] },
-                { index: 3, label: 'df', class: ['data.frame'], summary: 'data.frame', has_children: true, viewable: true, path: [{ type: 'index', index: 3 }] },
+                { index: 1, label: 'a', class: ['integer'], type: 'integer', summary: 'integer (3): 1, 2, 3', has_children: true, viewable: true, path: [{ type: 'index', index: 1 }] },
+                { index: 2, label: 'b', class: ['list'], type: 'list', summary: 'list (1)', has_children: true, viewable: true, path: [{ type: 'index', index: 2 }] },
+                { index: 3, label: 'df', class: ['data.frame'], type: 'list', summary: 'data.frame', has_children: true, viewable: true, path: [{ type: 'index', index: 3 }] },
             ],
         });
         assert.equal(page.next_start, 4);
@@ -140,7 +129,7 @@ suite('jdv adapter', () => {
         assert.equal(vector.kind === 'navigate' && vector.navigation.vector, true);
         const elements = tree.children([1], {
             path: [{ type: 'index', index: 1 }], offset: 0, total_children: 1, children: [
-                { index: 1, label: '[1]', class: ['integer'], summary: 'integer (1): 1', has_children: true, viewable: true,
+                { index: 1, label: '[1]', class: ['integer'], type: 'integer', summary: 'integer (1): 1', has_children: false, viewable: true,
                     path: [{ type: 'index', index: 1 }, { type: 'index', index: 1 }] },
             ],
         });
@@ -153,16 +142,31 @@ suite('jdv adapter', () => {
         });
         const table = tree.open([], 3);
         assert.deepEqual(table, {
-            kind: 'object', title: 'x$df', params: { view: 'v-2', generation: 1, path: [{ type: 'index', index: 3 }] },
+            kind: 'object', title: 'x$df',
+            params: { view: 'v-2', generation: 1, path: [{ type: 'index', index: 3 }], mode: 'paged' },
         });
         assert.throws(() => tree.open([], 9), (e: unknown) => e instanceof JdvRequestError && e.code === 'unavailable');
     });
 
-    test('classifies atomic vectors', () => {
-        assert.equal(isVectorClass(['integer']), true);
-        assert.equal(isVectorClass(['ordered', 'factor']), true);
-        assert.equal(isVectorClass(['matrix', 'array']), false);
-        assert.equal(isVectorClass(['list']), false);
-        assert.equal(isVectorClass([]), false);
+    test('classifies atomic vectors by type', () => {
+        assert.equal(isVectorType('integer', ['factor']), true);
+        assert.equal(isVectorType('double', ['numeric']), true);
+        assert.equal(isVectorType('integer', ['matrix', 'array']), false);
+        assert.equal(isVectorType('list', ['list']), false);
+        assert.equal(isVectorType(undefined, []), false);
+    });
+
+    test('leaves have nothing to open unless they are tables', () => {
+        const tree = new TreeAdapter(parseDescriptor({
+            view: 'v-2', generation: 1, kind: 'tree', access: 'random', encoding: 'r-json',
+            capabilities: { ...capabilities, children: true }, path: [], class: ['list'], type: 'list',
+        }), 'x');
+        const page = tree.children([], {
+            path: [], offset: 0, total_children: 2, children: [
+                { index: 1, label: 'n', class: ['numeric'], type: 'double', summary: 'double (1): 1', has_children: false, viewable: true, path: [{ type: 'index', index: 1 }] },
+                { index: 2, label: 'm', class: ['matrix', 'array'], type: 'integer', summary: 'matrix', has_children: false, viewable: true, path: [{ type: 'index', index: 2 }] },
+            ],
+        });
+        assert.deepEqual(page.children.map(child => child.viewable), [false, true]);
     });
 });

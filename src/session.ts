@@ -35,7 +35,7 @@ import type {
 import { showWebView } from './webViewer';
 import { getListViewerScript, listViewerStyle, ListViewNavigation } from './listViewer';
 import { getDataViewerScript, getDataViewerStyle, getDataViewerToolbarHtml } from './dataViewer';
-import { disposeJdvHost, getJdvAddress, showJdvNotification } from './jdvViewer';
+import { disposeJdvHost, getJdvAddress } from './jdvViewer';
 import { getDataViewerColumnPanelHtml, getDataViewerColumnPanelScript, getDataViewerColumnPanelStyle } from './dataViewerColumnPanel';
 import { createViewerSessionContext, formatSessionLabel, getViewerSessionScript, ViewerSessionContext, ViewerSessionSource } from './viewerSession';
 import { SessConsentChoice, SessConsentService } from './sessConsent';
@@ -3137,10 +3137,6 @@ async function handleNotification(message: Record<string, unknown>, socket: IpcS
             break;
         }
         case 'dataview': {
-            if (params.source === 'jdv') {
-                await showJdvNotification(params, socket._sessionId ?? null);
-                break;
-            }
             // R's deparse() can return several title lines. Preserve the
             // comma-separated title previously produced by String(array).
             const title = typeof params.title === 'string' ? params.title
@@ -3211,7 +3207,7 @@ async function handleRequest(message: Record<string, unknown>, socket?: IpcSocke
         try {
             switch (method) {
                 case 'jdv/address': {
-                    // The jdv transport for this session; sess sets it only while calling jdv.
+                    // The per-session jdv transport; sess connects jdv to it when View() is used.
                     const owner = sessions.get(socket?._sessionId ?? '');
                     if (!owner) { throw new Error('The jdv transport requires an attached session'); }
                     const pid = Number(owner.pid);
