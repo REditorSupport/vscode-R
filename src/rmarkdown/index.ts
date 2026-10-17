@@ -20,7 +20,10 @@ export class RMarkdownCodeLensProvider implements vscode.CodeLensProvider {
     private readonly currentCellBottom: vscode.TextEditorDecorationType;
     private onDidChangeTextEditorSelectionHandler: vscode.Disposable | undefined;
 
-    constructor() {
+    constructor(
+        private readonly getVisibleTextEditors: () => readonly vscode.TextEditor[] =
+            () => vscode.window.visibleTextEditors,
+    ) {
         this.decoration = vscode.window.createTextEditorDecorationType({
             isWholeLine: true,
             backgroundColor: config().get('rmarkdown.chunkBackgroundColor'),
@@ -60,7 +63,7 @@ export class RMarkdownCodeLensProvider implements vscode.CodeLensProvider {
     }
 
     private highlightCurrentChunk(chunks: RMarkdownChunk[], document: vscode.TextDocument) {
-        for (const editor of vscode.window.visibleTextEditors) {  
+        for (const editor of this.getVisibleTextEditors()) {
             if (editor.document.uri.toString() === document.uri.toString()) {
                 const lines = document.getText().split(/\r?\n/);
                 const currentLine = editor.selection.active.line;
@@ -80,6 +83,9 @@ export class RMarkdownCodeLensProvider implements vscode.CodeLensProvider {
                         new vscode.Position(currentChunk.endLine, lines[currentChunk.endLine].length)
                     );
                     editor.setDecorations(this.currentCellBottom, [currentChunkEnd]);
+                } else {
+                    editor.setDecorations(this.currentCellTop, []);
+                    editor.setDecorations(this.currentCellBottom, []);
                 }
             }
         }
@@ -87,7 +93,7 @@ export class RMarkdownCodeLensProvider implements vscode.CodeLensProvider {
 
     private highlightChunks(chunks: RMarkdownChunk[], document: vscode.TextDocument) {
         const chunkRanges = chunks.map((chunk) => chunk.chunkRange);
-        for (const editor of vscode.window.visibleTextEditors) {
+        for (const editor of this.getVisibleTextEditors()) {
             if (editor.document.uri.toString() === document.uri.toString()) {
                 editor.setDecorations(this.decoration, chunkRanges);
             }
