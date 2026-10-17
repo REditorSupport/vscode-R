@@ -1355,22 +1355,65 @@ handle_dataview_dispose <- function(params) {
   invisible(NULL)
 }
 
+# The variable that View(<expression>) was called with, for jdv to follow.
+# Returns list(name, env) when the expression is a single symbol bound in the
+# caller's environment or one of its parents, and NULL otherwise. Nothing is
+# evaluated: exists() does not force promises and active bindings are skipped.
+# Tracking needs R 4.6.0 or later and can be disabled with
+# `options(sess.dataviewer.track = FALSE)`.
+.jdv_track_binding <- function(expression, env) {
+  if (!is.symbol(expression) || !nzchar(as.character(expression)) ||
+        !isTRUE(getOption("sess.dataviewer.track", TRUE)) ||
+        getRversion() < "4.6.0") {
+    return(NULL)
+  }
+  name <- as.character(expression)
+  while (!identical(env, emptyenv())) {
+    if (exists(name, envir = env, inherits = FALSE)) {
+      if (bindingIsActive(name, env)) {
+        return(NULL)
+      }
+      return(list(name = name, env = env))
+    }
+    env <- parent.env(env)
+  }
+  NULL
+}
+
 # Show `x` with jdv. Returns FALSE when jdv cannot be used, so the caller falls
 # back to the sess data viewer.
 #
 # The title is jdv's display slot: View() with the same title replaces the view
 # and increments its generation. Grids are paged so that sorting and filtering
-# stay in R. Views are not bound to a variable (`binding`): View() receives the
-# value, not its name, and tracking needs R 4.6.
-.jdv_show <- function(x, title_key) {
+# stay in R. When `binding` names the variable that holds `x`, jdv follows it and
+# rebuilds the view as the next generation after the variable is reassigned. It
+# fails if the binding cannot be read without evaluation or does not hold `x`
+# (for example View(x) called through do.call()); then the view is registered
+# without tracking, since View() must not fail because of it.
+#
+# jdv checks tracked variables from its own task callback and sends the update
+# over the transport itself, so sess needs no task callback of its own for it.
+# Only an embedding host that collects jdv_notifications() must call
+# jdv_rpc(NULL) first.
+.jdv_show <- function(x, title_key, binding = NULL) {
   if (.jdv_is_arrow(x) && !requireNamespace("nanoarrow", quietly = TRUE)) {
     return(FALSE)
   }
   if (!.jdv_connect()) {
     return(FALSE)
   }
+  title <- if (nzchar(title_key)) title_key else NULL
+  if (!is.null(binding)) {
+    registered <- tryCatch({
+      jdv::jdv_register(x, title = title, mode = "paged", binding = binding)
+      TRUE
+    }, error = function(e) FALSE)
+    if (registered) {
+      return(TRUE)
+    }
+  }
   tryCatch({
-    jdv::jdv_register(x, title = if (nzchar(title_key)) title_key else NULL, mode = "paged")
+    jdv::jdv_register(x, title = title, mode = "paged")
     TRUE
   }, error = function(e) FALSE)
 }

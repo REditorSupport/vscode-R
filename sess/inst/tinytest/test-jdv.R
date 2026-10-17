@@ -154,6 +154,56 @@ local({
     expect_identical(stream$title, "stream")
   }
 
+  # View(<symbol>) follows the variable on R 4.6.0 or later, and never on older R.
+  generations <- function(title) {
+    vapply(Filter(function(open) identical(open$title, title), lapply(opens(), `[[`, "params")),
+           function(open) open$generation, integer(1L))
+  }
+  wait_generations <- function(title, n, timeout = 5) {
+    deadline <- Sys.time() + timeout
+    repeat {
+      jdv::jdv_rpc(NULL)
+      found <- generations(title)
+      if (length(found) >= n || Sys.time() > deadline) break
+      Sys.sleep(0.05)
+    }
+    found
+  }
+  tracking <- data.frame(a = 1:3)
+  expect_identical(sess:::.jdv_track_binding(quote(tracking), environment()),
+                   if (getRversion() >= "4.6.0") list(name = "tracking", env = environment()))
+  expect_null(sess:::.jdv_track_binding(quote(head(tracking)), environment()))
+  expect_null(sess:::.jdv_track_binding(quote(no_such_variable_for_sess), environment()))
+  options(sess.dataviewer.track = FALSE)
+  expect_null(sess:::.jdv_track_binding(quote(tracking), environment()))
+  options(sess.dataviewer.track = NULL)
+
+  utils::View(tracking)
+  expect_identical(wait_generations("tracking", 1L), 1L)
+  tracking <- transform(tracking, b = a * 2L)
+  if (getRversion() >= "4.6.0") {
+    expect_identical(wait_generations("tracking", 2L), 1:2)
+    # Assigning the same object again changes nothing.
+    tracking <- tracking
+    expect_identical(wait_generations("tracking", 3L, timeout = 0.5), 1:2)
+  } else {
+    expect_identical(wait_generations("tracking", 2L, timeout = 0.5), 1L)
+  }
+
+  # The opt-out and expressions that are not a single variable stay fixed.
+  options(sess.dataviewer.track = FALSE)
+  fixed <- data.frame(a = 1:3)
+  utils::View(fixed)
+  options(sess.dataviewer.track = NULL)
+  utils::View(head(fixed), "head")
+  fixed <- transform(fixed, b = a * 2L)
+  expect_identical(wait_generations("fixed", 2L, timeout = 0.5), 1L)
+  expect_identical(wait_generations("head", 2L, timeout = 0.5), 1L)
+
+  # A binding that does not hold the object is dropped instead of failing View().
+  expect_true(sess:::.jdv_show(fixed, "mismatch", list(name = "tracking", env = environment())))
+  expect_identical(wait_generations("mismatch", 1L), 1L)
+
   # Releasing the runtime closes the connection that sess opened.
   sess:::.jdv_release()
   expect_identical(jdv::jdv_connection()$state, "disconnected")
