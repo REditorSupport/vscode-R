@@ -13,6 +13,8 @@ export interface JdvCapabilities {
     next: boolean;
     children: boolean;
     refresh?: boolean;
+    /** True only when the view tracks a variable and has not lost it. */
+    track?: boolean;
 }
 
 export interface JdvColumnSchema {
@@ -26,6 +28,8 @@ export interface JdvColumnSchema {
     levels?: string[];
     ordered?: boolean;
     tz?: string;
+    /** `duration` columns: the unit of the values (secs, mins, hours, days or weeks). */
+    units?: string;
 }
 
 export interface JdvDescriptor {
@@ -45,8 +49,22 @@ export interface JdvDescriptor {
     class?: string[];
     type?: string;
     parent?: string;
-    /** Why jdv sent this `view/open`: "register", "tracked", "refresh" or "child". */
+    /**
+     * Why jdv sent this `view/open`: "register", "child", "tracked" or "refresh".
+     * Missing or unknown values mean "register".
+     */
     reason?: string;
+    /** Present only on views that can follow a variable. */
+    tracking?: JdvTracking;
+}
+
+export interface JdvTracking {
+    name: string;
+    state: 'active' | 'paused' | 'lost';
+    /** Fixed token when lost: "removed", "collected" or an unknown value. */
+    reason?: string;
+    /** English display text when lost; not to be parsed. */
+    message?: string;
 }
 
 export type JdvPathStep =
@@ -83,7 +101,25 @@ export function parseDescriptor(value: unknown): JdvDescriptor {
     if (typeof descriptor.reason !== 'string') {
         delete descriptor.reason;
     }
+    const tracking = parseTracking(descriptor.tracking);
+    if (tracking) {
+        descriptor.tracking = tracking;
+    } else {
+        delete descriptor.tracking;
+    }
     return descriptor;
+}
+
+/** Validate a `tracking` object; a malformed one is dropped (`undefined`). */
+export function parseTracking(value: unknown): JdvTracking | undefined {
+    if (!isObject(value) || typeof value.name !== 'string' ||
+        (value.state !== 'active' && value.state !== 'paused' && value.state !== 'lost')) {
+        return undefined;
+    }
+    const tracking: JdvTracking = { name: value.name, state: value.state };
+    if (typeof value.reason === 'string') { tracking.reason = value.reason; }
+    if (typeof value.message === 'string') { tracking.message = value.message; }
+    return tracking;
 }
 
 /**
@@ -137,6 +173,9 @@ function columnTooltip(column: JdvColumnSchema): string {
     }
     if (column.type === 'datetime' && column.tz !== undefined) {
         tooltip += `, tz: ${column.tz || '(local)'}`;
+    }
+    if (column.type === 'duration' && typeof column.units === 'string') {
+        tooltip += `, units: ${column.units}`;
     }
     return tooltip;
 }
@@ -193,6 +232,7 @@ export function gridColumnDefs(descriptor: JdvDescriptor): GridColumnDef[] {
         switch (column.type) {
             case 'integer':
             case 'number':
+            case 'duration':
                 type = 'numericColumn';
                 filter = 'agNumberColumnFilter';
                 filterOptions = ORDER_FILTER_OPTIONS;
@@ -217,9 +257,15 @@ export function gridColumnDefs(descriptor: JdvDescriptor): GridColumnDef[] {
                 type = 'booleanColumn';
                 filter = true;
                 break;
-            default:
+            case 'string':
+            case 'factor':
                 filter = 'agTextColumnFilter';
                 filterOptions = TEXT_FILTER_OPTIONS;
+                break;
+            default:
+                // `list`, `other` and unknown types are display-only: only the NA
+                // options apply. Never infer semantics from `class`.
+                filter = 'agTextColumnFilter';
         }
         // Value operators require `filterable`; `is_na` only needs a missingness mask,
         // which every column has unless its channel failed.
@@ -307,6 +353,14 @@ function numberOperand(value: unknown, column: JdvColumnSchema): unknown {
     return number;
 }
 
+/** Duration operand: a number in the column's units, or a typed `[-]H:MM:SS[.fff]` string. */
+function durationOperand(value: unknown, column: JdvColumnSchema): unknown {
+    if (typeof value === 'string' && /^\s*-?\d+:\d{2}:\d{2}(\.\d+)?\s*$/.test(value)) {
+        return value.trim();
+    }
+    return numberOperand(value, column);
+}
+
 function dateOperand(value: unknown, column: JdvColumnSchema): string {
     // AG Grid date filters use "YYYY-MM-DD HH:mm:ss" in the column's wall time.
     const text = scalarText(value);
@@ -343,15 +397,17 @@ function conditionNode(condition: JsonObject, col: number, column: JdvColumnSche
             if (type === 'false') { return { op: 'is_false', col }; }
             return unsupportedFilter(column, type);
         case 'integer':
-        case 'number': {
+        case 'number':
+        case 'duration': {
+            const operand = column.type === 'duration' ? durationOperand : numberOperand;
             if (type === 'inRange') {
                 return {
                     op: 'between', col,
-                    lower: numberOperand(condition.filter, column), upper: numberOperand(condition.filterTo, column),
+                    lower: operand(condition.filter, column), upper: operand(condition.filterTo, column),
                 };
             }
             const op = ORDER_OPS[String(type)];
-            return op ? { op, col, value: numberOperand(condition.filter, column) } : unsupportedFilter(column, type);
+            return op ? { op, col, value: operand(condition.filter, column) } : unsupportedFilter(column, type);
         }
         case 'int64':
             if (type === 'equals') {
@@ -375,7 +431,8 @@ function conditionNode(condition: JsonObject, col: number, column: JdvColumnSche
             const op = ORDER_OPS[String(type)];
             return op ? { op, col, value: dateOperand(condition.dateFrom, column) } : unsupportedFilter(column, type);
         }
-        default: {
+        case 'string':
+        case 'factor': {
             const value = scalarText(condition.filter);
             // As in the previous viewer, negated text conditions exclude missing values.
             const negate = (node: FilterNode): FilterNode => ({
@@ -391,6 +448,9 @@ function conditionNode(condition: JsonObject, col: number, column: JdvColumnSche
                 default: return unsupportedFilter(column, type);
             }
         }
+        default:
+            // Display-only types (`list`, `other`, unknown) accept only the NA options above.
+            return unsupportedFilter(column, type);
     }
 }
 

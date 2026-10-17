@@ -36,6 +36,8 @@ import { showWebView } from './webViewer';
 import { getListViewerScript, listViewerStyle, ListViewNavigation } from './listViewer';
 import { getDataViewerScript, getDataViewerStyle, getDataViewerToolbarHtml } from './dataViewer';
 import { disposeJdvHost, getJdvAddress } from './jdvViewer';
+import { getFollowScript } from './viewerFollow';
+import type { JdvTracking } from './jdvAdapter';
 import { getDataViewerColumnPanelHtml, getDataViewerColumnPanelScript, getDataViewerColumnPanelStyle } from './dataViewerColumnPanel';
 import { createViewerSessionContext, formatSessionLabel, getViewerSessionScript, ViewerSessionContext, ViewerSessionSource } from './viewerSession';
 import { SessConsentChoice, SessConsentService } from './sessConsent';
@@ -2008,6 +2010,7 @@ export function getViewerSessionContext(sessionId: string | null, saved?: Viewer
 export async function getTableHtml(
     webview: Webview, file: string | undefined, title: string, sessionId: string | null = null,
     refreshable = false,
+    tracking?: JdvTracking,
 ): Promise<string> {
     const sessionHtml = getViewerSessionHtml(sessionId);
     const codicons = webview.asWebviewUri(Uri.file(path.join(resDir, 'codicon.css'))).toString();
@@ -2544,6 +2547,10 @@ export async function getTableHtml(
             });
         }
 
+        ${tracking ? getFollowScript(tracking, 'viewerFollow',
+            '',
+            "setFetchStatus('error', message.error || 'Unable to change following.', false);") : ''}
+
         updateTheme();
         initialize().catch((e) => {
             console.error('[dataview] Initialization failed', e);
@@ -2564,7 +2571,7 @@ export async function getTableHtml(
     </script>
 </head>
 <body>
-    ${getDataViewerToolbarHtml(sessionHtml, refreshable)}
+    ${getDataViewerToolbarHtml(sessionHtml, refreshable, tracking !== undefined)}
     <div id="gridContainer">
         <div id="myGrid" style="height: 100%;"></div>
         ${getDataViewerColumnPanelHtml()}
@@ -2752,6 +2759,7 @@ export function getListHtml(
     navigation?: ListViewNavigation,
     sessionId: string | null = null,
     refreshable = false,
+    tracking?: JdvTracking,
 ): string {
     const documentGeneration = ++documentGenerationRevision;
     documentGenerations.set(webview, documentGeneration);
@@ -2788,6 +2796,7 @@ export function getListHtml(
         <nav id="breadcrumbs" class="breadcrumbs" aria-label="Object path"></nav>
         <button id="reset" class="reset" title="Reset to initial view" aria-label="Reset to initial view"><span class="codicon codicon-discard" aria-hidden="true"></span>Reset</button>
         ${refreshable ? '<button id="refresh" class="refresh" title="Rebuild this view from the current value of the R object" aria-label="Refresh"><span class="codicon codicon-refresh" aria-hidden="true"></span>Refresh</button>' : ''}
+        ${tracking ? '<button id="follow" class="follow" aria-pressed="false" aria-label="Follow"><span class="codicon codicon-eye" aria-hidden="true"></span>Follow</button>' : ''}
         ${getViewerSessionHtml(sessionId)}
     </div>
     <div id="navigation-status" class="navigation-status" role="status"></div>
@@ -2795,7 +2804,7 @@ export function getListHtml(
     <script>
     ${getListViewerScript(documentGeneration, navigation ?? {
         title, path: [], breadcrumbs: [{ label: title, path: [] }],
-    }, refreshable)}
+    }, refreshable, tracking)}
     ${getViewerSessionScript()}
     </script>
 </body>

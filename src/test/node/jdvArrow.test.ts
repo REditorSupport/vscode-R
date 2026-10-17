@@ -137,11 +137,13 @@ suite('jdv transport', () => {
     test('exchanges requests, wakes and Arrow bodies with R', async () => {
         const opened: string[] = [];
         const failures: JsonObject[] = [];
+        const tracking: JsonObject[] = [];
         let peer: JdvPeer | undefined;
         const host = await JdvHost.create(4321, {
             viewOpen: (connection, params) => { peer = connection; opened.push(String(params.view)); },
             viewClosed: () => undefined,
             viewUpdateFailed: (_connection, params) => { failures.push(params); },
+            viewTracking: (_connection, params) => { tracking.push(params); },
             disconnected: () => undefined,
         });
         try {
@@ -155,6 +157,16 @@ suite('jdv transport', () => {
             r.send({ method: 'view/update_failed', params: { view: 'v-1', generation: 1, code: 'limit_exceeded', message: 'too large' } });
             while (failures.length === 0) { await new Promise(resolve => setTimeout(resolve, 5)); }
             assert.equal(failures[0].message, 'too large');
+
+            // A tracking change arrives before the response of the request that caused it.
+            const tracked = peer.request('view/track', { view: 'v-1', generation: 1, enabled: false });
+            const trackRequest = await r.next(line => line.method === 'view/track');
+            assert.deepEqual(trackRequest.params, { view: 'v-1', generation: 1, enabled: false });
+            const paused = { name: 'df', state: 'paused' };
+            r.send({ method: 'view/tracking', params: { view: 'v-1', generation: 1, tracking: paused } });
+            r.send({ id: trackRequest.id, result: { view: 'v-1', generation: 1, tracking: paused }, warnings: [] });
+            assert.deepEqual(await tracked, { view: 'v-1', generation: 1, tracking: paused });
+            assert.deepEqual(tracking, [{ view: 'v-1', generation: 1, tracking: paused }]);
 
             const response = peer.requestWithBody('stream/next', { view: 'v-1', generation: 1, max_rows: 10 });
             const request = await r.next(line => line.method === 'stream/next');
@@ -190,6 +202,7 @@ suite('jdv transport', () => {
             viewOpen: () => undefined,
             viewClosed: () => undefined,
             viewUpdateFailed: () => undefined,
+            viewTracking: () => undefined,
             disconnected: (_peer, why) => { reason = why; },
         });
         try {

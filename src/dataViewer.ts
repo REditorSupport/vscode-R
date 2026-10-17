@@ -40,7 +40,7 @@ export function getDataViewerStyle(): string {
     `;
 }
 
-export function getDataViewerToolbarHtml(sessionHtml = '', refreshable = false): string {
+export function getDataViewerToolbarHtml(sessionHtml = '', refreshable = false, followable = false): string {
     return `
     <div id="viewerToolbar" role="group" aria-label="Data viewer controls">
         <div id="viewerControls">
@@ -51,6 +51,7 @@ export function getDataViewerToolbarHtml(sessionHtml = '', refreshable = false):
         <button id="viewerFit" type="button" aria-pressed="true" title="Keep columns fitted to the available width">Fit width</button>
         <button id="viewerReset" type="button" title="Reset column layout, sorting, filters and page size">Reset view</button>
         ${refreshable ? '<button id="viewerRefresh" type="button" title="Rebuild this view from the current value of the R object">Refresh</button>' : ''}
+        ${followable ? '<button id="viewerFollow" type="button" aria-pressed="false">Follow</button>' : ''}
         </div>
         <div id="viewerInfo">
             <span id="viewerRowCount" role="status" aria-live="polite"></span>

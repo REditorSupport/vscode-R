@@ -2,7 +2,7 @@ import * as assert from 'node:assert/strict';
 import {
     JdvDescriptor, JdvRequestError, TreeAdapter, gridColumnDefs, gridPageFromRows, isVectorType,
     canRefresh, revealsPanel,
-    parseDescriptor, tableRowsParams, toJdvFilter,
+    parseDescriptor, parseTracking, tableRowsParams, toJdvFilter,
 } from '../../jdvAdapter';
 
 const capabilities = { seek: true, sort: true, filter: true, known_total: true, next: false, children: false, refresh: true };
@@ -61,6 +61,60 @@ suite('jdv adapter', () => {
         // Non-filterable columns still offer the NA operators.
         assert.deepEqual(columns[6].jdv, { filterOptions: [], naOptions: true });
         assert.match(columns[2].headerTooltip ?? '', /levels: x, y/);
+    });
+
+    test('keeps text operators to strings and factors, and handles durations', () => {
+        const descriptor = parseDescriptor({
+            ...grid,
+            columns: [
+                { position: 0, name: 's', type: 'string', class: ['character'], sortable: true, filterable: true },
+                { position: 1, name: 'l', type: 'list', class: ['list'], sortable: false, filterable: false },
+                { position: 2, name: 'u', type: 'future', class: ['character'], sortable: true, filterable: true },
+                { position: 3, name: 'o', type: 'other', class: ['character'], sortable: false, filterable: true },
+                { position: 4, name: 'dt', type: 'duration', class: ['difftime'], sortable: true, filterable: true, units: 'mins' },
+            ],
+        });
+        const columns = gridColumnDefs(descriptor);
+        assert.ok(columns[1].jdv?.filterOptions.includes('contains'));
+        // List, other and unknown types are display-only: NA options but no value operators,
+        // whatever `class` suggests. They still follow `sortable`.
+        for (const index of [2, 3, 4]) {
+            assert.deepEqual(columns[index].jdv, { filterOptions: [], naOptions: true }, String(index));
+        }
+        assert.equal(columns[3].sortable, true);
+        assert.equal(columns[4].sortable, false);
+        for (const field of ['2', '3', '4']) {
+            assert.deepEqual(toJdvFilter({ [field]: { filterType: 'text', type: 'jdvNotNa' } }, descriptor),
+                { op: 'not', arg: { op: 'is_na', col: Number(field) - 1 } });
+            assert.throws(() => toJdvFilter({ [field]: { filterType: 'text', type: 'contains', filter: 'x' } }, descriptor),
+                (e: unknown) => e instanceof JdvRequestError && e.code === 'unsupported', field);
+        }
+        // The server may allow an unknown type to be filtered; the host still never guesses.
+        assert.throws(() => toJdvFilter({ '3': { filterType: 'text', type: 'contains', filter: 'x' } }, descriptor),
+            (e: unknown) => e instanceof JdvRequestError && e.code === 'unsupported');
+
+        assert.equal(columns[5].type, 'numericColumn');
+        assert.equal(columns[5].filter, 'agNumberColumnFilter');
+        assert.ok(columns[5].jdv?.filterOptions.includes('inRange'));
+        assert.match(columns[5].headerTooltip ?? '', /units: mins/);
+        assert.deepEqual(toJdvFilter({ '5': { filterType: 'number', type: 'lessThanOrEqual', filter: 90 } }, descriptor),
+            { op: 'le', col: 4, value: 90 });
+        assert.deepEqual(toJdvFilter({ '5': { filterType: 'number', type: 'inRange', filter: 1.5, filterTo: '2:00:00' } }, descriptor),
+            { op: 'between', col: 4, lower: 1.5, upper: '2:00:00' });
+        assert.throws(() => toJdvFilter({ '5': { filterType: 'number', type: 'equals', filter: 'abc' } }, descriptor),
+            (e: unknown) => e instanceof JdvRequestError && e.code === 'invalid_request');
+    });
+
+    test('parses tracking and drops a malformed one', () => {
+        assert.equal(grid.tracking, undefined);
+        const lost = { name: 'df', state: 'lost', reason: 'removed', message: 'gone' };
+        assert.deepEqual(parseDescriptor({ ...grid, tracking: lost }).tracking, lost);
+        assert.deepEqual(parseDescriptor({ ...grid, tracking: { name: 'df', state: 'active', extra: 1 } }).tracking,
+            { name: 'df', state: 'active' });
+        for (const tracking of [null, 'df', { name: 'df' }, { name: 'df', state: 'weird' }, { state: 'active' }]) {
+            assert.equal(parseDescriptor({ ...grid, tracking }).tracking, undefined, JSON.stringify(tracking));
+        }
+        assert.equal(parseTracking([]), undefined);
     });
 
     test('converts sort and filter models', () => {

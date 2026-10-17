@@ -9,8 +9,8 @@ import * as path from 'path';
 import * as vscode from 'vscode';
 import { Uri, ViewColumn, window } from 'vscode';
 import {
-    GridPage, JdvDescriptor, JdvRequestError, JsonObject, TreeAdapter, canRefresh, gridColumnDefs,
-    gridPageFromRows, parseDescriptor, revealsPanel, tableRowsParams,
+    GridPage, JdvDescriptor, JdvRequestError, JdvTracking, JsonObject, TreeAdapter, canRefresh, gridColumnDefs,
+    gridPageFromRows, parseDescriptor, parseTracking, revealsPanel, tableRowsParams,
 } from './jdvAdapter';
 import { SequentialStream } from './jdvArrow';
 import { JdvHost, JdvPeer } from './jdvTransport';
@@ -61,6 +61,7 @@ export function getJdvAddress(sessionId: string, pid: number | undefined): Promi
             },
             viewClosed: (_peer, view, generation) => markClosed(sessionId, view, generation),
             viewUpdateFailed: (_peer, params) => warnUpdateFailed(sessionId, params),
+            viewTracking: (_peer, params) => applyTracking(sessionId, params),
             disconnected: (peer) => {
                 for (const state of panels.values()) {
                     if (state.peer === peer && !state.closed) {
@@ -103,6 +104,37 @@ function warnUpdateFailed(sessionId: string | null, params: JsonObject): void {
     void window.showWarningMessage(`The data viewer could not update "${state.title}": ${reason}`);
 }
 
+/**
+ * `view/tracking` changes the state of the shown generation without a rebuild.
+ * The generation is accepted as is: a pause or loss concerns the view, and a
+ * newer generation arrives as a `view/open` that carries its own state.
+ */
+function applyTracking(sessionId: string | null, params: JsonObject): void {
+    const tracking = parseTracking(params.tracking);
+    if (typeof params.view !== 'string' || !tracking) {
+        return;
+    }
+    const state = panels.get(panelKey(sessionId, params.view));
+    if (!state || !state.descriptor.tracking) {
+        return;
+    }
+    setTracking(state, tracking);
+}
+
+function setTracking(state: JdvPanel, tracking: JdvTracking): void {
+    state.descriptor.tracking = tracking;
+    state.descriptor.capabilities.track = tracking.state !== 'lost';
+    // The webview is gone once the panel is disposed.
+    try {
+        const webview = state.panel.webview;
+        void webview.postMessage({
+            message: 'viewer/tracking', documentGeneration: session.getDocumentGeneration(webview), tracking,
+        });
+    } catch {
+        // Disposed panel: nothing to update.
+    }
+}
+
 function createStream(descriptor: JdvDescriptor, peer: JdvPeer): SequentialStream | undefined {
     if (descriptor.access !== 'sequential') {
         return undefined;
@@ -133,9 +165,10 @@ async function openJdvView(
 ): Promise<void> {
     const key = panelKey(sessionId, descriptor.view);
     const existing = panels.get(key);
-    // A child view opened from a tree carries no title; its parent knows the item.
+    // jdv titles a child view when its parent has a title; older jdv or an untitled
+    // parent leave it to the host-side bookkeeping of the item that was opened.
     const parent = descriptor.parent === undefined ? undefined : panels.get(panelKey(sessionId, descriptor.parent));
-    const title = parent?.childTitle ?? descriptor.title ?? existing?.title ?? 'View';
+    const title = descriptor.title ?? parent?.childTitle ?? existing?.title ?? 'View';
     if (descriptor.kind === 'grid' && descriptor.access !== 'random' && descriptor.access !== 'sequential') {
         // Snapshot grids are not supported; release the view.
         void peer.request('view/close', { view: descriptor.view, generation: descriptor.generation }).catch(() => undefined);
@@ -206,10 +239,11 @@ async function openJdvView(
 async function renderPanel(state: JdvPanel): Promise<string> {
     const webview = state.panel.webview;
     const refreshable = canRefresh(state.descriptor);
+    const tracking = state.descriptor.tracking;
     if (state.descriptor.kind === 'grid') {
-        return session.getTableHtml(webview, undefined, state.title, state.sessionId, refreshable);
+        return session.getTableHtml(webview, undefined, state.title, state.sessionId, refreshable, tracking);
     }
-    return session.getListHtml(webview, state.title, state.tree!.navigation([]), state.sessionId, refreshable);
+    return session.getListHtml(webview, state.title, state.tree!.navigation([]), state.sessionId, refreshable, tracking);
 }
 
 function isPositivePath(value: unknown): value is number[] {
@@ -224,6 +258,10 @@ async function handleMessage(state: JdvPanel, webview: vscode.Webview, message: 
     const current = () => documentGeneration === session.getDocumentGeneration(webview);
     if (message.message === 'dataview/refresh' || message.message === 'listview/refresh') {
         await refreshView(state, webview, documentGeneration);
+        return;
+    }
+    if (message.message === 'viewer/track' && typeof message.enabled === 'boolean') {
+        await trackView(state, webview, documentGeneration, message.enabled);
         return;
     }
     if (message.message === 'dataview/request' && typeof message.requestId === 'number') {
@@ -340,6 +378,37 @@ async function refreshView(state: JdvPanel, webview: vscode.Webview, documentGen
     }
     if (error !== undefined && documentGeneration === session.getDocumentGeneration(webview)) {
         void webview.postMessage({ message: 'viewer/refreshFailed', documentGeneration, error });
+    }
+}
+
+/**
+ * Ask R to pause or resume following the variable. Resuming may rebuild the view,
+ * in which case the new generation arrives as a `view/open` that re-renders the panel;
+ * otherwise the toggle is updated from the result.
+ */
+async function trackView(
+    state: JdvPanel, webview: vscode.Webview, documentGeneration: number, enabled: boolean,
+): Promise<void> {
+    const { view, generation } = state.descriptor;
+    let error: string | undefined;
+    try {
+        if (state.closed) {
+            throw new Error(state.closed);
+        }
+        if (!state.descriptor.tracking) {
+            throw new Error('This view does not follow a variable.');
+        }
+        const result = await state.peer.request('view/track', { view, generation, enabled });
+        const tracking = parseTracking((result as JsonObject | undefined)?.tracking);
+        // A rebuilt view was already applied by its `view/open`.
+        if (tracking && state.descriptor.tracking && (result as JsonObject).generation === state.descriptor.generation) {
+            setTracking(state, tracking);
+        }
+    } catch (e) {
+        error = `Unable to ${enabled ? 'follow' : 'pause following'} the variable: ${errorMessage(e)}`;
+    }
+    if (error !== undefined && documentGeneration === session.getDocumentGeneration(webview)) {
+        void webview.postMessage({ message: 'viewer/trackFailed', documentGeneration, error });
     }
 }
 
