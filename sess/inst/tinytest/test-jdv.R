@@ -219,6 +219,13 @@ local({
   expect_true(sess:::.jdv_show(fixed, "mismatch", list(name = "tracking", env = environment())))
   expect_identical(wait_generations("mismatch", 1L), 1L)
 
+  # Sequential sources cannot be tracked, so no binding is passed for them.
+  if (requireNamespace("nanoarrow", quietly = TRUE)) {
+    stream <- nanoarrow::as_nanoarrow_array_stream(data.frame(a = 1:3))
+    expect_true(sess:::.jdv_show(stream, "arrow", list(name = "stream", env = environment())))
+    expect_identical(wait_generations("arrow", 1L), 1L)
+  }
+
   # Releasing the runtime closes the connection that sess opened.
   sess:::.jdv_release()
   expect_identical(jdv::jdv_connection()$state, "disconnected")

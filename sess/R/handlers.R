@@ -1311,6 +1311,9 @@ handle_dataview_dispose <- function(params) {
 # Returns FALSE, leaving the user's own jdv state untouched, when the sess data
 # viewer should be used instead: jdv is missing or opted out, VS Code offers no
 # transport, or jdv is already connected elsewhere or owned by an embedding host.
+# Every failure, whether a jdv_error (jdv_error_in_use, jdv_error_connect_failed)
+# or the transport request itself failing, means the same fallback, so errors
+# are not told apart.
 .jdv_connect <- function() {
   if (identical(getOption("sess.dataviewer", "auto"), "sess") ||
         !requireNamespace("jdv", quietly = TRUE)) {
@@ -1356,29 +1359,21 @@ handle_dataview_dispose <- function(params) {
 }
 
 # The variable that View(<expression>) was called with, for jdv to follow.
-# Returns list(name, env) when the expression is a single symbol bound in the
-# caller's environment or one of its parents, and NULL otherwise. Nothing is
-# evaluated: exists() does not force promises and active bindings are skipped.
-# Tracking needs R 4.6.0 or later. It follows the VS Code setting
-# `r.session.viewers.trackVariables` (passed to connect() as `track_variables`,
-# default on); `options(sess.dataviewer.track = TRUE/FALSE)`, when set, wins.
+# jdv::jdv_binding() does the lookup without evaluating anything: it returns
+# list(name, env) for a symbol bound in `env` or one of its parents, and NULL
+# for other expressions, unreadable bindings (promises, active bindings), unbound
+# names and R older than 4.6.0. A jdv that predates jdv_binding() is not tracked.
+# sess only adds the gates: the VS Code setting `r.session.viewers.trackVariables`
+# (passed to connect() as `track_variables`, default on), which
+# `options(sess.dataviewer.track = TRUE/FALSE)` overrides in both directions.
 .jdv_track_binding <- function(expression, env) {
   track <- getOption("sess.dataviewer.track", .sess_env$track_variables %||% TRUE)
-  if (!is.symbol(expression) || !nzchar(as.character(expression)) ||
-        !isTRUE(track) || getRversion() < "4.6.0") {
+  if (!is.symbol(expression) || !nzchar(as.character(expression)) || !isTRUE(track) ||
+        !requireNamespace("jdv", quietly = TRUE) ||
+        !exists("jdv_binding", envir = asNamespace("jdv"), inherits = FALSE)) {
     return(NULL)
   }
-  name <- as.character(expression)
-  while (!identical(env, emptyenv())) {
-    if (exists(name, envir = env, inherits = FALSE)) {
-      if (bindingIsActive(name, env)) {
-        return(NULL)
-      }
-      return(list(name = name, env = env))
-    }
-    env <- parent.env(env)
-  }
-  NULL
+  tryCatch(jdv::jdv_binding(expression, env), error = function(e) NULL)
 }
 
 # Show `x` with jdv. Returns FALSE when jdv cannot be used, so the caller falls
@@ -1387,10 +1382,11 @@ handle_dataview_dispose <- function(params) {
 # The title is jdv's display slot: View() with the same title replaces the view
 # and increments its generation. Grids are paged so that sorting and filtering
 # stay in R. When `binding` names the variable that holds `x`, jdv follows it and
-# rebuilds the view as the next generation after the variable is reassigned. It
-# fails if the binding cannot be read without evaluation or does not hold `x`
-# (for example View(x) called through do.call()); then the view is registered
-# without tracking, since View() must not fail because of it.
+# rebuilds the view as the next generation after the variable is reassigned. jdv
+# rejects the binding with a jdv_error if it does not hold `x` (for example
+# View(x) called through do.call()); then the view is registered without
+# tracking, since View() must not fail because of it. Arrow sources are
+# sequential and cannot be tracked, so they never get a binding.
 #
 # jdv checks tracked variables from its own task callback and sends the update
 # over the transport itself, so sess needs no task callback of its own for it.
@@ -1404,16 +1400,18 @@ handle_dataview_dispose <- function(params) {
     return(FALSE)
   }
   title <- if (nzchar(title_key)) title_key else NULL
-  if (!is.null(binding)) {
-    registered <- tryCatch({
-      jdv::jdv_register(x, title = title, mode = "paged", binding = binding)
-      TRUE
-    }, error = function(e) FALSE)
-    if (registered) {
-      return(TRUE)
-    }
-  }
+  # Only jdv errors about the binding are retried without it; anything else
+  # ends in FALSE so that View() falls back to the sess data viewer.
   tryCatch({
+    if (!is.null(binding) && !.jdv_is_arrow(x)) {
+      registered <- tryCatch({
+        jdv::jdv_register(x, title = title, mode = "paged", binding = binding)
+        TRUE
+      }, jdv_error = function(e) FALSE)
+      if (registered) {
+        return(TRUE)
+      }
+    }
     jdv::jdv_register(x, title = title, mode = "paged")
     TRUE
   }, error = function(e) FALSE)
