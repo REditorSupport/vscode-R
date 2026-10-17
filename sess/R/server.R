@@ -11,6 +11,11 @@
 #'   It is not an authentication token or an exclusive ownership claim.
 #' @param auto_activate Logical. Whether vscode-R should select this attachment
 #'   automatically. `FALSE` requires `attachment_id`.
+#' @param track_variables Logical or NULL. Whether the data viewer follows the
+#'   variable passed to `View()` (R >= 4.6 and jdv). The VS Code extension passes
+#'   its `r.session.viewers.trackVariables` setting. `NULL` and `TRUE` both
+#'   enable tracking. `options(sess.dataviewer.track)`, when set, takes
+#'   precedence over this argument.
 #' @return Invisibly returns `TRUE` when the IPC connection and runtime startup
 #'   succeed, or `FALSE` when the IPC endpoint is unavailable.
 #' @details When SESS_DISCOVERY_FILE describes the connected endpoint, an
@@ -23,7 +28,8 @@
 #' @export
 connect <- function(endpoint = NULL, use_rstudioapi = TRUE,
                     plot_backend = c("auto", "jgd", "httpgd", "standard", "native"),
-                    attachment_id = NULL, auto_activate = TRUE) {
+                    attachment_id = NULL, auto_activate = TRUE,
+                    track_variables = NULL) {
   if (!is.null(attachment_id) &&
         !(is.character(attachment_id) && length(attachment_id) == 1L &&
             !is.na(attachment_id) &&
@@ -43,6 +49,7 @@ connect <- function(endpoint = NULL, use_rstudioapi = TRUE,
   # Metadata belongs to this connect call, not to the R process. In particular,
   # a later native attach must not inherit an external terminal's identity.
   .sess_env$attachment_id <- attachment_id
+  .sess_env$track_variables <- !isFALSE(track_variables)
   .sess_env$auto_activate <- auto_activate
   .sess_env$con <- NULL
   .sess_env$pending_responses <- list()
@@ -72,7 +79,8 @@ connect <- function(endpoint = NULL, use_rstudioapi = TRUE,
     .sess_env$reconnect <- list(
       path = discovery_file, endpoint = endpoint,
       options = list(use_rstudioapi = use_rstudioapi, plot_backend = plot_backend,
-                     attachment_id = attachment_id, auto_activate = auto_activate)
+                     attachment_id = attachment_id, auto_activate = auto_activate,
+                     track_variables = track_variables)
     )
   }
 

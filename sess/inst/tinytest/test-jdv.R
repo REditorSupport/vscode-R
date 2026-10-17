@@ -179,6 +179,20 @@ local({
   expect_null(sess:::.jdv_track_binding(quote(tracking), environment()))
   options(sess.dataviewer.track = NULL)
 
+  # The connect() setting turns tracking off; the R option overrides it.
+  sess_env <- sess:::.sess_env
+  setting <- sess_env$track_variables
+  sess_env$track_variables <- FALSE
+  expect_null(sess:::.jdv_track_binding(quote(tracking), environment()))
+  options(sess.dataviewer.track = TRUE)
+  expect_identical(sess:::.jdv_track_binding(quote(tracking), environment()),
+                   if (getRversion() >= "4.6.0") list(name = "tracking", env = environment()))
+  options(sess.dataviewer.track = NULL)
+  sess_env$track_variables <- TRUE
+  expect_identical(sess:::.jdv_track_binding(quote(tracking), environment()),
+                   if (getRversion() >= "4.6.0") list(name = "tracking", env = environment()))
+  sess_env$track_variables <- setting
+
   utils::View(tracking)
   expect_identical(wait_generations("tracking", 1L), 1L)
   tracking <- transform(tracking, b = a * 2L)

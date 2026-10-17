@@ -2108,6 +2108,11 @@
           "default": 500,
           "markdownDescription": "The maximum number of rows per page in the data viewer. `0` means to disable pagination."
         },
+        "r.session.viewers.trackVariables": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "Update the data viewer when the variable passed to `View()` is changed in R, for example `View(df)` followed by `df <- transform(df, ...)`. Requires R >= 4.6 and the [jdv](https://github.com/eitsupi/jdv) package; otherwise the data viewer shows a fixed snapshot. Applies to R sessions started or attached after the setting is changed. `options(sess.dataviewer.track = TRUE/FALSE)` in R takes precedence over this setting. Requires `#r.sessionWatcher#` to be set to `true`."
+        },
         "r.session.viewers.viewColumn": {
           "type": "object",
           "markdownDescription": "Which view column should R-related webviews be displayed? Requires `#r.sessionWatcher#` to be set to `true`.",

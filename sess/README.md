@@ -87,7 +87,8 @@ When you start an R terminal from VS Code, the extension's R profile calls
 sess::connect(
   endpoint = NULL,       # socket/pipe endpoint; see below
   use_rstudioapi = TRUE, # emulate rstudioapi functions
-  plot_backend = "auto"  # or "standard", "httpgd", "jgd", "native"
+  plot_backend = "auto", # or "standard", "httpgd", "jgd", "native"
+  track_variables = NULL # follow the variable passed to View() (R >= 4.6 with jdv); NULL means TRUE
 )
 ```
 
@@ -187,6 +188,8 @@ is used.
 | `SESS_ENDPOINT` | env var | Socket/pipe path used by `connect()`. |
 | `SESS_RSTUDIOAPI` | env var | `TRUE`/`FALSE`; passed as `use_rstudioapi` by the extension's R profile. |
 | `SESS_PLOT_BACKEND` | env var | `auto`, `standard`, `httpgd`, `jgd` or `native`; passed as `plot_backend` by the extension's R profile. |
+| `SESS_TRACK_VARIABLES` | env var | `TRUE`/`FALSE`; passed as `track_variables` by the extension's R profile (setting `r.session.viewers.trackVariables`). |
+| `sess.dataviewer.track` | R option | `TRUE`/`FALSE`; whether `View(<variable>)` follows later changes of the variable (R >= 4.6 with jdv). When set, it takes precedence over `track_variables`. |
 | `JGD_SOCKET` | env var | Socket used by the jgd device; set by the extension. |
 | `sess.quiet` | R option | Set to `TRUE` to suppress the successful connection message. Connection failures remain visible. |
 

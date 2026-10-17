@@ -779,6 +779,7 @@ suite('Session Communication', () => {
             assert.match(source, /auto_activate = TRUE/);
             assert.match(source, /tryCatch\(/);
             assert.match(source, /use_rstudioapi = (TRUE|FALSE)/);
+            assert.match(source, /track_variables = (TRUE|FALSE)/);
             const backgroundSource = await fsp.readFile(backgroundPreparation.scriptPath, 'utf8');
             assert.ok(backgroundSource.includes(`attachment_id = "${backgroundPreparation.attachmentId}"`));
             assert.match(backgroundSource, /auto_activate = FALSE/);
@@ -1075,7 +1076,7 @@ suite('Session Communication', () => {
         assert.ok(commandMatch);
         const scriptPath = JSON.parse(commandMatch[1]) as string;
         const scriptContent = await fsp.readFile(scriptPath, 'utf8');
-        assert.match(scriptContent, /vscode_r_attach_sess\(endpoint, sess_src, managed_root, consent_dir, source_helper, installer_helper, "native", use_rstudioapi = (?:TRUE|FALSE)\)/);
+        assert.match(scriptContent, /vscode_r_attach_sess\(endpoint, sess_src, managed_root, consent_dir, source_helper, installer_helper, "native", use_rstudioapi = (?:TRUE|FALSE), track_variables = (?:TRUE|FALSE)\)/);
         assert.doesNotMatch(scriptContent, /Sys\.(?:setenv|unsetenv)\(JGD_SOCKET/);
     });
 

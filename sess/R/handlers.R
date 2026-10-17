@@ -1359,12 +1359,13 @@ handle_dataview_dispose <- function(params) {
 # Returns list(name, env) when the expression is a single symbol bound in the
 # caller's environment or one of its parents, and NULL otherwise. Nothing is
 # evaluated: exists() does not force promises and active bindings are skipped.
-# Tracking needs R 4.6.0 or later and can be disabled with
-# `options(sess.dataviewer.track = FALSE)`.
+# Tracking needs R 4.6.0 or later. It follows the VS Code setting
+# `r.session.viewers.trackVariables` (passed to connect() as `track_variables`,
+# default on); `options(sess.dataviewer.track = TRUE/FALSE)`, when set, wins.
 .jdv_track_binding <- function(expression, env) {
+  track <- getOption("sess.dataviewer.track", .sess_env$track_variables %||% TRUE)
   if (!is.symbol(expression) || !nzchar(as.character(expression)) ||
-        !isTRUE(getOption("sess.dataviewer.track", TRUE)) ||
-        getRversion() < "4.6.0") {
+        !isTRUE(track) || getRversion() < "4.6.0") {
     return(NULL)
   }
   name <- as.character(expression)
