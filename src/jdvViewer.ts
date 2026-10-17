@@ -9,8 +9,8 @@ import * as path from 'path';
 import * as vscode from 'vscode';
 import { Uri, ViewColumn, window } from 'vscode';
 import {
-    GridPage, JdvDescriptor, JdvRequestError, JsonObject, TreeAdapter, gridColumnDefs,
-    gridPageFromRows, parseDescriptor, tableRowsParams,
+    GridPage, JdvDescriptor, JdvRequestError, JsonObject, TreeAdapter, canRefresh, gridColumnDefs,
+    gridPageFromRows, parseDescriptor, revealsPanel, tableRowsParams,
 } from './jdvAdapter';
 import { SequentialStream } from './jdvArrow';
 import { JdvHost, JdvPeer } from './jdvTransport';
@@ -155,10 +155,12 @@ async function openJdvView(
         existing.stream?.dispose();
         existing.stream = createStream(descriptor, peer);
         existing.panel.title = title;
-        // jdv sends the same notification for View() and for tracked updates, so
-        // an update cannot be told apart. Reveal without taking focus so that an
-        // explicit View() always surfaces the panel.
-        existing.panel.reveal(existing.panel.viewColumn, true);
+        // Updates that R made on its own (a tracked variable, a Refresh click) keep
+        // the panel where it is. Otherwise, including when jdv sends no reason,
+        // reveal without taking focus so that an explicit View() surfaces the panel.
+        if (revealsPanel(descriptor)) {
+            existing.panel.reveal(existing.panel.viewColumn, true);
+        }
         existing.panel.webview.html = await renderPanel(existing);
         return;
     }
@@ -203,10 +205,11 @@ async function openJdvView(
 
 async function renderPanel(state: JdvPanel): Promise<string> {
     const webview = state.panel.webview;
+    const refreshable = canRefresh(state.descriptor);
     if (state.descriptor.kind === 'grid') {
-        return session.getTableHtml(webview, undefined, state.title, state.sessionId);
+        return session.getTableHtml(webview, undefined, state.title, state.sessionId, refreshable);
     }
-    return session.getListHtml(webview, state.title, state.tree!.navigation([]), state.sessionId);
+    return session.getListHtml(webview, state.title, state.tree!.navigation([]), state.sessionId, refreshable);
 }
 
 function isPositivePath(value: unknown): value is number[] {
@@ -219,6 +222,10 @@ async function handleMessage(state: JdvPanel, webview: vscode.Webview, message: 
         return;
     }
     const current = () => documentGeneration === session.getDocumentGeneration(webview);
+    if (message.message === 'dataview/refresh' || message.message === 'listview/refresh') {
+        await refreshView(state, webview, documentGeneration);
+        return;
+    }
     if (message.message === 'dataview/request' && typeof message.requestId === 'number') {
         const reply = (ok: boolean, result?: unknown, error?: string) => {
             if (current()) {
@@ -310,6 +317,29 @@ async function handleMessage(state: JdvPanel, webview: vscode.Webview, message: 
                 message: 'listview/page', documentGeneration, requestId: message.requestId, ...page, error,
             });
         }
+    }
+}
+
+/**
+ * Ask R to rebuild the view. On success the next generation arrives as a `view/open`
+ * that re-renders the panel, so only a failure is reported to the webview.
+ */
+async function refreshView(state: JdvPanel, webview: vscode.Webview, documentGeneration: number): Promise<void> {
+    const { view, generation } = state.descriptor;
+    let error: string | undefined;
+    try {
+        if (state.closed) {
+            throw new Error(state.closed);
+        }
+        if (!canRefresh(state.descriptor)) {
+            throw new Error('This view cannot be refreshed.');
+        }
+        await state.peer.request('view/refresh', { view, generation });
+    } catch (e) {
+        error = `Unable to refresh: ${errorMessage(e)}`;
+    }
+    if (error !== undefined && documentGeneration === session.getDocumentGeneration(webview)) {
+        void webview.postMessage({ message: 'viewer/refreshFailed', documentGeneration, error });
     }
 }
 

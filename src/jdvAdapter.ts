@@ -45,6 +45,8 @@ export interface JdvDescriptor {
     class?: string[];
     type?: string;
     parent?: string;
+    /** Why jdv sent this `view/open`: "register", "tracked", "refresh" or "child". */
+    reason?: string;
 }
 
 export type JdvPathStep =
@@ -76,7 +78,26 @@ export function parseDescriptor(value: unknown): JdvDescriptor {
     if (value.kind === 'grid' && !Array.isArray(value.columns)) {
         throw new Error('Invalid jdv grid descriptor');
     }
-    return value as unknown as JdvDescriptor;
+    const descriptor = value as unknown as JdvDescriptor;
+    // `reason` is optional and may gain values; keep only a string.
+    if (typeof descriptor.reason !== 'string') {
+        delete descriptor.reason;
+    }
+    return descriptor;
+}
+
+/**
+ * Whether a newer generation of an open view should bring its panel to the front.
+ * Updates that R made on its own (a tracked variable, a Refresh click) must not
+ * switch tabs; an explicit View(), an unknown reason or none still reveal.
+ */
+export function revealsPanel(descriptor: JdvDescriptor): boolean {
+    return descriptor.reason !== 'tracked' && descriptor.reason !== 'refresh';
+}
+
+/** Whether the view accepts `view/refresh`. Sequential streams cannot be rewound. */
+export function canRefresh(descriptor: JdvDescriptor): boolean {
+    return descriptor.capabilities.refresh === true && descriptor.access !== 'sequential';
 }
 
 // ---------------------------------------------------------------------------

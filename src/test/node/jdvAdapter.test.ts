@@ -1,6 +1,7 @@
 import * as assert from 'node:assert/strict';
 import {
     JdvDescriptor, JdvRequestError, TreeAdapter, gridColumnDefs, gridPageFromRows, isVectorType,
+    canRefresh, revealsPanel,
     parseDescriptor, tableRowsParams, toJdvFilter,
 } from '../../jdvAdapter';
 
@@ -25,6 +26,28 @@ suite('jdv adapter', () => {
         assert.equal(grid.generation, 2);
         assert.throws(() => parseDescriptor({}));
         assert.throws(() => parseDescriptor({ ...grid, columns: undefined }));
+    });
+
+    test('reveals the panel unless the update is tracked or a refresh', () => {
+        assert.equal(grid.reason, undefined);
+        assert.equal(revealsPanel(grid), true);
+        for (const reason of ['register', 'child', 'something-new']) {
+            assert.equal(revealsPanel(parseDescriptor({ ...grid, reason })), true, reason);
+        }
+        for (const reason of ['tracked', 'refresh']) {
+            const descriptor = parseDescriptor({ ...grid, reason });
+            assert.equal(descriptor.reason, reason);
+            assert.equal(revealsPanel(descriptor), false, reason);
+        }
+        // A non-string reason is ignored.
+        assert.equal(parseDescriptor({ ...grid, reason: 5 }).reason, undefined);
+    });
+
+    test('offers refresh only for refreshable, non-sequential views', () => {
+        assert.equal(canRefresh(grid), true);
+        assert.equal(canRefresh({ ...grid, access: 'sequential' }), false);
+        assert.equal(canRefresh({ ...grid, capabilities: { ...capabilities, refresh: false } }), false);
+        assert.equal(canRefresh({ ...grid, capabilities: { ...capabilities, refresh: undefined } }), false);
     });
 
     test('builds column definitions from the schema', () => {

@@ -2007,6 +2007,7 @@ export function getViewerSessionContext(sessionId: string | null, saved?: Viewer
 
 export async function getTableHtml(
     webview: Webview, file: string | undefined, title: string, sessionId: string | null = null,
+    refreshable = false,
 ): Promise<string> {
     const sessionHtml = getViewerSessionHtml(sessionId);
     const codicons = webview.asWebviewUri(Uri.file(path.join(resDir, 'codicon.css'))).toString();
@@ -2525,6 +2526,24 @@ export async function getTableHtml(
             retryBtn.addEventListener('click', retryCurrentPage);
         }
 
+        const refreshBtn = document.querySelector('#viewerRefresh');
+        if (refreshBtn) {
+            refreshBtn.addEventListener('click', () => {
+                refreshBtn.disabled = true;
+                setFetchStatus('loading', 'Refreshing...', false);
+                vscode.postMessage({ message: 'dataview/refresh', documentGeneration });
+            });
+            // A successful refresh replaces this document, so only failures arrive.
+            window.addEventListener('message', (event) => {
+                const data = event.data;
+                if (data && data.message === 'viewer/refreshFailed' &&
+                    data.documentGeneration === documentGeneration) {
+                    refreshBtn.disabled = false;
+                    setFetchStatus('error', data.error || 'Unable to refresh.', false);
+                }
+            });
+        }
+
         updateTheme();
         initialize().catch((e) => {
             console.error('[dataview] Initialization failed', e);
@@ -2545,7 +2564,7 @@ export async function getTableHtml(
     </script>
 </head>
 <body>
-    ${getDataViewerToolbarHtml(sessionHtml)}
+    ${getDataViewerToolbarHtml(sessionHtml, refreshable)}
     <div id="gridContainer">
         <div id="myGrid" style="height: 100%;"></div>
         ${getDataViewerColumnPanelHtml()}
@@ -2732,6 +2751,7 @@ export function getListHtml(
     title: string,
     navigation?: ListViewNavigation,
     sessionId: string | null = null,
+    refreshable = false,
 ): string {
     const documentGeneration = ++documentGenerationRevision;
     documentGenerations.set(webview, documentGeneration);
@@ -2767,6 +2787,7 @@ export function getListHtml(
         <button id="back" class="back" title="Back" aria-label="Back" disabled><span class="codicon codicon-arrow-left" aria-hidden="true"></span>Back</button>
         <nav id="breadcrumbs" class="breadcrumbs" aria-label="Object path"></nav>
         <button id="reset" class="reset" title="Reset to initial view" aria-label="Reset to initial view"><span class="codicon codicon-discard" aria-hidden="true"></span>Reset</button>
+        ${refreshable ? '<button id="refresh" class="refresh" title="Rebuild this view from the current value of the R object" aria-label="Refresh"><span class="codicon codicon-refresh" aria-hidden="true"></span>Refresh</button>' : ''}
         ${getViewerSessionHtml(sessionId)}
     </div>
     <div id="navigation-status" class="navigation-status" role="status"></div>
@@ -2774,7 +2795,7 @@ export function getListHtml(
     <script>
     ${getListViewerScript(documentGeneration, navigation ?? {
         title, path: [], breadcrumbs: [{ label: title, path: [] }],
-    })}
+    }, refreshable)}
     ${getViewerSessionScript()}
     </script>
 </body>
