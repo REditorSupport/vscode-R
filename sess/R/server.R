@@ -488,8 +488,7 @@ dispatch_message <- function(line) {
       "listview_view" = function(p) handle_listview_view(p$view_id, p$index, p$path),
       "dataview_init" = function(p) handle_dataview_init(p),
       "dataview_page" = function(p) handle_dataview_page(p),
-      "dataview_dispose" = function(p) handle_dataview_dispose(p),
-      "jdv_rpc" = function(p) handle_jdv_rpc(p$request)
+      "dataview_dispose" = function(p) handle_dataview_dispose(p)
     )
 
     if (payload$method %in% names(handlers)) {

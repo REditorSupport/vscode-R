@@ -1294,12 +1294,11 @@ handle_dataview_dispose <- function(params) {
 
 # jdv data viewer backend (experimental) -----------------------------------
 #
-# When the jdv package is available, View() registers data frames, matrices and
-# lists with jdv instead of the sess data viewer. vscode-R relays the jdv
-# protocol through the `jdv_rpc` request. Arrow data is viewed as a forward-only
-# Arrow stream over jdv's own transport, whose address VS Code provides per
-# session. Set `options(sess.dataviewer = "sess")` to keep using the sess data
-# viewer.
+# When the jdv package is available, View() registers data frames, matrices,
+# lists and Arrow data with jdv instead of the sess data viewer. jdv talks to the
+# viewer over its own local transport, whose address VS Code provides per
+# session; sess only registers the views. Set `options(sess.dataviewer = "sess")`
+# to keep using the sess data viewer.
 
 .jdv_arrow_classes <- c("ArrowTabular", "RecordBatchReader", "nanoarrow_array_stream",
                         "polars_data_frame")
@@ -1308,67 +1307,70 @@ handle_dataview_dispose <- function(params) {
   inherits(x, .jdv_arrow_classes)
 }
 
-.dataview_use_jdv <- function(x) {
-  backend <- getOption("sess.dataviewer", "auto")
-  if (identical(backend, "sess")) {
-    return(FALSE)
-  }
-  # Arrow data needs the jdv transport; see .jdv_show_arrow().
-  if (.jdv_is_arrow(x)) {
-    return(FALSE)
-  }
-  requireNamespace("jdv", quietly = TRUE)
-}
-
-# Show Arrow data with jdv without converting it to a data frame. Returns FALSE
-# when jdv cannot be used, so the caller falls back to the sess data viewer.
-.jdv_show_arrow <- function(x, title_key) {
+# Make sure jdv has a persistent connection to this session's viewer host.
+# Returns FALSE, leaving the user's own jdv state untouched, when the sess data
+# viewer should be used instead: jdv is missing or opted out, VS Code offers no
+# transport, or jdv is already connected elsewhere or owned by an embedding host.
+.jdv_connect <- function() {
   if (identical(getOption("sess.dataviewer", "auto"), "sess") ||
-        !requireNamespace("jdv", quietly = TRUE) ||
-        !requireNamespace("nanoarrow", quietly = TRUE)) {
+        !requireNamespace("jdv", quietly = TRUE)) {
     return(FALSE)
   }
-  address <- tryCatch(request_client("jdv/address")$address, error = function(e) NULL)
-  if (!is.character(address) || length(address) != 1L || !nzchar(address)) {
+  tryCatch({
+    connection <- jdv::jdv_connection()
+    if (identical(connection$state, "connected")) {
+      return(is.character(.sess_env$jdv_address) &&
+               identical(connection$address, .sess_env$jdv_address))
+    }
+    if (!identical(connection$state, "disconnected")) {
+      return(FALSE)
+    }
+    address <- request_client("jdv/address")$address
+    if (!is.character(address) || length(address) != 1L || is.na(address) ||
+          !nzchar(address)) {
+      return(FALSE)
+    }
+    # An explicit address leaves discovery.json and the `jdv.address` option of
+    # other jdv hosts the user may run alone.
+    jdv::jdv_connect(address)
+    .sess_env$jdv_address <- address
+    TRUE
+  }, error = function(e) FALSE)
+}
+
+# Close the connection that .jdv_connect() opened, with all of its views.
+.jdv_release <- function() {
+  if (is.null(.sess_env$jdv_address)) {
+    return(invisible(NULL))
+  }
+  address <- .sess_env$jdv_address
+  .sess_env$jdv_address <- NULL
+  if (isNamespaceLoaded("jdv")) {
+    try({
+      if (identical(jdv::jdv_connection()$address, address)) {
+        jdv::jdv_disconnect()
+      }
+    }, silent = TRUE)
+  }
+  invisible(NULL)
+}
+
+# Show `x` with jdv. Returns FALSE when jdv cannot be used, so the caller falls
+# back to the sess data viewer.
+#
+# The title is jdv's display slot: View() with the same title replaces the view
+# and increments its generation. Grids are paged so that sorting and filtering
+# stay in R. Views are not bound to a variable (`binding`): View() receives the
+# value, not its name, and tracking needs R 4.6.
+.jdv_show <- function(x, title_key) {
+  if (.jdv_is_arrow(x) && !requireNamespace("nanoarrow", quietly = TRUE)) {
     return(FALSE)
   }
-  # jdv reads the address when it opens its connection; do not change the
-  # option for other jdv hosts the user may run.
-  op <- options(jdv.address = address)
-  on.exit(options(op), add = TRUE)
-  jdv::jdv_view(x, title = if (nzchar(title_key)) title_key else NULL)
-  TRUE
-}
-
-.jdv_show_view <- function(x, title, title_key) {
-  # The title is jdv's display slot: View() with the same title replaces the
-  # view and increments its generation.
-  registration <- jdv::jdv_register(
-    x,
-    title = if (nzchar(title_key)) title_key else NULL,
-    mode = "paged"
-  )
-  notify_client("dataview", list(
-    title = title,
-    source = "jdv",
-    type = "json",
-    open = registration$open,
-    notifications = I(as.character(registration$notifications))
-  ))
-  registration$id
-}
-
-handle_jdv_rpc <- function(request) {
-  if (!is.character(request) || length(request) != 1L || is.na(request)) {
-    stop("Invalid jdv request")
+  if (!.jdv_connect()) {
+    return(FALSE)
   }
-  if (!requireNamespace("jdv", quietly = TRUE)) {
-    stop("The jdv package is not available")
-  }
-  # Child views opened from lists use jdv's automatic mode; keep them paged so
-  # sorting and filtering stay in R.
-  op <- options(jdv.snapshot_max_cells = 0)
-  on.exit(options(op), add = TRUE)
-  response <- jdv::jdv_rpc(request)
-  if (is.null(response)) NULL else as.character(response)
+  tryCatch({
+    jdv::jdv_register(x, title = if (nzchar(title_key)) title_key else NULL, mode = "paged")
+    TRUE
+  }, error = function(e) FALSE)
 }

@@ -1,18 +1,25 @@
-# View() uses jdv when it is installed and relays the jdv protocol through jdv_rpc.
+# View() uses jdv over a persistent connection to the viewer host when jdv is installed.
 if (!requireNamespace("jdv", quietly = TRUE)) {
   exit_file("jdv is not installed")
 }
 
 local({
+  ns <- asNamespace("sess")
   runtime <- sess:::.sess_env
   previous_con <- runtime$con
   previous_plot_path <- runtime$latest_plot_path
+  original_request_client <- ns$request_client
   pipe <- processx::conn_create_pipepair()
+  host <- NULL
   on.exit({
     sess:::runtime_stop()
+    jdv::jdv_disconnect()
+    unlockBinding("request_client", ns)
+    assign("request_client", original_request_client, envir = ns)
+    lockBinding("request_client", ns)
     runtime$con <- previous_con
     runtime$latest_plot_path <- previous_plot_path
-    jdv::jdv_close()
+    if (!is.null(host)) host$kill()
     lapply(pipe, close)
   }, add = TRUE)
   runtime$con <- pipe[[2L]]
@@ -21,79 +28,134 @@ local({
   options(sess.dataviewer = NULL)
   sess:::runtime_start(use_rstudioapi = FALSE, plot_backend = "standard")
 
+  # VS Code answers `jdv/address` with the address of its per-session listener.
+  stub_address <- function(address) {
+    unlockBinding("request_client", ns)
+    assign("request_client", function(action, args = list()) {
+      if (is.null(address)) stop("no jdv transport") else list(address = address)
+    }, envir = ns)
+    lockBinding("request_client", ns)
+  }
   read_messages <- function() {
     messages <- strsplit(processx::conn_read_chars(pipe[[1L]]), "\n", fixed = TRUE)[[1L]]
     lapply(messages[nzchar(messages)], jsonlite::fromJSON, simplifyVector = FALSE)
   }
-  last_view <- function() {
-    views <- Filter(function(message) identical(message$method, "dataview"), read_messages())
-    expect_length(views, 1L)
-    views[[1L]]$params
-  }
-  jdv_request <- function(method, params) {
-    request <- as.character(jsonlite::toJSON(
-      list(id = "jdv-test", method = method, params = params), auto_unbox = TRUE
-    ))
-    sess:::dispatch_message(as.character(jsonlite::toJSON(
-      list(jsonrpc = "2.0", id = "sess-test", method = "jdv_rpc", params = list(request = request)),
-      auto_unbox = TRUE
-    )))
-    replies <- Filter(function(message) identical(message$id, "sess-test"), read_messages())
-    expect_length(replies, 1L)
-    expect_null(replies[[1L]]$error)
-    jsonlite::fromJSON(replies[[1L]]$result, simplifyVector = FALSE)
+  used_sess_viewer <- function() {
+    any(vapply(read_messages(), function(message) identical(message$method, "dataview"), logical(1L)))
   }
 
   sample <- data.frame(x = c(2, 1, NA), y = c("b", "a", "c"))
+
+  # The opt-out keeps the sess data viewer.
+  options(sess.dataviewer = "sess")
+  stub_address("tcp://127.0.0.1:1")
+  expect_false(sess:::.jdv_connect())
   utils::View(sample)
-  params <- last_view()
-  expect_identical(params$source, "jdv")
-  expect_identical(params$title, "sample")
-  open <- jsonlite::fromJSON(params$open, simplifyVector = FALSE)$params
+  expect_true(used_sess_viewer())
+  options(sess.dataviewer = NULL)
+
+  # Without a transport, or with an unreachable one, View() falls back and leaves jdv alone.
+  stub_address(NULL)
+  expect_false(sess:::.jdv_connect())
+  stub_address("tcp://127.0.0.1:1")
+  expect_false(sess:::.jdv_connect())
+  expect_identical(jdv::jdv_connection()$state, "disconnected")
+  expect_null(runtime$jdv_address)
+  utils::View(sample)
+  expect_true(used_sess_viewer())
+
+  # An embedded session of another jdv user is never taken over.
+  jdv::jdv_register(sample)
+  expect_identical(jdv::jdv_connection()$state, "embedded")
+  stub_address("tcp://127.0.0.1:1")
+  expect_false(sess:::.jdv_connect())
+  utils::View(sample)
+  expect_true(used_sess_viewer())
+  expect_identical(jdv::jdv_connection()$state, "embedded")
+  jdv::jdv_disconnect()
+
+  # A minimal viewer host: it records every line that jdv sends.
+  received <- tempfile(fileext = ".jsonl")
+  port <- NULL
+  for (candidate in sample(20000:60000, 20L)) {
+    host <- processx::process$new(file.path(R.home("bin"), "Rscript"), c("--vanilla", "-e", "
+      args <- commandArgs(TRUE)
+      server <- serverSocket(as.integer(args[1L]))
+      connection <- socketAccept(server, blocking = TRUE, open = 'r+')
+      repeat {
+        line <- readLines(connection, n = 1L)
+        if (!length(line)) break
+        cat(line, '\\n', file = args[2L], append = TRUE, sep = '')
+      }
+    ", candidate, received), stderr = "|")
+    Sys.sleep(1)
+    if (host$is_alive()) {
+      port <- candidate
+      break
+    }
+  }
+  if (is.null(port)) exit_file("no free TCP port for the viewer host")
+  address <- sprintf("tcp://127.0.0.1:%d", port)
+  stub_address(address)
+  host_messages <- function(n, timeout = 10) {
+    deadline <- Sys.time() + timeout
+    repeat {
+      lines <- if (file.exists(received)) readLines(received, warn = FALSE) else character()
+      if (length(lines) >= n || Sys.time() > deadline) break
+      Sys.sleep(0.05)
+    }
+    lapply(lines, jsonlite::fromJSON, simplifyVector = FALSE)
+  }
+  opens <- function() {
+    Filter(function(message) identical(message$method, "view/open"), host_messages(0L))
+  }
+
+  utils::View(sample)
+  expect_false(used_sess_viewer())
+  messages <- host_messages(2L)
+  expect_identical(messages[[1L]]$method, "hello")
+  expect_identical(messages[[1L]]$params$pid, Sys.getpid())
+  expect_identical(runtime$jdv_address, address)
+  connection <- jdv::jdv_connection()
+  expect_identical(connection$state, "connected")
+  expect_true(connection$persistent)
+  expect_identical(connection$address, address)
+
+  # Data frames are paged and titled by their expression.
+  open <- opens()[[1L]]$params
   expect_identical(open$kind, "grid")
   expect_identical(open$access, "random")
+  expect_identical(open$mode, "paged")
+  expect_identical(open$title, "sample")
   expect_identical(open$generation, 1L)
-
-  # Rows are computed in R with jdv sorting.
-  response <- jdv_request("table/rows", list(
-    view = open$view, generation = 1L, offset = 0L, limit = 10L,
-    sort = list(list(col = 0L, desc = FALSE))
-  ))
-  expect_identical(unlist(response$result$data$row_index), c(2L, 1L, 3L))
 
   # The same title replaces the view and increments its generation.
   utils::View(sample)
-  reopened <- jsonlite::fromJSON(last_view()$open, simplifyVector = FALSE)$params
+  host_messages(3L)
+  reopened <- opens()[[2L]]$params
   expect_identical(reopened$view, open$view)
   expect_identical(reopened$generation, 2L)
-  stale <- jdv_request("table/rows", list(view = open$view, generation = 1L))
-  expect_identical(stale$error$code, "stale_generation")
 
-  # Lists open as trees; tables inside them open as paged child views.
+  # Lists open as trees on the same connection.
   nested <- list(a = 1:3, df = sample)
   utils::View(nested)
-  tree <- jsonlite::fromJSON(last_view()$open, simplifyVector = FALSE)$params
+  host_messages(4L)
+  tree <- opens()[[3L]]$params
   expect_identical(tree$kind, "tree")
-  children <- jdv_request("object/children", list(view = tree$view, generation = 1L, path = list()))
-  expect_identical(children$result$children[[2L]]$label, "df")
-  child <- jdv_request("object/open", list(
-    view = tree$view, generation = 1L, path = children$result$children[[2L]]$path
-  ))
-  expect_identical(child$result$kind, "grid")
-  expect_identical(child$result$access, "random")
-  expect_identical(child$result$parent, tree$view)
+  expect_identical(tree$title, "nested")
+  expect_false(used_sess_viewer())
 
-  closed <- jdv_request("view/close", list(view = open$view, generation = 2L))
-  expect_true(closed$result$closed)
+  # Arrow data is a forward-only stream on the same connection.
+  if (requireNamespace("nanoarrow", quietly = TRUE)) {
+    utils::View(nanoarrow::as_nanoarrow_array_stream(sample), "stream")
+    host_messages(5L)
+    stream <- opens()[[4L]]$params
+    expect_identical(stream$access, "sequential")
+    expect_identical(stream$title, "stream")
+  }
 
-  # Arrow data and the explicit opt-out keep the sess data viewer.
-  options(sess.dataviewer = "sess")
-  utils::View(sample)
-  expect_identical(last_view()$source, "table")
-  arrow_like <- structure(list(), class = "polars_data_frame")
-  expect_true(sess:::.jdv_is_arrow(arrow_like))
-  expect_false(sess:::.jdv_show_arrow(arrow_like, "arrow"))
-  options(sess.dataviewer = NULL)
-  # Arrow data never goes through the jdv_rpc relay, which cannot carry Arrow IPC.
-  expect_false(sess:::.dataview_use_jdv(arrow_like))
+  # Releasing the runtime closes the connection that sess opened.
+  sess:::.jdv_release()
+  expect_identical(jdv::jdv_connection()$state, "disconnected")
+  expect_null(runtime$jdv_address)
 })
