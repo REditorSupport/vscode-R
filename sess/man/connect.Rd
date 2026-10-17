@@ -9,7 +9,8 @@ connect(
   use_rstudioapi = TRUE,
   plot_backend = c("auto", "jgd", "httpgd", "standard", "native"),
   attachment_id = NULL,
-  auto_activate = TRUE
+  auto_activate = TRUE,
+  track_variables = NULL
 )
 }
 \arguments{
@@ -29,6 +30,12 @@ ownership claim.}
 
 \item{auto_activate}{Logical. Whether vscode-R should select this attachment
 automatically. \code{FALSE} requires \code{attachment_id}.}
+
+\item{track_variables}{Logical or NULL. Whether the data viewer follows the
+variable passed to \code{View()} (R >= 4.6 and jdv). The VS Code extension passes
+its \code{r.session.viewers.trackVariables} setting. \code{NULL} and \code{TRUE} both
+enable tracking. \code{options(sess.dataviewer.track)}, when set, takes
+precedence over this argument.}
 }
 \value{
 Invisibly returns \code{TRUE} when the IPC connection and runtime startup

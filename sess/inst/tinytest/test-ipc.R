@@ -1,3 +1,6 @@
+# These tests cover the sess data viewer; keep it when jdv is installed.
+options(sess.dataviewer = "sess")
+
 # dispatch_message routes responses to pending_responses
 local({
   .sess_env <- sess:::.sess_env

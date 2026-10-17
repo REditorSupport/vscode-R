@@ -1291,3 +1291,128 @@ handle_dataview_dispose <- function(params) {
   }
   TRUE
 }
+
+# jdv data viewer backend (experimental) -----------------------------------
+#
+# When the jdv package is available, View() registers data frames, matrices,
+# lists and Arrow data with jdv instead of the sess data viewer. jdv talks to the
+# viewer over its own local transport, whose address VS Code provides per
+# session; sess only registers the views. Set `options(sess.dataviewer = "sess")`
+# to keep using the sess data viewer.
+
+.jdv_arrow_classes <- c("ArrowTabular", "RecordBatchReader", "nanoarrow_array_stream",
+                        "polars_data_frame")
+
+.jdv_is_arrow <- function(x) {
+  inherits(x, .jdv_arrow_classes)
+}
+
+# Make sure jdv has a persistent connection to this session's viewer host.
+# Returns FALSE, leaving the user's own jdv state untouched, when the sess data
+# viewer should be used instead: jdv is missing or opted out, VS Code offers no
+# transport, or jdv is already connected elsewhere or owned by an embedding host.
+# Every failure, whether a jdv_error (jdv_error_in_use, jdv_error_connect_failed)
+# or the transport request itself failing, means the same fallback, so errors
+# are not told apart.
+.jdv_connect <- function() {
+  if (identical(getOption("sess.dataviewer", "auto"), "sess") ||
+        !requireNamespace("jdv", quietly = TRUE)) {
+    return(FALSE)
+  }
+  tryCatch({
+    connection <- jdv::jdv_connection()
+    if (identical(connection$state, "connected")) {
+      return(is.character(.sess_env$jdv_address) &&
+               identical(connection$address, .sess_env$jdv_address))
+    }
+    if (!identical(connection$state, "disconnected")) {
+      return(FALSE)
+    }
+    address <- request_client("jdv/address")$address
+    if (!is.character(address) || length(address) != 1L || is.na(address) ||
+          !nzchar(address)) {
+      return(FALSE)
+    }
+    # An explicit address leaves discovery.json and the `jdv.address` option of
+    # other jdv hosts the user may run alone.
+    jdv::jdv_connect(address)
+    .sess_env$jdv_address <- address
+    TRUE
+  }, error = function(e) FALSE)
+}
+
+# Close the connection that .jdv_connect() opened, with all of its views.
+.jdv_release <- function() {
+  if (is.null(.sess_env$jdv_address)) {
+    return(invisible(NULL))
+  }
+  address <- .sess_env$jdv_address
+  .sess_env$jdv_address <- NULL
+  if (isNamespaceLoaded("jdv")) {
+    try({
+      if (identical(jdv::jdv_connection()$address, address)) {
+        jdv::jdv_disconnect()
+      }
+    }, silent = TRUE)
+  }
+  invisible(NULL)
+}
+
+# The variable that View(<expression>) was called with, for jdv to follow.
+# jdv::jdv_binding() does the lookup without evaluating anything: it returns
+# list(name, env) for a symbol bound in `env` or one of its parents, and NULL
+# for other expressions, unreadable bindings (promises, active bindings), unbound
+# names and R older than 4.6.0. A jdv that predates jdv_binding() is not tracked.
+# sess only adds the gates: the VS Code setting `r.session.viewers.trackVariables`
+# (passed to connect() as `track_variables`, default on), which
+# `options(sess.dataviewer.track = TRUE/FALSE)` overrides in both directions.
+.jdv_track_binding <- function(expression, env) {
+  track <- getOption("sess.dataviewer.track", .sess_env$track_variables %||% TRUE)
+  if (!is.symbol(expression) || !nzchar(as.character(expression)) || !isTRUE(track) ||
+        !requireNamespace("jdv", quietly = TRUE) ||
+        !exists("jdv_binding", envir = asNamespace("jdv"), inherits = FALSE)) {
+    return(NULL)
+  }
+  tryCatch(jdv::jdv_binding(expression, env), error = function(e) NULL)
+}
+
+# Show `x` with jdv. Returns FALSE when jdv cannot be used, so the caller falls
+# back to the sess data viewer.
+#
+# The title is jdv's display slot: View() with the same title replaces the view
+# and increments its generation. Grids are paged so that sorting and filtering
+# stay in R. When `binding` names the variable that holds `x`, jdv follows it and
+# rebuilds the view as the next generation after the variable is reassigned. jdv
+# rejects the binding with a jdv_error if it does not hold `x` (for example
+# View(x) called through do.call()); then the view is registered without
+# tracking, since View() must not fail because of it. Arrow sources are
+# sequential and cannot be tracked, so they never get a binding.
+#
+# jdv checks tracked variables from its own task callback and sends the update
+# over the transport itself, so sess needs no task callback of its own for it.
+# Only an embedding host that collects jdv_notifications() must call
+# jdv_rpc(NULL) first.
+.jdv_show <- function(x, title_key, binding = NULL) {
+  if (.jdv_is_arrow(x) && !requireNamespace("nanoarrow", quietly = TRUE)) {
+    return(FALSE)
+  }
+  if (!.jdv_connect()) {
+    return(FALSE)
+  }
+  title <- if (nzchar(title_key)) title_key else NULL
+  # Only jdv errors about the binding are retried without it; anything else
+  # ends in FALSE so that View() falls back to the sess data viewer.
+  tryCatch({
+    if (!is.null(binding) && !.jdv_is_arrow(x)) {
+      registered <- tryCatch({
+        jdv::jdv_register(x, title = title, mode = "paged", binding = binding)
+        TRUE
+      }, jdv_error = function(e) FALSE)
+      if (registered) {
+        return(TRUE)
+      }
+    }
+    jdv::jdv_register(x, title = title, mode = "paged")
+    TRUE
+  }, error = function(e) FALSE)
+}

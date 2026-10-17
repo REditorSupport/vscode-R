@@ -303,6 +303,7 @@ export async function makeTerminalOptions(resource?: vscode.Uri): Promise<vscode
                 SESS_ENDPOINT: null,
                 SESS_DISCOVERY_FILE: discoveryFile,
                 SESS_RSTUDIOAPI: config(configResource).get<boolean>('session.emulateRStudioAPI') ? 'TRUE' : 'FALSE',
+                SESS_TRACK_VARIABLES: config(configResource).get<boolean>('session.viewers.trackVariables') === false ? 'FALSE' : 'TRUE',
                 SESS_PLOT_BACKEND: backend,
             };
             Object.assign(env, jgdVars);

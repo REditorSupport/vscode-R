@@ -40,7 +40,7 @@ export function getDataViewerStyle(): string {
     `;
 }
 
-export function getDataViewerToolbarHtml(sessionHtml = ''): string {
+export function getDataViewerToolbarHtml(sessionHtml = '', refreshable = false, followable = false): string {
     return `
     <div id="viewerToolbar" role="group" aria-label="Data viewer controls">
         <div id="viewerControls">
@@ -50,6 +50,8 @@ export function getDataViewerToolbarHtml(sessionHtml = ''): string {
         <button id="viewerAutoSize" type="button" aria-pressed="false" title="Size columns to their loaded contents">Size to content</button>
         <button id="viewerFit" type="button" aria-pressed="true" title="Keep columns fitted to the available width">Fit width</button>
         <button id="viewerReset" type="button" title="Reset column layout, sorting, filters and page size">Reset view</button>
+        ${refreshable ? '<button id="viewerRefresh" type="button" title="Rebuild this view from the current value of the R object">Refresh</button>' : ''}
+        ${followable ? '<button id="viewerFollow" type="button" aria-pressed="false">Follow</button>' : ''}
         </div>
         <div id="viewerInfo">
             <span id="viewerRowCount" role="status" aria-live="polite"></span>
@@ -131,6 +133,25 @@ export function getDataViewerScript(): string {
                 column.floatingFilter = false;
                 column.suppressSizeToFit = true;
                 column.initialFlex = 0;
+            }
+            if (column.jdv) {
+                // jdv cells hold R-formatted display text, and R evaluates filters.
+                // Offer only the operators jdv implements for this column.
+                const naOptions = column.jdv.naOptions ? [
+                    { displayKey: 'jdvIsNa', displayName: 'Is NA', predicate: () => true, numberOfInputs: 0 },
+                    { displayKey: 'jdvNotNa', displayName: 'Is not NA', predicate: () => true, numberOfInputs: 0 }
+                ] : [];
+                delete column.cellDataType;
+                if (column.type === 'bigintColumn') {
+                    bigintFields.pop();
+                }
+                column.filterParams = {
+                    ...column.filterParams,
+                    buttons: ['reset', 'apply'],
+                    filterOptions: [...column.jdv.filterOptions, ...naOptions],
+                    inRangeInclusive: true
+                };
+                delete column.jdv;
             }
             if (column.type !== 'numericColumn') {
                 delete column.type;

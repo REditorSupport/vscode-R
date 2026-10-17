@@ -184,6 +184,7 @@ vscode_r_attach_sess <- function(endpoint, pkg_path, managed_root, consent_dir,
                                  timeout_seconds = 180,
                                  setup_timeout_seconds = 300,
                                  use_rstudioapi = TRUE,
+                                 track_variables = TRUE,
                                  attachment_id = NULL,
                                  auto_activate = TRUE) {
     if (!is.null(attachment_id) &&
@@ -235,6 +236,11 @@ vscode_r_attach_sess <- function(endpoint, pkg_path, managed_root, consent_dir,
         connect <- get("connect", envir = ns, inherits = FALSE)
         args <- list(endpoint = endpoint, plot_backend = plot_backend,
                      use_rstudioapi = use_rstudioapi)
+        # Tracking is on by default, so only a disabled setting is passed. This
+        # keeps older sess namespaces working.
+        if (!isTRUE(track_variables)) {
+            args$track_variables <- FALSE
+        }
         # Preserve compatibility with older sess namespaces and helper stubs
         # when the caller uses the legacy, untagged attach path.
         if (!is.null(attachment_id)) {

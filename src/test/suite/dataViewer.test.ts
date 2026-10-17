@@ -229,6 +229,30 @@ suite('Data viewer', () => {
         }
     });
 
+    test('jdv columns offer only jdv operators and keep display text', () => {
+        const viewer = viewerScript();
+        const jdvColumns = [
+            { field: '1', headerName: 'n', type: 'numericColumn', filter: 'agNumberColumnFilter', jdv: { filterOptions: ['equals', 'inRange'], naOptions: true } },
+            { field: '2', headerName: 'i', type: 'bigintColumn', filter: 'agBigIntColumnFilter', jdv: { filterOptions: ['equals'], naOptions: false } },
+            { field: '3', headerName: 'd', type: 'dateColumn', filter: 'agDateColumnFilter', jdv: { filterOptions: [], naOptions: true } },
+        ] as (ColDef & { jdv?: unknown })[];
+        const bigintFields = viewer.script.prepareViewerColumns(jdvColumns);
+        assert.strictEqual(bigintFields.length, 0);
+        // Arrays created inside the vm context have a different prototype.
+        const options = (column: ColDef) => Array.from(
+            (column.filterParams as { filterOptions: (string | { displayKey: string })[] }).filterOptions,
+            option => typeof option === 'string' ? option : option.displayKey);
+        assert.deepStrictEqual(options(jdvColumns[0]), ['equals', 'inRange', 'jdvIsNa', 'jdvNotNa']);
+        assert.deepStrictEqual(options(jdvColumns[1]), ['equals']);
+        assert.deepStrictEqual(options(jdvColumns[2]), ['jdvIsNa', 'jdvNotNa']);
+        assert.strictEqual((jdvColumns[0].filterParams as { inRangeInclusive: boolean }).inRangeInclusive, true);
+        assert.strictEqual((jdvColumns[2].filterParams as { browserDatePicker: boolean }).browserDatePicker, true);
+        for (const column of jdvColumns) {
+            assert.strictEqual(column.cellDataType, undefined);
+            assert.strictEqual(column.jdv, undefined);
+        }
+    });
+
     test('high contrast light uses the light grid theme', () => {
         assert.strictEqual(viewerScript(undefined, {}, true).script.getAgTheme(), 'light');
         assert.strictEqual(viewerScript().script.getAgTheme(), 'dark');

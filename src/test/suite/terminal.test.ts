@@ -233,6 +233,7 @@ suite('R Terminal', () => {
             assert.ok(discoveryFile);
             assert.strictEqual(options.env['SESS_ENDPOINT'], null);
             assert.strictEqual(options.env['SESS_RSTUDIOAPI'], 'TRUE');
+            assert.strictEqual(options.env['SESS_TRACK_VARIABLES'], 'TRUE');
             assert.strictEqual(options.env['SESS_PLOT_BACKEND'], 'httpgd');
             assert.ok(options.env['R_PROFILE_USER']);
             assert.ok(options.env['R_PROFILE_USER'].endsWith(path.join('R', 'profile.R')));
