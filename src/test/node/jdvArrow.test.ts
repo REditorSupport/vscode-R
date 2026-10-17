@@ -96,9 +96,12 @@ suite('jdv Arrow views', () => {
 });
 
 /** Connect to a host as R would, returning helpers to drive the protocol. */
-async function fakeR(address: string) {
-    const socket = net.connect(address);
-    await new Promise<void>(resolve => socket.once('connect', () => resolve()));
+async function fakeR(socketPath: string) {
+    const socket = net.connect(socketPath);
+    await new Promise<void>((resolve, reject) => {
+        socket.once('connect', () => resolve());
+        socket.once('error', reject);
+    });
     let buffer = '';
     const lines: Record<string, unknown>[] = [];
     let waiter: (() => void) | undefined;
@@ -140,7 +143,7 @@ suite('jdv transport', () => {
             disconnected: () => undefined,
         });
         try {
-            const r = await fakeR(host.address);
+            const r = await fakeR(host.socketPath);
             r.send({ method: 'hello', params: { protocol: 1, session: 'r-4321-1', pid: 4321, limits: { max_receive_frames: 4, max_receive_bytes: 65536 } } });
             r.send({ method: 'view/open', params: { view: 'v-1', generation: 1 } });
             while (!peer) { await new Promise(resolve => setTimeout(resolve, 5)); }
@@ -182,7 +185,7 @@ suite('jdv transport', () => {
             disconnected: (_peer, why) => { reason = why; },
         });
         try {
-            const r = await fakeR(host.address);
+            const r = await fakeR(host.socketPath);
             r.send({ method: 'hello', params: { protocol: 1, pid: 2, limits: {} } });
             await new Promise<void>(resolve => r.socket.once('close', () => resolve()));
             assert.match(reason, /does not belong/);

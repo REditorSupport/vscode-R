@@ -315,9 +315,10 @@ export class JdvHost {
 
     private constructor(
         private readonly server: net.Server,
-        /** Address in jdv's syntax, for `options(jdv.address = ...)`. */
+        /** Address in jdv's syntax (`npipe:////./pipe/...` on Windows), for R. */
         readonly address: string,
-        private readonly socketPath: string,
+        /** The same endpoint in the form Node's `net` module accepts. */
+        readonly socketPath: string,
         private readonly expectedPid: number | undefined,
         private readonly events: JdvHostEvents,
     ) {
