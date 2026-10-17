@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Accepting a function or method completion that inserts parentheses now opens signature help, respecting `editor.parameterHints.enabled`.
+
 ## 3.2.0 - 2026-10-15
 
 ### Compatibility and upgrade notes

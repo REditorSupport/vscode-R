@@ -12,6 +12,7 @@ import { extensionContext } from './extension';
 import { CommonOptions } from 'child_process';
 import { boundSessionForDocument, onDidBindSessionDocument, Session } from './session';
 import { SessionSignatureHelpProvider } from './signatureHelp';
+import { completionMiddleware } from './completionMiddleware';
 
 export class LanguageService implements Disposable {
     private readonly clients: Map<string, LanguageClient> = new Map();
@@ -170,6 +171,7 @@ export class LanguageService implements Disposable {
                 fileEvents: workspace.createFileSystemWatcher('**/*.{R,r}'),
             },
             middleware: {
+                ...completionMiddleware,
                 provideSignatureHelp: async (document, position, context, token, next) => {
                     const result = await next(document, position, context, token);
                     // An empty LSP result still suppresses other VS Code providers.
