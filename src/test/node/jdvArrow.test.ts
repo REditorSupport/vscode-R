@@ -1,7 +1,7 @@
 import * as assert from 'node:assert/strict';
 import * as net from 'node:net';
 import { tableFromArrays, tableToIPC } from 'apache-arrow';
-import { JdvDescriptor, JdvRequestError, gridColumnDefs, parseDescriptor } from '../../jdvAdapter';
+import { JdvDescriptor, JdvRequestError, JsonObject, gridColumnDefs, parseDescriptor } from '../../jdvAdapter';
 import { SequentialStream, UNAVAILABLE_TEXT, formatScaled, formatTimestamp } from '../../jdvArrow';
 import { JdvHost, JdvPeer } from '../../jdvTransport';
 
@@ -136,10 +136,12 @@ async function fakeR(socketPath: string) {
 suite('jdv transport', () => {
     test('exchanges requests, wakes and Arrow bodies with R', async () => {
         const opened: string[] = [];
+        const failures: JsonObject[] = [];
         let peer: JdvPeer | undefined;
         const host = await JdvHost.create(4321, {
             viewOpen: (connection, params) => { peer = connection; opened.push(String(params.view)); },
             viewClosed: () => undefined,
+            viewUpdateFailed: (_connection, params) => { failures.push(params); },
             disconnected: () => undefined,
         });
         try {
@@ -148,6 +150,11 @@ suite('jdv transport', () => {
             r.send({ method: 'view/open', params: { view: 'v-1', generation: 1 } });
             while (!peer) { await new Promise(resolve => setTimeout(resolve, 5)); }
             assert.deepEqual(opened, ['v-1']);
+
+            // A tracked update that failed is reported with the displayed generation.
+            r.send({ method: 'view/update_failed', params: { view: 'v-1', generation: 1, code: 'limit_exceeded', message: 'too large' } });
+            while (failures.length === 0) { await new Promise(resolve => setTimeout(resolve, 5)); }
+            assert.equal(failures[0].message, 'too large');
 
             const response = peer.requestWithBody('stream/next', { view: 'v-1', generation: 1, max_rows: 10 });
             const request = await r.next(line => line.method === 'stream/next');
@@ -182,6 +189,7 @@ suite('jdv transport', () => {
         const host = await JdvHost.create(1, {
             viewOpen: () => undefined,
             viewClosed: () => undefined,
+            viewUpdateFailed: () => undefined,
             disconnected: (_peer, why) => { reason = why; },
         });
         try {

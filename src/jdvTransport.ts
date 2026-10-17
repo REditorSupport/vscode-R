@@ -302,6 +302,8 @@ export interface JdvHostEvents {
     viewOpen(peer: JdvPeer, params: JsonObject): void;
     /** `view/closed` received from R. */
     viewClosed(peer: JdvPeer, view: string, generation: number): void;
+    /** `view/update_failed` received from R: a tracked variable changed but the view could not be rebuilt. */
+    viewUpdateFailed(peer: JdvPeer, params: JsonObject): void;
     /** The R connection closed; its views are gone. */
     disconnected(peer: JdvPeer, reason: string): void;
 }
@@ -369,6 +371,8 @@ export class JdvHost {
                 } else if (method === 'view/closed' && typeof params.view === 'string' &&
                     typeof params.generation === 'number') {
                     this.events.viewClosed(peer, params.view, params.generation);
+                } else if (method === 'view/update_failed') {
+                    this.events.viewUpdateFailed(peer, params);
                 }
             },
             closed: (peer, reason) => this.events.disconnected(peer, reason),

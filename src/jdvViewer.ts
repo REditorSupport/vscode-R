@@ -60,6 +60,7 @@ export function getJdvAddress(sessionId: string, pid: number | undefined): Promi
                 }
             },
             viewClosed: (_peer, view, generation) => markClosed(sessionId, view, generation),
+            viewUpdateFailed: (_peer, params) => warnUpdateFailed(sessionId, params),
             disconnected: (peer) => {
                 for (const state of panels.values()) {
                     if (state.peer === peer && !state.closed) {
@@ -86,6 +87,20 @@ function markClosed(sessionId: string | null, view: string, generation: number):
     if (state && state.descriptor.generation === generation) {
         state.closed = 'This view was closed in R. Run View() again to refresh it.';
     }
+}
+
+/** A tracked variable changed but jdv could not rebuild the view; the previous generation stays. */
+function warnUpdateFailed(sessionId: string | null, params: JsonObject): void {
+    if (typeof params.view !== 'string') {
+        return;
+    }
+    const state = panels.get(panelKey(sessionId, params.view));
+    // Ignore a failure reported for a generation that is no longer shown.
+    if (!state || state.closed || params.generation !== state.descriptor.generation) {
+        return;
+    }
+    const reason = typeof params.message === 'string' ? params.message : 'unknown error';
+    void window.showWarningMessage(`The data viewer could not update "${state.title}": ${reason}`);
 }
 
 function createStream(descriptor: JdvDescriptor, peer: JdvPeer): SequentialStream | undefined {
@@ -140,6 +155,9 @@ async function openJdvView(
         existing.stream?.dispose();
         existing.stream = createStream(descriptor, peer);
         existing.panel.title = title;
+        // jdv sends the same notification for View() and for tracked updates, so
+        // an update cannot be told apart. Reveal without taking focus so that an
+        // explicit View() always surfaces the panel.
         existing.panel.reveal(existing.panel.viewColumn, true);
         existing.panel.webview.html = await renderPanel(existing);
         return;
