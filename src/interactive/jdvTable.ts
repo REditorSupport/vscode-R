@@ -32,7 +32,7 @@ function descriptorOf(data: Record<string, unknown>): JdvDescriptor {
 }
 
 /**
- * Agent side: turn the raw descriptor and first page that R sent into the data the
+ * Agent side: turn the raw descriptor and preview pages that R sent into the data the
  * renderer, exports and transcript already understand (columns and rows for a
  * table; navigation and children for a list). The parsed descriptor stays so the
  * host can query the same handle later.
@@ -40,15 +40,26 @@ function descriptorOf(data: Record<string, unknown>): JdvDescriptor {
 export function normalizeJdvDisplay(data: Record<string, unknown>): Record<string, unknown> {
     if (!isJdvOutput(data)) { return data; }
     const descriptor = parseDescriptor(parseJson(data.descriptor, 'descriptor'));
-    const page = parseJson(data.page, 'page');
+    const rawPage = data.page;
     const { page: _page, ...rest } = data;
     if (data.kind === 'table' && descriptor.kind === 'grid') {
-        const first = gridPageFromRows(page, 0, TABLE_PAGE_SIZE);
-        return { ...rest, descriptor, columns: gridColumnDefs(descriptor), rows: first.rows, totalRows: first.totalRows };
+        const pages = (Array.isArray(rawPage) ? rawPage : [rawPage]).map(page => parseJson(page, 'page'));
+        const rows: Record<string, unknown>[] = [];
+        let totalRows = 0;
+        for (const raw of pages) {
+            const next = gridPageFromRows(raw, rows.length, TABLE_PAGE_SIZE - rows.length);
+            rows.push(...next.rows);
+            totalRows = next.totalRows;
+            if (rows.length >= TABLE_PAGE_SIZE) { break; }
+        }
+        return { ...rest, descriptor, columns: gridColumnDefs(descriptor), rows, totalRows };
     }
     if (data.kind === 'list' && descriptor.kind === 'tree') {
         const adapter = new TreeAdapter(descriptor, 'List');
-        return { ...rest, descriptor, navigation: adapter.navigation([]), ...adapter.children([], page) };
+        return {
+            ...rest, descriptor, navigation: adapter.navigation([]),
+            ...adapter.children([], parseJson(rawPage, 'page')),
+        };
     }
     throw new Error('The jdv descriptor does not match the output kind');
 }

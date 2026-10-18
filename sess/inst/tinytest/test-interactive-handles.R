@@ -32,10 +32,14 @@ expect_identical(descriptor$nrow, 100L)
 first <- jsonlite::fromJSON(table$page, simplifyVector = FALSE)
 expect_identical(length(first$data$source_row), 20L)
 expect_identical(first$total, 100L)
+single_event <- jsonlite::fromJSON(jsonlite::toJSON(
+  list(page = table$page), auto_unbox = TRUE, null = "null", digits = NA
+), simplifyVector = FALSE)
+expect_identical(single_event$page, table$page)
 
 # A byte-limited page is refilled so the renderer can advance by its page size
 # without skipping rows.
-numeric <- rep(1, 150)
+numeric <- rep(pi, 150)
 numeric[[3L]] <- Inf
 wide <- data.frame(
   id = 1:150, text = rep(strrep("a", 100000), 150),
@@ -43,16 +47,41 @@ wide <- data.frame(
   numeric = numeric, row.names = paste0("row-", 0:149)
 )
 wide_preview <- preview(wide, "table")
-wide_first <- jsonlite::fromJSON(wide_preview$page, simplifyVector = FALSE)
-expect_identical(length(wide_first$data$source_row), 20L)
-expect_identical(unlist(wide_first$data$source_row), 0:19)
-expect_identical(length(wide_first$data$columns[[3L]]$data$values), 20L)
-expect_identical(unlist(wide_first$data$columns[[4L]]$data$na), rep(c(TRUE, FALSE), 10L))
-expect_identical(is.null(wide_first$data$columns[[5L]]$data$special[[1L]]), TRUE)
-expect_identical(is.null(wide_first$data$columns[[5L]]$data$special[[2L]]), TRUE)
-expect_identical(wide_first$data$columns[[5L]]$data$special[[3L]], "pos_inf")
-expect_identical(unlist(wide_first$data$row_labels), paste0("row-", 0:19))
-expect_identical(names(wide_first$data$columns[[1L]]$errors), character())
+expect_true(length(wide_preview$page) > 1L)
+wide_entry <- ns$.interactive_handle_entry(wide_preview$handleId)
+expected_pages <- character()
+offset <- 0L
+while (offset < 20L) {
+  raw_page <- jdv::jdv_handle_request(
+    wide_entry$handle, "grid/rows", list(offset = offset, limit = 20L - offset),
+    max_bytes = ns$.interactive_page_bytes
+  )
+  expected_pages <- c(expected_pages, raw_page)
+  parsed_page <- jsonlite::fromJSON(raw_page, simplifyVector = FALSE)
+  returned <- length(parsed_page$data$source_row)
+  if (returned == 0L) break
+  offset <- offset + returned
+}
+expect_identical(wide_preview$page, expected_pages)
+multi_event <- jsonlite::fromJSON(jsonlite::toJSON(
+  list(page = wide_preview$page), auto_unbox = TRUE, null = "null", digits = NA
+), simplifyVector = FALSE)
+expect_identical(unlist(multi_event$page), expected_pages)
+wide_pages <- lapply(wide_preview$page, jsonlite::fromJSON, simplifyVector = FALSE)
+wide_rows <- unlist(lapply(wide_pages, function(page) page$data$source_row))
+expect_identical(wide_rows, 0:19)
+factor_values <- sum(vapply(wide_pages, function(page) {
+  length(page$data$columns[[3L]]$data$values)
+}, 0L))
+missing_values <- unlist(lapply(wide_pages, function(page) page$data$columns[[4L]]$data$na))
+row_labels <- unlist(lapply(wide_pages, function(page) page$data$row_labels))
+empty_errors <- vapply(wide_pages, function(page) {
+  identical(names(page$data$columns[[1L]]$errors), character())
+}, logical(1L))
+expect_identical(factor_values, 20L)
+expect_identical(missing_values, rep(c(TRUE, FALSE), 10L))
+expect_identical(row_labels, paste0("row-", 0:19))
+expect_true(all(empty_errors))
 
 # Paging, sorting and filtering run in R through the same handle; ids are zero-based rows.
 sorted <- request(table$handleId, "grid/rows", list(

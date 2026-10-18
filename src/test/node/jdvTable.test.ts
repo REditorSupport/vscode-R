@@ -40,6 +40,19 @@ suite('Interactive jdv tables', () => {
         assert.throws(() => normalizeJdvDisplay({ ...display(), kind: 'list' }));
     });
 
+    test('combines raw short preview pages and keeps their display precision', () => {
+        const first = JSON.parse(rowsPage(0, 2)) as { data: { columns: { data: { display: string[] } }[] } };
+        first.data.columns[0].data.display[0] = '3.141592653589793';
+        const onePage = normalizeJdvDisplay(display({ page: [JSON.stringify(first)] }));
+        assert.equal((onePage.rows as unknown[]).length, 2);
+        const data = normalizeJdvDisplay(display({ page: [JSON.stringify(first), rowsPage(2, 2)] }));
+        const rows = data.rows as Record<string, unknown>[];
+        assert.equal(rows.length, 4);
+        assert.deepEqual(rows.map(row => row.__sourceRow), [0, 1, 2, 3]);
+        assert.equal(rows[0]['1'], '3.141592653589793');
+        assert.equal(rows[3]['1'], '4');
+    });
+
     test('offers the operators of the column type', () => {
         const columns = normalizeJdvDisplay(display()).columns as TableColumn[];
         assert.deepEqual(columnOperators(columns[1]).slice(-2), ['blank', 'notBlank']);
