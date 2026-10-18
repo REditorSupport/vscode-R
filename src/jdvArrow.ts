@@ -292,7 +292,14 @@ export class SequentialStream {
             }
             // One stream/next per view generation at a time.
             this.fetching ??= this.fetchUntil(endRow).finally(() => { this.fetching = undefined; });
+            const rowsBeforeFetch = this.rowsSeen;
             await this.fetching;
+            // fetchUntil() bounds consecutive empty pages. Do not immediately
+            // start another round when that bound was reached without progress.
+            // A gap page advances rowsSeen and therefore remains progress.
+            if (this.rowsSeen === rowsBeforeFetch && !this.done) {
+                return;
+            }
         }
     }
 
@@ -317,11 +324,17 @@ export class SequentialStream {
                 }
                 this.store(progress, response.body);
                 empty = 0;
-            } else if (++empty >= MAX_EMPTY_PAGES && !progress.done) {
-                return;
+            } else if (progress.rows_seen > this.rowsSeen) {
+                // A gap has no body, but it advances the stream and is progress.
+                empty = 0;
+            } else {
+                empty++;
             }
             this.rowsSeen = progress.rows_seen;
             this.done = progress.done;
+            if (empty >= MAX_EMPTY_PAGES && !this.done) {
+                return;
+            }
         }
     }
 

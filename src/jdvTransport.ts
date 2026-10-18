@@ -46,6 +46,7 @@ const LIMIT_NAMES = [
 interface OutboundFrame {
     bytes: Buffer;
     wake?: boolean;
+    requestId?: string;
 }
 
 interface PendingRequest {
@@ -118,12 +119,12 @@ export class JdvPeer {
         }
         const id = `vscode-r-${++this.sequence}`;
         const bytes = Buffer.from(JSON.stringify({ id, method, params }) + '\n', 'utf8');
-        if (this.limits && bytes.length > this.limits.maxRequestBytes) {
+        if (this.limits && bytes.length > this.requestByteLimit()) {
             return Promise.reject(new JdvRequestError('limit_exceeded', 'The jdv request is too large.'));
         }
         return new Promise<JdvResponse>((resolve, reject) => {
             this.pending.set(id, { resolve, reject, view: params.view, generation: params.generation });
-            this.outbound.push({ bytes });
+            this.outbound.push({ bytes, requestId: id });
             this.flush();
             this.updateWake();
         });
@@ -259,11 +260,32 @@ export class JdvPeer {
             maxUnackedBytes: limits.max_unacked_bytes as number,
             maxRequestBytes: limits.max_request_bytes as number,
         };
+        this.rejectOversizedQueuedRequests();
         this.session = params.session;
         // The host sends periodic wakes only when the producer asks for them.
         this.wanted = params.wake === true;
         this.flush();
         this.updateWake();
+    }
+
+    private requestByteLimit(): number {
+        return Math.min(this.limits!.maxRequestBytes, this.limits!.maxUnackedBytes);
+    }
+
+    /** Reject requests that were queued before hello supplied the byte limits. */
+    private rejectOversizedQueuedRequests(): void {
+        const limit = this.requestByteLimit();
+        for (let index = this.outbound.length - 1; index >= 0; index--) {
+            const frame = this.outbound[index];
+            if (frame.requestId && frame.bytes.length > limit) {
+                this.outbound.splice(index, 1);
+                const pending = this.pending.get(frame.requestId);
+                if (pending) {
+                    this.pending.delete(frame.requestId);
+                    pending.reject(new JdvRequestError('limit_exceeded', 'The jdv request is too large.'));
+                }
+            }
+        }
     }
 
     private acknowledge(params: JsonObject): void {

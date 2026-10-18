@@ -92,6 +92,39 @@ suite('jdv Arrow views', () => {
         await assert.rejects(stream.ensure(1), (e: unknown) => e instanceof JdvRequestError);
         stream.dispose();
     });
+
+    test('returns after a round of empty non-EOF pages', async () => {
+        let calls = 0;
+        const stream = new SequentialStream(descriptor, () => {
+            calls++;
+            assert.ok(calls <= 64, 'empty pages must not start another fetch round');
+            return Promise.resolve({
+                result: { first_row: 0, rows_fetched: 0, rows_seen: 0, done: false },
+            });
+        }, 10);
+        await stream.ensure(10);
+        assert.equal(calls, 64);
+        assert.equal(stream.rowsSeen, 0);
+        assert.equal(stream.done, false);
+        stream.dispose();
+    });
+
+    test('treats a gap page as progress', async () => {
+        let calls = 0;
+        const stream = new SequentialStream(descriptor, () => {
+            calls++;
+            const gap = calls === 64;
+            return Promise.resolve({
+                result: { first_row: gap ? 5 : 0, rows_fetched: 0, rows_seen: gap ? 5 : 0, done: false },
+            });
+        }, 10);
+        await stream.ensure(1);
+        assert.equal(calls, 64);
+        assert.equal(stream.rowsSeen, 5);
+        assert.equal(stream.rows(0, 5).length, 5);
+        assert.equal(stream.rows(0, 5)[0]['1'], UNAVAILABLE_TEXT);
+        stream.dispose();
+    });
 });
 
 /** Connect to a host as R would, returning helpers to drive the protocol. */
@@ -144,6 +177,42 @@ function helloParams(limits: Record<string, number> = {}): JsonObject {
 }
 
 suite('jdv transport', () => {
+    test('rejects requests that exceed byte limits before or after hello', async () => {
+        for (const limits of [
+            { max_unacked_bytes: 160, max_request_bytes: 4096 },
+            { max_unacked_bytes: 4096, max_request_bytes: 160 },
+        ]) {
+            let peer: JdvPeer | undefined;
+            const host = await JdvHost.create({
+                viewOpen: connection => { peer = connection; },
+                viewClosed: () => undefined,
+                viewUpdateFailed: () => undefined,
+                viewTracking: () => undefined,
+                disconnected: () => undefined,
+            });
+            try {
+                const r = await fakeR(host.socketPath);
+                while (!host.connection) { await new Promise(resolve => setTimeout(resolve, 5)); }
+                peer = host.connection;
+
+                const queuedTooLarge = peer!.request('grid/rows', { text: 'x'.repeat(200) });
+                const queuedSmall = peer!.request('view/close', { view: 'v-1' });
+                r.send({ method: 'hello', params: helloParams(limits) });
+                await assert.rejects(queuedTooLarge,
+                    (e: unknown) => e instanceof JdvRequestError && e.code === 'limit_exceeded');
+                const small = await r.next(line => line.method === 'view/close');
+                r.send({ id: small.id, result: {}, warnings: [] });
+                await queuedSmall;
+
+                await assert.rejects(peer!.request('grid/rows', { text: 'x'.repeat(200) }),
+                    (e: unknown) => e instanceof JdvRequestError && e.code === 'limit_exceeded');
+                r.socket.destroy();
+            } finally {
+                host.dispose();
+            }
+        }
+    });
+
     test('exchanges requests, wakes and Arrow bodies with R', async () => {
         const opened: string[] = [];
         const failures: JsonObject[] = [];
