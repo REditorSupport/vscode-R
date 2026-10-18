@@ -15,6 +15,7 @@ import { Transcript, TranscriptCell } from './transcript';
 import { DISPLAY_MIME, InteractiveSerializer, persistentCellMetadata, persistentNotebookMetadata, restoredCellMetadata } from './notebook';
 import { setInteractiveExecutor } from './executionTarget';
 import * as session from '../session';
+import { disposeJdvHost, getJdvAddress } from '../jdvViewer';
 import * as util from '../util';
 import type { ListViewNavigation } from '../listViewer';
 import { escapeXml } from './plotSvg';
@@ -26,6 +27,7 @@ import { readExecutionRecords, readPreviousJournal } from './journal';
 import { sessionAge, sessionPresentation } from './sessionPresentation';
 import { runningSessions, stopSession } from './sessionLifecycle';
 import { InteractiveInputFeatures } from './inputFeatures';
+import { acquireInteractiveJdvAddress, disposeInteractiveJdvHostOnControlLoss } from './jdvAddress';
 
 interface InteractiveView {
     client: AgentClient;
@@ -50,6 +52,10 @@ interface InteractiveView {
 
 interface SessionChoice extends vscode.QuickPickItem { manifest?: SessionManifest; arf?: ArfSession; create?: boolean; terminal?: boolean }
 interface SavedConnection { id: string; notebookUri?: string }
+
+function interactiveJdvHostKey(id: string, generation: string): string {
+    return `interactive:${id}:${generation}`;
+}
 
 export class InteractiveManager implements vscode.Disposable, vscode.TreeDataProvider<SessionManifest> {
     private views = new Map<string, InteractiveView>();
@@ -797,12 +803,23 @@ export class InteractiveManager implements vscode.Disposable, vscode.TreeDataPro
     }
 
     private listen(view: InteractiveView, client: AgentClient): void {
+        const hostKey = interactiveJdvHostKey(client.manifest.id, client.manifest.generation);
+        let hadControl = client.control;
         client.on('event', (event: SessionEvent) => {
             if (view.client !== client) { return; }
             view.chain = view.chain.then(() => this.event(view, event)).catch(error => this.report(error));
         });
-        client.on('activity', () => { if (view.client === client) { this.updateStatus(); this.changes.fire(undefined); } });
+        client.on('activity', () => {
+            if (view.client !== client) { return; }
+            const hasControl = client.control;
+            disposeInteractiveJdvHostOnControlLoss(hadControl, hasControl,
+                () => disposeJdvHost(hostKey));
+            hadControl = hasControl;
+            this.updateStatus(); this.changes.fire(undefined);
+        });
         client.on('disconnect', () => {
+            disposeJdvHost(hostKey);
+            hadControl = false;
             if (view.client !== client || view.restarting) { return; }
             this.updateStatus(); this.changes.fire(undefined); this.reconnect(view, 1000);
         });
@@ -964,6 +981,9 @@ export class InteractiveManager implements vscode.Disposable, vscode.TreeDataPro
             if (typeof event.data.runtimeSessionId === 'string') { view.client.manifest.runtimeSessionId = event.data.runtimeSessionId; }
             view.target.pid = typeof event.data.rPid === 'number' ? String(event.data.rPid) : ''; view.target.rVer = typeof event.data.rVersion === 'string' ? event.data.rVersion : '';
             this.refresh();
+            if (event.data.status === 'exited') {
+                disposeJdvHost(interactiveJdvHostKey(view.client.manifest.id, view.client.manifest.generation));
+            }
             if (event.data.status === 'exited' && !view.restarting) {
                 await this.sessionNotice(view, 'stopped');
                 for (const cell of this.transcriptCells(view)) {
@@ -1200,7 +1220,29 @@ export class InteractiveManager implements vscode.Disposable, vscode.TreeDataPro
         const client = view.client;
         const params = object(data.params ?? {});
         try {
-            const result = await session.handleEditorRequest(String(data.method), params);
+            let result: unknown;
+            if (data.method === 'jdv/address') {
+                const sessionId = view.target.sessionId;
+                const generation = view.model.generation;
+                const manifestGeneration = client.manifest.generation;
+                const hostKey = interactiveJdvHostKey(client.manifest.id, manifestGeneration);
+                const pid = Number(client.manifest.rPid);
+                const canConnect = () => client.control && !view.target.processExited &&
+                    !['stopping', 'exited'].includes(client.manifest.status);
+                const address = await acquireInteractiveJdvAddress({
+                    sessionId, hostKey,
+                    pid: Number.isSafeInteger(pid) && pid > 0 ? pid : undefined,
+                    canConnect,
+                    isCurrent: () => !view.disposed && view.client === client && !view.restarting &&
+                        view.target.sessionId === sessionId && view.model.generation === generation &&
+                        client.manifest.generation === manifestGeneration,
+                    getAddress: getJdvAddress,
+                    disposeHost: disposeJdvHost,
+                });
+                result = { address };
+            } else {
+                result = await session.handleEditorRequest(String(data.method), params);
+            }
             await client.request('clientReply', { id: data.id, result });
         } catch (error) { await client.request('clientReply', { id: data.id, error: String(error) }).catch(() => undefined); }
     }
@@ -1443,6 +1485,7 @@ export class InteractiveManager implements vscode.Disposable, vscode.TreeDataPro
         try {
             const answer = await vscode.window.showWarningMessage(`Restart R session “${view.client.manifest.label}”? Its in-memory objects will be lost. Code, output, and input will stay in this Interactive window.`, { modal: true }, 'Restart Session');
             if (answer !== 'Restart Session' || view.disposed) { return; }
+            disposeJdvHost(interactiveJdvHostKey(view.client.manifest.id, view.client.manifest.generation));
             const storage = path.join(this.root, view.client.manifest.id);
             let config = JSON.parse(fs.readFileSync(path.join(storage, 'config.json'), 'utf8')) as AgentConfig;
             // Re-evaluate auto and honor repaired settings; the saved config records
@@ -1611,6 +1654,7 @@ export class InteractiveManager implements vscode.Disposable, vscode.TreeDataPro
     private disposeView(view: InteractiveView, forget = true): void {
         if (view.disposed) { return; }
         view.disposed = true; clearTimeout(view.timer); clearTimeout(view.reconnectTimer);
+        disposeJdvHost(interactiveJdvHostKey(view.client.manifest.id, view.client.manifest.generation));
         view.client.close(); for (const { task } of view.executions.values()) { task.end(undefined); }
         view.executions.clear();
         for (const controller of view.controllers) { controller.dispose(); }

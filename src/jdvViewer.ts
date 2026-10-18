@@ -14,6 +14,7 @@ import {
 } from './jdvAdapter';
 import { SequentialStream } from './jdvArrow';
 import { JdvHost, JdvPeer } from './jdvTransport';
+import { disposeJdvHostIfCurrentAddress } from './jdvHostLifecycle';
 import { extensionContext } from './extension';
 import * as session from './session';
 import { config, UriIcon } from './util';
@@ -39,8 +40,8 @@ const panels = new Map<string, JdvPanel>();
 const hosts = new Map<string, Promise<JdvHost>>();
 
 /** The jdv transport address for a session, creating its listener on first use. */
-export function getJdvAddress(sessionId: string, pid: number | undefined): Promise<string> {
-    let host = hosts.get(sessionId);
+export function getJdvAddress(sessionId: string, pid: number | undefined, hostKey = sessionId): Promise<string> {
+    let host = hosts.get(hostKey);
     if (!host) {
         host = JdvHost.create(pid, {
             viewOpen: (peer, params) => {
@@ -70,16 +71,24 @@ export function getJdvAddress(sessionId: string, pid: number | undefined): Promi
                 }
             },
         });
-        hosts.set(sessionId, host);
-        host.catch(() => hosts.delete(sessionId));
+        hosts.set(hostKey, host);
+        void host.catch(() => {
+            if (hosts.get(hostKey) === host) { hosts.delete(hostKey); }
+        });
     }
     return host.then(value => value.address);
 }
 
 /** Close the session's jdv listener when the session ends. */
-export function disposeJdvHost(sessionId: string): void {
-    const host = hosts.get(sessionId);
-    hosts.delete(sessionId);
+export function disposeJdvHost(hostKey: string): void;
+export function disposeJdvHost(hostKey: string, expectedAddress: string): Promise<void>;
+export function disposeJdvHost(hostKey: string, expectedAddress?: string): void | Promise<void> {
+    if (expectedAddress !== undefined) {
+        return disposeJdvHostIfCurrentAddress(hosts, hostKey, expectedAddress,
+            host => host.address, host => host.dispose()).then(() => undefined);
+    }
+    const host = hosts.get(hostKey);
+    hosts.delete(hostKey);
     void host?.then(value => value.dispose(), () => undefined);
 }
 

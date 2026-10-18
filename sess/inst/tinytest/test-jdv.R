@@ -8,6 +8,7 @@ local({
   runtime <- sess:::.sess_env
   previous_con <- runtime$con
   previous_plot_path <- runtime$latest_plot_path
+  previous_interactive_connected <- runtime$interactive_connected
   original_request_client <- ns$request_client
   pipe <- processx::conn_create_pipepair()
   host <- NULL
@@ -19,6 +20,7 @@ local({
     lockBinding("request_client", ns)
     runtime$con <- previous_con
     runtime$latest_plot_path <- previous_plot_path
+    runtime$interactive_connected <- previous_interactive_connected
     if (!is.null(host)) host$kill()
     lapply(pipe, close)
   }, add = TRUE)
@@ -225,6 +227,15 @@ local({
     expect_true(sess:::.jdv_show(stream, "arrow", list(name = "stream", env = environment())))
     expect_identical(wait_generations("arrow", 1L), 1L)
   }
+
+  # Explicit View() in Interactive opens the regular jdv panel before trying
+  # the inline rich-output path used by ordinary cell results.
+  runtime$interactive_connected <- TRUE
+  utils::View(sample, "interactive explicit")
+  runtime$interactive_connected <- FALSE
+  host_messages(1L)
+  expect_identical(tail(vapply(opens(), function(message) message$params$title, ""), 1L),
+                   "interactive explicit")
 
   # Releasing the runtime closes the connection that sess opened.
   sess:::.jdv_release()

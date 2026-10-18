@@ -17,6 +17,8 @@ import { queryTablePage, TableColumn, tableSchema } from '../../interactive/tabl
 import { AssetStorageStats, readAsset } from '../../interactive/assets';
 import { assertSvgTextVisible } from '../svgAssertions';
 import { rString } from '../../interactive/backends/rCode';
+import { JdvHost, JdvPeer } from '../../jdvTransport';
+import { JsonObject } from '../../jdvAdapter';
 
 const run = promisify(execFile);
 const delay = (ms: number): Promise<void> => new Promise(resolve => setTimeout(resolve, ms));
@@ -83,6 +85,50 @@ const delay = (ms: number): Promise<void> => new Promise(resolve => setTimeout(r
     function text(id: string): string {
         return events.filter(event => event.executionId === id && event.type === 'stream').map(event => event.data.text).join('');
     }
+
+    test('opens jdv from an Interactive cell and serves a page while R is idle', async function () {
+        const availability = await run('Rscript', ['--vanilla', '-e', "cat(requireNamespace('jdv', quietly=TRUE))"]);
+        if (availability.stdout.trim() !== 'TRUE') { this.skip(); return; }
+
+        let resolveOpen!: (value: { peer: JdvPeer; params: JsonObject }) => void;
+        let rejectOpen!: (reason: Error) => void;
+        const opened = new Promise<{ peer: JdvPeer; params: JsonObject }>((resolve, reject) => {
+            resolveOpen = resolve; rejectOpen = reject;
+        });
+        const host = await JdvHost.create(manifest.rPid, {
+            viewOpen: (peer, params) => resolveOpen({ peer, params }),
+            viewClosed: () => undefined,
+            viewUpdateFailed: () => undefined,
+            viewTracking: () => undefined,
+            disconnected: (_peer, reason) => rejectOpen(new Error(reason)),
+        });
+        const onEvent = (event: SessionEvent): void => {
+            if (event.type !== 'clientRequest' || event.data.method !== 'jdv/address') { return; }
+            void client.request('clientReply', {
+                id: event.data.id, result: { address: host.address },
+            }).catch(error => rejectOpen(error instanceof Error ? error : new Error(String(error))));
+        };
+        client.on('event', onEvent);
+        try {
+            const id = await submit('utils::View(data.frame(a = 1:3, b = letters[1:3]), "interactive jdv test")');
+            assert.strictEqual((await finished(id)).state, 'success');
+            const { peer, params } = await Promise.race([
+                opened,
+                new Promise<never>((_resolve, reject) => setTimeout(() => reject(new Error('Timed out waiting for jdv view/open')), 10000)),
+            ]);
+            assert.strictEqual(params.kind, 'grid');
+            assert.strictEqual(params.access, 'random');
+            const result = await peer.request('table/rows', {
+                view: params.view, generation: params.generation, offset: 0, limit: 2,
+            }) as JsonObject;
+            const data = result.data as JsonObject;
+            assert.deepStrictEqual(data.row_index, [1, 2]);
+            assert.strictEqual(result.total, 3);
+        } finally {
+            client.off('event', onEvent);
+            host.dispose();
+        }
+    });
 
     test('streams output before completion and keeps one R environment', async () => {
         const id = await submit('answer <- 42; cat("early λ🙂\\n"); Sys.sleep(0.5); cat("late\\n"); answer');
