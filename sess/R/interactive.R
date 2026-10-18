@@ -369,9 +369,153 @@ interactive_execute <- function(id, code, source = NULL) {
   list(value = snapshot, source_rows = source_rows, truncated = truncated)
 }
 
+# jdv handles back the inline table and list previews ------------------------
+#
+# Each table or list output holds one registry-free jdv handle (no viewer slot,
+# no notifications). The agent sends the descriptor and the first page to the
+# extension, which pages, sorts, filters and explores through `jdv_handle_request`
+# inspections. Handles are closed when the output is cleared, the registry
+# exceeds its bound, or the Interactive bridge stops; jdv also closes
+# unreachable handles. Without jdv (or with options(sess.dataviewer = "sess"))
+# the previous dataview registry serves the same outputs.
+
+.interactive_handle_limit <- 64L
+.interactive_page_bytes <- 256L * 1024L
+
+.interactive_jdv_usable <- function() {
+  !identical(getOption("sess.dataviewer", "auto"), "sess") &&
+    requireNamespace("jdv", quietly = TRUE)
+}
+
+.interactive_handle_store <- function() {
+  if (is.null(.sess_env$interactive_handles)) {
+    .sess_env$interactive_handles <- new.env(parent = emptyenv())
+    .sess_env$interactive_handle_order <- character()
+    .sess_env$interactive_handle_seq <- 0L
+  }
+  .sess_env$interactive_handles
+}
+
+.interactive_handle_close <- function(id) {
+  store <- .interactive_handle_store()
+  if (is.character(id) && length(id) == 1L && exists(id, envir = store, inherits = FALSE)) {
+    entry <- get(id, envir = store, inherits = FALSE)
+    rm(list = id, envir = store)
+    .sess_env$interactive_handle_order <- setdiff(.sess_env$interactive_handle_order, id)
+    try(jdv::jdv_handle_close(entry$handle), silent = TRUE)
+  }
+  invisible(NULL)
+}
+
+.interactive_handle_close_all <- function() {
+  for (id in .sess_env$interactive_handle_order) .interactive_handle_close(id)
+  invisible(NULL)
+}
+
+.interactive_handle_entry <- function(id) {
+  store <- .interactive_handle_store()
+  if (!is.character(id) || length(id) != 1L || !exists(id, envir = store, inherits = FALSE)) {
+    stop("This output's data is no longer available. Run its code again.")
+  }
+  get(id, envir = store, inherits = FALSE)
+}
+
+# Capture `value` and read its descriptor and first page. Returns NULL, leaving no
+# handle behind, when jdv cannot represent the value; the caller then uses the
+# dataview registry.
+.interactive_handle_preview <- function(value, kind) {
+  if (!.interactive_jdv_usable()) return(NULL)
+  handle <- NULL
+  tryCatch({
+    handle <- jdv::jdv_handle(value, mode = "paged")
+    descriptor <- jdv::jdv_handle_descriptor(handle, max_bytes = .interactive_page_bytes)
+    page <- if (kind == "table") {
+      jdv::jdv_handle_request(handle, "grid/rows", list(offset = 0L, limit = 20L),
+                              max_bytes = .interactive_page_bytes)
+    } else {
+      jdv::jdv_handle_request(
+        handle, "object/children",
+        list(path = list(), offset = 0L, limit = 200L, attributes = FALSE),
+        max_bytes = .interactive_page_bytes)
+    }
+    store <- .interactive_handle_store()
+    .sess_env$interactive_handle_seq <- .sess_env$interactive_handle_seq + 1L
+    id <- paste0("h", .sess_env$interactive_handle_seq)
+    assign(id, list(handle = handle, value = value), envir = store)
+    .sess_env$interactive_handle_order <- c(.sess_env$interactive_handle_order, id)
+    while (length(.sess_env$interactive_handle_order) > .interactive_handle_limit) {
+      .interactive_handle_close(.sess_env$interactive_handle_order[[1L]])
+    }
+    list(handleId = id, descriptor = descriptor, page = page)
+  }, error = function(e) {
+    if (!is.null(handle)) try(jdv::jdv_handle_close(handle), silent = TRUE)
+    NULL
+  })
+}
+
+handle_jdv_request <- function(params) {
+  entry <- .interactive_handle_entry(params$handle_id)
+  method <- params$method
+  if (!identical(method, "grid/rows") && !identical(method, "object/children")) {
+    stop("Unsupported jdv handle method")
+  }
+  max_bytes <- suppressWarnings(as.integer(params$max_bytes %||% .interactive_page_bytes))
+  if (is.na(max_bytes) || max_bytes < 1L) max_bytes <- .interactive_page_bytes
+  list(json = jdv::jdv_handle_request(entry$handle, method, params$params %||% list(),
+                                      max_bytes = max_bytes))
+}
+
+handle_jdv_handle_close <- function(params) {
+  .interactive_handle_close(params$handle_id)
+  TRUE
+}
+
+# Select the value at a typed jdv path (index, binding, slot or attr steps).
+.interactive_resolve_path <- function(value, path) {
+  for (step in path) {
+    value <- switch(
+      step$type,
+      index = value[[as.integer(step$index)]],
+      binding = get(step$name, envir = value, inherits = FALSE),
+      slot = methods::slot(value, step$name),
+      attr = attr(value, step$name, exact = TRUE),
+      stop("Unsupported path step")
+    )
+  }
+  value
+}
+
+# Show the output's value, or the element at `path`, in the Data Viewer panel by
+# registering it through the stage A jdv connection. Returns FALSE when the panel
+# cannot be opened.
+handle_jdv_open_viewer <- function(params) {
+  entry <- .interactive_handle_entry(params$handle_id)
+  value <- .interactive_resolve_path(entry$value, params$path %||% list())
+  title <- params$title
+  address <- params$address
+  .jdv_show(value, if (is.character(title) && length(title) == 1L) title else "",
+            address = if (is.character(address) && length(address) == 1L) address)
+}
+
 .interactive_rich_value <- function(value) {
   if (dataview_is_table(value)) {
     snapshot <- .interactive_table_snapshot(value)
+    preview <- if (is.data.frame(value) || is.matrix(value)) {
+      .interactive_handle_preview(value, "table")
+    }
+    if (!is.null(preview)) {
+      printed <- .interactive_table_text(snapshot$value)
+      if (snapshot$truncated && !is.null(printed$printedText)) {
+        printed$printedText <- paste0(printed$printedText, sprintf(
+          "\n[Snapshot: first %s of %s rows. Open Data viewer for the full table.]\n",
+          format(nrow(snapshot$value), big.mark = ",", scientific = FALSE, trim = TRUE),
+          format(snapshot$source_rows, big.mark = ",", scientific = FALSE, trim = TRUE)))
+      }
+      .interactive_event("display", c(list(kind = "table", handleId = preview$handleId,
+                                           descriptor = preview$descriptor, page = preview$page,
+                                           sourceRows = snapshot$source_rows), printed))
+      return(TRUE)
+    }
     registration <- dataview_register(snapshot$value)
     metadata <- handle_dataview_init(list(view_id = registration$view_id))
     preview <- handle_dataview_page(list(view_id = registration$view_id,
@@ -402,6 +546,13 @@ interactive_execute <- function(id, code, source = NULL) {
     return(TRUE)
   }
   if (is.list(value) && !is.object(value)) {
+    preview <- .interactive_handle_preview(value, "list")
+    if (!is.null(preview)) {
+      .interactive_event("display", c(list(kind = "list", handleId = preview$handleId,
+                                           descriptor = preview$descriptor, page = preview$page),
+                                      .interactive_table_text(value)))
+      return(TRUE)
+    }
     view_id <- dataview_new_id()
     # Nested panels reuse the root's owner; separate cell results must stay independent.
     root <- listview_state(value, "List", paste0("interactive:", view_id))
@@ -455,6 +606,7 @@ display <- function(x, mime = NULL) {
 #' @export
 interactive_stop <- function() {
   .sess_env$interactive_stop <- TRUE
+  try(.interactive_handle_close_all(), silent = TRUE)
   if (!is.null(.sess_env$interactive_task)) {
     removeTaskCallback(.sess_env$interactive_task)
     .sess_env$interactive_task <- NULL

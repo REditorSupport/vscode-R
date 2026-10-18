@@ -1314,7 +1314,7 @@ handle_dataview_dispose <- function(params) {
 # Every failure, whether a jdv_error (jdv_error_in_use, jdv_error_connect_failed)
 # or the transport request itself failing, means the same fallback, so errors
 # are not told apart.
-.jdv_connect <- function() {
+.jdv_connect <- function(address = NULL) {
   if (identical(getOption("sess.dataviewer", "auto"), "sess") ||
         !requireNamespace("jdv", quietly = TRUE)) {
     return(FALSE)
@@ -1328,7 +1328,10 @@ handle_dataview_dispose <- function(params) {
     if (!identical(connection$state, "disconnected")) {
       return(FALSE)
     }
-    address <- request_client("jdv/address")$address
+    # Callers that cannot wait for a reply (an inspection being answered) pass it in.
+    if (is.null(address)) {
+      address <- request_client("jdv/address")$address
+    }
     if (!is.character(address) || length(address) != 1L || is.na(address) ||
           !nzchar(address)) {
       return(FALSE)
@@ -1391,11 +1394,11 @@ handle_dataview_dispose <- function(params) {
 # over the transport itself, so sess needs no task callback of its own for it.
 # Only an embedding host that collects jdv_notifications() must call
 # jdv_rpc(NULL) first.
-.jdv_show <- function(x, title_key, binding = NULL) {
+.jdv_show <- function(x, title_key, binding = NULL, address = NULL) {
   if (.jdv_is_arrow(x) && !requireNamespace("nanoarrow", quietly = TRUE)) {
     return(FALSE)
   }
-  if (!.jdv_connect()) {
+  if (!.jdv_connect(address)) {
     return(FALSE)
   }
   title <- if (nzchar(title_key)) title_key else NULL
