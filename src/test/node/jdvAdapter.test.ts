@@ -96,6 +96,7 @@ suite('jdv adapter', () => {
         assert.equal(columns[5].type, 'numericColumn');
         assert.equal(columns[5].filter, 'agNumberColumnFilter');
         assert.ok(columns[5].jdv?.filterOptions.includes('inRange'));
+        assert.equal(columns[5].jdv?.units, 'mins');
         assert.match(columns[5].headerTooltip ?? '', /units: mins/);
         assert.deepEqual(toJdvFilter({ '5': { filterType: 'number', type: 'lessThanOrEqual', filter: 90 } }, descriptor),
             { op: 'le', col: 4, value: 90 });
@@ -146,6 +147,42 @@ suite('jdv adapter', () => {
             { op: 'gt', col: 2, value: '2020-01-02' });
         assert.deepEqual(toJdvFilter({ '4': { filterType: 'date', type: 'lessThan', dateFrom: '2020-01-02 10:30:00' } }, grid),
             { op: 'lt', col: 3, value: '2020-01-02T10:30:00' });
+        for (const [input, expected] of [
+            ['2020-01-02T10:30:00.125Z', '2020-01-02T10:30:00.125Z'],
+            ['2020-01-02 10:30:00.125+09:00', '2020-01-02T10:30:00.125+09:00'],
+            ['2020-01-02T10:30:00-05:30', '2020-01-02T10:30:00-05:30'],
+            ['2020-01-02', '2020-01-02T00:00:00'],
+        ]) {
+            assert.deepEqual(toJdvFilter({ '4': { filterType: 'date', type: 'equals', dateFrom: input } }, grid),
+                { op: 'eq', col: 3, value: expected });
+        }
+        for (const input of ['2020-01-02T10:30:00garbage', '2020-01-02T10:30:00.1Ztail', '2020-01-02 10:30']) {
+            assert.throws(() => toJdvFilter({ '4': { filterType: 'date', type: 'equals', dateFrom: input } }, grid),
+                (e: unknown) => e instanceof JdvRequestError && e.code === 'invalid_request', input);
+        }
+        for (const input of ['2020-01-02T10:30:00\n', '2020-01-02T10:30:00\r\n']) {
+            assert.throws(() => toJdvFilter({ '4': { filterType: 'date', type: 'equals', dateFrom: input } }, grid),
+                (e: unknown) => e instanceof JdvRequestError && e.code === 'invalid_request', JSON.stringify(input));
+        }
+        assert.deepEqual(toJdvFilter({ '3': { filterType: 'date', type: 'equals', dateFrom: '2020-01-02' } }, grid),
+            { op: 'eq', col: 2, value: '2020-01-02' });
+        assert.deepEqual(toJdvFilter({ '3': { filterType: 'date', type: 'equals', dateFrom: '2020-01-02 00:00:00' } }, grid),
+            { op: 'eq', col: 2, value: '2020-01-02' });
+        for (const input of ['2020-01-02 10:30:00', '2020-01-02T00:00:00Z', '2020-01-02garbage']) {
+            assert.throws(() => toJdvFilter({ '3': { filterType: 'date', type: 'equals', dateFrom: input } }, grid),
+                (e: unknown) => e instanceof JdvRequestError && e.code === 'invalid_request', input);
+        }
+        for (const input of ['2020-01-02\n', '2020-01-02\r\n']) {
+            assert.throws(() => toJdvFilter({ '3': { filterType: 'date', type: 'equals', dateFrom: input } }, grid),
+                (e: unknown) => e instanceof JdvRequestError && e.code === 'invalid_request', JSON.stringify(input));
+        }
+        assert.deepEqual(toJdvFilter({ '4': {
+            filterType: 'date', type: 'inRange',
+            dateFrom: '2020-01-02 10:30:00.125+09:00', dateTo: '2020-01-03T11:45:00.875-05:30',
+        } }, grid), {
+            op: 'between', col: 3,
+            lower: '2020-01-02T10:30:00.125+09:00', upper: '2020-01-03T11:45:00.875-05:30',
+        });
         assert.deepEqual(toJdvFilter({ '5': { filterType: 'bigint', type: 'equals', filter: '+0012' } }, grid),
             { op: 'eq', col: 4, value: '12' });
         assert.throws(() => toJdvFilter({ '5': { filterType: 'bigint', type: 'lessThan', filter: '1' } }, grid),

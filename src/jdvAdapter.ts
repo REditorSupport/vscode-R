@@ -153,7 +153,7 @@ export interface GridColumnDef {
     suppressHeaderMenuButton?: boolean;
     lockPosition?: string;
     /** Webview-only options; see prepareViewerColumns(). */
-    jdv?: { filterOptions: string[]; naOptions: boolean };
+    jdv?: { filterOptions: string[]; naOptions: boolean; units?: string };
 }
 
 const TEXT_FILTER_OPTIONS = ['contains', 'notContains', 'equals', 'notEqual', 'startsWith', 'endsWith'];
@@ -279,7 +279,11 @@ export function gridColumnDefs(descriptor: JdvDescriptor): GridColumnDef[] {
             type,
             filter: filterEnabled ? filter : false,
             sortable,
-            jdv: { filterOptions, naOptions: true },
+            jdv: {
+                filterOptions,
+                naOptions: true,
+                ...(column.type === 'duration' && typeof column.units === 'string' ? { units: column.units } : {}),
+            },
         };
         if (column.type === 'boolean') {
             def.cellDataType = 'boolean';
@@ -362,17 +366,24 @@ function durationOperand(value: unknown, column: JdvColumnSchema): unknown {
 }
 
 function dateOperand(value: unknown, column: JdvColumnSchema): string {
-    // AG Grid date filters use "YYYY-MM-DD HH:mm:ss" in the column's wall time.
+    // AG Grid's date filter model uses "YYYY-MM-DD HH:mm:ss". Keep the
+    // datetime text intact (including fractional seconds and explicit offsets)
+    // so jdv can interpret it without a JavaScript Date round trip.
     const text = scalarText(value);
-    const match = /^(\d{4}-\d{2}-\d{2})(?:[ T](\d{2}:\d{2}:\d{2}))?/.exec(text);
-    if (!match) {
-        throw new JdvRequestError('invalid_request', `Invalid date for column "${column.name}"`);
-    }
+    const invalid = () => new JdvRequestError('invalid_request', `Invalid date for column "${column.name}"`);
     if (column.type === 'date') {
-        return match[1];
+        const date = /^(\d{4}-\d{2}-\d{2})$(?![\s\S])/.exec(text);
+        if (date) { return date[1]; }
+        // Accept AG Grid's historical midnight datetime value, but do not
+        // silently discard an actual time or timezone from a date operand.
+        const midnight = /^(\d{4}-\d{2}-\d{2})[ T]00:00:00$(?![\s\S])/.exec(text);
+        if (midnight) { return midnight[1]; }
+        throw invalid();
     }
+    const datetime = /^(\d{4}-\d{2}-\d{2})(?:[ T](\d{2}:\d{2}:\d{2})(\.\d+)?(Z|[+-]\d{2}:\d{2})?)?$(?![\s\S])/.exec(text);
+    if (!datetime) { throw invalid(); }
     // An operand without offset uses the column's time zone in jdv.
-    return `${match[1]}T${match[2] ?? '00:00:00'}`;
+    return `${datetime[1]}T${datetime[2] ?? '00:00:00'}${datetime[3] ?? ''}${datetime[4] ?? ''}`;
 }
 
 const ORDER_OPS: Record<string, string> = {

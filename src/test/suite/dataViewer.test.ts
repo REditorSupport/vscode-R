@@ -192,6 +192,8 @@ suite('Data viewer', () => {
         assert.strictEqual(defs[3].cellDataType, 'dateString');
         assert.strictEqual(defs[4].cellDataType, 'dateTimeString');
         assert.strictEqual(defs[4].filter, 'agDateColumnFilter');
+        assert.strictEqual((defs[3].filterParams as { includeTime: boolean }).includeTime, false);
+        assert.strictEqual((defs[4].filterParams as { includeTime: boolean }).includeTime, true);
         assert.strictEqual(defs[5].cellDataType, 'boolean');
         assert.strictEqual(defs[6].cellDataType, 'bigint');
         assert.strictEqual(defs[6].filter, 'agBigIntColumnFilter');
@@ -232,9 +234,10 @@ suite('Data viewer', () => {
     test('jdv columns offer only jdv operators and keep display text', () => {
         const viewer = viewerScript();
         const jdvColumns = [
-            { field: '1', headerName: 'n', type: 'numericColumn', filter: 'agNumberColumnFilter', jdv: { filterOptions: ['equals', 'inRange'], naOptions: true } },
+            { field: '1', headerName: 'n', type: 'numericColumn', filter: 'agNumberColumnFilter', jdv: { filterOptions: ['equals', 'inRange'], naOptions: true, units: 'hours' } },
             { field: '2', headerName: 'i', type: 'bigintColumn', filter: 'agBigIntColumnFilter', jdv: { filterOptions: ['equals'], naOptions: false } },
             { field: '3', headerName: 'd', type: 'dateColumn', filter: 'agDateColumnFilter', jdv: { filterOptions: [], naOptions: true } },
+            { field: '4', headerName: 'dt', type: 'datetimeColumn', filter: 'agDateColumnFilter', jdv: { filterOptions: ['equals', 'inRange'], naOptions: true } },
         ] as (ColDef & { jdv?: unknown })[];
         const bigintFields = viewer.script.prepareViewerColumns(jdvColumns);
         assert.strictEqual(bigintFields.length, 0);
@@ -246,7 +249,10 @@ suite('Data viewer', () => {
         assert.deepStrictEqual(options(jdvColumns[1]), ['equals']);
         assert.deepStrictEqual(options(jdvColumns[2]), ['jdvIsNa', 'jdvNotNa']);
         assert.strictEqual((jdvColumns[0].filterParams as { inRangeInclusive: boolean }).inRangeInclusive, true);
+        assert.strictEqual((jdvColumns[0].filterParams as { filterPlaceholder: string }).filterPlaceholder, 'Value (hours)');
         assert.strictEqual((jdvColumns[2].filterParams as { browserDatePicker: boolean }).browserDatePicker, true);
+        assert.strictEqual((jdvColumns[2].filterParams as { includeTime: boolean }).includeTime, false);
+        assert.strictEqual((jdvColumns[3].filterParams as { includeTime: boolean }).includeTime, true);
         for (const column of jdvColumns) {
             assert.strictEqual(column.cellDataType, undefined);
             assert.strictEqual(column.jdv, undefined);

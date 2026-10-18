@@ -113,7 +113,10 @@ export function getDataViewerScript(): string {
             if (column.type === 'dateColumn' || column.type === 'datetimeColumn') {
                 column.cellDataType = column.type === 'dateColumn' ? 'dateString' : 'dateTimeString';
                 column.filter = 'agDateColumnFilter';
-                column.filterParams = { browserDatePicker: true };
+                column.filterParams = {
+                    browserDatePicker: true,
+                    includeTime: column.type === 'datetimeColumn'
+                };
                 column.initialWidth = 200;
             } else if (column.type === 'bigintColumn') {
                 column.cellDataType = 'bigint';
@@ -149,7 +152,8 @@ export function getDataViewerScript(): string {
                     ...column.filterParams,
                     buttons: ['reset', 'apply'],
                     filterOptions: [...column.jdv.filterOptions, ...naOptions],
-                    inRangeInclusive: true
+                    inRangeInclusive: true,
+                    ...(column.jdv.units ? { filterPlaceholder: 'Value (' + column.jdv.units + ')' } : {})
                 };
                 delete column.jdv;
             }
