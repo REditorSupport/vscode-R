@@ -2529,6 +2529,14 @@ export async function getTableHtml(
             retryBtn.addEventListener('click', retryCurrentPage);
         }
 
+        window.addEventListener('message', (event) => {
+            const data = event.data;
+            if (data && data.message === 'viewer/openFailed' &&
+                data.documentGeneration === documentGeneration) {
+                setFetchStatus('error', data.error || 'Unable to open this cell.', false);
+            }
+        });
+
         const refreshBtn = document.querySelector('#viewerRefresh');
         if (refreshBtn) {
             refreshBtn.addEventListener('click', () => {

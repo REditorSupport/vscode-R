@@ -36,6 +36,14 @@ export function getDataViewerStyle(): string {
         font-size: 12px; color: var(--vscode-descriptionForeground);
     }
     ${viewerSessionStyle}
+    .dataview-drill { display: flex; align-items: center; gap: 4px; }
+    .dataview-drill-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+    .dataview-drill-open {
+        flex-shrink: 0; padding: 0 4px; border: 1px solid transparent; border-radius: 3px;
+        background: transparent; color: var(--vscode-textLink-foreground); font: inherit; cursor: pointer;
+        line-height: 1.2;
+    }
+    .dataview-drill-open:hover { background: var(--vscode-toolbar-hoverBackground); }
     .dataview-na { color: var(--vscode-descriptionForeground); font-style: italic; opacity: 0.75; }
     `;
 }
@@ -77,6 +85,30 @@ export function getDataViewerScript(): string {
         element.textContent = 'NA';
         return element;
     };
+    // A drillable jdv cell shows its text and a button that opens the cell as a child view.
+    // The cell is addressed by its original source row, so it works after sorting and filtering.
+    const drillCellRenderer = params => {
+        const element = document.createElement('span');
+        element.className = 'dataview-drill';
+        const text = document.createElement('span');
+        text.className = 'dataview-drill-text';
+        text.textContent = params.value;
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'dataview-drill-open';
+        button.title = 'Open this cell in a new view';
+        button.setAttribute('aria-label', 'Open this cell in a new view');
+        button.textContent = '\u2197';
+        button.addEventListener('click', event => {
+            event.stopPropagation();
+            vscode.postMessage({
+                message: 'dataview/openCell', documentGeneration,
+                sourceRow: params.data.__sourceRow, column: params.colDef.context.drillColumn
+            });
+        });
+        element.append(text, button);
+        return element;
+    };
 
     function getAgTheme() {
         const light = document.body.classList.contains('vscode-light') ||
@@ -104,11 +136,20 @@ export function getDataViewerScript(): string {
         }
         const bigintFields = [];
         for (const column of columns) {
+            const drillColumn = column.jdvDrill;
+            delete column.jdvDrill;
+            if (Number.isInteger(drillColumn)) {
+                column.context = { drillColumn };
+            }
             column.cellRendererSelector = params => {
                 if (params.data == null) {
                     return { component: emptyCellRenderer };
                 }
-                return params.value == null ? { component: naCellRenderer } : undefined;
+                if (params.value == null) {
+                    return { component: naCellRenderer };
+                }
+                return Number.isInteger(drillColumn) && params.data.__sourceRow !== undefined
+                    ? { component: drillCellRenderer } : undefined;
             };
             if (column.type === 'dateColumn' || column.type === 'datetimeColumn') {
                 column.cellDataType = column.type === 'dateColumn' ? 'dateString' : 'dateTimeString';

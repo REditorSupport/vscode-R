@@ -9,7 +9,7 @@ import * as path from 'path';
 import * as vscode from 'vscode';
 import { Uri, ViewColumn, window } from 'vscode';
 import {
-    GridPage, JdvDescriptor, JdvRequestError, JdvTracking, JsonObject, TreeAdapter, canRefresh, gridColumnDefs,
+    GridPage, JdvDescriptor, cellOpenParams, JdvRequestError, JdvTracking, JsonObject, TreeAdapter, canRefresh, gridColumnDefs,
     gridPageFromRows, parseDescriptor, parseTracking, revealsPanel, tableRowsParams,
 } from './jdvAdapter';
 import { SequentialStream } from './jdvArrow';
@@ -269,6 +269,10 @@ async function handleMessage(state: JdvPanel, webview: vscode.Webview, message: 
         await refreshView(state, webview, documentGeneration);
         return;
     }
+    if (message.message === 'dataview/openCell') {
+        await openCell(state, webview, documentGeneration, message);
+        return;
+    }
     if (message.message === 'viewer/track' && typeof message.enabled === 'boolean') {
         await trackView(state, webview, documentGeneration, message.enabled);
         return;
@@ -364,6 +368,27 @@ async function handleMessage(state: JdvPanel, webview: vscode.Webview, message: 
                 message: 'listview/page', documentGeneration, requestId: message.requestId, ...page, error,
             });
         }
+    }
+}
+
+/**
+ * Open a drillable grid cell as a child view. The child arrives as a `view/open`
+ * notification (with jdv's title) before the response, so only a failure is reported.
+ */
+async function openCell(
+    state: JdvPanel, webview: vscode.Webview, documentGeneration: number, message: JsonObject,
+): Promise<void> {
+    let error: string | undefined;
+    try {
+        if (state.closed) {
+            throw new Error(state.closed);
+        }
+        await state.peer.request('object/open', cellOpenParams(state.descriptor, message.sourceRow, message.column));
+    } catch (e) {
+        error = `Unable to open this cell: ${errorMessage(e)}`;
+    }
+    if (error !== undefined && documentGeneration === session.getDocumentGeneration(webview)) {
+        void webview.postMessage({ message: 'viewer/openFailed', documentGeneration, error });
     }
 }
 

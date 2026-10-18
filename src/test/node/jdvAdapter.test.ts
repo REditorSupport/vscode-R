@@ -1,7 +1,7 @@
 import * as assert from 'node:assert/strict';
 import {
     JdvDescriptor, JdvRequestError, TreeAdapter, gridColumnDefs, gridPageFromRows, isVectorType,
-    canRefresh, revealsPanel,
+    canRefresh, cellOpenParams, revealsPanel,
     parseDescriptor, parseTracking, tableRowsParams, toJdvFilter,
 } from '../../jdvAdapter';
 
@@ -233,9 +233,9 @@ suite('jdv adapter', () => {
             },
         }, 0, 3);
         assert.deepEqual(page.rows, [
-            { '0': 'r3', '1': 'Inf', '2': null },
-            { '0': 'r1', '1': 'NaN', '2': 'x' },
-            { '0': 'r2', '1': null, '2': 'y' },
+            { '0': 'r3', __sourceRow: 2, '1': 'Inf', '2': null },
+            { '0': 'r1', __sourceRow: 0, '1': 'NaN', '2': 'x' },
+            { '0': 'r2', __sourceRow: 1, '1': null, '2': 'y' },
         ]);
         assert.equal(page.totalRows, 3);
         assert.equal(page.totalUnfiltered, 5);
@@ -243,7 +243,24 @@ suite('jdv adapter', () => {
             total: 1, total_unfiltered: 1, offset: 0, limit: 1,
             data: { source_row: [6], row_labels: null, columns: [] },
         }, 0, 1);
-        assert.deepEqual(unnamed.rows, [{ '0': '7' }]);
+        assert.deepEqual(unnamed.rows, [{ '0': '7', __sourceRow: 6 }]);
+    });
+
+    test('opens drillable cells by original source row', () => {
+        // Column 5 is the only drillable column; the grid reports children.
+        const drillable = parseDescriptor({ ...grid, capabilities: { ...capabilities, children: true } });
+        assert.equal(gridColumnDefs(drillable).filter(column => column.jdvDrill !== undefined).length, 1);
+        assert.equal(gridColumnDefs(drillable)[6].jdvDrill, 5);
+        assert.equal(gridColumnDefs(grid)[6].jdvDrill, undefined);
+        assert.deepEqual(cellOpenParams(drillable, 204, 5), {
+            view: 'v-1', generation: 2, path: [{ kind: 'cell', source_row: 204, column: 5 }], mode: 'paged',
+        });
+        const rejected = (code: string) => (e: unknown) => e instanceof JdvRequestError && e.code === code;
+        assert.throws(() => cellOpenParams(grid, 0, 5), rejected('unsupported'));
+        assert.throws(() => cellOpenParams(drillable, 0, 0), rejected('invalid_request'));
+        assert.throws(() => cellOpenParams(drillable, -1, 5), rejected('invalid_request'));
+        assert.throws(() => cellOpenParams(drillable, 1.5, 5), rejected('invalid_request'));
+        assert.throws(() => cellOpenParams(drillable, 0, 9), rejected('invalid_request'));
     });
 
     test('maps List Viewer paths to typed tree paths', () => {

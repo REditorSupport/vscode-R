@@ -179,6 +179,8 @@ export function canRefresh(descriptor: JdvDescriptor): boolean {
 
 /** Row label column. Data columns use their one-based position as field id. */
 export const ROW_LABEL_FIELD = '0';
+/** Row data key holding the zero-based source row; not a column field. */
+export const SOURCE_ROW_FIELD = '__sourceRow';
 
 export interface GridColumnDef {
     headerName: string;
@@ -190,6 +192,8 @@ export interface GridColumnDef {
     cellDataType?: string;
     suppressHeaderMenuButton?: boolean;
     lockPosition?: string;
+    /** Drillable grid cells: the zero-based schema position that `object/open` addresses. */
+    jdvDrill?: number;
     /** Webview-only options; see prepareViewerColumns(). */
     jdv?: { filterOptions: string[]; naOptions: boolean; units?: string };
 }
@@ -322,6 +326,9 @@ export function gridColumnDefs(descriptor: JdvDescriptor): GridColumnDef[] {
                 ...(column.type === 'duration' && typeof column.units === 'string' ? { units: column.units } : {}),
             },
         };
+        if (column.drillable === true && descriptor.capabilities.children) {
+            def.jdvDrill = column.position;
+        }
         if (column.type === 'boolean') {
             def.cellDataType = 'boolean';
             delete def.jdv;
@@ -530,6 +537,28 @@ export function toJdvFilter(filterModel: unknown, descriptor: JdvDescriptor): Fi
     return nodes.length === 1 ? nodes[0] : { op: 'and', args: nodes };
 }
 
+/** `object/open` params that open one drillable grid cell as a child view. */
+export function cellOpenParams(descriptor: JdvDescriptor, sourceRow: unknown, column: unknown): JsonObject {
+    if (descriptor.kind !== 'grid' || !descriptor.capabilities.children) {
+        throw new JdvRequestError('unsupported', 'This view has no cells that can be opened.');
+    }
+    if (typeof sourceRow !== 'number' || !Number.isSafeInteger(sourceRow) || sourceRow < 0 ||
+        typeof column !== 'number' || !Number.isSafeInteger(column) || column < 0) {
+        throw new JdvRequestError('invalid_request', 'Invalid cell address.');
+    }
+    const schema = descriptor.columns?.find(candidate => candidate.position === column);
+    if (!schema?.drillable) {
+        throw new JdvRequestError('invalid_request', 'This column cannot be opened.');
+    }
+    return {
+        view: descriptor.view,
+        generation: descriptor.generation,
+        path: [{ kind: 'cell', source_row: sourceRow, column }],
+        // Paged keeps sorting and filtering in R, as for top-level grids.
+        mode: 'paged',
+    };
+}
+
 export interface TableRowsParams extends JsonObject {
     view: string;
     generation: number;
@@ -621,6 +650,8 @@ export function gridPageFromRows(result: unknown, startRow: number, requested: n
     // `source_row` is zero-based; the browser shows it plus one.
     const rows: Record<string, unknown>[] = sourceRow.map((index, row) => ({
         [ROW_LABEL_FIELD]: rowLabels?.[row] ?? String(index + 1),
+        // Original zero-based row, for opening a drillable cell after sorting or filtering.
+        [SOURCE_ROW_FIELD]: index,
     }));
     for (const column of columns) {
         if (!column.schema) {

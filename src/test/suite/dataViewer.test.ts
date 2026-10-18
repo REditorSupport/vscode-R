@@ -259,6 +259,24 @@ suite('Data viewer', () => {
         }
     });
 
+    test('drillable jdv cells get an opening control only when they have a source row', () => {
+        const viewer = viewerScript();
+        const columns = [
+            { field: '1', headerName: 'x', jdvDrill: 3 },
+            { field: '2', headerName: 'y' },
+        ] as (ColDef & { jdvDrill?: number })[];
+        viewer.script.prepareViewerColumns(columns);
+        assert.strictEqual(columns[0].jdvDrill, undefined);
+        assert.strictEqual((columns[0].context as { drillColumn: number }).drillColumn, 3);
+        const select = (column: ColDef, data: unknown, value: unknown) => (column.cellRendererSelector as
+            (params: unknown) => { component: unknown } | undefined)({ data, value });
+        const drill = select(columns[0], { __sourceRow: 7 }, '1 item');
+        assert.strictEqual(typeof drill?.component, 'function');
+        assert.strictEqual(select(columns[0], { __sourceRow: 7 }, null)?.component !== drill?.component, true);
+        assert.strictEqual(select(columns[0], {}, '1 item'), undefined);
+        assert.strictEqual(select(columns[1], { __sourceRow: 7 }, 'v'), undefined);
+    });
+
     test('high contrast light uses the light grid theme', () => {
         assert.strictEqual(viewerScript(undefined, {}, true).script.getAgTheme(), 'light');
         assert.strictEqual(viewerScript().script.getAgTheme(), 'dark');
