@@ -166,6 +166,16 @@ suite('jdv adapter', () => {
         });
     });
 
+    test('converts boolean filter models', () => {
+        const booleanGrid = parseDescriptor({ ...grid, ncol: 1, columns: [
+            { position: 0, name: 'flag', type: 'boolean', native_type: ['logical'], sortable: true, filterable: true },
+        ] });
+        assert.deepEqual(toJdvFilter({ '1': { filterType: 'text', type: 'true' } }, booleanGrid),
+            { op: 'is_true', col: 0 });
+        assert.deepEqual(toJdvFilter({ '1': { filterType: 'text', type: 'false' } }, booleanGrid),
+            { op: 'is_false', col: 0 });
+    });
+
     test('converts date, datetime and integer64 operands', () => {
         assert.deepEqual(toJdvFilter({ '3': { filterType: 'date', type: 'greaterThan', dateFrom: '2020-01-02 00:00:00' } }, grid),
             { op: 'gt', col: 2, value: '2020-01-02' });

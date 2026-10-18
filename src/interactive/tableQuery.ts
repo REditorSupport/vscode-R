@@ -13,6 +13,11 @@ export const filterOperators = {
     contains: 'contains', notContains: 'does not contain', startsWith: 'starts with', endsWith: 'ends with',
     blank: 'is blank', notBlank: 'is not blank', true: 'is true', false: 'is false',
 };
+export function filterOperatorLabel(type: string, column?: TableColumn): string {
+    if (column?.jdv && type === 'blank') { return 'is NA'; }
+    if (column?.jdv && type === 'notBlank') { return 'is not NA'; }
+    return filterOperators[type as keyof typeof filterOperators] ?? type;
+}
 export function columnOperators(column: TableColumn): string[] {
     // An inline filter is one condition, so the range operator is not offered.
     if (column.jdv) { return [...column.jdv.filterOptions.filter(option => option !== 'inRange'), 'blank', 'notBlank']; }
