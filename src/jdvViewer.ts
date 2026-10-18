@@ -174,8 +174,8 @@ async function openJdvView(
 ): Promise<void> {
     const key = panelKey(sessionId, descriptor.view);
     const existing = panels.get(key);
-    // jdv titles a child view when its parent has a title; older jdv or an untitled
-    // parent leave it to the host-side bookkeeping of the item that was opened.
+    // jdv titles a child view when its parent has a title; an untitled parent leaves it
+    // to the host-side bookkeeping of the item that was opened.
     const parent = descriptor.parent === undefined ? undefined : panels.get(panelKey(sessionId, descriptor.parent));
     const title = descriptor.title ?? parent?.childTitle ?? existing?.title ?? 'View';
     if (descriptor.kind === 'grid' && descriptor.access !== 'random' && descriptor.access !== 'sequential') {

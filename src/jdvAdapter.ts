@@ -411,8 +411,8 @@ function dateOperand(value: unknown, column: JdvColumnSchema): string {
     if (column.type === 'date') {
         const date = /^(\d{4}-\d{2}-\d{2})$(?![\s\S])/.exec(text);
         if (date) { return date[1]; }
-        // AG Grid's filter model writes a date as "YYYY-MM-DD 00:00:00" (not a jdv
-        // compatibility concern), but an actual time or timezone is never discarded.
+        // AG Grid's filter model writes a date as "YYYY-MM-DD 00:00:00"; an actual time
+        // or timezone is never discarded.
         const midnight = /^(\d{4}-\d{2}-\d{2})[ T]00:00:00$(?![\s\S])/.exec(text);
         if (midnight) { return midnight[1]; }
         throw invalid();
