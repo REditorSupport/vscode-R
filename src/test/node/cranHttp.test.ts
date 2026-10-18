@@ -17,7 +17,7 @@ function listen(server: Server, port = 0): Promise<string> {
 
 function close(server: Server): Promise<void> {
     return new Promise((resolve, reject) => {
-        server.close(error => error ? reject(error) : resolve());
+        server.close((error) => (error ? reject(error) : resolve()));
     });
 }
 
@@ -42,7 +42,9 @@ suite('CRAN HTTP authentication', () => {
             const path = request.url ?? '/';
             requests.push({ path, authorization: request.headers.authorization });
             if (path === '/same-origin' || path === '/cross-origin') {
-                response.writeHead(302, { Location: path === '/same-origin' ? '/authenticated' : externalOrigin });
+                response.writeHead(302, {
+                    Location: path === '/same-origin' ? '/authenticated' : externalOrigin,
+                });
                 response.end();
             } else if (request.headers.authorization !== authorization) {
                 response.writeHead(401);
@@ -58,7 +60,9 @@ suite('CRAN HTTP authentication', () => {
         });
         origin = await listen(server);
     });
-    teardown(async () => { await Promise.all([close(server), close(external)]); });
+    teardown(async () => {
+        await Promise.all([close(server), close(external)]);
+    });
 
     function authenticatedUrl(path: string): URL {
         const url = new URL(path, origin);
@@ -81,7 +85,10 @@ suite('CRAN HTTP authentication', () => {
         const response = await getHttpText(authenticatedUrl('/same-origin'));
         assert.strictEqual(response.text, 'authenticated');
         assert.strictEqual(response.url, `${origin}/authenticated`);
-        assert.deepStrictEqual(requests.map(request => request.authorization), [authorization, authorization]);
+        assert.deepStrictEqual(
+            requests.map((request) => request.authorization),
+            [authorization, authorization],
+        );
     });
     test('does not forward authentication to another origin', async () => {
         const response = await getHttpText(authenticatedUrl('/cross-origin'));
@@ -90,13 +97,18 @@ suite('CRAN HTTP authentication', () => {
         assert.strictEqual(externalAuthorization, undefined);
     });
     test('loads the package index from a private CRAN repository', async () => {
-        assert.deepStrictEqual(await getPackagesFromCran(authenticatedUrl('/repo/').href), [{
-            name: 'privatePackage', description: '', isCran: true
-        }]);
-        assert.deepStrictEqual(requests.map(request => request.path), [
-            '/repo/web/packages/available_packages_by_date.html', '/repo/src/contrib/PACKAGES'
+        assert.deepStrictEqual(await getPackagesFromCran(authenticatedUrl('/repo/').href), [
+            {
+                name: 'privatePackage',
+                description: '',
+                isCran: true,
+            },
         ]);
-        assert.ok(requests.every(request => request.authorization === authorization));
+        assert.deepStrictEqual(
+            requests.map((request) => request.path),
+            ['/repo/web/packages/available_packages_by_date.html', '/repo/src/contrib/PACKAGES'],
+        );
+        assert.ok(requests.every((request) => request.authorization === authorization));
     });
     test('loads an authenticated CRAN index on port 10080 with redirects and compression', async function () {
         const seen: (string | undefined)[] = [];
@@ -129,9 +141,13 @@ suite('CRAN HTTP authentication', () => {
             const url = new URL('http://127.0.0.1:10080/repo/');
             url.username = 'user';
             url.password = 'p@ss:word';
-            assert.deepStrictEqual(await getPackagesFromCran(url.href), [{
-                name: 'privatePackage', description: '', isCran: true
-            }]);
+            assert.deepStrictEqual(await getPackagesFromCran(url.href), [
+                {
+                    name: 'privatePackage',
+                    description: '',
+                    isCran: true,
+                },
+            ]);
             assert.deepStrictEqual(seen, [authorization, authorization, authorization]);
         } finally {
             await close(blockedPortServer);

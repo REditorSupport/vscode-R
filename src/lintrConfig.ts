@@ -15,7 +15,8 @@ export async function createLintrConfig(): Promise<string | undefined> {
     if (existsSync(lintrFilePath)) {
         const overwrite = await window.showWarningMessage(
             '".lintr" file already exists. Do you want to overwrite?',
-            'Yes', 'No'
+            'Yes',
+            'No',
         );
         if (overwrite !== 'Yes') {
             return;
@@ -31,9 +32,17 @@ export async function createLintrConfig(): Promise<string | undefined> {
             backupDirectory = mkdtempSync(join(currentWorkspaceFolder, '.vscode-r-lintr-'));
             renameSync(lintrFilePath, join(backupDirectory, '.lintr'));
         }
-        const output = await executeRCommand('lintr::use_lintr()', currentWorkspaceFolder, (error: Error) => { throw error; });
+        const output = await executeRCommand(
+            'lintr::use_lintr()',
+            currentWorkspaceFolder,
+            (error: Error) => {
+                throw error;
+            },
+        );
         if (output !== undefined) {
-            if (!existsSync(lintrFilePath)) { throw new Error('R did not create a .lintr configuration.'); }
+            if (!existsSync(lintrFilePath)) {
+                throw new Error('R did not create a .lintr configuration.');
+            }
             generated = true;
         }
         return output;
@@ -43,7 +52,9 @@ export async function createLintrConfig(): Promise<string | undefined> {
     } finally {
         if (backupDirectory) {
             const backupPath = join(backupDirectory, '.lintr');
-            if (!generated && existsSync(backupPath)) { renameSync(backupPath, lintrFilePath); }
+            if (!generated && existsSync(backupPath)) {
+                renameSync(backupPath, lintrFilePath);
+            }
             rmSync(backupDirectory, { recursive: true, force: true });
         }
     }

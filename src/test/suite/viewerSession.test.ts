@@ -10,22 +10,34 @@ suite('Viewer session tooltip updates', () => {
         const tooltip = { textContent: label };
         const posted: unknown[] = [];
         vm.runInNewContext(getViewerSessionScript(), {
-            window: { addEventListener: (_type: string, listener: typeof receive) => { receive = listener; } },
+            window: {
+                addEventListener: (_type: string, listener: typeof receive) => {
+                    receive = listener;
+                },
+            },
             document: {
                 readyState: 'loading',
                 addEventListener: (type: string, listener: typeof ready) => {
-                    if (type === 'DOMContentLoaded') { ready = listener; }
+                    if (type === 'DOMContentLoaded') {
+                        ready = listener;
+                    }
                 },
-                querySelector: () => ({ addEventListener: () => undefined, setAttribute: (name: string, text: string) => {
-                    assert.strictEqual(name, 'aria-label'); label = text;
-                } }),
+                querySelector: () => ({
+                    addEventListener: () => undefined,
+                    setAttribute: (name: string, text: string) => {
+                        assert.strictEqual(name, 'aria-label');
+                        label = text;
+                    },
+                }),
                 getElementById: () => tooltip,
             },
             vscode: { postMessage: (message: unknown) => posted.push(message) },
         });
         assert.strictEqual(posted.length, 0);
         ready();
-        assert.deepStrictEqual(JSON.parse(JSON.stringify(posted)), [{ message: 'viewer-session/ready' }]);
+        assert.deepStrictEqual(JSON.parse(JSON.stringify(posted)), [
+            { message: 'viewer-session/ready' },
+        ]);
         receive({ data: null });
         receive({ data: { message: 'dataview/response', text: 'unrelated' } });
         assert.strictEqual(tooltip.textContent, 'R 4.6.1: 12101');
@@ -42,9 +54,14 @@ suite('Viewer session tooltip updates', () => {
         let focused = true;
         let hovered = false;
         let consumed = 0;
-        let keydown: (event: { key: string; preventDefault(): void; stopPropagation(): void }) => void = () => undefined;
+        let keydown: (event: {
+            key: string;
+            preventDefault(): void;
+            stopPropagation(): void;
+        }) => void = () => undefined;
         const icon = {
-            addEventListener: (type: string, listener: () => void) => iconEvents.set(type, listener),
+            addEventListener: (type: string, listener: () => void) =>
+                iconEvents.set(type, listener),
             setAttribute: (name: string, value: string) => attributes.set(name, value),
             removeAttribute: (name: string) => attributes.delete(name),
             hasAttribute: (name: string) => attributes.has(name),
@@ -54,14 +71,22 @@ suite('Viewer session tooltip updates', () => {
         vm.runInNewContext(getViewerSessionScript(), {
             window: { addEventListener: () => undefined },
             document: {
-                readyState: 'complete', querySelector: () => icon,
-                addEventListener: (_type: string, listener: typeof keydown) => { keydown = listener; },
+                readyState: 'complete',
+                querySelector: () => icon,
+                addEventListener: (_type: string, listener: typeof keydown) => {
+                    keydown = listener;
+                },
             },
             vscode: { postMessage: () => undefined },
         });
-        const key = (value: string) => keydown({
-            key: value, preventDefault: () => { consumed++; }, stopPropagation: () => undefined,
-        });
+        const key = (value: string) =>
+            keydown({
+                key: value,
+                preventDefault: () => {
+                    consumed++;
+                },
+                stopPropagation: () => undefined,
+            });
         key('Enter');
         assert.ok(!attributes.has('data-tooltip-dismissed'));
         key('Escape');
@@ -69,7 +94,11 @@ suite('Viewer session tooltip updates', () => {
         assert.strictEqual(focused, true);
         assert.strictEqual(consumed, 1);
         key('Escape');
-        assert.strictEqual(consumed, 1, 'Dismissed tooltips should not consume further Escape presses');
+        assert.strictEqual(
+            consumed,
+            1,
+            'Dismissed tooltips should not consume further Escape presses',
+        );
         iconEvents.get('focus')!();
         assert.ok(!attributes.has('data-tooltip-dismissed'));
         key('Escape');

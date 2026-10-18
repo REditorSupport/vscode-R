@@ -17,8 +17,10 @@ suite('R command utilities', () => {
     teardown(() => sandbox.restore());
 
     test('R literals escape quotes, backslashes and control characters', () => {
-        assert.strictEqual(util.ToRStringLiteral('a"b\'c\\d\n\r\t\b\f\v', '"'),
-            String.raw`"a\"b'c\\d\n\r\t\b\f\v"`);
+        assert.strictEqual(
+            util.ToRStringLiteral('a"b\'c\\d\n\r\t\b\f\v', '"'),
+            String.raw`"a\"b'c\\d\n\r\t\b\f\v"`,
+        );
         assert.strictEqual(util.ToRStringLiteral('a"b\'c', "'"), String.raw`'a"b\'c'`);
         // Editor-path templates can supply either kind of surrounding quote.
         assert.strictEqual(util.ToRStringLiteral('a"b\'c', ''), String.raw`a\"b\'c`);
@@ -27,7 +29,7 @@ suite('R command utilities', () => {
     test('a failed executable settles with its spawn error', async () => {
         const result = await Promise.race([
             util.spawnAsync(path.join(os.tmpdir(), 'vscode-r-nonexistent-executable')),
-            new Promise<undefined>(resolve => setTimeout(resolve, 500))
+            new Promise<undefined>((resolve) => setTimeout(resolve, 500)),
         ]);
         assert.ok(result, 'spawnAsync must finish when spawning fails');
         assert.strictEqual((result.error as NodeJS.ErrnoException).code, 'ENOENT');
@@ -37,7 +39,9 @@ suite('R command utilities', () => {
     test('collects all output through close and preserves fragmented UTF-8', async () => {
         const child = Object.assign(new EventEmitter(), {
             pid: 123,
-            stdout: new EventEmitter(), stderr: new EventEmitter(), kill: sandbox.stub()
+            stdout: new EventEmitter(),
+            stderr: new EventEmitter(),
+            kill: sandbox.stub(),
         });
         sandbox.stub(cp, 'spawn').returns(child as unknown as cp.ChildProcessWithoutNullStreams);
         const result = util.spawnAsync('R');
@@ -52,12 +56,17 @@ suite('R command utilities', () => {
     });
 
     test('progress propagates synchronous callback exceptions', async () => {
-        sandbox.stub(vscode.window, 'withProgress').callsFake((_options, task) =>
-            task({ report: () => undefined }, new vscode.CancellationTokenSource().token));
+        sandbox
+            .stub(vscode.window, 'withProgress')
+            .callsFake((_options, task) =>
+                task({ report: () => undefined }, new vscode.CancellationTokenSource().token),
+            );
         const clock = sandbox.useFakeTimers();
         const error = new Error('refresh failed');
-        const result = util.doWithProgress(() => { throw error; });
-        const rejected = assert.rejects(result, candidate => candidate === error);
+        const result = util.doWithProgress(() => {
+            throw error;
+        });
+        const rejected = assert.rejects(result, (candidate) => candidate === error);
         assert.doesNotThrow(() => clock.tick(1));
         await rejected;
     });

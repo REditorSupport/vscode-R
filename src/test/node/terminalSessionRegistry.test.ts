@@ -1,8 +1,13 @@
 import * as assert from 'assert';
 import { TerminalSessionRegistry } from '../../terminalSessionRegistry';
 
-interface Owner { id: string; connected: boolean }
-interface Terminal { open: boolean }
+interface Owner {
+    id: string;
+    connected: boolean;
+}
+interface Terminal {
+    open: boolean;
+}
 
 suite('Terminal session registry', () => {
     let registry: TerminalSessionRegistry<Owner, Terminal>;
@@ -15,9 +20,16 @@ suite('Terminal session registry', () => {
     setup(() => {
         first = { id: 'first', connected: true };
         second = { id: 'second', connected: true };
-        current = new Map([[first.id, first], [second.id, second]]);
-        terminal = { open: true }; other = { open: true };
-        registry = new TerminalSessionRegistry(owner => current.get(owner.id) === owner && owner.connected, target => target.open);
+        current = new Map([
+            [first.id, first],
+            [second.id, second],
+        ]);
+        terminal = { open: true };
+        other = { open: true };
+        registry = new TerminalSessionRegistry(
+            (owner) => current.get(owner.id) === owner && owner.connected,
+            (target) => target.open,
+        );
     });
 
     for (const end of ['disconnect', 'move', 'replace'] as const) {
@@ -28,15 +40,23 @@ suite('Terminal session registry', () => {
             assert.strictEqual(registry.bindExplicit(terminal, second), true);
             assert.strictEqual(registry.isCurrent(native), false);
             assert.strictEqual(registry.ownerOf(terminal), second);
-            if (end === 'move') { registry.bindExplicit(other, second); }
-            else {
-                if (end === 'replace') { current.set(second.id, { id: second.id, connected: true }); }
-                else { second.connected = false; }
+            if (end === 'move') {
+                registry.bindExplicit(other, second);
+            } else {
+                if (end === 'replace') {
+                    current.set(second.id, { id: second.id, connected: true });
+                } else {
+                    second.connected = false;
+                }
                 registry.releaseSession(second);
             }
             assert.strictEqual(registry.ownerOf(terminal), undefined);
             assert.strictEqual(registry.forSession(first), undefined);
-            assert.strictEqual(registry.attachNative(terminal, first), true, 'a fresh handshake establishes new ownership');
+            assert.strictEqual(
+                registry.attachNative(terminal, first),
+                true,
+                'a fresh handshake establishes new ownership',
+            );
             assert.strictEqual(registry.ownerOf(terminal), first);
             assert.strictEqual(registry.isCurrent(native), false);
         });
@@ -72,7 +92,11 @@ suite('Terminal session registry', () => {
         registry.closeTerminal(other);
         assert.strictEqual(registry.forSession(first), undefined);
         assert.strictEqual(registry.ownerOf(terminal), undefined);
-        assert.strictEqual(registry.attachNative(terminal, first), true, 'only a fresh attach may restore native routing');
+        assert.strictEqual(
+            registry.attachNative(terminal, first),
+            true,
+            'only a fresh attach may restore native routing',
+        );
         assert.strictEqual(registry.forSession(first)?.terminal, terminal);
     });
 
@@ -97,7 +121,11 @@ suite('Terminal session registry', () => {
         assert.strictEqual(registry.forSession(first)?.terminal, other);
         assert.strictEqual(registry.isCurrent(old), false);
         registry.closeTerminal(terminal);
-        assert.strictEqual(registry.forSession(first)?.terminal, other, 'closing the former terminal must not remove the new target');
+        assert.strictEqual(
+            registry.forSession(first)?.terminal,
+            other,
+            'closing the former terminal must not remove the new target',
+        );
     });
 
     test('replacing both endpoints updates reverse ownership before notifying subscribers', () => {
@@ -106,7 +134,7 @@ suite('Terminal session registry', () => {
         const oldNative = registry.snapshot(terminal);
         const oldExplicit = registry.snapshot(other);
         const changed: Terminal[] = [];
-        registry.onDidChange(target => {
+        registry.onDidChange((target) => {
             changed.push(target);
             assert.strictEqual(registry.ownerOf(terminal), undefined);
             assert.strictEqual(registry.ownerOf(other), first);
@@ -155,9 +183,13 @@ suite('Terminal session registry', () => {
             registry.bindExplicit(terminal, first);
             const queued = registry.forSession(first);
             assert.ok(queued);
-            if (invalid === 'closed') { registry.closeTerminal(terminal); }
-            else if (invalid === 'disconnected') { first.connected = false; }
-            else { current.delete(first.id); }
+            if (invalid === 'closed') {
+                registry.closeTerminal(terminal);
+            } else if (invalid === 'disconnected') {
+                first.connected = false;
+            } else {
+                current.delete(first.id);
+            }
             assert.strictEqual(registry.ownerOf(terminal), undefined);
             assert.strictEqual(registry.forSession(first), undefined);
             assert.strictEqual(registry.isCurrent(queued), false);
@@ -180,7 +212,9 @@ suite('Terminal session registry', () => {
 
     test('change subscribers observe the same owner as execution and stop after disposal', () => {
         const observed: Array<Owner | undefined> = [];
-        const subscription = registry.onDidChange(target => observed.push(registry.ownerOf(target)));
+        const subscription = registry.onDidChange((target) =>
+            observed.push(registry.ownerOf(target)),
+        );
         registry.attachNative(terminal, first);
         registry.bindExplicit(terminal, second);
         registry.releaseSession(second);

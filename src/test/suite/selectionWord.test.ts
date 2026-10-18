@@ -9,11 +9,13 @@ suite('Word execution selection', () => {
         const getText = sandbox.stub().returns('dangerous_full_document()');
         sandbox.stub(vscode.window, 'activeTextEditor').value({
             selection: new vscode.Selection(0, 0, 0, 0),
-            document: { getWordRangeAtPosition: () => undefined, getText }
+            document: { getWordRangeAtPosition: () => undefined, getText },
         });
         try {
             assert.strictEqual(getWordOrSelection(), undefined);
             sinon.assert.notCalled(getText);
-        } finally { sandbox.restore(); }
+        } finally {
+            sandbox.restore();
+        }
     });
 });
