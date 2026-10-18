@@ -436,7 +436,8 @@ interactive_execute <- function(id, code, source = NULL) {
       jdv::jdv_handle_request(
         handle, "object/children",
         list(path = list(), offset = 0L, limit = 200L, attributes = FALSE),
-        max_bytes = .interactive_page_bytes)
+        max_bytes = .interactive_page_bytes
+      )
     }
     store <- .interactive_handle_store()
     .sess_env$interactive_handle_seq <- .sess_env$interactive_handle_seq + 1L
@@ -506,10 +507,12 @@ handle_jdv_open_viewer <- function(params) {
     if (!is.null(preview)) {
       printed <- .interactive_table_text(snapshot$value)
       if (snapshot$truncated && !is.null(printed$printedText)) {
-        printed$printedText <- paste0(printed$printedText, sprintf(
+        note <- sprintf(
           "\n[Snapshot: first %s of %s rows. Open Data viewer for the full table.]\n",
           format(nrow(snapshot$value), big.mark = ",", scientific = FALSE, trim = TRUE),
-          format(snapshot$source_rows, big.mark = ",", scientific = FALSE, trim = TRUE)))
+          format(snapshot$source_rows, big.mark = ",", scientific = FALSE, trim = TRUE)
+        )
+        printed$printedText <- paste0(printed$printedText, note)
       }
       .interactive_event("display", c(list(kind = "table", handleId = preview$handleId,
                                            descriptor = preview$descriptor, page = preview$page,
