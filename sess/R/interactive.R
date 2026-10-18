@@ -420,6 +420,39 @@ interactive_execute <- function(id, code, source = NULL) {
   get(id, envir = store, inherits = FALSE)
 }
 
+# Combine short jdv grid pages without changing JSON object/array shapes.
+.interactive_join_grid_pages <- function(pages) {
+  parsed <- lapply(pages, jsonlite::fromJSON, simplifyVector = FALSE)
+  result <- parsed[[1L]]
+  for (page in parsed[-1L]) {
+    returned <- length(page$data$source_row)
+    result$data$source_row <- c(result$data$source_row, page$data$source_row)
+    if (is.list(result$data$row_labels) && is.list(page$data$row_labels)) {
+      result$data$row_labels <- c(result$data$row_labels, page$data$row_labels)
+    } else if (is.list(result$data$row_labels) || is.list(page$data$row_labels)) {
+      stop("jdv row labels changed while filling preview")
+    }
+    for (column in seq_along(result$data$columns)) {
+      first <- result$data$columns[[column]]
+      next_column <- page$data$columns[[column]]
+      if (!identical(first$errors, next_column$errors)) {
+        stop("jdv column errors changed while filling preview")
+      }
+      channels <- union(names(first$data), names(next_column$data))
+      for (channel in channels) {
+        left_present <- channel %in% names(first$data)
+        right_present <- channel %in% names(next_column$data)
+        previous <- length(result$data$source_row) - returned
+        left <- if (left_present) first$data[[channel]] else rep(list(NULL), previous)
+        right <- if (right_present) next_column$data[[channel]] else rep(list(NULL), returned)
+        first$data[[channel]] <- c(left, right)
+      }
+      result$data$columns[[column]] <- first
+    }
+  }
+  jsonlite::toJSON(result, auto_unbox = TRUE, null = "null", digits = NA)
+}
+
 # Capture `value` and read its descriptor and first page. Returns NULL, leaving no
 # handle behind, when jdv cannot represent the value; the caller then uses the
 # dataview registry.
@@ -430,8 +463,22 @@ interactive_execute <- function(id, code, source = NULL) {
     handle <- jdv::jdv_handle(value, mode = "paged")
     descriptor <- jdv::jdv_handle_descriptor(handle, max_bytes = .interactive_page_bytes)
     page <- if (kind == "table") {
-      jdv::jdv_handle_request(handle, "grid/rows", list(offset = 0L, limit = 20L),
-                              max_bytes = .interactive_page_bytes)
+      pages <- jdv::jdv_handle_request(handle, "grid/rows", list(offset = 0L, limit = 20L),
+                                       max_bytes = .interactive_page_bytes)
+      parsed <- jsonlite::fromJSON(pages, simplifyVector = FALSE)
+      offset <- length(parsed$data$source_row)
+      while (offset > 0L && offset < parsed$total && offset < 20L) {
+        next_page <- jdv::jdv_handle_request(
+          handle, "grid/rows", list(offset = offset, limit = 20L - offset),
+          max_bytes = .interactive_page_bytes
+        )
+        next_parsed <- jsonlite::fromJSON(next_page, simplifyVector = FALSE)
+        returned <- length(next_parsed$data$source_row)
+        if (returned == 0L) break
+        pages <- c(pages, next_page)
+        offset <- offset + returned
+      }
+      if (length(pages) == 1L) pages[[1L]] else .interactive_join_grid_pages(pages)
     } else {
       jdv::jdv_handle_request(
         handle, "object/children",

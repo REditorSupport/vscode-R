@@ -1,6 +1,6 @@
 import * as assert from 'node:assert/strict';
 import { createListAdapter, isJdvOutput, listRequest, normalizeJdvDisplay, queryJdvTablePage } from '../../interactive/jdvTable';
-import { columnOperators, TableColumn } from '../../interactive/tableQuery';
+import { columnOperators, filterOperatorLabel, TableColumn } from '../../interactive/tableQuery';
 
 const capabilities = { seek: true, sort: true, filter: true, known_total: true, next: false, children: false, refresh: false, track: false };
 const gridDescriptor = {
@@ -43,8 +43,12 @@ suite('Interactive jdv tables', () => {
     test('offers the operators of the column type', () => {
         const columns = normalizeJdvDisplay(display()).columns as TableColumn[];
         assert.deepEqual(columnOperators(columns[1]).slice(-2), ['blank', 'notBlank']);
+        assert.equal(filterOperatorLabel('blank', columns[1]), 'is NA');
+        assert.equal(filterOperatorLabel('notBlank', columns[1]), 'is not NA');
         assert.ok(columnOperators(columns[1]).includes('greaterThan'));
         assert.deepEqual(columnOperators(columns[3]), ['equals', 'blank', 'notBlank']);
+        assert.equal(filterOperatorLabel('blank', { field: 'legacy', headerName: 'legacy' }), 'is blank');
+        assert.equal(filterOperatorLabel('notBlank', { field: 'legacy', headerName: 'legacy' }), 'is not blank');
         assert.ok(!columnOperators(columns[1]).includes('inRange'));
     });
 
@@ -76,6 +80,45 @@ suite('Interactive jdv tables', () => {
         requests.length = 0;
         await queryJdvTablePage(data, { start: 0, size: 20 }, inspect);
         assert.equal('sort' in requests[0] || 'filter' in requests[0], false);
+    });
+
+    test('fills a 100-row page after more than twenty short responses and stops on no progress', async () => {
+        const data = normalizeJdvDisplay(display());
+        const offsets: number[] = [];
+        const inspect = (request: { params: Record<string, unknown> }) => {
+            const params = request.params.params as { offset: number; limit: number };
+            offsets.push(params.offset);
+            return Promise.resolve({ json: rowsPage(params.offset, Math.min(1, params.limit), 150) });
+        };
+        const result = await queryJdvTablePage(data, { start: 0, size: 100 }, inspect);
+        assert.equal((result.rows as unknown[]).length, 100);
+        assert.deepEqual((result.rows as Record<string, unknown>[]).map(row => row.__sourceRow), Array.from({ length: 100 }, (_, i) => i));
+        assert.equal(offsets.length, 100);
+        assert.equal(result.totalRows, 150);
+        assert.deepEqual(offsets.slice(0, 3), [0, 1, 2]);
+        const following = await queryJdvTablePage(data, { start: 100, size: 100 }, inspect);
+        assert.equal((following.rows as unknown[]).length, 50);
+        assert.deepEqual((following.rows as Record<string, unknown>[]).map(row => row.__sourceRow), Array.from({ length: 50 }, (_, i) => i + 100));
+        assert.deepEqual(offsets.slice(100, 103), [100, 101, 102]);
+        assert.equal(offsets.at(-1), 149);
+
+        let calls = 0;
+        const noProgress = await queryJdvTablePage(data, { start: 0, size: 20 }, () => {
+            calls++;
+            return Promise.resolve({ json: rowsPage(0, 0) });
+        });
+        assert.equal(calls, 1);
+        assert.deepEqual(noProgress.rows, []);
+    });
+
+    test('surfaces a jdv limit_exceeded error instead of retrying it', async () => {
+        const data = normalizeJdvDisplay(display());
+        let calls = 0;
+        await assert.rejects(queryJdvTablePage(data, { start: 0, size: 20 }, () => {
+            calls++;
+            return Promise.reject(new Error('limit_exceeded: row is too large'));
+        }), /limit_exceeded/);
+        assert.equal(calls, 1);
     });
 
     test('rejects queries the column does not support', async () => {

@@ -33,6 +33,27 @@ first <- jsonlite::fromJSON(table$page, simplifyVector = FALSE)
 expect_identical(length(first$data$source_row), 20L)
 expect_identical(first$total, 100L)
 
+# A byte-limited page is refilled so the renderer can advance by its page size
+# without skipping rows.
+numeric <- rep(1, 150)
+numeric[[3L]] <- Inf
+wide <- data.frame(
+  id = 1:150, text = rep(strrep("a", 100000), 150),
+  category = factor(rep(c("a", "b"), 75)), missing = rep(c(NA, "x"), 75),
+  numeric = numeric, row.names = paste0("row-", 0:149)
+)
+wide_preview <- preview(wide, "table")
+wide_first <- jsonlite::fromJSON(wide_preview$page, simplifyVector = FALSE)
+expect_identical(length(wide_first$data$source_row), 20L)
+expect_identical(unlist(wide_first$data$source_row), 0:19)
+expect_identical(length(wide_first$data$columns[[3L]]$data$values), 20L)
+expect_identical(unlist(wide_first$data$columns[[4L]]$data$na), rep(c(TRUE, FALSE), 10L))
+expect_identical(is.null(wide_first$data$columns[[5L]]$data$special[[1L]]), TRUE)
+expect_identical(is.null(wide_first$data$columns[[5L]]$data$special[[2L]]), TRUE)
+expect_identical(wide_first$data$columns[[5L]]$data$special[[3L]], "pos_inf")
+expect_identical(unlist(wide_first$data$row_labels), paste0("row-", 0:19))
+expect_identical(names(wide_first$data$columns[[1L]]$errors), character())
+
 # Paging, sorting and filtering run in R through the same handle; ids are zero-based rows.
 sorted <- request(table$handleId, "grid/rows", list(
   offset = 0L, limit = 3L, sort = list(list(col = 0L, desc = TRUE)),
@@ -76,5 +97,6 @@ expect_silent(request(ids[[length(ids)]], "object/children", list(path = list())
 
 # Values jdv cannot represent, or an opt-out, leave the dataview registry in charge.
 expect_null(preview(quote(x), "list"))
+expect_null(preview(data.frame(text = strrep("a", 300000)), "table"))
 options(sess.dataviewer = "sess")
 expect_null(preview(data.frame(a = 1), "table"))

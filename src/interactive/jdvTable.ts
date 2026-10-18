@@ -16,7 +16,6 @@ export type Inspect = (request: { method: string; params: Record<string, unknown
 
 /** Largest JSON result requested for one page, matching the R side's preview bound. */
 export const PAGE_BYTES = 256 * 1024;
-const PAGE_ATTEMPTS = 20;
 
 /** Whether a display event came from a jdv handle (as opposed to the dataview registry). */
 export function isJdvOutput(data: Record<string, unknown>): boolean {
@@ -109,7 +108,7 @@ export async function queryJdvTablePage(
         let total = 0;
         let unfiltered = 0;
         let cursor = from;
-        for (let attempt = 0; attempt < PAGE_ATTEMPTS && rows.length < size; attempt++) {
+        while (rows.length < size) {
             const wanted = size - rows.length;
             const { view: _view, generation: _generation, ...params } =
                 tableRowsParams(descriptor, cursor, cursor + wanted, sort, model);
