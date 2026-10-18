@@ -28,7 +28,7 @@ export function createInlineTable(parent: HTMLElement, toolbar: HTMLElement, sta
     let dragged: string | undefined;
     let error = '';
     const available = original.connected !== false && original.archived !== true && original.running !== false;
-    const hasFull = !!original.fullViewId;
+    const hasFull = !!original.fullViewId || !!original.handleId;
     const columns = (): TableColumn[] => (state.data.columns ?? []) as TableColumn[];
     const count = (): number => !state.live && hasFull && !state.sort.length && !Object.keys(state.filters).length
         ? Number(original.sourceRows ?? original.totalRows) : Number(state.data.totalRows ?? 0);

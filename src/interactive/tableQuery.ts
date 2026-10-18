@@ -1,6 +1,10 @@
 import { TABLE_PAGE_SIZE, tablePage } from './tablePaging';
 
-export interface TableColumn { field: string; headerName: string; headerTooltip?: string; type?: unknown; sortable?: boolean; filter?: unknown }
+export interface TableColumn {
+    field: string; headerName: string; headerTooltip?: string; type?: unknown; sortable?: boolean; filter?: unknown;
+    /** jdv columns list the operators their type supports. */
+    jdv?: { filterOptions: string[] };
+}
 export interface TableSort { colId: string; sort: 'asc' | 'desc' }
 export interface TableFilter { type: string; filter?: string }
 export type TableFilters = Record<string, TableFilter>;
@@ -10,6 +14,8 @@ export const filterOperators = {
     blank: 'is blank', notBlank: 'is not blank', true: 'is true', false: 'is false',
 };
 export function columnOperators(column: TableColumn): string[] {
+    // An inline filter is one condition, so the range operator is not offered.
+    if (column.jdv) { return [...column.jdv.filterOptions.filter(option => option !== 'inRange'), 'blank', 'notBlank']; }
     if (column.type === 'booleanColumn') { return ['true', 'false', 'blank', 'notBlank']; }
     return ['numericColumn', 'bigintColumn', 'dateColumn', 'datetimeColumn'].includes(String(column.type))
         ? ['equals', 'notEqual', 'lessThan', 'lessThanOrEqual', 'greaterThan', 'greaterThanOrEqual', 'blank', 'notBlank']

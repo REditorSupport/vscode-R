@@ -11,6 +11,7 @@ import { BackendEvent, BackendFactory, SessionBackend, inspectionMethod } from '
 import { AGENT_PROTOCOL, AgentConfig, AgentSnapshot, ExecutionRecord, SessionEvent,
     SessionManifest, object, submission, identifier, sessionLabel } from './protocol';
 import { searchHistory } from './history';
+import { normalizeJdvDisplay } from './jdvTable';
 
 interface Client { socket: net.Socket; authenticated: boolean; subscribed: boolean; id: string }
 /** This process never imports vscode and is supervised independently of the editor. */
@@ -450,6 +451,8 @@ export class SessionAgent {
     }
 
     private display(data: Record<string, unknown>, executionId?: string): void {
+        // A jdv handle's descriptor and first page become the renderer's table or list data.
+        data = normalizeJdvDisplay(data);
         const display: Record<string, unknown> = { ...data, displayId: typeof data.displayId === 'string' ? data.displayId : randomUUID() };
         if (data.kind === 'plot' && typeof data.svg === 'string') { display.svg = this.assets.put(data.svg, '.svg'); }
         if (data.kind === 'html' && typeof data.file === 'string') {

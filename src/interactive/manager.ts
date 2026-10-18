@@ -27,6 +27,8 @@ import { readExecutionRecords, readPreviousJournal } from './journal';
 import { sessionAge, sessionPresentation } from './sessionPresentation';
 import { runningSessions, stopSession } from './sessionLifecycle';
 import { InteractiveInputFeatures } from './inputFeatures';
+import { createListAdapter, isJdvOutput, listRequest, queryJdvTablePage } from './jdvTable';
+import type { TreeAdapter } from '../jdvAdapter';
 import { acquireInteractiveJdvAddress, disposeInteractiveJdvHostOnControlLoss } from './jdvAddress';
 
 interface InteractiveView {
@@ -376,10 +378,18 @@ export class InteractiveManager implements vscode.Disposable, vscode.TreeDataPro
         view.chain = view.chain.then(async () => {
             if (view.disposed) { return; }
             const edits: vscode.NotebookEdit[] = [];
+            const handles: string[] = [];
             for (const cell of view.notebook.getCells().slice().reverse()) {
                 const id = cell.metadata.rExecutionId as string | undefined;
-                const record = id && this.transcriptCells(view).find(cell => cell.record.id === id)?.record;
+                const transcript = id ? this.transcriptCells(view).find(cell => cell.record.id === id) : undefined;
+                const record = transcript?.record;
                 if (record && !['queued', 'running', 'unknown'].includes(record.state)) {
+                    // Cleared outputs release their jdv handles in R.
+                    if (transcript?.generation === view.model.generation) {
+                        for (const output of transcript.outputs) {
+                            if (output.type === 'display' && isJdvOutput(output.data)) { handles.push(String(output.data.handleId)); }
+                        }
+                    }
                     view.hidden.add(record.id);
                     const adjacent = edits.at(-1);
                     if (adjacent?.range.start === cell.index + 1) {
@@ -389,6 +399,11 @@ export class InteractiveManager implements vscode.Disposable, vscode.TreeDataPro
             }
             const edit = new vscode.WorkspaceEdit(); edit.set(view.notebook.uri, edits);
             await vscode.workspace.applyEdit(edit);
+            if (!['exited', 'stopping'].includes(view.client.manifest.status)) {
+                for (const handle of handles) {
+                    await view.client.request('inspect', { method: 'jdv_handle_close', params: { handle_id: handle } }).catch(() => undefined);
+                }
+            }
         });
         await view.chain;
     }
@@ -1222,27 +1237,55 @@ export class InteractiveManager implements vscode.Disposable, vscode.TreeDataPro
         try {
             let result: unknown;
             if (data.method === 'jdv/address') {
-                const sessionId = view.target.sessionId;
-                const generation = view.model.generation;
-                const manifestGeneration = client.manifest.generation;
-                const hostKey = interactiveJdvHostKey(client.manifest.id, manifestGeneration);
-                const canConnect = () => client.control && !view.target.processExited &&
-                    !['stopping', 'exited'].includes(client.manifest.status);
-                const address = await acquireInteractiveJdvAddress({
-                    sessionId, hostKey,
-                    canConnect,
-                    isCurrent: () => !view.disposed && view.client === client && !view.restarting &&
-                        view.target.sessionId === sessionId && view.model.generation === generation &&
-                        client.manifest.generation === manifestGeneration,
-                    getAddress: getJdvAddress,
-                    disposeHost: disposeJdvHost,
-                });
-                result = { address };
+                result = { address: await this.jdvAddress(view) };
             } else {
                 result = await session.handleEditorRequest(String(data.method), params);
             }
             await client.request('clientReply', { id: data.id, result });
         } catch (error) { await client.request('clientReply', { id: data.id, error: String(error) }).catch(() => undefined); }
+    }
+
+    /** The session-scoped jdv listener address, created on first use. */
+    private jdvAddress(view: InteractiveView): Promise<string> {
+        const client = view.client;
+        const sessionId = view.target.sessionId;
+        const generation = view.model.generation;
+        const manifestGeneration = client.manifest.generation;
+        return acquireInteractiveJdvAddress({
+            sessionId, hostKey: interactiveJdvHostKey(client.manifest.id, manifestGeneration),
+            canConnect: () => client.control && !view.target.processExited &&
+                !['stopping', 'exited'].includes(client.manifest.status),
+            isCurrent: () => !view.disposed && view.client === client && !view.restarting &&
+                view.target.sessionId === sessionId && view.model.generation === generation &&
+                client.manifest.generation === manifestGeneration,
+            getAddress: getJdvAddress,
+            disposeHost: disposeJdvHost,
+        });
+    }
+
+    /** Positional-path bookkeeping of an inline list, rebuilt from its handle when missing. */
+    private readonly listAdapters = new Map<string, TreeAdapter>();
+
+    private async listAdapter(view: InteractiveView, data: Record<string, unknown>): Promise<TreeAdapter> {
+        const key = `${view.client.manifest.id}:${view.model.generation}:${String(data.handleId)}`;
+        let adapter = this.listAdapters.get(key);
+        if (!adapter) {
+            adapter = await createListAdapter(data, request => view.client.request('inspect', request));
+            this.listAdapters.set(key, adapter);
+            while (this.listAdapters.size > 64) { this.listAdapters.delete(this.listAdapters.keys().next().value as string); }
+        }
+        return adapter;
+    }
+
+    /** Register the output's value (or one item of it) with jdv so the Data Viewer panel shows it. */
+    private async openHandleViewer(view: InteractiveView, data: Record<string, unknown>, path: unknown[], title: string): Promise<void> {
+        // R cannot wait for a reply to its own request while answering this inspection,
+        // so the listener address is handed over instead of being requested.
+        const address = await this.jdvAddress(view);
+        const opened = await view.client.request<boolean>('inspect', {
+            method: 'jdv_open_viewer', params: { handle_id: data.handleId, path, title, address },
+        });
+        if (opened !== true) { throw new Error('Unable to open the Data Viewer. Check the R session and try again.'); }
     }
 
     private async rendererMessage(editor: vscode.NotebookEditor, message: Record<string, unknown>): Promise<void> {
@@ -1275,15 +1318,24 @@ export class InteractiveManager implements vscode.Disposable, vscode.TreeDataPro
             switch (message.action) {
                 case 'table':
                     if (data.kind !== 'table') { return; }
+                    if (isJdvOutput(data)) { await this.openHandleViewer(view, data, [], `Cell ${owner.record.order}: table`); break; }
                     await session.showDataView('table', 'json', `${view.client.manifest.label}: ${data.fullViewId ? 'full table' : 'table'}`, '', 'Beside', String(data.fullViewId ?? data.viewId), undefined, view.target?.sessionId ?? null); break;
                 case 'page': {
                     if (data.kind !== 'table') { return; }
-                    result = await queryTablePage(data, message, request => view.client.request('inspect', request)); break;
+                    result = await (isJdvOutput(data) ? queryJdvTablePage : queryTablePage)(data, message,
+                        request => view.client.request('inspect', request)); break;
                 }
                 case 'list': case 'listPage': case 'listNavigate': case 'listItem': {
                     if (data.kind !== 'list') { return; }
                     const listPath = message.path ?? [];
                     if (!Array.isArray(listPath) || !listPath.every(index => Number.isSafeInteger(index) && index > 0)) { throw new Error('Invalid list path'); }
+                    if (isJdvOutput(data)) {
+                        const adapter = await this.listAdapter(view, data);
+                        const outcome = await listRequest(adapter, data, { ...message, path: listPath }, request => view.client.request('inspect', request));
+                        if (outcome.open) { await this.openHandleViewer(view, data, outcome.open.path, `Cell ${owner.record.order}: ${outcome.open.title}`); }
+                        result = outcome.result;
+                        break;
+                    }
                     const params = { view_id: data.viewId, path: listPath };
                     if (message.action === 'listPage') {
                         if (!Number.isSafeInteger(message.start) || Number(message.start) < 1) { throw new Error('Invalid list page'); }

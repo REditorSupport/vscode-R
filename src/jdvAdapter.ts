@@ -759,6 +759,12 @@ export class TreeAdapter {
         return node;
     }
 
+    /** The typed jdv path and display title of the item at a positional path. */
+    locate(path: number[]): { path: JdvPathStep[]; title: string } {
+        const node = this.node(path);
+        return { path: node.path, title: node.title };
+    }
+
     navigation(path: number[] = []): ListViewNavigation {
         const node = this.node(path);
         const breadcrumbs = [];
@@ -806,7 +812,8 @@ export class TreeAdapter {
             const hasChildren = child.has_children === true;
             const summary = child.unavailable ? `(${child.unavailable})` : child.summary ?? '';
             return {
-                label: child.label,
+                // Unnamed elements are labeled by position, as in the previous List Viewer.
+                label: child.label === '' ? `[[${child.index}]]` : child.label,
                 str: summary,
                 index: child.index,
                 // Vector elements are terminal rows; other leaves have nothing to open.

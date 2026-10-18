@@ -93,7 +93,7 @@ export function activate(context: RendererContext): { renderOutputItem(item: Out
                 printed.textContent = typeof data.printedText === 'string' ? data.printedText : '';
                 element.append(printed);
                 const open = button('Open data viewer', 'table', () => send(item, data, 'table'), 'Data viewer');
-                if (data.fullViewId) {
+                if (data.fullViewId || data.handleId) {
                     open.title = 'Open the full table without copying it. Reference edits may appear here; reopen to refresh. Sorting and filtering scan the full data.';
                 }
                 open.disabled = !live;
