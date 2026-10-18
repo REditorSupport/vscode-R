@@ -5,7 +5,7 @@
 // existing AG Grid infinite row model with formatted rows.
 
 import { tableFromIPC } from 'apache-arrow';
-import { JdvDescriptor, JdvRequestError, JsonObject, ROW_LABEL_FIELD } from './jdvAdapter';
+import { JdvDescriptor, JdvRequestError, ROW_LABEL_FIELD } from './jdvAdapter';
 
 // ---------------------------------------------------------------------------
 // Formatting. Values are formatted from physical buffers where JavaScript
@@ -272,9 +272,8 @@ export class SequentialStream {
         preferredRows = 1000, private readonly viewCacheBytes = VIEW_CACHE_BYTES,
     ) {
         this.columns = (descriptor.columns ?? []) as unknown as SequentialColumn[];
-        const cap = (descriptor as unknown as JsonObject).max_page_rows;
-        const maxPageRows = typeof cap === 'number' && Number.isSafeInteger(cap) && cap >= 1 && cap <= 2000 ? cap : 200;
-        this.pageRows = Math.min(preferredRows, maxPageRows);
+        // parseDescriptor() guarantees a positive safe-integer cap for sequential views.
+        this.pageRows = Math.min(preferredRows, descriptor.max_page_rows!);
         streams.add(this);
     }
 

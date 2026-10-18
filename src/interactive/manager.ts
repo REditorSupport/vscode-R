@@ -1226,12 +1226,10 @@ export class InteractiveManager implements vscode.Disposable, vscode.TreeDataPro
                 const generation = view.model.generation;
                 const manifestGeneration = client.manifest.generation;
                 const hostKey = interactiveJdvHostKey(client.manifest.id, manifestGeneration);
-                const pid = Number(client.manifest.rPid);
                 const canConnect = () => client.control && !view.target.processExited &&
                     !['stopping', 'exited'].includes(client.manifest.status);
                 const address = await acquireInteractiveJdvAddress({
                     sessionId, hostKey,
-                    pid: Number.isSafeInteger(pid) && pid > 0 ? pid : undefined,
                     canConnect,
                     isCurrent: () => !view.disposed && view.client === client && !view.restarting &&
                         view.target.sessionId === sessionId && view.model.generation === generation &&

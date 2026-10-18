@@ -117,7 +117,7 @@ local({
   expect_false(used_sess_viewer())
   messages <- host_messages(2L)
   expect_identical(messages[[1L]]$method, "hello")
-  expect_identical(messages[[1L]]$params$pid, Sys.getpid())
+  expect_identical(messages[[1L]]$params$producer$name, "jdv")
   expect_identical(runtime$jdv_address, address)
   connection <- jdv::jdv_connection()
   expect_identical(connection$state, "connected")
@@ -128,7 +128,8 @@ local({
   open <- opens()[[1L]]$params
   expect_identical(open$kind, "grid")
   expect_identical(open$access, "random")
-  expect_identical(open$mode, "paged")
+  expect_identical(open$encoding, "jdv-json")
+  expect_identical(open$collation, "C")
   expect_identical(open$title, "sample")
   expect_identical(open$generation, 1L)
 

@@ -6,7 +6,7 @@ import { SequentialStream, UNAVAILABLE_TEXT, formatScaled, formatTimestamp } fro
 import { JdvHost, JdvPeer } from '../../jdvTransport';
 
 const descriptor: JdvDescriptor = parseDescriptor({
-    view: 'v-1', generation: 1, kind: 'grid', access: 'sequential', encoding: 'arrow-ipc', mode: 'sequential',
+    view: 'v-1', generation: 1, kind: 'grid', access: 'sequential', encoding: 'arrow-ipc',
     capabilities: { seek: false, sort: false, filter: false, known_total: false, next: true, children: false },
     nrow: null, ncol: 3, max_page_rows: 2000,
     columns: [
@@ -14,7 +14,6 @@ const descriptor: JdvDescriptor = parseDescriptor({
         { index: 1, position: 1, name: 's', type: 'u', ipc_index: 1, unsupported: null, sortable: false, filterable: false },
         { index: 2, position: 2, name: 'x', type: '+w:2', ipc_index: null, unsupported: 'not supported', sortable: false, filterable: false },
     ],
-    schema: { format: '+s', children: [{ format: 'i' }, { format: 'u' }, { format: '+w:2' }] },
 });
 
 /** A fake producer returning pages of `size` rows out of `total`. */
@@ -133,13 +132,24 @@ async function fakeR(socketPath: string) {
     return { socket, next, send, ack: () => send({ method: 'ack', params: { frames } }) };
 }
 
+function helloParams(limits: Record<string, number> = {}): JsonObject {
+    return {
+        protocol: 1, session: 'producer-1', wake: true,
+        producer: { name: 'jdv', version: '0.0.9000', runtime: { name: 'R', version: '4.5.2' } },
+        limits: {
+            max_unacked_frames: 264, max_unacked_bytes: 1048577, queue_messages: 256, queue_bytes: 16777216,
+            max_request_bytes: 1048576, max_message_bytes: 10485760, ...limits,
+        },
+    };
+}
+
 suite('jdv transport', () => {
     test('exchanges requests, wakes and Arrow bodies with R', async () => {
         const opened: string[] = [];
         const failures: JsonObject[] = [];
         const tracking: JsonObject[] = [];
         let peer: JdvPeer | undefined;
-        const host = await JdvHost.create(4321, {
+        const host = await JdvHost.create({
             viewOpen: (connection, params) => { peer = connection; opened.push(String(params.view)); },
             viewClosed: () => undefined,
             viewUpdateFailed: (_connection, params) => { failures.push(params); },
@@ -148,7 +158,7 @@ suite('jdv transport', () => {
         });
         try {
             const r = await fakeR(host.socketPath);
-            r.send({ method: 'hello', params: { protocol: 1, session: 'r-4321-1', pid: 4321, limits: { max_receive_frames: 4, max_receive_bytes: 65536 } } });
+            r.send({ method: 'hello', params: helloParams({ max_unacked_frames: 4, max_unacked_bytes: 65536 }) });
             r.send({ method: 'view/open', params: { view: 'v-1', generation: 1 } });
             while (!peer) { await new Promise(resolve => setTimeout(resolve, 5)); }
             assert.deepEqual(opened, ['v-1']);
@@ -183,8 +193,8 @@ suite('jdv transport', () => {
             assert.deepEqual(Array.from(received!), [1, 2, 3, 10, 4]);
             assert.equal((result as { rows_seen: number }).rows_seen, 1);
 
-            const failed = peer.request('table/rows', { view: 'v-1', generation: 1 });
-            const second = await r.next(line => line.method === 'table/rows');
+            const failed = peer.request('grid/rows', { view: 'v-1', generation: 1 });
+            const second = await r.next(line => line.method === 'grid/rows');
             r.send({ id: second.id, error: { code: 'unsupported', message: 'no' }, warnings: [] });
             await assert.rejects(failed, (e: unknown) => e instanceof JdvRequestError && e.code === 'unsupported');
 
@@ -196,20 +206,60 @@ suite('jdv transport', () => {
         }
     });
 
-    test('rejects a connection from another process', async () => {
+    test('rejects an invalid hello and treats unknown error codes as producer failures', async () => {
         let reason = '';
-        const host = await JdvHost.create(1, {
-            viewOpen: () => undefined,
+        let peer: JdvPeer | undefined;
+        const host = await JdvHost.create({
+            viewOpen: (connection) => { peer = connection; },
             viewClosed: () => undefined,
             viewUpdateFailed: () => undefined,
             viewTracking: () => undefined,
             disconnected: (_peer, why) => { reason = why; },
         });
         try {
-            const r = await fakeR(host.socketPath);
-            r.send({ method: 'hello', params: { protocol: 1, pid: 2, limits: {} } });
-            await new Promise<void>(resolve => r.socket.once('close', () => resolve()));
-            assert.match(reason, /does not belong/);
+            const bad = await fakeR(host.socketPath);
+            bad.send({ method: 'hello', params: { ...helloParams(), limits: { max_unacked_frames: 4 } } });
+            await new Promise<void>(resolve => bad.socket.once('close', () => resolve()));
+            assert.match(reason, /Invalid jdv hello/);
+
+            const good = await fakeR(host.socketPath);
+            good.send({ method: 'hello', params: helloParams() });
+            good.send({ method: 'view/open', params: { view: 'v-1', generation: 1 } });
+            while (!peer) { await new Promise(resolve => setTimeout(resolve, 5)); }
+            const failed = peer.request('grid/rows', { view: 'v-1', generation: 1 });
+            const request = await good.next(line => line.method === 'grid/rows');
+            good.send({ id: request.id, error: { code: 'r_error', message: 'boom' }, warnings: [] });
+            await assert.rejects(failed, (e: unknown) => e instanceof JdvRequestError &&
+                e.code === 'producer_error' && /boom \(r_error\)/.test(e.message));
+        } finally {
+            host.dispose();
+        }
+    });
+
+    test('sends wakes only when the producer asks for them', async () => {
+        let peer: JdvPeer | undefined;
+        const host = await JdvHost.create({
+            viewOpen: (connection) => { peer = connection; },
+            viewClosed: () => undefined,
+            viewUpdateFailed: () => undefined,
+            viewTracking: () => undefined,
+            disconnected: () => undefined,
+        });
+        try {
+            const quiet = await fakeR(host.socketPath);
+            quiet.send({ method: 'hello', params: { ...helloParams(), wake: false } });
+            quiet.send({ method: 'view/open', params: { view: 'v-1', generation: 1 } });
+            while (!peer) { await new Promise(resolve => setTimeout(resolve, 5)); }
+            void peer.request('view/close', { view: 'v-1', generation: 1 }).catch(() => undefined);
+            const request = await quiet.next(line => line.method === 'view/close');
+            // A later request arrives without a wake in between.
+            await new Promise(resolve => setTimeout(resolve, 200));
+            quiet.send({ id: request.id, result: {}, warnings: [] });
+            quiet.ack();
+            await assert.rejects(Promise.race([
+                quiet.next(line => line.method === 'wake'),
+                new Promise((_, reject) => setTimeout(() => reject(new Error('no wake')), 150)),
+            ]), /no wake/);
         } finally {
             host.dispose();
         }

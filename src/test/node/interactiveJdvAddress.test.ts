@@ -5,11 +5,10 @@ import { disposeJdvHostIfCurrentAddress } from '../../jdvHostLifecycle';
 suite('Interactive jdv address', () => {
     test('returns a listener address scoped to the captured session and generation', async () => {
         const address = await acquireInteractiveJdvAddress({
-            sessionId: 'session:g1', hostKey: 'interactive:session:g1', pid: 123,
+            sessionId: 'session:g1', hostKey: 'interactive:session:g1',
             canConnect: () => true, isCurrent: () => true,
-            getAddress: (sessionId, pid, hostKey) => {
+            getAddress: (sessionId, hostKey) => {
                 assert.strictEqual(sessionId, 'session:g1');
-                assert.strictEqual(pid, 123);
                 assert.strictEqual(hostKey, 'interactive:session:g1');
                 return Promise.resolve('/tmp/jdv.sock');
             },

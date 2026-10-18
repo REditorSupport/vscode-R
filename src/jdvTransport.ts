@@ -25,11 +25,23 @@ export interface JdvResponse {
     body?: Uint8Array;
 }
 
-interface RLimits {
-    maxReceiveFrames: number;
-    maxReceiveBytes: number;
+interface ProducerLimits {
+    maxUnackedFrames: number;
+    maxUnackedBytes: number;
     maxRequestBytes: number;
 }
+
+/** Error codes of the protocol; any other code is a general producer failure. */
+const ERROR_CODES = new Set([
+    'invalid_request', 'unsupported', 'limit_exceeded', 'schema_changed', 'producer_error', 'interrupted',
+    'cancelled', 'expired', 'unavailable', 'stale_generation', 'view_not_found', 'cache_changed', 'in_use',
+    'stream_failed', 'method_not_found',
+]);
+const SESSION_ID = /^[A-Za-z0-9._:-]{1,128}$/;
+const LIMIT_NAMES = [
+    'max_unacked_frames', 'max_unacked_bytes', 'queue_messages', 'queue_bytes', 'max_request_bytes',
+    'max_message_bytes',
+] as const;
 
 interface OutboundFrame {
     bytes: Buffer;
@@ -47,15 +59,21 @@ function isObject(value: unknown): value is JsonObject {
     return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-function positiveInteger(value: unknown, fallback: number): number {
-    return typeof value === 'number' && Number.isSafeInteger(value) && value > 0 ? value : fallback;
+function positiveInteger(value: unknown): value is number {
+    return typeof value === 'number' && Number.isSafeInteger(value) && value > 0;
 }
 
-/** One R connection. Implements the host obligations of the jdv transport. */
+/** Producer or runtime metadata: string `name` and `version` of 1 to 256 UTF-8 bytes. */
+function validIdentity(value: unknown): boolean {
+    return isObject(value) && [value.name, value.version].every(field =>
+        typeof field === 'string' && Buffer.byteLength(field) >= 1 && Buffer.byteLength(field) <= 256);
+}
+
+/** One producer connection. Implements the host obligations of the jdv transport. */
 export class JdvPeer {
     private buffer: Buffer = Buffer.alloc(0);
     private body?: { header: JsonObject; length: number; timer: NodeJS.Timeout };
-    private limits?: RLimits;
+    private limits?: ProducerLimits;
     private readonly outbound: OutboundFrame[] = [];
     /** Bytes of frames written but not yet acknowledged, in send order. */
     private readonly unconfirmed: number[] = [];
@@ -66,13 +84,14 @@ export class JdvPeer {
     private wakeTimer?: NodeJS.Timeout;
     private sequence = 0;
     private closed = false;
+    /** Whether the producer asked for periodic `wake` notifications. */
+    private wanted = false;
+    /** Opaque session id from `hello`; it carries no process id. */
     session?: string;
-    pid?: number;
 
     constructor(
         private readonly socket: net.Socket,
         private readonly handlers: {
-            hello(peer: JdvPeer, params: JsonObject): boolean;
             notification(peer: JdvPeer, method: string, params: JsonObject): void;
             closed(peer: JdvPeer, reason: string): void;
         },
@@ -202,8 +221,11 @@ export class JdvPeer {
         this.updateWake();
         if (isObject(message.error)) {
             const { code, message: text } = message.error;
-            pending.reject(new JdvRequestError(typeof code === 'string' ? code : 'unknown',
-                typeof text === 'string' ? text : 'jdv request failed'));
+            const known = typeof code === 'string' && ERROR_CODES.has(code);
+            const detail = typeof text === 'string' ? text : 'jdv request failed';
+            // An unrecognized code is a general producer failure; keep it visible in the text.
+            pending.reject(known ? new JdvRequestError(code, detail)
+                : new JdvRequestError('producer_error', typeof code === 'string' ? `${detail} (${code})` : detail));
             return;
         }
         const result = message.result;
@@ -222,18 +244,26 @@ export class JdvPeer {
         if (version !== PROTOCOL_MAJOR) {
             throw new Error(`Unsupported jdv protocol: ${String(params.protocol)}`);
         }
-        const limits = isObject(params.limits) ? params.limits : {};
-        this.limits = {
-            maxReceiveFrames: positiveInteger(limits.max_receive_frames, 264),
-            maxReceiveBytes: positiveInteger(limits.max_receive_bytes, 64 * 1024),
-            maxRequestBytes: positiveInteger(limits.max_request_bytes, 1024 * 1024),
-        };
-        this.session = typeof params.session === 'string' ? params.session : undefined;
-        this.pid = typeof params.pid === 'number' ? params.pid : undefined;
-        if (!this.handlers.hello(this, params)) {
-            throw new Error('The jdv connection does not belong to this R session.');
+        if (typeof params.session !== 'string' || !SESSION_ID.test(params.session) ||
+            !validIdentity(params.producer) ||
+            (isObject(params.producer) && params.producer.runtime !== undefined && !validIdentity(params.producer.runtime)) ||
+            (params.wake !== undefined && typeof params.wake !== 'boolean')) {
+            throw new Error('Invalid jdv hello.');
         }
+        const limits = params.limits;
+        if (!isObject(limits) || !LIMIT_NAMES.every(name => positiveInteger(limits[name]))) {
+            throw new Error('Invalid jdv hello limits.');
+        }
+        this.limits = {
+            maxUnackedFrames: limits.max_unacked_frames as number,
+            maxUnackedBytes: limits.max_unacked_bytes as number,
+            maxRequestBytes: limits.max_request_bytes as number,
+        };
+        this.session = params.session;
+        // The host sends periodic wakes only when the producer asks for them.
+        this.wanted = params.wake === true;
         this.flush();
+        this.updateWake();
     }
 
     private acknowledge(params: JsonObject): void {
@@ -257,8 +287,8 @@ export class JdvPeer {
         }
         while (this.outbound.length > 0) {
             const frame = this.outbound[0];
-            if (this.unconfirmed.length + 1 > limits.maxReceiveFrames ||
-                this.unconfirmedBytes + frame.bytes.length > limits.maxReceiveBytes) {
+            if (this.unconfirmed.length + 1 > limits.maxUnackedFrames ||
+                this.unconfirmedBytes + frame.bytes.length > limits.maxUnackedBytes) {
                 return;
             }
             this.outbound.shift();
@@ -269,8 +299,11 @@ export class JdvPeer {
         }
     }
 
-    /** R dispatches queued requests only when woken; wake while any request is pending. */
+    /** Wake the producer repeatedly while a request is pending, if it asked for wakes. */
     private updateWake(): void {
+        if (!this.wanted) {
+            return;
+        }
         if (this.pending.size === 0) {
             this.stopWake();
         } else if (!this.wakeTimer) {
@@ -323,13 +356,12 @@ export class JdvHost {
         readonly address: string,
         /** The same endpoint in the form Node's `net` module accepts. */
         readonly socketPath: string,
-        private readonly expectedPid: number | undefined,
         private readonly events: JdvHostEvents,
     ) {
         server.on('connection', socket => this.accept(socket));
     }
 
-    static async create(expectedPid: number | undefined, events: JdvHostEvents): Promise<JdvHost> {
+    static async create(events: JdvHostEvents): Promise<JdvHost> {
         const id = crypto.randomBytes(8).toString('hex');
         // Unix socket paths are limited to about 104-108 bytes; keep the name short.
         const socketPath = process.platform === 'win32'
@@ -347,7 +379,7 @@ export class JdvHost {
         if (process.platform !== 'win32') {
             fs.chmodSync(socketPath, 0o600);
         }
-        return new JdvHost(server, address, socketPath, expectedPid, events);
+        return new JdvHost(server, address, socketPath, events);
     }
 
     get connection(): JdvPeer | undefined {
@@ -366,7 +398,6 @@ export class JdvHost {
         // jdv opens a new connection after a disconnect; only one is active.
         this.peer?.close('The R session opened a new jdv connection.');
         this.peer = new JdvPeer(socket, {
-            hello: (_peer, params) => this.expectedPid === undefined || params.pid === this.expectedPid,
             notification: (peer, method, params) => {
                 if (method === 'view/open') {
                     this.events.viewOpen(peer, params);

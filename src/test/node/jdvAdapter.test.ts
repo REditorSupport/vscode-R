@@ -5,18 +5,20 @@ import {
     parseDescriptor, parseTracking, tableRowsParams, toJdvFilter,
 } from '../../jdvAdapter';
 
-const capabilities = { seek: true, sort: true, filter: true, known_total: true, next: false, children: false, refresh: true };
+const capabilities = {
+    seek: true, sort: true, filter: true, known_total: true, next: false, children: false, refresh: true, track: false,
+};
 
 const grid: JdvDescriptor = parseDescriptor({
-    view: 'v-1', generation: 2, kind: 'grid', access: 'random', encoding: 'r-json', capabilities,
-    title: 'df', mode: 'paged', nrow: 3, ncol: 6, row_names: null,
+    view: 'v-1', generation: 2, kind: 'grid', access: 'random', encoding: 'jdv-json', capabilities,
+    title: 'df', collation: 'C', nrow: 3, ncol: 6,
     columns: [
-        { position: 0, name: 'a', type: 'number', class: ['numeric'], sortable: true, filterable: true },
-        { position: 1, name: 'b', type: 'factor', class: ['factor'], sortable: true, filterable: true, levels: ['x', 'y'] },
-        { position: 2, name: 'd', type: 'date', class: ['Date'], sortable: true, filterable: true },
-        { position: 3, name: 't', type: 'datetime', class: ['POSIXct', 'POSIXt'], sortable: true, filterable: true, tz: 'UTC' },
-        { position: 4, name: 'i', type: 'int64', class: ['integer64'], sortable: true, filterable: true },
-        { position: 5, name: 'a', type: 'other', class: ['AsIs'], sortable: false, filterable: false, drillable: true },
+        { position: 0, name: 'a', type: 'number', native_type: ['numeric'], sortable: true, filterable: true },
+        { position: 1, name: 'b', type: 'categorical', native_type: ['factor'], sortable: true, filterable: true, levels: ['x', 'y'] },
+        { position: 2, name: 'd', type: 'date', native_type: ['Date'], sortable: true, filterable: true },
+        { position: 3, name: 't', type: 'datetime', native_type: ['POSIXct', 'POSIXt'], sortable: true, filterable: true, tz: 'UTC' },
+        { position: 4, name: 'i', type: 'int64', native_type: ['integer64'], sortable: true, filterable: true },
+        { position: 5, name: 'a', type: 'other', native_type: ['AsIs'], sortable: false, filterable: false, drillable: true },
     ],
 });
 
@@ -26,6 +28,28 @@ suite('jdv adapter', () => {
         assert.equal(grid.generation, 2);
         assert.throws(() => parseDescriptor({}));
         assert.throws(() => parseDescriptor({ ...grid, columns: undefined }));
+        assert.throws(() => parseDescriptor({ ...grid, view: '' }));
+        assert.throws(() => parseDescriptor({ ...grid, generation: 0 }));
+        assert.throws(() => parseDescriptor({ ...grid, collation: 'locale-ish' }));
+        assert.throws(() => parseDescriptor({ ...grid, collation: undefined }));
+        assert.throws(() => parseDescriptor({ ...grid, encoding: 'r-json' }));
+        assert.throws(() => parseDescriptor({ ...grid, nrow: null }));
+        assert.throws(() => parseDescriptor({ ...grid, capabilities: { ...capabilities, seek: false } }));
+        assert.throws(() => parseDescriptor({ ...grid, capabilities: { ...capabilities, sort: 'yes' } }));
+    });
+
+    test('treats omitted capabilities as false', () => {
+        const bare = parseDescriptor({ ...grid, access: 'snapshot', capabilities: undefined });
+        assert.deepEqual(Object.values(bare.capabilities), Array(8).fill(false));
+    });
+
+    test('requires max_page_rows for sequential views', () => {
+        const sequential = {
+            view: 'v-3', generation: 1, kind: 'grid', access: 'sequential', encoding: 'arrow-ipc',
+            capabilities: { next: true }, nrow: null, ncol: 0, columns: [],
+        };
+        assert.throws(() => parseDescriptor(sequential));
+        assert.equal(parseDescriptor({ ...sequential, max_page_rows: 10 }).max_page_rows, 10);
     });
 
     test('reveals the panel unless the update is tracked or a refresh', () => {
@@ -47,7 +71,7 @@ suite('jdv adapter', () => {
         assert.equal(canRefresh(grid), true);
         assert.equal(canRefresh({ ...grid, access: 'sequential' }), false);
         assert.equal(canRefresh({ ...grid, capabilities: { ...capabilities, refresh: false } }), false);
-        assert.equal(canRefresh({ ...grid, capabilities: { ...capabilities, refresh: undefined } }), false);
+        assert.equal(canRefresh(parseDescriptor({ ...grid, capabilities: { seek: true, known_total: true } })), false);
     });
 
     test('builds column definitions from the schema', () => {
@@ -197,8 +221,8 @@ suite('jdv adapter', () => {
         const page = gridPageFromRows({
             view: 'v-1', generation: 2, total: 3, total_unfiltered: 5, offset: 0, limit: 3,
             data: {
-                row_index: [3, 1, 2],
-                row_names: ['r3', 'r1', 'r2'],
+                source_row: [2, 0, 1],
+                row_labels: ['r3', 'r1', 'r2'],
                 columns: [
                     { schema: grid.columns![0], data: {
                         values: [null, 1, null], display: ['Inf', 'NaN', 'NA'],
@@ -217,14 +241,14 @@ suite('jdv adapter', () => {
         assert.equal(page.totalUnfiltered, 5);
         const unnamed = gridPageFromRows({
             total: 1, total_unfiltered: 1, offset: 0, limit: 1,
-            data: { row_index: [7], row_names: null, columns: [] },
+            data: { source_row: [6], row_labels: null, columns: [] },
         }, 0, 1);
         assert.deepEqual(unnamed.rows, [{ '0': '7' }]);
     });
 
     test('maps List Viewer paths to typed tree paths', () => {
         const tree = new TreeAdapter(parseDescriptor({
-            view: 'v-2', generation: 1, kind: 'tree', access: 'random', encoding: 'r-json',
+            view: 'v-2', generation: 1, kind: 'tree', access: 'random', encoding: 'jdv-json',
             capabilities: { ...capabilities, sort: false, filter: false, children: true }, path: [], class: ['list'], type: 'list',
         }), 'x');
         assert.deepEqual(tree.childrenParams([], 1), { view: 'v-2', generation: 1, path: [], offset: 0, limit: 200, attributes: false });
@@ -272,12 +296,12 @@ suite('jdv adapter', () => {
 
     test('leaves have nothing to open unless they are tables', () => {
         const tree = new TreeAdapter(parseDescriptor({
-            view: 'v-2', generation: 1, kind: 'tree', access: 'random', encoding: 'r-json',
+            view: 'v-2', generation: 1, kind: 'tree', access: 'random', encoding: 'jdv-json',
             capabilities: { ...capabilities, children: true }, path: [], class: ['list'], type: 'list',
         }), 'x');
         const page = tree.children([], {
             path: [], offset: 0, total_children: 2, children: [
-                { index: 1, label: 'n', class: ['numeric'], type: 'double', summary: 'double (1): 1', has_children: false, viewable: true, path: [{ type: 'index', index: 1 }] },
+                { index: 1, label: 'n', native_type: ['numeric'], type: 'double', summary: 'double (1): 1', has_children: false, viewable: true, path: [{ type: 'index', index: 1 }] },
                 { index: 2, label: 'm', class: ['matrix', 'array'], type: 'integer', summary: 'matrix', has_children: false, viewable: true, path: [{ type: 'index', index: 2 }] },
             ],
         });

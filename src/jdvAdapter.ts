@@ -5,6 +5,7 @@
 
 export type JsonObject = Record<string, unknown>;
 
+/** Capability flags of a descriptor; parseDescriptor() fills omitted flags with false. */
 export interface JdvCapabilities {
     seek: boolean;
     sort: boolean;
@@ -12,16 +13,21 @@ export interface JdvCapabilities {
     known_total: boolean;
     next: boolean;
     children: boolean;
-    refresh?: boolean;
+    refresh: boolean;
     /** True only when the view tracks a variable and has not lost it. */
-    track?: boolean;
+    track: boolean;
 }
+
+const CAPABILITY_NAMES = [
+    'seek', 'sort', 'filter', 'known_total', 'next', 'children', 'refresh', 'track',
+] as const;
 
 export interface JdvColumnSchema {
     position: number;
     name: string;
     type: string;
-    class?: string[];
+    /** Producer-defined display hint (R: `class()`); never interpreted. */
+    native_type?: string[];
     sortable: boolean;
     filterable: boolean;
     drillable?: boolean;
@@ -40,7 +46,9 @@ export interface JdvDescriptor {
     encoding: string;
     capabilities: JdvCapabilities;
     title?: string | null;
-    mode?: string;
+    collation?: 'C' | 'locale';
+    /** Sequential views: the row cap captured when the view was opened. */
+    max_page_rows?: number;
     nrow?: number | null;
     ncol?: number;
     columns?: JdvColumnSchema[];
@@ -89,12 +97,21 @@ function scalarText(value: unknown): string {
 
 /** Validate the params of a `view/open` notification. */
 export function parseDescriptor(value: unknown): JdvDescriptor {
-    if (!isObject(value) || typeof value.view !== 'string' || typeof value.generation !== 'number' ||
-        (value.kind !== 'grid' && value.kind !== 'tree') || !isObject(value.capabilities)) {
+    if (!isObject(value) || typeof value.view !== 'string' || value.view === '' ||
+        typeof value.generation !== 'number' || !Number.isSafeInteger(value.generation) || value.generation < 1 ||
+        (value.kind !== 'grid' && value.kind !== 'tree') ||
+        typeof value.access !== 'string' || typeof value.encoding !== 'string') {
         throw new Error('Invalid jdv view descriptor');
     }
-    if (value.kind === 'grid' && !Array.isArray(value.columns)) {
-        throw new Error('Invalid jdv grid descriptor');
+    // An omitted capabilities object or flag means false.
+    const supplied = value.capabilities === undefined ? {} : value.capabilities;
+    if (!isObject(supplied) || CAPABILITY_NAMES.some(name => name in supplied && typeof supplied[name] !== 'boolean')) {
+        throw new Error('Invalid jdv view descriptor capabilities');
+    }
+    const capabilities = Object.fromEntries(CAPABILITY_NAMES.map(name => [name, supplied[name] === true]));
+    value.capabilities = capabilities;
+    if (value.kind === 'grid') {
+        validateGridDescriptor(value, capabilities as unknown as JdvCapabilities);
     }
     const descriptor = value as unknown as JdvDescriptor;
     // `reason` is optional and may gain values; keep only a string.
@@ -108,6 +125,27 @@ export function parseDescriptor(value: unknown): JdvDescriptor {
         delete descriptor.tracking;
     }
     return descriptor;
+}
+
+function validateGridDescriptor(value: JsonObject, capabilities: JdvCapabilities): void {
+    const invalid = (reason: string) => new Error(`Invalid jdv grid descriptor: ${reason}`);
+    if (!Array.isArray(value.columns)) { throw invalid('columns'); }
+    if (value.access === 'sequential') {
+        const cap = value.max_page_rows;
+        if (value.encoding !== 'arrow-ipc' || typeof cap !== 'number' || !Number.isSafeInteger(cap) || cap < 1 ||
+            !capabilities.next) {
+            throw invalid('sequential access');
+        }
+        return;
+    }
+    if ((value.access !== 'snapshot' && value.access !== 'random') || value.encoding !== 'jdv-json') {
+        throw invalid('access or encoding');
+    }
+    if (value.collation !== 'C' && value.collation !== 'locale') { throw invalid('collation'); }
+    if (value.access === 'random' && (typeof value.nrow !== 'number' || !Number.isSafeInteger(value.nrow) ||
+        value.nrow < 0 || !capabilities.seek || !capabilities.known_total)) {
+        throw invalid('random access');
+    }
 }
 
 /** Validate a `tracking` object; a malformed one is dropped (`undefined`). */
@@ -166,8 +204,8 @@ export const NA_FILTER_OPTION = 'jdvIsNa';
 export const NOT_NA_FILTER_OPTION = 'jdvNotNa';
 
 function columnTooltip(column: JdvColumnSchema): string {
-    let tooltip = `${column.name}, class: [${(column.class ?? []).join(', ')}], type: ${column.type}`;
-    if (column.type === 'factor' && Array.isArray(column.levels)) {
+    let tooltip = `${column.name}, class: [${(column.native_type ?? []).join(', ')}], type: ${column.type}`;
+    if (column.type === 'categorical' && Array.isArray(column.levels)) {
         const levels = column.levels.slice(0, 20).join(', ');
         tooltip += `, levels: ${levels}${column.levels.length > 20 ? ', ...' : ''}`;
     }
@@ -197,13 +235,12 @@ function rowLabelColumn(): GridColumnDef {
 /** Columns of a sequential Arrow view; they can be neither sorted nor filtered. */
 function sequentialColumnDefs(descriptor: JdvDescriptor): GridColumnDef[] {
     const columns = [rowLabelColumn()];
-    const schema = (descriptor as unknown as { schema?: { children?: { dictionary?: unknown }[] } }).schema;
     for (const column of (descriptor.columns ?? []) as unknown as {
-        index?: number; position: number; name: string; type: string; unsupported: string | null;
+        position: number; name: string; type: string; unsupported: string | null;
     }[]) {
-        // A dictionary column's format is its index type; its values are the dictionary's.
-        const dictionary = schema?.children?.[column.index ?? column.position]?.dictionary;
-        const numeric = !dictionary && (ARROW_NUMERIC_FORMATS.has(column.type) || column.type.startsWith('d:'));
+        // The descriptor no longer carries the Arrow schema, so a dictionary column
+        // (whose format is its index type) is aligned like a number.
+        const numeric = ARROW_NUMERIC_FORMATS.has(column.type) || column.type.startsWith('d:');
         columns.push({
             headerName: column.name,
             headerTooltip: column.unsupported
@@ -258,7 +295,7 @@ export function gridColumnDefs(descriptor: JdvDescriptor): GridColumnDef[] {
                 filter = true;
                 break;
             case 'string':
-            case 'factor':
+            case 'categorical':
                 filter = 'agTextColumnFilter';
                 filterOptions = TEXT_FILTER_OPTIONS;
                 break;
@@ -374,8 +411,8 @@ function dateOperand(value: unknown, column: JdvColumnSchema): string {
     if (column.type === 'date') {
         const date = /^(\d{4}-\d{2}-\d{2})$(?![\s\S])/.exec(text);
         if (date) { return date[1]; }
-        // Accept AG Grid's historical midnight datetime value, but do not
-        // silently discard an actual time or timezone from a date operand.
+        // AG Grid's filter model writes a date as "YYYY-MM-DD 00:00:00" (not a jdv
+        // compatibility concern), but an actual time or timezone is never discarded.
         const midnight = /^(\d{4}-\d{2}-\d{2})[ T]00:00:00$(?![\s\S])/.exec(text);
         if (midnight) { return midnight[1]; }
         throw invalid();
@@ -443,7 +480,7 @@ function conditionNode(condition: JsonObject, col: number, column: JdvColumnSche
             return op ? { op, col, value: dateOperand(condition.dateFrom, column) } : unsupportedFilter(column, type);
         }
         case 'string':
-        case 'factor': {
+        case 'categorical': {
             const value = scalarText(condition.filter);
             // As in the previous viewer, negated text conditions exclude missing values.
             const negate = (node: FilterNode): FilterNode => ({
@@ -558,7 +595,7 @@ function cellValue(column: JdvColumnSchema, channels: ColumnChannels, row: numbe
     if (display !== undefined && display !== null) {
         return display;
     }
-    // jdv omits display for strings, factors and int64 when it equals the value.
+    // jdv omits display for strings, categoricals and int64 when it equals the value.
     const value = channels.values?.[row];
     return value === undefined || value === null ? null : scalarText(value);
 }
@@ -571,18 +608,19 @@ function columnErrorText(errors: unknown): string | undefined {
     return messages.length > 0 ? messages.join('; ') : undefined;
 }
 
-/** Convert a `table/rows` result to row objects keyed by the grid field ids. */
+/** Convert a `grid/rows` result to row objects keyed by the grid field ids. */
 export function gridPageFromRows(result: unknown, startRow: number, requested: number): GridPage {
     if (!isObject(result) || !isObject(result.data) || typeof result.total !== 'number' ||
-        typeof result.total_unfiltered !== 'number' || !Array.isArray(result.data.row_index)) {
-        throw new Error('Invalid jdv table/rows result');
+        typeof result.total_unfiltered !== 'number' || !Array.isArray(result.data.source_row)) {
+        throw new Error('Invalid jdv grid/rows result');
     }
     const data = result.data;
-    const rowIndex = data.row_index as number[];
-    const rowNames = Array.isArray(data.row_names) ? data.row_names as (string | null)[] : undefined;
+    const sourceRow = data.source_row as number[];
+    const rowLabels = Array.isArray(data.row_labels) ? data.row_labels as (string | null)[] : undefined;
     const columns = Array.isArray(data.columns) ? data.columns as PageColumn[] : [];
-    const rows: Record<string, unknown>[] = rowIndex.map((index, row) => ({
-        [ROW_LABEL_FIELD]: rowNames?.[row] ?? String(index),
+    // `source_row` is zero-based; the browser shows it plus one.
+    const rows: Record<string, unknown>[] = sourceRow.map((index, row) => ({
+        [ROW_LABEL_FIELD]: rowLabels?.[row] ?? String(index + 1),
     }));
     for (const column of columns) {
         if (!column.schema) {

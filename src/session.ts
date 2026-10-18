@@ -3245,8 +3245,7 @@ async function handleRequest(message: Record<string, unknown>, socket?: IpcSocke
                     // The per-session jdv transport; sess connects jdv to it when View() is used.
                     const owner = sessions.get(socket?._sessionId ?? '');
                     if (!owner) { throw new Error('The jdv transport requires an attached session'); }
-                    const pid = Number(owner.pid);
-                    result = { address: await getJdvAddress(owner.sessionId, Number.isSafeInteger(pid) ? pid : undefined) };
+                    result = { address: await getJdvAddress(owner.sessionId) };
                     break;
                 }
                 case 'rstudioapi/active_editor_context':

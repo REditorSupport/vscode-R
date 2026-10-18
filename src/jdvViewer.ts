@@ -40,10 +40,10 @@ const panels = new Map<string, JdvPanel>();
 const hosts = new Map<string, Promise<JdvHost>>();
 
 /** The jdv transport address for a session, creating its listener on first use. */
-export function getJdvAddress(sessionId: string, pid: number | undefined, hostKey = sessionId): Promise<string> {
+export function getJdvAddress(sessionId: string, hostKey = sessionId): Promise<string> {
     let host = hosts.get(hostKey);
     if (!host) {
-        host = JdvHost.create(pid, {
+        host = JdvHost.create({
             viewOpen: (peer, params) => {
                 let descriptor: JdvDescriptor;
                 try {
@@ -430,7 +430,7 @@ async function fetchGridPage(state: JdvPanel, message: JsonObject): Promise<Omit
     let offset = startRow;
     while (offset < endRow) {
         const params = tableRowsParams(descriptor, offset, endRow, message.sortModel, message.filterModel);
-        const next = gridPageFromRows(await state.peer.request('table/rows', params), offset, params.limit);
+        const next = gridPageFromRows(await state.peer.request('grid/rows', params), offset, params.limit);
         page = page ? { ...next, rows: [...page.rows, ...next.rows] } : next;
         offset += next.returned;
         if (next.returned === 0 || offset >= next.totalRows) {

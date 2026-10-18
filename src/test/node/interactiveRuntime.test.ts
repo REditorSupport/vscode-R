@@ -95,7 +95,7 @@ const delay = (ms: number): Promise<void> => new Promise(resolve => setTimeout(r
         const opened = new Promise<{ peer: JdvPeer; params: JsonObject }>((resolve, reject) => {
             resolveOpen = resolve; rejectOpen = reject;
         });
-        const host = await JdvHost.create(manifest.rPid, {
+        const host = await JdvHost.create({
             viewOpen: (peer, params) => resolveOpen({ peer, params }),
             viewClosed: () => undefined,
             viewUpdateFailed: () => undefined,
@@ -118,11 +118,11 @@ const delay = (ms: number): Promise<void> => new Promise(resolve => setTimeout(r
             ]);
             assert.strictEqual(params.kind, 'grid');
             assert.strictEqual(params.access, 'random');
-            const result = await peer.request('table/rows', {
+            const result = await peer.request('grid/rows', {
                 view: params.view, generation: params.generation, offset: 0, limit: 2,
             }) as JsonObject;
             const data = result.data as JsonObject;
-            assert.deepStrictEqual(data.row_index, [1, 2]);
+            assert.deepStrictEqual(data.source_row, [0, 1]);
             assert.strictEqual(result.total, 3);
         } finally {
             client.off('event', onEvent);

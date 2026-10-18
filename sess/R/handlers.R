@@ -1362,15 +1362,14 @@ handle_dataview_dispose <- function(params) {
 # jdv::jdv_binding() does the lookup without evaluating anything: it returns
 # list(name, env) for a symbol bound in `env` or one of its parents, and NULL
 # for other expressions, unreadable bindings (promises, active bindings), unbound
-# names and R older than 4.6.0. A jdv that predates jdv_binding() is not tracked.
+# names and R older than 4.6.0.
 # sess only adds the gates: the VS Code setting `r.session.viewers.trackVariables`
 # (passed to connect() as `track_variables`, default on), which
 # `options(sess.dataviewer.track = TRUE/FALSE)` overrides in both directions.
 .jdv_track_binding <- function(expression, env) {
   track <- getOption("sess.dataviewer.track", .sess_env$track_variables %||% TRUE)
   if (!is.symbol(expression) || !nzchar(as.character(expression)) || !isTRUE(track) ||
-        !requireNamespace("jdv", quietly = TRUE) ||
-        !exists("jdv_binding", envir = asNamespace("jdv"), inherits = FALSE)) {
+        !requireNamespace("jdv", quietly = TRUE)) {
     return(NULL)
   }
   tryCatch(jdv::jdv_binding(expression, env), error = function(e) NULL)

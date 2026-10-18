@@ -1,10 +1,9 @@
 export interface InteractiveJdvAddressOptions {
     sessionId: string;
     hostKey: string;
-    pid?: number;
     canConnect(): boolean;
     isCurrent(): boolean;
-    getAddress(sessionId: string, pid: number | undefined, hostKey: string): Promise<string>;
+    getAddress(sessionId: string, hostKey: string): Promise<string>;
     disposeHost(hostKey: string, expectedAddress: string): void | Promise<void>;
 }
 
@@ -13,7 +12,7 @@ export async function acquireInteractiveJdvAddress(options: InteractiveJdvAddres
     if (!options.canConnect()) {
         throw new Error('Only the controlling Interactive client can connect the data viewer.');
     }
-    const address = await options.getAddress(options.sessionId, options.pid, options.hostKey);
+    const address = await options.getAddress(options.sessionId, options.hostKey);
     if (!options.canConnect() || !options.isCurrent()) {
         await options.disposeHost(options.hostKey, address);
         throw new Error('The Interactive session changed while opening its data viewer.');
