@@ -228,9 +228,9 @@ suite('jdv transport', () => {
             while (!peer) { await new Promise(resolve => setTimeout(resolve, 5)); }
             const failed = peer.request('grid/rows', { view: 'v-1', generation: 1 });
             const request = await good.next(line => line.method === 'grid/rows');
-            good.send({ id: request.id, error: { code: 'r_error', message: 'boom' }, warnings: [] });
+            good.send({ id: request.id, error: { code: 'some_future_code', message: 'boom' }, warnings: [] });
             await assert.rejects(failed, (e: unknown) => e instanceof JdvRequestError &&
-                e.code === 'producer_error' && /boom \(r_error\)/.test(e.message));
+                e.code === 'producer_error' && /boom \(some_future_code\)/.test(e.message));
         } finally {
             host.dispose();
         }
