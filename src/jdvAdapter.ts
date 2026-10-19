@@ -623,7 +623,8 @@ export function tableRowsParams(
 interface ColumnChannels {
     values?: unknown[];
     display?: (string | null)[];
-    na?: boolean[];
+    /** Zero-based positions of missing rows within this page. */
+    na_rows?: number[];
 }
 
 interface PageColumn {
@@ -641,8 +642,8 @@ export interface GridPage {
     returned: number;
 }
 
-function cellValue(column: JdvColumnSchema, channels: ColumnChannels, row: number): unknown {
-    if (channels.na?.[row]) {
+function cellValue(column: JdvColumnSchema, channels: ColumnChannels, naRows: Set<number>, row: number): unknown {
+    if (naRows.has(row)) {
         // Missing cells use the grid's NA renderer, unless R labels them differently
         // (NaN, or a class-specific missing label).
         const label = channels.display?.[row];
@@ -693,9 +694,10 @@ export function gridPageFromRows(result: unknown, startRow: number, requested: n
         const field = String(column.schema.position + 1);
         const channels = column.data ?? {};
         const error = columnErrorText(column.errors);
+        const naRows = new Set(channels.na_rows);
         for (let row = 0; row < rows.length; row++) {
-            rows[row][field] = channels.display || channels.values || channels.na
-                ? cellValue(column.schema, channels, row)
+            rows[row][field] = channels.display || channels.values || channels.na_rows
+                ? cellValue(column.schema, channels, naRows, row)
                 : error ? `<error: ${error}>` : null;
         }
     }

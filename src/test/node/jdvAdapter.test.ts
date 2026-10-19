@@ -242,7 +242,7 @@ suite('jdv adapter', () => {
             (e: unknown) => e instanceof JdvRequestError && e.code === 'unsupported');
     });
 
-    test('converts pages to rows using display text and the NA mask', () => {
+    test('converts pages to rows using display text and the NA rows', () => {
         const page = gridPageFromRows({
             view: 'v-1', generation: 2, total: 3, total_unfiltered: 5, offset: 0, limit: 3,
             data: {
@@ -251,9 +251,9 @@ suite('jdv adapter', () => {
                 columns: [
                     { schema: grid.columns![0], data: {
                         values: [null, 1, null], display: ['Inf', 'NaN', 'NA'],
-                        special: ['pos_inf', 'nan', 'na'], na: [false, true, true],
+                        special: { pos_inf: [0], nan: [1] }, na_rows: [1, 2],
                     }, errors: [] },
-                    { schema: grid.columns![1], data: { values: [null, 'x', 'y'], na: [true, false, false] }, errors: [] },
+                    { schema: grid.columns![1], data: { values: [null, 'x', 'y'], na_rows: [0] }, errors: [] },
                 ],
             },
         }, 0, 3);

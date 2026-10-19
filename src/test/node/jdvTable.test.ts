@@ -16,7 +16,7 @@ const rowsPage = (offset: number, count: number, total = 50) => JSON.stringify({
     data: {
         source_row: Array.from({ length: count }, (_, i) => offset + i), row_labels: null,
         columns: [{ schema: gridDescriptor.columns[0], data: { values: Array.from({ length: count }, (_, i) => offset + i + 1),
-            display: Array.from({ length: count }, (_, i) => String(offset + i + 1)), na: Array(count).fill(false) }, errors: {} }],
+            display: Array.from({ length: count }, (_, i) => String(offset + i + 1)), na_rows: [] }, errors: {} }],
     },
 });
 const display = (extra: Record<string, unknown> = {}) => ({
