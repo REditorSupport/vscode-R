@@ -407,6 +407,27 @@ sess::display("display-${cell}", "text/plain"); cat("stderr-${cell}\\n", file=st
         await assert.rejects(queryJdvTablePage(table.data, { start: 0, size: 20 }, inspect), /no longer available/);
     });
 
+    test('inline jdv wide tables survive the event limit and page without gaps', async function () {
+        if (!(await jdvAvailable())) { this.skip(); return; }
+        const id = await submit('wide <- data.frame(id = 1:150, text = rep(strrep("a", 100000), 150)); wide');
+        assert.strictEqual((await finished(id)).state, 'success');
+        const table = events.find(event => event.executionId === id && event.data.kind === 'table'); assert.ok(table);
+        assert.ok(isJdvOutput(table.data));
+        assert.equal(events.some(event => event.executionId === id && event.type === 'truncated'), false);
+        assert.ok(Buffer.byteLength(JSON.stringify(table.data)) < 2 * 1024 * 1024);
+        assert.equal(table.data.previewPartial, true);
+        assert.ok((table.data.rows as unknown[]).length < 20);
+        for (const size of [20, 100]) {
+            const ids: string[] = [];
+            for (let start = 0; start < 150; start += size) {
+                const page = await queryJdvTablePage(table.data, { start, size }, inspect);
+                assert.equal(page.startRow, start);
+                ids.push(...(page.rows as Record<string, string>[]).map(row => row['1']));
+            }
+            assert.deepEqual(ids, Array.from({ length: 150 }, (_, i) => String(i + 1)));
+        }
+    });
+
     test('inline jdv tables bound a huge table to its first page', async function () {
         if (!(await jdvAvailable())) { this.skip(); return; }
         const id = await submit(`n <- 832976871L

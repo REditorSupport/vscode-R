@@ -1,15 +1,21 @@
 # Rich events use pure R IPC; small stdout markers preserve console ordering.
+.interactive_event_json <- function(type, data) {
+  id <- .sess_env$interactive_id
+  as.character(jsonlite::toJSON(
+    c(list(type = type, executionId = if (is.null(id)) "" else id), data),
+    auto_unbox = TRUE, null = "null", na = "null", digits = NA
+  ))
+}
+
 .interactive_event <- function(type, data = list()) {
   if (!identical(.sess_env$interactive_pid, Sys.getpid())) return(invisible(NULL))
   id <- .sess_env$interactive_id
-  event <- c(list(type = type, executionId = if (is.null(id)) "" else id), data)
-  json <- as.character(jsonlite::toJSON(
-    event, auto_unbox = TRUE, null = "null", na = "null", digits = NA
-  ))
+  json <- .interactive_event_json(type, data)
   # Bound encoded events before writing to the agent transport.
   # Agent-side display limits run only after parsing and cannot protect it from
   # oversized HTML, wide tables, or strings enlarged by JSON escaping.
   if (nchar(json, type = "bytes") > 2 * 1024 * 1024) {
+    if (!is.null(data$handleId)) .interactive_handle_close(data$handleId)
     json <- as.character(jsonlite::toJSON(list(
       type = "truncated", executionId = if (is.null(id)) "" else id,
       message = "Rich output exceeds 2 MiB; display a smaller preview or save it to a file."
@@ -381,6 +387,8 @@ interactive_execute <- function(id, code, source = NULL) {
 
 .interactive_handle_limit <- 64L
 .interactive_page_bytes <- 256L * 1024L
+# Leave 512 KiB for adapter normalization and agent event metadata.
+.interactive_preview_bytes <- 1536L * 1024L
 
 .interactive_jdv_usable <- function() {
   !identical(getOption("sess.dataviewer", "auto"), "sess") &&
@@ -423,27 +431,35 @@ interactive_execute <- function(id, code, source = NULL) {
 # Capture `value` and read its descriptor and preview pages. Returns NULL, leaving no
 # handle behind, when jdv cannot represent the value; the caller then uses the
 # dataview registry.
-.interactive_handle_preview <- function(value, kind) {
+.interactive_handle_preview <- function(value, kind, data = list()) {
   if (!.interactive_jdv_usable()) return(NULL)
   handle <- NULL
   tryCatch({
     handle <- jdv::jdv_handle(value, mode = "paged")
     descriptor <- jdv::jdv_handle_descriptor(handle, max_bytes = .interactive_page_bytes)
+    .interactive_handle_store()
+    id <- paste0("h", .sess_env$interactive_handle_seq + 1L)
     page <- if (kind == "table") {
-      pages <- jdv::jdv_handle_request(handle, "grid/rows", list(offset = 0L, limit = 20L),
-                                       max_bytes = .interactive_page_bytes)
-      parsed <- jsonlite::fromJSON(pages, simplifyVector = FALSE)
-      offset <- length(parsed$data$source_row)
-      while (offset > 0L && offset < parsed$total && offset < 20L) {
+      fits <- function(pages) {
+        event <- c(list(kind = kind, handleId = id, descriptor = descriptor, page = pages), data)
+        bytes <- nchar(.interactive_event_json("display", event), type = "bytes")
+        bytes <= .interactive_preview_bytes
+      }
+      # Preserve the table and viewer control when the printed fallback is too large.
+      if (!fits(character())) data$printedText <- NULL
+      pages <- character()
+      offset <- 0L
+      repeat {
         next_page <- jdv::jdv_handle_request(
           handle, "grid/rows", list(offset = offset, limit = 20L - offset),
           max_bytes = .interactive_page_bytes
         )
-        next_parsed <- jsonlite::fromJSON(next_page, simplifyVector = FALSE)
-        returned <- length(next_parsed$data$source_row)
-        if (returned == 0L) break
+        if (!fits(c(pages, next_page))) break
         pages <- c(pages, next_page)
+        parsed <- jsonlite::fromJSON(next_page, simplifyVector = FALSE)
+        returned <- length(parsed$data$source_row)
         offset <- offset + returned
+        if (returned == 0L || offset >= parsed$total || offset >= 20L) break
       }
       pages
     } else {
@@ -461,7 +477,7 @@ interactive_execute <- function(id, code, source = NULL) {
     while (length(.sess_env$interactive_handle_order) > .interactive_handle_limit) {
       .interactive_handle_close(.sess_env$interactive_handle_order[[1L]])
     }
-    list(handleId = id, descriptor = descriptor, page = page)
+    c(list(handleId = id, descriptor = descriptor, page = page), data)
   }, error = function(e) {
     if (!is.null(handle)) try(jdv::jdv_handle_close(handle), silent = TRUE)
     NULL
@@ -516,22 +532,21 @@ handle_jdv_open_viewer <- function(params) {
 .interactive_rich_value <- function(value) {
   if (dataview_is_table(value)) {
     snapshot <- .interactive_table_snapshot(value)
+    printed <- .interactive_table_text(snapshot$value)
+    if (snapshot$truncated && !is.null(printed$printedText)) {
+      note <- sprintf(
+        "\n[Snapshot: first %s of %s rows. Open Data viewer for the full table.]\n",
+        format(nrow(snapshot$value), big.mark = ",", scientific = FALSE, trim = TRUE),
+        format(snapshot$source_rows, big.mark = ",", scientific = FALSE, trim = TRUE)
+      )
+      printed$printedText <- paste0(printed$printedText, note)
+    }
     preview <- if (is.data.frame(value) || is.matrix(value)) {
-      .interactive_handle_preview(value, "table")
+      .interactive_handle_preview(value, "table",
+                                  c(list(sourceRows = snapshot$source_rows), printed))
     }
     if (!is.null(preview)) {
-      printed <- .interactive_table_text(snapshot$value)
-      if (snapshot$truncated && !is.null(printed$printedText)) {
-        note <- sprintf(
-          "\n[Snapshot: first %s of %s rows. Open Data viewer for the full table.]\n",
-          format(nrow(snapshot$value), big.mark = ",", scientific = FALSE, trim = TRUE),
-          format(snapshot$source_rows, big.mark = ",", scientific = FALSE, trim = TRUE)
-        )
-        printed$printedText <- paste0(printed$printedText, note)
-      }
-      .interactive_event("display", c(list(kind = "table", handleId = preview$handleId,
-                                           descriptor = preview$descriptor, page = preview$page,
-                                           sourceRows = snapshot$source_rows), printed))
+      .interactive_event("display", c(list(kind = "table"), preview))
       return(TRUE)
     }
     registration <- dataview_register(snapshot$value)
@@ -540,19 +555,11 @@ handle_jdv_open_viewer <- function(params) {
                                          startRow = 0L, endRow = 20L,
                                          formatNumbers = TRUE,
                                          sortModel = list(), filterModel = list()))
-    printed <- .interactive_table_text(snapshot$value)
     full_view <- NULL
     if (snapshot$truncated) {
       # Retain the full object without copying it. The cell remains a snapshot;
       # the expanded viewer can reflect later reference edits to this object.
       full_view <- dataview_register(value, live = TRUE)$view_id
-      if (!is.null(printed$printedText)) {
-        note <-
-          sprintf("\n[Snapshot: first %s of %s rows. Open Data viewer for the full table.]\n",
-                  format(metadata$totalRows, big.mark = ",", scientific = FALSE, trim = TRUE),
-                  format(snapshot$source_rows, big.mark = ",", scientific = FALSE, trim = TRUE))
-        printed$printedText <- paste0(printed$printedText, note)
-      }
     }
     .interactive_event("display", c(list(kind = "table", viewId = registration$view_id,
                                          fullViewId = full_view,

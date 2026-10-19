@@ -37,8 +37,7 @@ single_event <- jsonlite::fromJSON(jsonlite::toJSON(
 ), simplifyVector = FALSE)
 expect_identical(single_event$page, table$page)
 
-# A byte-limited page is refilled so the renderer can advance by its page size
-# without skipping rows.
+# Byte-limited pages stay unchanged and stop before the complete event budget.
 numeric <- rep(pi, 150)
 numeric[[3L]] <- Inf
 wide <- data.frame(
@@ -51,7 +50,7 @@ expect_true(length(wide_preview$page) > 1L)
 wide_entry <- ns$.interactive_handle_entry(wide_preview$handleId)
 expected_pages <- character()
 offset <- 0L
-while (offset < 20L) {
+while (length(expected_pages) < length(wide_preview$page)) {
   raw_page <- jdv::jdv_handle_request(
     wide_entry$handle, "grid/rows", list(offset = offset, limit = 20L - offset),
     max_bytes = ns$.interactive_page_bytes
@@ -69,7 +68,8 @@ multi_event <- jsonlite::fromJSON(jsonlite::toJSON(
 expect_identical(unlist(multi_event$page), expected_pages)
 wide_pages <- lapply(wide_preview$page, jsonlite::fromJSON, simplifyVector = FALSE)
 wide_rows <- unlist(lapply(wide_pages, function(page) page$data$source_row))
-expect_identical(wide_rows, 0:19)
+expect_true(length(wide_rows) < 20L)
+expect_identical(wide_rows, seq_len(length(wide_rows)) - 1L)
 factor_values <- sum(vapply(wide_pages, function(page) {
   length(page$data$columns[[3L]]$data$values)
 }, 0L))
@@ -78,10 +78,51 @@ row_labels <- unlist(lapply(wide_pages, function(page) page$data$row_labels))
 empty_errors <- vapply(wide_pages, function(page) {
   identical(names(page$data$columns[[1L]]$errors), character())
 }, logical(1L))
-expect_identical(factor_values, 20L)
-expect_identical(missing_values, rep(c(TRUE, FALSE), 10L))
-expect_identical(row_labels, paste0("row-", 0:19))
+expect_identical(factor_values, length(wide_rows))
+expect_identical(missing_values, rep(c(TRUE, FALSE), length.out = length(wide_rows)))
+expect_identical(row_labels, paste0("row-", wide_rows))
 expect_true(all(empty_errors))
+
+# Capture the actual display event, including printed text and JSON escaping.
+local({
+  original_send <- ns$rpc_send
+  fields <- c("interactive_pid", "interactive_id", "interactive_managed")
+  saved <- mget(fields, env, ifnotfound = list(NULL))
+  captured <- NULL
+  unlockBinding("rpc_send", ns)
+  assign("rpc_send", function(method, params) captured <<- params, envir = ns)
+  lockBinding("rpc_send", ns)
+  on.exit({
+    unlockBinding("rpc_send", ns)
+    assign("rpc_send", original_send, envir = ns)
+    lockBinding("rpc_send", ns)
+    list2env(saved, env)
+  }, add = TRUE)
+  env$interactive_pid <- Sys.getpid()
+  env$interactive_id <- "preview-budget"
+  env$interactive_managed <- FALSE
+  expect_true(ns$.interactive_rich_value(wide))
+  expect_identical(captured$type, "display")
+  expect_identical(captured$kind, "table")
+  encoded <- jsonlite::toJSON(captured, auto_unbox = TRUE, null = "null", digits = NA)
+  expect_true(nchar(encoded, type = "bytes") <= ns$.interactive_preview_bytes)
+  expect_true(is.character(captured$handleId))
+
+  # The printed fallback can be omitted; a valid table with no inline rows is OK.
+  oversized <- preview(wide, "table", list(printedText = strrep("x", 2L * 1024L * 1024L)))
+  expect_null(oversized$printedText)
+  empty <- preview(wide, "table", list(printedText = strrep("x", 1530L * 1024L)))
+  expect_identical(length(empty$page), 0L)
+  ns$.interactive_event("display", c(list(kind = "table"), empty))
+  expect_identical(captured$type, "display")
+  expect_true(nchar(ns$.interactive_event_json("display", empty), type = "bytes") < 2L * 1024L * 1024L)
+
+  # The last-resort truncation path releases the captured handle.
+  ns$.interactive_event("display", c(list(kind = "table"), empty,
+                                      list(extra = strrep("x", 2L * 1024L * 1024L))))
+  expect_identical(captured$type, "truncated")
+  expect_error(ns$.interactive_handle_entry(empty$handleId), "no longer available")
+})
 
 # Paging, sorting and filtering run in R through the same handle; ids are zero-based rows.
 sorted <- request(table$handleId, "grid/rows", list(
@@ -103,6 +144,7 @@ expect_identical(request(tree$handleId, "object/children", list(
 # Opening an Interactive handle registers the selected value through jdv's handle API.
 # The custom [[ method must not run while opening a nested table.
 local({
+  started_session <- identical(jdv::jdv_connection()$state, "disconnected")
   original_connect <- ns$.jdv_connect
   review_handle_id <- NULL
   registered_views <- list()
@@ -120,6 +162,7 @@ local({
       ), auto_unbox = TRUE)), silent = TRUE)
     }
     jdv::jdv_notifications()
+    if (started_session) jdv::jdv_disconnect()
     unlockBinding(".jdv_connect", ns)
     assign(".jdv_connect", original_connect, envir = ns)
     lockBinding(".jdv_connect", ns)

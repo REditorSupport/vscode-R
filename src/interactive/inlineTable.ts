@@ -79,9 +79,9 @@ export function createInlineTable(parent: HTMLElement, toolbar: HTMLElement, sta
     const filtersButton = button('Filter columns', 'filter', () => { state.filterOpen = !state.filterOpen; remember(state); update(); }, 'Filters');
     const reset = button('Reset table view', 'reset', () => {
         if (!active) { return; }
-        // Restoring saved output is local, and invalidates even an in-flight reply.
+        // Reset invalidates in-flight replies; a partial saved preview is refilled.
         pending = undefined; state = initial(); error = ''; remember(state);
-        draw(); buildFilters(true); update(); tableHost.scrollLeft = 0; tableHost.scrollTop = 0;
+        draw(); buildFilters(true); update(); completePreview(); tableHost.scrollLeft = 0; tableHost.scrollTop = 0;
     }, 'Reset');
     reset.title = 'Restore the saved preview, first page, original column order, and clear sorting and filters';
     toolbar.append(filtersButton, reset, pager);
@@ -217,7 +217,10 @@ export function createInlineTable(parent: HTMLElement, toolbar: HTMLElement, sta
         status.title = state.live && !textMode ? 'Rows are fetched on demand from the original object. Reference edits may appear. Reset restores the saved preview.'
             : hasFull ? `${tableSnapshotSummary(original)}. Browse beyond these rows, sort or filter to retrieve live data.` : '';
     }
-    draw(); buildFilters(); update();
+    function completePreview(): void {
+        if (available && !state.live && state.data.previewPartial === true) { request(0); }
+    }
+    draw(); buildFilters(); update(); completePreview();
     return {
         setTextMode(text) { textMode = text; update(); },
         reply(message) {

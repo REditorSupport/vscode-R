@@ -45,14 +45,14 @@ export function normalizeJdvDisplay(data: Record<string, unknown>): Record<strin
     if (data.kind === 'table' && descriptor.kind === 'grid') {
         const pages = (Array.isArray(rawPage) ? rawPage : [rawPage]).map(page => parseJson(page, 'page'));
         const rows: Record<string, unknown>[] = [];
-        let totalRows = 0;
+        let totalRows = descriptor.nrow ?? 0;
         for (const raw of pages) {
             const next = gridPageFromRows(raw, rows.length, TABLE_PAGE_SIZE - rows.length);
             rows.push(...next.rows);
             totalRows = next.totalRows;
             if (rows.length >= TABLE_PAGE_SIZE) { break; }
         }
-        return { ...rest, descriptor, columns: gridColumnDefs(descriptor), rows, totalRows };
+        return { ...rest, descriptor, columns: gridColumnDefs(descriptor), rows, totalRows, previewPartial: rows.length < Math.min(TABLE_PAGE_SIZE, totalRows) };
     }
     if (data.kind === 'list' && descriptor.kind === 'tree') {
         const adapter = new TreeAdapter(descriptor, 'List');

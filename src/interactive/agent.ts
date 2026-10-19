@@ -464,6 +464,9 @@ export class SessionAgent {
             delete display.data;
         }
         if (Buffer.byteLength(JSON.stringify(display)) > 2 * 1024 * 1024) {
+            if (typeof data.handleId === 'string') {
+                void this.backend.inspect({ method: 'jdv_handle_close', params: { handle_id: data.handleId }, timeout: 5000 }).catch(() => undefined);
+            }
             this.event('truncated', { message: 'Rich output exceeds 2 MiB; display a smaller preview or save it to a file.' }, executionId);
             return;
         }

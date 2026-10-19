@@ -53,6 +53,25 @@ suite('Interactive jdv tables', () => {
         assert.equal(rows[3]['1'], '4');
     });
 
+    test('marks short and empty previews for completion from page zero', async () => {
+        for (const page of [[], [rowsPage(0, 2)]]) {
+            const data = normalizeJdvDisplay(display({ page }));
+            assert.equal(data.totalRows, 50);
+            assert.equal(data.previewPartial, true);
+            const offsets: number[] = [];
+            const result = await queryJdvTablePage(data, { start: 0, size: 20 }, request => {
+                const params = request.params.params as { offset: number; limit: number };
+                offsets.push(params.offset);
+                return Promise.resolve({ json: rowsPage(params.offset, params.limit) });
+            });
+            assert.deepEqual(offsets, [0]);
+            assert.deepEqual((result.rows as Record<string, unknown>[]).map(row => row.__sourceRow),
+                Array.from({ length: 20 }, (_, i) => i));
+        }
+        assert.equal(normalizeJdvDisplay(display({ page: rowsPage(0, 20) })).previewPartial, false);
+        assert.equal(normalizeJdvDisplay(display({ page: rowsPage(0, 2, 2) })).previewPartial, false);
+    });
+
     test('offers the operators of the column type', () => {
         const columns = normalizeJdvDisplay(display()).columns as TableColumn[];
         assert.deepEqual(columnOperators(columns[1]).slice(-2), ['blank', 'notBlank']);
