@@ -2464,9 +2464,14 @@ export async function getTableHtml(
                         sortModel: params.sortModel,
                         filterModel: params.filterModel,
                     });
-                    filteredRows = Number.isFinite(result.totalRows) ? result.totalRows : result.loadedRows;
-                    totalRows = Number.isFinite(result.totalUnfiltered) ? result.totalUnfiltered : result.loadedRows;
-                    isFiltered = Object.keys(params.filterModel || {}).length > 0;
+                    const nextFilteredRows = Number.isFinite(result.totalRows) ? result.totalRows : result.loadedRows;
+                    const nextTotalRows = Number.isFinite(result.totalUnfiltered) ? result.totalUnfiltered : result.loadedRows;
+                    const nextIsFiltered = Object.keys(params.filterModel || {}).length > 0;
+                    const headerNeedsRefresh = filteredRows !== nextFilteredRows ||
+                        totalRows !== nextTotalRows || isFiltered !== nextIsFiltered;
+                    filteredRows = nextFilteredRows;
+                    totalRows = nextTotalRows;
+                    isFiltered = nextIsFiltered;
                     updateViewerRowCount(filteredRows, totalRows);
                     if (init.sequential && !Number.isFinite(result.totalRows)) {
                         document.querySelector('#viewerRowCount').textContent =
@@ -2475,7 +2480,9 @@ export async function getTableHtml(
                     if (init.sequential && result.notice) {
                         document.querySelector('#viewerRowCount').title = result.notice;
                     }
-                    gridApi?.refreshHeader();
+                    if (headerNeedsRefresh) {
+                        gridApi?.refreshHeader();
+                    }
                     updateScrollPosition();
                     const resolvedLastRow = Number.isFinite(result.totalRows) ? result.totalRows : result.lastRow;
                     const rows = prepareViewerRows(result.rows || [], bigintFields);
