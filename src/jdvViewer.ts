@@ -13,7 +13,6 @@ import {
     gridPageFromRows, parseDescriptor, parseTracking, revealsPanel, tableRowsParams,
 } from './jdvAdapter';
 import { SequentialStream } from './jdvArrow';
-import { JdvRowCountHints } from './jdvRowCount';
 import { JdvHost, JdvPeer } from './jdvTransport';
 import { disposeJdvHostIfCurrentAddress } from './jdvHostLifecycle';
 import { extensionContext } from './extension';
@@ -41,7 +40,7 @@ interface JdvPanel {
 
 const panels = new Map<string, JdvPanel>();
 const hosts = new Map<string, Promise<JdvHost>>();
-const rowCountHints = new JdvRowCountHints();
+const pendingRowCounts = new Map<string, number>();
 
 function rowCountScope(sessionId: string | null, address: string): string {
     return JSON.stringify([sessionId, address]);
@@ -55,26 +54,26 @@ export function applyJdvRowCount(sessionId: string | null, params: Record<string
         !Number.isSafeInteger(params.nrow) || Number(params.nrow) < 0) {
         return;
     }
-    rowCountHints.hint(rowCountScope(sessionId, params.address), params.view,
-        Number(params.generation), Number(params.nrow));
+    const scope = rowCountScope(sessionId, params.address);
+    const state = panels.get(panelKey(sessionId, params.view));
+    if (state?.stream && !state.closed && state.hintScope === scope &&
+        state.descriptor.generation === params.generation) {
+        state.knownTotal = Number(params.nrow);
+        const webview = state.panel.webview;
+        void webview.postMessage({ message: 'dataview/rowCount',
+            documentGeneration: session.getDocumentGeneration(webview), knownTotal: state.knownTotal });
+    } else {
+        pendingRowCounts.set(JSON.stringify([scope, params.view, params.generation]), Number(params.nrow));
+        if (pendingRowCounts.size > 64) {
+            pendingRowCounts.delete(pendingRowCounts.keys().next().value!);
+        }
+    }
 }
 
 function bindRowCount(state: JdvPanel): void {
-    state.knownTotal = undefined;
-    if (!state.stream) {
-        return;
-    }
-    const { view, generation } = state.descriptor;
-    state.knownTotal = rowCountHints.open(state.hintScope, view, generation, nrow => {
-        state.knownTotal = nrow;
-        try {
-            const webview = state.panel.webview;
-            void webview.postMessage({ message: 'dataview/rowCount',
-                documentGeneration: session.getDocumentGeneration(webview), knownTotal: nrow });
-        } catch {
-            // The panel may have been disposed while the notification was in flight.
-        }
-    });
+    const key = JSON.stringify([state.hintScope, state.descriptor.view, state.descriptor.generation]);
+    state.knownTotal = state.stream ? pendingRowCounts.get(key) : undefined;
+    pendingRowCounts.delete(key);
 }
 
 /** The jdv transport address for a session, creating its listener on first use. */
@@ -99,14 +98,10 @@ export function getJdvAddress(sessionId: string, hostKey = sessionId): Promise<s
                         .catch(() => undefined);
                 }
             },
-            viewClosed: (_peer, view, generation) => {
-                rowCountHints.close(rowCountScope(sessionId, address), view, generation);
-                markClosed(sessionId, view, generation);
-            },
+            viewClosed: (_peer, view, generation) => markClosed(sessionId, view, generation),
             viewUpdateFailed: (_peer, params) => warnUpdateFailed(sessionId, params),
             viewTracking: (_peer, params) => applyTracking(sessionId, params),
             disconnected: (peer) => {
-                rowCountHints.clear(rowCountScope(sessionId, address));
                 for (const state of panels.values()) {
                     if (state.peer === peer && !state.closed) {
                         state.closed = 'The R session disconnected from the data viewer.';
@@ -235,9 +230,6 @@ async function openJdvView(
             return;
         }
         // The same view with a newer generation (View() again, or a refresh) updates the panel.
-        if (existing.hintScope !== hintScope || existing.descriptor.generation !== descriptor.generation) {
-            rowCountHints.close(existing.hintScope, existing.descriptor.view, existing.descriptor.generation);
-        }
         existing.descriptor = descriptor;
         existing.peer = peer;
         existing.title = title;
@@ -286,7 +278,6 @@ async function openJdvView(
             panels.delete(key);
         }
         state.stream?.dispose();
-        rowCountHints.close(state.hintScope, state.descriptor.view, state.descriptor.generation);
         if (!state.closed) {
             const { view, generation } = state.descriptor;
             void state.peer.request('view/close', { view, generation }).catch(() => undefined);

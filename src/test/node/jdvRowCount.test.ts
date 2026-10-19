@@ -1,101 +1,61 @@
 import * as assert from 'node:assert/strict';
-import { JdvRowCountHints } from '../../jdvRowCount';
+import * as fs from 'node:fs';
+import * as vm from 'node:vm';
+import { getDataViewerScript } from '../../dataViewer';
+
+interface Viewer {
+    applyJdvRowCount(session: string, value: typeof hint): void;
+    bindRowCount(state: ReturnType<typeof panel>): void;
+    panels: Map<string, ReturnType<typeof panel>>;
+}
+
+// Load the actual viewer module with its VS Code dependencies stubbed out.
+function viewer(): Viewer {
+    return vm.runInNewContext(fs.readFileSync(require.resolve('../../jdvViewer'), 'utf8') +
+        '\n;({ applyJdvRowCount, bindRowCount, panels })', {
+        exports: {}, require: (name: string) => name === './session' ? { getDocumentGeneration: () => 1 } : {},
+    }) as Viewer;
+}
+const hint = { address: 'socket-a', view: 'v-1', generation: 1, nrow: 1000 };
+function panel() {
+    const messages: { knownTotal: number }[] = [];
+    return { hintScope: JSON.stringify(['session-a', 'socket-a']), stream: {},
+        descriptor: { view: 'v-1', generation: 1 }, knownTotal: undefined,
+        panel: { webview: { postMessage: (message: { knownTotal: number }) => messages.push(message) } }, messages };
+}
 
 suite('jdv row-count hints', () => {
-    test('applies a hint received before view/open', () => {
-        const hints = new JdvRowCountHints();
-        hints.hint('session-a', 'view-1', 3, 42);
-        const applied: number[] = [];
-
-        assert.equal(hints.open('session-a', 'view-1', 3, nrow => applied.push(nrow)), 42);
-        hints.hint('session-a', 'view-1', 3, 43);
-        assert.deepEqual(applied, [43]);
+    test('takes a hint received before view/open', () => {
+        const host = viewer(), state = panel();
+        host.applyJdvRowCount('session-a', hint);
+        host.bindRowCount(state);
+        assert.equal(state.knownTotal, 1000);
     });
 
-    test('applies a hint received after view/open', () => {
-        const hints = new JdvRowCountHints();
-        const applied: number[] = [];
-
-        assert.equal(hints.open('session-a', 'view-1', 1, nrow => applied.push(nrow)), undefined);
-        hints.hint('session-a', 'view-1', 1, 9);
-        assert.deepEqual(applied, [9]);
-        assert.equal(hints.open('session-a', 'view-1', 1, nrow => applied.push(nrow)), 9);
+    test('updates an open panel when its hint arrives later', () => {
+        const host = viewer(), state = panel();
+        host.panels.set(JSON.stringify(['session-a', 'v-1']), state);
+        host.applyJdvRowCount('session-a', hint);
+        assert.equal(state.knownTotal, 1000);
+        assert.equal(state.messages[0].knownTotal, 1000);
     });
 
-    test('replaces the active generation and ignores stale hints and closes', () => {
-        const hints = new JdvRowCountHints();
-        const oldGeneration: number[] = [];
-        const newGeneration: number[] = [];
-
-        hints.open('session-a', 'view-1', 1, nrow => oldGeneration.push(nrow));
-        hints.open('session-a', 'view-1', 2, nrow => newGeneration.push(nrow));
-        hints.hint('session-a', 'view-1', 1, 100);
-        hints.close('session-a', 'view-1', 1);
-        hints.hint('session-a', 'view-1', 2, 200);
-
-        assert.deepEqual(oldGeneration, []);
-        assert.deepEqual(newGeneration, [200]);
+    test('does not attach another scope or generation to the panel', () => {
+        const host = viewer(), state = panel();
+        host.panels.set(JSON.stringify(['session-a', 'v-1']), state);
+        host.applyJdvRowCount('session-b', hint);
+        host.applyJdvRowCount('session-a', { ...hint, address: 'socket-b' });
+        host.applyJdvRowCount('session-a', { ...hint, generation: 2 });
+        host.bindRowCount(state);
+        assert.equal(state.knownTotal, undefined);
+        assert.equal(state.messages.length, 0);
     });
 
-    test('closing an older active generation releases its callback while retaining newer pending data', () => {
-        const hints = new JdvRowCountHints();
-        const applied: number[] = [];
-        hints.open('session-a', 'view-1', 1, nrow => applied.push(nrow));
-        hints.hint('session-a', 'view-1', 2, 20);
-        hints.close('session-a', 'view-1', 1);
-        hints.hint('session-a', 'view-1', 1, 10);
-
-        assert.equal(applied.length, 0);
-        assert.equal(hints.open('session-a', 'view-1', 2, nrow => applied.push(nrow)), 20);
-    });
-
-    test('a close tombstone blocks same-generation delayed open and hints', () => {
-        const hints = new JdvRowCountHints();
-        const applied: number[] = [];
-
-        hints.close('session-a', 'view-1', 7);
-        hints.hint('session-a', 'view-1', 7, 70);
-        assert.equal(hints.open('session-a', 'view-1', 7, nrow => applied.push(nrow)), undefined);
-        hints.hint('session-a', 'view-1', 7, 71);
-        assert.equal(applied.length, 0);
-
-        hints.hint('session-a', 'view-1', 8, 80);
-        assert.equal(hints.open('session-a', 'view-1', 8, nrow => applied.push(nrow)), 80);
-    });
-
-    test('isolates scopes even when view and generation match', () => {
-        const hints = new JdvRowCountHints();
-        hints.hint('session-a/socket-a', 'view-1', 1, 11);
-        hints.hint('session-b/socket-b', 'view-1', 1, 22);
-        hints.clear('session-a/socket-a');
-
-        assert.equal(hints.open('session-a/socket-a', 'view-1', 1, () => undefined), undefined);
-        assert.equal(hints.open('session-b/socket-b', 'view-1', 1, () => undefined), 22);
-    });
-
-    test('bounds pending hints and preserves live subscriptions', () => {
-        const hints = new JdvRowCountHints(2, 8);
-        const applied: number[] = [];
-        hints.open('session-a', 'live', 1, nrow => applied.push(nrow));
-        hints.hint('session-a', 'one', 1, 1);
-        hints.hint('session-a', 'two', 1, 2);
-        hints.hint('session-a', 'three', 1, 3);
-
-        assert.equal(hints.open('session-a', 'one', 1, () => undefined), undefined);
-        assert.equal(hints.open('session-a', 'two', 1, () => undefined), 2);
-        assert.equal(hints.open('session-a', 'three', 1, () => undefined), 3);
-        hints.hint('session-a', 'live', 1, 99);
-        assert.deepEqual(applied, [99]);
-    });
-
-    test('bounds inactive metadata without evicting open panel callbacks', () => {
-        const hints = new JdvRowCountHints(4, 1);
-        const applied: number[] = [];
-        hints.open('session-a', 'live', 1, nrow => applied.push(nrow));
-        hints.hint('session-a', 'other', 1, 2);
-        hints.hint('session-a', 'another', 1, 3);
-        hints.hint('session-a', 'live', 1, 10);
-
-        assert.deepEqual(applied, [10]);
+    test('formats unknown, known and complete stream counts', () => {
+        const format = vm.runInNewContext(getDataViewerScript() + ';formatSequentialRowCount') as
+            (loaded: number, knownTotal: number | undefined, done: boolean) => string;
+        assert.equal(format(2000, undefined, false), '2,000 / ??? rows');
+        assert.equal(format(2000, 1000000, false), '2,000 / 1,000,000 rows');
+        assert.equal(format(1000000, 1000000, true), '1,000,000 rows');
     });
 });

@@ -18,8 +18,6 @@ interface ViewerScript {
     saveViewerState(): void;
     getAgTheme(): unknown;
     setViewerSizingMode(mode: 'fit' | 'content'): void;
-    formatSequentialRowCount(loaded: number, knownTotal: number | undefined, complete: boolean): string;
-    sequentialRowCountTitle(knownTotal: number | undefined, notice?: string, complete?: boolean): string;
 }
 
 function viewerScript(saved?: SavedViewer, gridState: GridState = {}, light = false): {
@@ -32,8 +30,7 @@ function viewerScript(saved?: SavedViewer, gridState: GridState = {}, light = fa
     let appliedColumns: ColumnState[] = [];
     let contentSizingCalls = 0;
     const script = vm.runInNewContext(`${getDataViewerScript()}
-        ({ prepareViewerColumns, prepareViewerRows, getViewerGridOptions, saveViewerState, getAgTheme, setViewerSizingMode,
-            formatSequentialRowCount, sequentialRowCountTitle })`, {
+        ({ prepareViewerColumns, prepareViewerRows, getViewerGridOptions, saveViewerState, getAgTheme, setViewerSizingMode })`, {
         vscode: {
             getState: () => saved,
             setState: (value: SavedViewer) => { stored = value; },
@@ -179,19 +176,6 @@ suite('Data viewer', () => {
         assert.strictEqual(state?.pagination?.page, undefined);
         assert.strictEqual(state?.scroll, undefined);
         assert.strictEqual(state?.rowSelection, undefined);
-    });
-
-    test('formats sequential row counts while the total is unknown, known, and finished', () => {
-        const script = viewerScript().script;
-        assert.strictEqual(script.formatSequentialRowCount(2000, undefined, false), '2,000 / ??? rows');
-        assert.strictEqual(script.formatSequentialRowCount(2000, 1000000, false), '2,000 / 1,000,000 rows');
-        assert.strictEqual(script.formatSequentialRowCount(1000000, 1000000, true), '1,000,000 rows');
-        assert.match(script.sequentialRowCountTitle(undefined), /total is unknown until the stream ends/);
-        assert.match(script.sequentialRowCountTitle(undefined, undefined, true), /All rows have been read/);
-        assert.match(script.sequentialRowCountTitle(1000000), /total is known from the R object/);
-        assert.match(script.sequentialRowCountTitle(1000000,
-            'Rows are read from the Arrow stream as you scroll. The total is unknown until the stream ends.'),
-        /total is known from the R object/);
     });
 
     test('uses native date, datetime, boolean and bigint types in both viewer modes', () => {

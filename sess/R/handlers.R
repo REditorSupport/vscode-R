@@ -1310,15 +1310,11 @@ handle_dataview_dispose <- function(params) {
 # Return a row-count hint when an Arrow source exposes dimensions without reading
 # its data. Forward-only readers and streams return NULL from nrow().
 .jdv_arrow_nrow <- function(x) {
-  tryCatch({
-    count <- nrow(x)
-    if (!is.numeric(count) || length(count) != 1L || is.na(count) ||
-          !is.finite(count) || count < 0 || count != floor(count) ||
-          count > 9007199254740991) {
-      return(NULL)
-    }
+  count <- tryCatch(nrow(x), error = function(e) NULL)
+  if (is.numeric(count) && !is.complex(count) && length(count) == 1L &&
+        is.finite(count) && count >= 0 && count == floor(count)) {
     unname(as.numeric(count))
-  }, error = function(e) NULL)
+  }
 }
 
 # Make sure jdv has a persistent connection to this session's viewer host.

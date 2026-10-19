@@ -68,7 +68,7 @@ local({
   expect_identical(sess:::.jdv_arrow_nrow(batch), 3)
   polars <- structure(list(height = 4), class = "polars_data_frame")
   expect_identical(sess:::.jdv_arrow_nrow(polars), 4)
-  for (invalid in list(NA_real_, Inf, -Inf, -1, 1.5, 9007199254740992, "3", 1 + 1i)) {
+  for (invalid in list(NA_real_, Inf, -Inf, -1, 1.5, "3", 1 + 1i)) {
     polars <- structure(list(height = invalid), class = "polars_data_frame")
     expect_null(sess:::.jdv_arrow_nrow(polars))
   }

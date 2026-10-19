@@ -2207,41 +2207,23 @@ export async function getTableHtml(
     let filteredRows = 0;
     let totalRows = 0;
     let isFiltered = false;
-    let isSequential = false;
     let sequentialKnownTotal;
-    let sequentialLoadedRows = 0;
-    let sequentialComplete = false;
-    let sequentialNotice;
-    let sequentialInfo;
+    let sequentialProgress;
     let verticalScrollbar;
     let scrollbarPositionAttached = false;
     let scrollbarPressed = false;
     const LONG_FETCH_DELAY_MS = 2000;
     const rowNumberFormatter = new Intl.NumberFormat();
-    function isValidKnownTotal(value) {
-        return Number.isSafeInteger(value) && value >= 0;
-    }
-
     function renderSequentialRowCount() {
-        if (!isSequential) {
-            return;
+        if (sequentialProgress) {
+            const { loadedRows, totalRows, notice } = sequentialProgress;
+            const complete = Number.isFinite(totalRows);
+            const rowCount = document.querySelector('#viewerRowCount');
+            rowCount.textContent = formatSequentialRowCount(
+                complete ? totalRows : loadedRows, sequentialKnownTotal, complete
+            );
+            rowCount.title = notice || '';
         }
-        const rowCount = document.querySelector('#viewerRowCount');
-        rowCount.textContent = formatSequentialRowCount(
-            sequentialLoadedRows, sequentialKnownTotal, sequentialComplete
-        );
-        rowCount.title = sequentialRowCountTitle(sequentialKnownTotal, sequentialNotice, sequentialComplete);
-        if (sequentialInfo) {
-            sequentialInfo.title = sequentialRowCountTitle(sequentialKnownTotal, sequentialNotice, sequentialComplete);
-        }
-    }
-
-    function receiveSequentialKnownTotal(value) {
-        if (!isValidKnownTotal(value)) {
-            return;
-        }
-        sequentialKnownTotal = value;
-        renderSequentialRowCount();
     }
     function clearLongFetchTimer() {
         if (longFetchTimer) {
@@ -2424,6 +2406,11 @@ export async function getTableHtml(
 
     window.addEventListener('message', (event) => {
         const data = event.data;
+        if (data?.message === 'dataview/rowCount' && data.documentGeneration === documentGeneration) {
+            sequentialKnownTotal = data.knownTotal;
+            renderSequentialRowCount();
+            return;
+        }
         if (!data || data.message !== 'dataview/response' ||
             data.documentGeneration !== documentGeneration) {
             return;
@@ -2437,14 +2424,6 @@ export async function getTableHtml(
             entry.resolve(data.result);
         } else {
             entry.reject(new Error(data.error || 'Unknown dataview error'));
-        }
-    });
-
-    window.addEventListener('message', (event) => {
-        const data = event.data;
-        if (data && data.message === 'dataview/rowCount' &&
-            data.documentGeneration === documentGeneration) {
-            receiveSequentialKnownTotal(data.knownTotal);
         }
     });
 
@@ -2470,10 +2449,6 @@ export async function getTableHtml(
         const columns = Array.isArray(init.columns) ? init.columns : [];
         filteredRows = init.totalRows;
         totalRows = init.totalRows;
-        isSequential = init.sequential === true;
-        if (isSequential && sequentialKnownTotal === undefined && isValidKnownTotal(init.knownTotal)) {
-            sequentialKnownTotal = init.knownTotal;
-        }
         if (init.live) {
             const info = document.createElement('span');
             info.textContent = 'Full data';
@@ -2481,9 +2456,12 @@ export async function getTableHtml(
             document.querySelector('#viewerControls').append(info);
         }
         if (init.sequential) {
-            sequentialInfo = document.createElement('span');
-            sequentialInfo.textContent = 'Arrow stream';
-            document.querySelector('#viewerControls').append(sequentialInfo);
+            sequentialProgress = { loadedRows: 0, totalRows: null };
+            sequentialKnownTotal ??= init.knownTotal;
+            const info = document.createElement('span');
+            info.textContent = 'Arrow stream';
+            info.title = 'Rows are read from the Arrow stream as you scroll. Sorting and filtering are not available.';
+            document.querySelector('#viewerControls').append(info);
         }
         const bigintFields = prepareViewerColumns(columns);
         updateViewerRowCount(filteredRows, totalRows);
@@ -2512,9 +2490,6 @@ export async function getTableHtml(
                     const nextFilteredRows = Number.isFinite(result.totalRows) ? result.totalRows : result.loadedRows;
                     const nextTotalRows = Number.isFinite(result.totalUnfiltered) ? result.totalUnfiltered : result.loadedRows;
                     const nextIsFiltered = Object.keys(params.filterModel || {}).length > 0;
-                    if (init.sequential && sequentialKnownTotal === undefined && isValidKnownTotal(result.knownTotal)) {
-                        sequentialKnownTotal = result.knownTotal;
-                    }
                     const headerNeedsRefresh = filteredRows !== nextFilteredRows ||
                         totalRows !== nextTotalRows || isFiltered !== nextIsFiltered;
                     filteredRows = nextFilteredRows;
@@ -2522,11 +2497,8 @@ export async function getTableHtml(
                     isFiltered = nextIsFiltered;
                     updateViewerRowCount(filteredRows, totalRows);
                     if (init.sequential) {
-                        sequentialComplete = Number.isFinite(result.totalRows);
-                        sequentialLoadedRows = sequentialComplete
-                            ? result.totalRows
-                            : (Number.isFinite(result.loadedRows) ? result.loadedRows : 0);
-                        sequentialNotice = result.notice;
+                        sequentialKnownTotal ??= result.knownTotal;
+                        sequentialProgress = result;
                         renderSequentialRowCount();
                     }
                     if (headerNeedsRefresh) {
