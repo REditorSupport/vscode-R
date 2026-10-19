@@ -166,6 +166,21 @@ suite('jdv adapter', () => {
         });
     });
 
+    test('selects displayed columns by field, excluding the row label', () => {
+        const select = (fields: unknown) => tableRowsParams(grid, 0, 10, [], {}, fields);
+        assert.deepEqual(select(['0', '3', '1', '3']).cols, [2, 0]);
+        assert.deepEqual(select(['0']).cols, []);
+        assert.deepEqual(select([]).cols, []);
+        for (const fields of [undefined, null, '1', ['bad'], [1], ['01'], ['-1'], ['7'], ['1.5'],
+            ['999999999999999999999'], ['1', '2', '3', '4', '5', '6'], ['0', '1', '2', '3', '4', '5', '6']]) {
+            assert.equal('cols' in select(fields), false, JSON.stringify(fields));
+        }
+        const wide = { ...grid, columns: Array.from({ length: 300 }, (_, position) => ({ ...grid.columns![0], position })) };
+        const fields = Array.from({ length: 257 }, (_, index) => String(index + 1));
+        assert.equal('cols' in tableRowsParams(wide, 0, 10, [], {}, fields), false);
+        assert.equal(tableRowsParams(wide, 0, 10, [], {}, ['0', ...fields.slice(0, 256)]).cols?.length, 256);
+    });
+
     test('converts boolean filter models', () => {
         const booleanGrid = parseDescriptor({ ...grid, ncol: 1, columns: [
             { position: 0, name: 'flag', type: 'boolean', native_type: ['logical'], sortable: true, filterable: true },

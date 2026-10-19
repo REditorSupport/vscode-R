@@ -2486,6 +2486,10 @@ export async function getTableHtml(
                         endRow: params.endRow,
                         sortModel: params.sortModel,
                         filterModel: params.filterModel,
+                        // Fetch only displayed columns; wide tables otherwise cost R a lot per block.
+                        columns: params.api.getAllDisplayedColumns()
+                            .map(column => column.getColDef().field)
+                            .filter(field => field !== '0'),
                     });
                     const nextFilteredRows = Number.isFinite(result.totalRows) ? result.totalRows : result.loadedRows;
                     const nextTotalRows = Number.isFinite(result.totalUnfiltered) ? result.totalUnfiltered : result.loadedRows;
@@ -2527,6 +2531,12 @@ export async function getTableHtml(
             onPaginationChanged: updateScrollPosition,
             onGridSizeChanged: updateFetchStatusPosition,
             onDisplayedColumnsChanged: updateFetchStatusPosition,
+            onColumnVisible: function(event) {
+                // Cached rows lack columns that were hidden when they were fetched.
+                if (!init.sequential && (event.columns || []).some(column => column.isVisible())) {
+                    event.api.purgeInfiniteCache();
+                }
+            },
             onFirstDataRendered: function() {
                 updateFetchStatusPosition();
                 attachScrollbarPositionIndicator();

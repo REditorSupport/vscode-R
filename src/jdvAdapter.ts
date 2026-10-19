@@ -567,10 +567,38 @@ export interface TableRowsParams extends JsonObject {
     limit: number;
     sort: JdvSort[];
     filter?: FilterNode;
+    cols?: number[];
+}
+
+/** jdv's default `page_columns` limit for an explicit column selection. */
+const MAX_PAGE_COLUMNS = 256;
+
+/**
+ * Zero-based positions for the grid fields the webview displays, or undefined to
+ * request every column. Field ids are one-based positions; "0" is the row label.
+ */
+function pageColumns(descriptor: JdvDescriptor, fields: unknown): number[] | undefined {
+    const ncol = descriptor.columns?.length ?? 0;
+    if (!Array.isArray(fields)) {
+        return undefined;
+    }
+    const cols = new Set<number>();
+    for (const field of fields) {
+        if (field === '0') {
+            continue;
+        }
+        const position = typeof field === 'string' && /^[1-9][0-9]*$/.test(field) ? Number(field) - 1 : -1;
+        if (position < 0 || position >= ncol) {
+            return undefined;
+        }
+        cols.add(position);
+    }
+    return cols.size >= ncol || cols.size > MAX_PAGE_COLUMNS ? undefined : [...cols];
 }
 
 export function tableRowsParams(
     descriptor: JdvDescriptor, startRow: number, endRow: number, sortModel: unknown, filterModel: unknown,
+    columns?: unknown,
 ): TableRowsParams {
     const offset = Math.max(0, Math.floor(startRow));
     const limit = Math.max(1, Math.floor(endRow) - offset);
@@ -584,6 +612,10 @@ export function tableRowsParams(
     const filter = toJdvFilter(filterModel, descriptor);
     if (filter) {
         params.filter = filter;
+    }
+    const cols = pageColumns(descriptor, columns);
+    if (cols) {
+        params.cols = cols;
     }
     return params;
 }

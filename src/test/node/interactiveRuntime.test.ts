@@ -134,6 +134,13 @@ const delay = (ms: number): Promise<void> => new Promise(resolve => setTimeout(r
             const data = result.data as JsonObject;
             assert.deepStrictEqual(data.source_row, [0, 1]);
             assert.strictEqual(result.total, 3);
+            const selected = await peer.request('grid/rows', {
+                view: params.view, generation: params.generation, offset: 0, limit: 2, cols: [1],
+            }) as JsonObject;
+            const selectedData = selected.data as { source_row: number[]; columns: { schema: { position: number }; data: { values: unknown[] } }[] };
+            assert.deepStrictEqual(selectedData.source_row, [0, 1]);
+            assert.deepStrictEqual(selectedData.columns.map(column => column.schema.position), [1]);
+            assert.deepStrictEqual(selectedData.columns[0].data.values, ['a', 'b']);
         } finally {
             client.off('event', onEvent);
             host.dispose();

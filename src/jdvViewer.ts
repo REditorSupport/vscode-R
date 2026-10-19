@@ -9,9 +9,10 @@ import * as path from 'path';
 import * as vscode from 'vscode';
 import { Uri, ViewColumn, window } from 'vscode';
 import {
-    GridPage, JdvDescriptor, cellOpenParams, JdvRequestError, JdvTracking, JsonObject, TreeAdapter, canRefresh, gridColumnDefs,
-    gridPageFromRows, parseDescriptor, parseTracking, revealsPanel, tableRowsParams,
+    JdvDescriptor, cellOpenParams, JdvRequestError, JdvTracking, JsonObject, TreeAdapter, canRefresh, gridColumnDefs,
+    parseDescriptor, parseTracking, revealsPanel,
 } from './jdvAdapter';
+import { fetchGridPage } from './jdvGrid';
 import { SequentialStream } from './jdvArrow';
 import { JdvHost, JdvPeer } from './jdvTransport';
 import { disposeJdvHostIfCurrentAddress } from './jdvHostLifecycle';
@@ -345,7 +346,9 @@ async function handleMessage(state: JdvPanel, webview: vscode.Webview, message: 
             if (message.action === 'init') {
                 reply(true, { columns: gridColumnDefs(state.descriptor), totalRows: state.descriptor.nrow ?? 0 });
             } else if (message.action === 'page') {
-                reply(true, await fetchGridPage(state, message));
+                reply(true, await fetchGridPage(
+                    state.descriptor, message, (method, params) => state.peer.request(method, params),
+                ));
             } else {
                 reply(false, undefined, `Unsupported dataview action: ${String(message.action)}`);
             }
@@ -488,28 +491,6 @@ async function trackView(
     if (error !== undefined && documentGeneration === session.getDocumentGeneration(webview)) {
         void webview.postMessage({ message: 'viewer/trackFailed', documentGeneration, error });
     }
-}
-
-/** Fetch one AG Grid block, issuing further pages if jdv clamps the page size. */
-async function fetchGridPage(state: JdvPanel, message: JsonObject): Promise<Omit<GridPage, 'returned'>> {
-    const startRow = Number(message.startRow ?? 0);
-    const endRow = Number(message.endRow ?? 0);
-    const descriptor = state.descriptor;
-    let page: GridPage | undefined;
-    let offset = startRow;
-    while (offset < endRow) {
-        const params = tableRowsParams(descriptor, offset, endRow, message.sortModel, message.filterModel);
-        const next = gridPageFromRows(await state.peer.request('grid/rows', params), offset, params.limit);
-        page = page ? { ...next, rows: [...page.rows, ...next.rows] } : next;
-        offset += next.returned;
-        if (next.returned === 0 || offset >= next.totalRows) {
-            break;
-        }
-    }
-    if (!page) {
-        throw new JdvRequestError('invalid_request', 'Empty page request');
-    }
-    return { rows: page.rows, totalRows: page.totalRows, totalUnfiltered: page.totalUnfiltered, lastRow: page.totalRows };
 }
 
 /** Serve an AG Grid block from received Arrow pages, reading the stream forward as needed. */
