@@ -164,7 +164,12 @@ export function getDataViewerScript(): string {
                 column.filter = 'agBigIntColumnFilter';
                 bigintFields.push(column.field);
             } else if (column.type === 'numericColumn') {
-                column.cellDataType = 'number';
+                // Sequential Arrow values are already formatted display strings.
+                // Keep them as strings to preserve integer/decimal precision while
+                // retaining numericColumn's right alignment.
+                if (column.cellDataType !== false) {
+                    column.cellDataType = 'number';
+                }
             } else if (column.type === 'booleanColumn') {
                 column.cellDataType = 'boolean';
                 column.filterParams = { buttons: ['reset'] };

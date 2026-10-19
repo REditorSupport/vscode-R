@@ -51,6 +51,8 @@ suite('jdv Arrow views', () => {
             ['0', 'textColumn', false, false], ['1', 'numericColumn', false, false],
             ['2', 'textColumn', false, false], ['3', 'textColumn', false, false],
         ]);
+        assert.equal(columns[1].cellDataType, false);
+        assert.equal(columns[2].cellDataType, undefined);
         assert.match(columns[3].headerTooltip ?? '', /unsupported: not supported/);
     });
 

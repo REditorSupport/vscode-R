@@ -189,7 +189,7 @@ export interface GridColumnDef {
     type: string;
     filter: string | boolean;
     sortable: boolean;
-    cellDataType?: string;
+    cellDataType?: string | false;
     suppressHeaderMenuButton?: boolean;
     lockPosition?: string;
     /** Drillable grid cells: the zero-based schema position that `object/open` addresses. */
@@ -252,6 +252,7 @@ function sequentialColumnDefs(descriptor: JdvDescriptor): GridColumnDef[] {
                 : `${column.name}, Arrow format: ${column.type}`,
             field: String(column.position + 1),
             type: numeric ? 'numericColumn' : 'textColumn',
+            ...(numeric ? { cellDataType: false } : {}),
             filter: false,
             sortable: false,
         });

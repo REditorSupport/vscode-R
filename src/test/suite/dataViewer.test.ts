@@ -2,6 +2,7 @@ import * as assert from 'assert';
 import * as vm from 'vm';
 import type { ColDef, ColumnState, GridOptions, GridState } from 'ag-grid-community';
 import { getDataViewerScript } from '../../dataViewer';
+import { gridColumnDefs, parseDescriptor } from '../../jdvAdapter';
 
 interface SavedViewer {
     schema: string;
@@ -201,6 +202,27 @@ suite('Data viewer', () => {
         assert.strictEqual(defs[7].sortable, false);
         assert.strictEqual(defs[0].pinned, 'left');
         assert.strictEqual(defs[0].lockVisible, true);
+    });
+
+    test('keeps sequential Arrow numeric display strings precise and right aligned', () => {
+        const descriptor = parseDescriptor({
+            view: 'arrow-1', generation: 1, kind: 'grid', access: 'sequential', encoding: 'arrow-ipc',
+            capabilities: { next: true }, nrow: null, ncol: 1, max_page_rows: 100,
+            columns: [{ position: 0, name: 'precise', type: 'g', unsupported: null, sortable: false, filterable: false }],
+        });
+        const arrowColumns = gridColumnDefs(descriptor) as unknown as ColDef[];
+        const viewer = viewerScript().script;
+        viewer.prepareViewerColumns(arrowColumns);
+        assert.strictEqual(arrowColumns[1].type, 'numericColumn');
+        assert.strictEqual(arrowColumns[1].cellDataType, false);
+
+        const displayValues = ['3.141592653589793238462643383279', '123456789012345678901234567890'];
+        const rows = viewer.prepareViewerRows(displayValues.map(value => ({ '1': value })), []);
+        assert.deepStrictEqual(rows.map(row => row['1']), displayValues);
+
+        const legacyNumeric: ColDef[] = [{ field: '2', type: 'numericColumn' }];
+        viewer.prepareViewerColumns(legacyNumeric);
+        assert.strictEqual(legacyNumeric[0].cellDataType, 'number');
     });
 
     test('keeps integer64 precision and missing values when loading rows', () => {
