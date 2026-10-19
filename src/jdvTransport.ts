@@ -72,7 +72,8 @@ function validIdentity(value: unknown): boolean {
 
 /** One producer connection. Implements the host obligations of the jdv transport. */
 export class JdvPeer {
-    private buffer: Buffer = Buffer.alloc(0);
+    private chunks: Buffer[] = [];
+    private buffered = 0;
     private body?: { header: JsonObject; length: number; timer: NodeJS.Timeout };
     private limits?: ProducerLimits;
     private readonly outbound: OutboundFrame[] = [];
@@ -144,36 +145,54 @@ export class JdvPeer {
             pending.reject(new JdvRequestError('view_not_found', reason));
         }
         this.pending.clear();
+        this.chunks = [];
+        this.buffered = 0;
         this.socket.destroy();
         this.handlers.closed(this, reason);
     }
 
     private receive(chunk: Buffer): void {
-        this.buffer = this.buffer.length ? Buffer.concat([this.buffer, chunk]) : chunk;
+        if (this.closed) {
+            return;
+        }
+        // Hold chunks until a frame can complete, so a large frame split across
+        // many chunks is copied once instead of once per chunk.
+        this.chunks.push(chunk);
+        this.buffered += chunk.length;
+        if (this.body ? this.buffered < this.body.length : chunk.indexOf(0x0a) < 0) {
+            if (!this.body && this.buffered > MAX_JSON_LINE_BYTES) {
+                this.close('A jdv message exceeds the size limit.');
+            }
+            return;
+        }
+        let buffer = this.chunks.length === 1 ? this.chunks[0] : Buffer.concat(this.chunks, this.buffered);
         try {
             while (!this.closed) {
                 if (this.body) {
-                    if (this.buffer.length < this.body.length) {
+                    if (buffer.length < this.body.length) {
                         return;
                     }
                     const { header, length, timer } = this.body;
                     clearTimeout(timer);
                     this.body = undefined;
                     // Copy so a retained page does not keep the receive buffer alive.
-                    const body = new Uint8Array(this.buffer.subarray(0, length));
-                    this.buffer = this.buffer.subarray(length);
+                    const body = new Uint8Array(buffer.subarray(0, length));
+                    buffer = buffer.subarray(length);
                     this.dispatch(header, body);
                     continue;
                 }
-                const newline = this.buffer.indexOf(0x0a);
+                const newline = buffer.indexOf(0x0a);
                 if (newline < 0) {
-                    if (this.buffer.length > MAX_JSON_LINE_BYTES) {
+                    if (buffer.length > MAX_JSON_LINE_BYTES) {
                         throw new Error('A jdv message exceeds the size limit.');
                     }
                     return;
                 }
-                const line = this.buffer.subarray(0, newline);
-                this.buffer = this.buffer.subarray(newline + 1);
+                if (newline > MAX_JSON_LINE_BYTES) {
+                    throw new Error('A jdv message exceeds the size limit.');
+                }
+                const line = buffer.subarray(0, newline);
+                buffer = buffer.subarray(newline + 1);
                 const message = JSON.parse(line.toString('utf8')) as unknown;
                 if (!isObject(message)) {
                     throw new Error('Invalid jdv message.');
@@ -195,6 +214,9 @@ export class JdvPeer {
             }
         } catch (e) {
             this.close(e instanceof Error ? e.message : String(e));
+        } finally {
+            this.chunks = !this.closed && buffer.length ? [buffer] : [];
+            this.buffered = this.closed ? 0 : buffer.length;
         }
     }
 
