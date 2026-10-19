@@ -35,7 +35,7 @@ import type {
 import { showWebView } from './webViewer';
 import { getListViewerScript, listViewerStyle, ListViewNavigation } from './listViewer';
 import { getDataViewerScript, getDataViewerStyle, getDataViewerToolbarHtml } from './dataViewer';
-import { disposeJdvHost, getJdvAddress } from './jdvViewer';
+import { applyJdvRowCount, disposeJdvHost, getJdvAddress } from './jdvViewer';
 import { getFollowScript } from './viewerFollow';
 import type { JdvTracking } from './jdvAdapter';
 import { getDataViewerColumnPanelHtml, getDataViewerColumnPanelScript, getDataViewerColumnPanelStyle } from './dataViewerColumnPanel';
@@ -2207,11 +2207,42 @@ export async function getTableHtml(
     let filteredRows = 0;
     let totalRows = 0;
     let isFiltered = false;
+    let isSequential = false;
+    let sequentialKnownTotal;
+    let sequentialLoadedRows = 0;
+    let sequentialComplete = false;
+    let sequentialNotice;
+    let sequentialInfo;
     let verticalScrollbar;
     let scrollbarPositionAttached = false;
     let scrollbarPressed = false;
     const LONG_FETCH_DELAY_MS = 2000;
     const rowNumberFormatter = new Intl.NumberFormat();
+    function isValidKnownTotal(value) {
+        return Number.isSafeInteger(value) && value >= 0;
+    }
+
+    function renderSequentialRowCount() {
+        if (!isSequential) {
+            return;
+        }
+        const rowCount = document.querySelector('#viewerRowCount');
+        rowCount.textContent = formatSequentialRowCount(
+            sequentialLoadedRows, sequentialKnownTotal, sequentialComplete
+        );
+        rowCount.title = sequentialRowCountTitle(sequentialKnownTotal, sequentialNotice, sequentialComplete);
+        if (sequentialInfo) {
+            sequentialInfo.title = sequentialRowCountTitle(sequentialKnownTotal, sequentialNotice, sequentialComplete);
+        }
+    }
+
+    function receiveSequentialKnownTotal(value) {
+        if (!isValidKnownTotal(value)) {
+            return;
+        }
+        sequentialKnownTotal = value;
+        renderSequentialRowCount();
+    }
     function clearLongFetchTimer() {
         if (longFetchTimer) {
             clearTimeout(longFetchTimer);
@@ -2409,6 +2440,14 @@ export async function getTableHtml(
         }
     });
 
+    window.addEventListener('message', (event) => {
+        const data = event.data;
+        if (data && data.message === 'dataview/rowCount' &&
+            data.documentGeneration === documentGeneration) {
+            receiveSequentialKnownTotal(data.knownTotal);
+        }
+    });
+
     function updateTheme() {
         if (gridApi) {
             gridApi.setGridOption('theme', getAgTheme());
@@ -2431,6 +2470,10 @@ export async function getTableHtml(
         const columns = Array.isArray(init.columns) ? init.columns : [];
         filteredRows = init.totalRows;
         totalRows = init.totalRows;
+        isSequential = init.sequential === true;
+        if (isSequential && sequentialKnownTotal === undefined && isValidKnownTotal(init.knownTotal)) {
+            sequentialKnownTotal = init.knownTotal;
+        }
         if (init.live) {
             const info = document.createElement('span');
             info.textContent = 'Full data';
@@ -2438,13 +2481,15 @@ export async function getTableHtml(
             document.querySelector('#viewerControls').append(info);
         }
         if (init.sequential) {
-            const info = document.createElement('span');
-            info.textContent = 'Arrow stream';
-            info.title = 'Rows are read from the Arrow stream as you scroll. The total is unknown until the stream ends. Sorting and filtering are not available.';
-            document.querySelector('#viewerControls').append(info);
+            sequentialInfo = document.createElement('span');
+            sequentialInfo.textContent = 'Arrow stream';
+            document.querySelector('#viewerControls').append(sequentialInfo);
         }
         const bigintFields = prepareViewerColumns(columns);
         updateViewerRowCount(filteredRows, totalRows);
+        if (init.sequential) {
+            renderSequentialRowCount();
+        }
         const rowIndexColumn = columns.find(column => column.field === '0');
         if (rowIndexColumn) {
             rowIndexColumn.headerValueGetter = () => isFiltered
@@ -2467,18 +2512,22 @@ export async function getTableHtml(
                     const nextFilteredRows = Number.isFinite(result.totalRows) ? result.totalRows : result.loadedRows;
                     const nextTotalRows = Number.isFinite(result.totalUnfiltered) ? result.totalUnfiltered : result.loadedRows;
                     const nextIsFiltered = Object.keys(params.filterModel || {}).length > 0;
+                    if (init.sequential && sequentialKnownTotal === undefined && isValidKnownTotal(result.knownTotal)) {
+                        sequentialKnownTotal = result.knownTotal;
+                    }
                     const headerNeedsRefresh = filteredRows !== nextFilteredRows ||
                         totalRows !== nextTotalRows || isFiltered !== nextIsFiltered;
                     filteredRows = nextFilteredRows;
                     totalRows = nextTotalRows;
                     isFiltered = nextIsFiltered;
                     updateViewerRowCount(filteredRows, totalRows);
-                    if (init.sequential && !Number.isFinite(result.totalRows)) {
-                        document.querySelector('#viewerRowCount').textContent =
-                            rowNumberFormatter.format(result.loadedRows) + '+ rows loaded';
-                    }
-                    if (init.sequential && result.notice) {
-                        document.querySelector('#viewerRowCount').title = result.notice;
+                    if (init.sequential) {
+                        sequentialComplete = Number.isFinite(result.totalRows);
+                        sequentialLoadedRows = sequentialComplete
+                            ? result.totalRows
+                            : (Number.isFinite(result.loadedRows) ? result.loadedRows : 0);
+                        sequentialNotice = result.notice;
+                        renderSequentialRowCount();
                     }
                     if (headerNeedsRefresh) {
                         gridApi?.refreshHeader();
@@ -3213,6 +3262,10 @@ async function handleNotification(message: Record<string, unknown>, socket: IpcS
                     );
                 }
             }
+            break;
+        }
+        case 'jdv/rowCount': {
+            applyJdvRowCount(socket._sessionId ?? null, params);
             break;
         }
         case 'plot_updated': {

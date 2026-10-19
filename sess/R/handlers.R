@@ -1307,6 +1307,20 @@ handle_dataview_dispose <- function(params) {
   inherits(x, .jdv_arrow_classes)
 }
 
+# Return a row-count hint when an Arrow source exposes dimensions without reading
+# its data. Forward-only readers and streams return NULL from nrow().
+.jdv_arrow_nrow <- function(x) {
+  tryCatch({
+    count <- nrow(x)
+    if (!is.numeric(count) || length(count) != 1L || is.na(count) ||
+          !is.finite(count) || count < 0 || count != floor(count) ||
+          count > 9007199254740991) {
+      return(NULL)
+    }
+    unname(as.numeric(count))
+  }, error = function(e) NULL)
+}
+
 # Make sure jdv has a persistent connection to this session's viewer host.
 # Returns FALSE, leaving the user's own jdv state untouched, when the sess data
 # viewer should be used instead: jdv is missing or opted out, VS Code offers no
@@ -1398,6 +1412,7 @@ handle_dataview_dispose <- function(params) {
   if (.jdv_is_arrow(x) && !requireNamespace("nanoarrow", quietly = TRUE)) {
     return(FALSE)
   }
+  row_count <- if (.jdv_is_arrow(x)) .jdv_arrow_nrow(x) else NULL
   title <- if (nzchar(title_key)) title_key else NULL
   # Only jdv errors about the binding are retried without it; anything else
   # ends in FALSE so that View() falls back to the sess data viewer.
@@ -1405,22 +1420,30 @@ handle_dataview_dispose <- function(params) {
     if (!is.null(binding) && !.jdv_is_arrow(x)) {
       registered <- tryCatch({
         jdv::jdv_register(x, title = title, mode = "paged", binding = binding)
-        TRUE
       }, jdv_error = function(e) FALSE)
-      if (registered) {
-        return(TRUE)
+      if (!identical(registered, FALSE)) {
+        return(registered)
       }
     }
     jdv::jdv_register(x, title = title, mode = "paged")
-  }, address)
+  }, address, row_count)
 }
 
 # Connect and register a view, sharing the same failure contract for values and
-# Interactive handles. Registration may return metadata; callers only need success.
-.jdv_show_registered <- function(register, address = NULL) {
+# Interactive handles. A row-count notification is best-effort display metadata.
+.jdv_show_registered <- function(register, address = NULL, row_count = NULL) {
   if (!.jdv_connect(address)) return(FALSE)
   tryCatch({
-    register()
+    registration <- register()
+    if (!is.null(row_count)) {
+      # A notification is only a hint; it must not make a successful View fail.
+      try(notify_client("jdv/rowCount", list(
+        view = registration$id,
+        generation = registration$generation,
+        nrow = row_count,
+        address = .sess_env$jdv_address
+      )), silent = TRUE)
+    }
     TRUE
   }, error = function(e) FALSE)
 }

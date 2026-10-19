@@ -15,7 +15,7 @@ import { Transcript, TranscriptCell } from './transcript';
 import { DISPLAY_MIME, InteractiveSerializer, persistentCellMetadata, persistentNotebookMetadata, restoredCellMetadata } from './notebook';
 import { setInteractiveExecutor } from './executionTarget';
 import * as session from '../session';
-import { disposeJdvHost, getJdvAddress } from '../jdvViewer';
+import { applyJdvRowCount, disposeJdvHost, getJdvAddress } from '../jdvViewer';
 import * as util from '../util';
 import type { ListViewNavigation } from '../listViewer';
 import { escapeXml } from './plotSvg';
@@ -1036,6 +1036,7 @@ export class InteractiveManager implements vscode.Disposable, vscode.TreeDataPro
             }
         } else if (event.type === 'notification') {
             const params = object(event.data.params ?? {});
+            if (event.data.method === 'jdv/rowCount') { applyJdvRowCount(view.target.sessionId, params); }
             if (event.data.method === 'help') { await session.showHelpNotification(params); }
             if (event.data.method === 'rstudioapi/send_to_console') {
                 if (params.execute) { await this.submit(view, String(params.code)); }

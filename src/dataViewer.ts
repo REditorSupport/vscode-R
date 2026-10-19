@@ -284,6 +284,29 @@ export function getDataViewerScript(): string {
             ? format(total) + ' rows' : format(filtered) + ' of ' + format(total) + ' rows';
     }
 
+    function formatSequentialRowCount(loaded, knownTotal, complete) {
+        const format = value => new Intl.NumberFormat().format(value);
+        if (complete) {
+            return format(loaded) + ' rows';
+        }
+        return format(loaded) + ' / ' + (Number.isFinite(knownTotal)
+            ? format(knownTotal) : '???') + ' rows';
+    }
+
+    function sequentialRowCountTitle(knownTotal, notice, complete) {
+        const unknownText = 'The total is unknown until the stream ends.';
+        const knownText = 'The total is known from the R object.';
+        if (typeof notice === 'string' && notice.length > 0) {
+            return Number.isFinite(knownTotal) ? notice.replace(unknownText, knownText) : notice;
+        }
+        if (complete) {
+            return 'All rows have been read from the Arrow stream. Sorting and filtering are not available.';
+        }
+        return 'Rows are read from the Arrow stream as you scroll. ' +
+            (Number.isFinite(knownTotal) ? knownText : unknownText) +
+            ' Sorting and filtering are not available.';
+    }
+
     function updateViewerSizingButtons() {
         document.querySelector('#viewerFit').setAttribute('aria-pressed', String(viewerSizingMode === 'fit'));
         document.querySelector('#viewerAutoSize').setAttribute('aria-pressed', String(viewerSizingMode === 'content'));

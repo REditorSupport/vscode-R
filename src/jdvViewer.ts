@@ -13,6 +13,7 @@ import {
     gridPageFromRows, parseDescriptor, parseTracking, revealsPanel, tableRowsParams,
 } from './jdvAdapter';
 import { SequentialStream } from './jdvArrow';
+import { JdvRowCountHints } from './jdvRowCount';
 import { JdvHost, JdvPeer } from './jdvTransport';
 import { disposeJdvHostIfCurrentAddress } from './jdvHostLifecycle';
 import { extensionContext } from './extension';
@@ -27,6 +28,8 @@ interface JdvPanel {
     peer: JdvPeer;
     descriptor: JdvDescriptor;
     title: string;
+    hintScope: string;
+    knownTotal?: number;
     tree?: TreeAdapter;
     /** Received Arrow pages of a sequential view. */
     stream?: SequentialStream;
@@ -38,11 +41,47 @@ interface JdvPanel {
 
 const panels = new Map<string, JdvPanel>();
 const hosts = new Map<string, Promise<JdvHost>>();
+const rowCountHints = new JdvRowCountHints();
+
+function rowCountScope(sessionId: string | null, address: string): string {
+    return JSON.stringify([sessionId, address]);
+}
+
+/** A display-only hint from the authenticated sess notification channel. */
+export function applyJdvRowCount(sessionId: string | null, params: Record<string, unknown>): void {
+    if (!sessionId || typeof params.address !== 'string' || !params.address ||
+        typeof params.view !== 'string' || !params.view ||
+        !Number.isSafeInteger(params.generation) || Number(params.generation) < 1 ||
+        !Number.isSafeInteger(params.nrow) || Number(params.nrow) < 0) {
+        return;
+    }
+    rowCountHints.hint(rowCountScope(sessionId, params.address), params.view,
+        Number(params.generation), Number(params.nrow));
+}
+
+function bindRowCount(state: JdvPanel): void {
+    state.knownTotal = undefined;
+    if (!state.stream) {
+        return;
+    }
+    const { view, generation } = state.descriptor;
+    state.knownTotal = rowCountHints.open(state.hintScope, view, generation, nrow => {
+        state.knownTotal = nrow;
+        try {
+            const webview = state.panel.webview;
+            void webview.postMessage({ message: 'dataview/rowCount',
+                documentGeneration: session.getDocumentGeneration(webview), knownTotal: nrow });
+        } catch {
+            // The panel may have been disposed while the notification was in flight.
+        }
+    });
+}
 
 /** The jdv transport address for a session, creating its listener on first use. */
 export function getJdvAddress(sessionId: string, hostKey = sessionId): Promise<string> {
     let host = hosts.get(hostKey);
     if (!host) {
+        let address = '';
         host = JdvHost.create({
             viewOpen: (peer, params) => {
                 let descriptor: JdvDescriptor;
@@ -54,22 +93,29 @@ export function getJdvAddress(sessionId: string, hostKey = sessionId): Promise<s
                 }
                 const viewer = viewerColumn();
                 if (viewer) {
-                    void openJdvView(descriptor, sessionId, viewer, peer);
+                    void openJdvView(descriptor, sessionId, viewer, peer, rowCountScope(sessionId, address));
                 } else {
                     void peer.request('view/close', { view: descriptor.view, generation: descriptor.generation })
                         .catch(() => undefined);
                 }
             },
-            viewClosed: (_peer, view, generation) => markClosed(sessionId, view, generation),
+            viewClosed: (_peer, view, generation) => {
+                rowCountHints.close(rowCountScope(sessionId, address), view, generation);
+                markClosed(sessionId, view, generation);
+            },
             viewUpdateFailed: (_peer, params) => warnUpdateFailed(sessionId, params),
             viewTracking: (_peer, params) => applyTracking(sessionId, params),
             disconnected: (peer) => {
+                rowCountHints.clear(rowCountScope(sessionId, address));
                 for (const state of panels.values()) {
                     if (state.peer === peer && !state.closed) {
                         state.closed = 'The R session disconnected from the data viewer.';
                     }
                 }
             },
+        }).then(value => {
+            address = value.address;
+            return value;
         });
         hosts.set(hostKey, host);
         void host.catch(() => {
@@ -170,7 +216,7 @@ function errorMessage(error: unknown): string {
 }
 
 async function openJdvView(
-    descriptor: JdvDescriptor, sessionId: string | null, viewer: string, peer: JdvPeer,
+    descriptor: JdvDescriptor, sessionId: string | null, viewer: string, peer: JdvPeer, hintScope: string,
 ): Promise<void> {
     const key = panelKey(sessionId, descriptor.view);
     const existing = panels.get(key);
@@ -185,10 +231,13 @@ async function openJdvView(
         return;
     }
     if (existing) {
-        if (descriptor.generation < existing.descriptor.generation) {
+        if (existing.hintScope === hintScope && descriptor.generation < existing.descriptor.generation) {
             return;
         }
         // The same view with a newer generation (View() again, or a refresh) updates the panel.
+        if (existing.hintScope !== hintScope || existing.descriptor.generation !== descriptor.generation) {
+            rowCountHints.close(existing.hintScope, existing.descriptor.view, existing.descriptor.generation);
+        }
         existing.descriptor = descriptor;
         existing.peer = peer;
         existing.title = title;
@@ -196,6 +245,8 @@ async function openJdvView(
         existing.tree = descriptor.kind === 'tree' ? new TreeAdapter(descriptor, title) : undefined;
         existing.stream?.dispose();
         existing.stream = createStream(descriptor, peer);
+        existing.hintScope = hintScope;
+        bindRowCount(existing);
         existing.panel.title = title;
         // Updates that R made on its own (a tracked variable, a Refresh click) keep
         // the panel where it is. Otherwise, including when jdv sends no reason,
@@ -222,11 +273,12 @@ async function openJdvView(
     panel.iconPath = new UriIcon(descriptor.kind === 'grid' ? 'open-preview' : 'preview');
     session.attachViewerSessionBridge(panel, sessionId);
     const state: JdvPanel = {
-        key, panel, sessionId, peer, descriptor, title,
+        key, panel, sessionId, peer, descriptor, title, hintScope,
         tree: descriptor.kind === 'tree' ? new TreeAdapter(descriptor, title) : undefined,
         stream: createStream(descriptor, peer),
     };
     panels.set(key, state);
+    bindRowCount(state);
     // The panel's webview getter throws once onDidDispose fires.
     const webview = panel.webview;
     panel.onDidDispose(() => {
@@ -234,6 +286,7 @@ async function openJdvView(
             panels.delete(key);
         }
         state.stream?.dispose();
+        rowCountHints.close(state.hintScope, state.descriptor.view, state.descriptor.generation);
         if (!state.closed) {
             const { view, generation } = state.descriptor;
             void state.peer.request('view/close', { view, generation }).catch(() => undefined);
@@ -289,7 +342,7 @@ async function handleMessage(state: JdvPanel, webview: vscode.Webview, message: 
             if (state.stream) {
                 // Rows already received stay viewable after R closes the view.
                 if (message.action === 'init') {
-                    reply(true, { columns: gridColumnDefs(state.descriptor), totalRows: 0, sequential: true });
+                    reply(true, { columns: gridColumnDefs(state.descriptor), totalRows: 0, sequential: true, knownTotal: state.knownTotal });
                 } else if (message.action === 'page') {
                     reply(true, await fetchSequentialPage(state, state.stream, message));
                 }
@@ -485,6 +538,7 @@ async function fetchSequentialPage(
         totalUnfiltered: known ? stream.rowsSeen : null,
         lastRow: known ? stream.rowsSeen : -1,
         loadedRows: stream.rowsSeen,
+        knownTotal: state.knownTotal,
         done: stream.done,
         unavailableBefore: stream.unavailableBefore,
         notice: state.closed,

@@ -321,6 +321,52 @@ sess::display("display-${cell}", "text/plain"); cat("stderr-${cell}\\n", file=st
     const inspect = (request: { method: string; params: Record<string, unknown> }): Promise<Record<string, unknown>> =>
         client.request('inspect', request);
 
+    test('jdv Arrow views send display-only totals for sized sources', async function () {
+        if (!(await jdvAvailable())) { this.skip(); return; }
+        const available = (await run('Rscript', ['--vanilla', '-e',
+            "cat(requireNamespace('nanoarrow', quietly=TRUE), requireNamespace('arrow', quietly=TRUE))"])).stdout.trim().split(/\s+/);
+        if (available[0] !== 'TRUE') { this.skip(); return; }
+        const sized = available[1] === 'TRUE';
+        const opened: { peer: JdvPeer; params: JsonObject }[] = [];
+        const host = await JdvHost.create({
+            viewOpen: (peer, params) => opened.push({ peer, params }),
+            viewClosed: () => undefined, viewUpdateFailed: () => undefined,
+            viewTracking: () => undefined, disconnected: () => undefined,
+        });
+        const onEvent = (event: SessionEvent): void => {
+            if (event.type === 'clientRequest' && event.data.method === 'jdv/address') {
+                void client.request('clientReply', { id: event.data.id, result: { address: host.address } });
+            }
+        };
+        client.on('event', onEvent);
+        try {
+            const source = sized ? 'arrow::Table$create(data.frame(a=1:3))'
+                : 'nanoarrow::as_nanoarrow_array_stream(data.frame(a=1:3))';
+            const id = await submit(`utils::View(${source}, "Arrow count test")`);
+            assert.strictEqual((await finished(id)).state, 'success');
+            await until(() => opened.length > 0);
+            const { peer, params } = opened[0];
+            assert.strictEqual(params.access, 'sequential');
+            assert.strictEqual(params.nrow, null);
+            const hints = events.filter(event => event.type === 'notification' && event.data.method === 'jdv/rowCount');
+            assert.strictEqual(hints.length, sized ? 1 : 0);
+            if (sized) {
+                assert.deepStrictEqual(hints[0].data.params, {
+                    view: params.view, generation: params.generation, nrow: 3, address: host.address,
+                });
+            }
+            const page = await peer.requestWithBody('stream/next', {
+                view: params.view, generation: params.generation, max_rows: 2,
+            });
+            assert.strictEqual((page.result as JsonObject).rows_seen, 2);
+            assert.strictEqual((page.result as JsonObject).done, false);
+            assert.ok(page.body);
+        } finally {
+            client.off('event', onEvent);
+            host.dispose();
+        }
+    });
+
     test('inline tables page, sort and filter through one jdv handle per output', async function () {
         if (!(await jdvAvailable())) { this.skip(); return; }
         const id = await submit('tbl <- data.frame(id=1:100, name=rep(c("a", "b"), 50), x=seq(0.5, 50, by=0.5)); tbl');

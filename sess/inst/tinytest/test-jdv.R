@@ -49,6 +49,40 @@ local({
 
   sample <- data.frame(x = c(2, 1, NA), y = c("b", "a", "c"))
 
+  # Only sources with an inexpensive, known row count get a hint. Readers and
+  # malformed counts remain unknown without consuming a stream.
+  table <- structure(sample, class = c("Table", class(sample)))
+  batch <- structure(sample, class = c("RecordBatch", class(sample)))
+  method_name <- "dim.polars_data_frame"
+  had_method <- exists(method_name, envir = .GlobalEnv, inherits = FALSE)
+  old_method <- if (had_method) get(method_name, envir = .GlobalEnv) else NULL
+  assign(method_name, function(x) x$height, envir = .GlobalEnv)
+  on.exit({
+    if (had_method) {
+      assign(method_name, old_method, envir = .GlobalEnv)
+    } else if (exists(method_name, envir = .GlobalEnv, inherits = FALSE)) {
+      rm(list = method_name, envir = .GlobalEnv)
+    }
+  }, add = TRUE)
+  expect_identical(sess:::.jdv_arrow_nrow(table), 3)
+  expect_identical(sess:::.jdv_arrow_nrow(batch), 3)
+  polars <- structure(list(height = 4), class = "polars_data_frame")
+  expect_identical(sess:::.jdv_arrow_nrow(polars), 4)
+  for (invalid in list(NA_real_, Inf, -Inf, -1, 1.5, 9007199254740992, "3", 1 + 1i)) {
+    polars <- structure(list(height = invalid), class = "polars_data_frame")
+    expect_null(sess:::.jdv_arrow_nrow(polars))
+  }
+  expect_null(sess:::.jdv_arrow_nrow(structure(list(), class = "RecordBatchReader")))
+  if (requireNamespace("arrow", quietly = TRUE)) {
+    expect_identical(sess:::.jdv_arrow_nrow(arrow::arrow_table(x = 1:3)), 3)
+  }
+  if (requireNamespace("polars", quietly = TRUE)) {
+    expect_identical(sess:::.jdv_arrow_nrow(polars::pl$DataFrame(x = 1:3)), 3)
+  }
+  if (requireNamespace("nanoarrow", quietly = TRUE)) {
+    expect_null(sess:::.jdv_arrow_nrow(nanoarrow::as_nanoarrow_array_stream(sample)))
+  }
+
   # The opt-out keeps the sess data viewer.
   options(sess.dataviewer = "sess")
   stub_address("tcp://127.0.0.1:1")
@@ -124,6 +158,31 @@ local({
   expect_true(connection$persistent)
   expect_identical(connection$address, address)
 
+  # A successful registration publishes its row count to the session client.
+  expect_true(sess:::.jdv_show_registered(function() {
+    list(id = "row-count-view", generation = 7L)
+  }, address, 3))
+  row_count_messages <- read_messages()
+  row_count_message <- Filter(function(message) identical(message$method, "jdv/rowCount"),
+                              row_count_messages)
+  expect_length(row_count_message, 1L)
+  expect_identical(row_count_message[[1L]]$params$view, "row-count-view")
+  expect_equal(row_count_message[[1L]]$params$generation, 7)
+  expect_equal(row_count_message[[1L]]$params$nrow, 3)
+  expect_identical(row_count_message[[1L]]$params$address, address)
+
+  # A client notification failure does not undo a successful registration.
+  original_notify_client <- ns$notify_client
+  unlockBinding("notify_client", ns)
+  assign("notify_client", function(...) stop("client is unavailable"), envir = ns)
+  lockBinding("notify_client", ns)
+  expect_true(sess:::.jdv_show_registered(function() {
+    list(id = "row-count-view", generation = 7L)
+  }, address, 3))
+  unlockBinding("notify_client", ns)
+  assign("notify_client", original_notify_client, envir = ns)
+  lockBinding("notify_client", ns)
+
   # Data frames are paged and titled by their expression.
   open <- opens()[[1L]]$params
   expect_identical(open$kind, "grid")
@@ -156,6 +215,10 @@ local({
     stream <- opens()[[4L]]$params
     expect_identical(stream$access, "sequential")
     expect_identical(stream$title, "stream")
+    stream_notifications <- read_messages()
+    expect_false(any(vapply(stream_notifications, function(message) {
+      identical(message$method, "jdv/rowCount")
+    }, logical(1L))))
   }
 
   # View(<symbol>) follows the variable on R 4.6.0 or later, and never on older R.
