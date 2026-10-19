@@ -426,6 +426,43 @@ huge`);
         }
     });
 
+    test('opens nested and root jdv handles without dispatching list subsetting methods', async function () {
+        if (!(await jdvAvailable())) { this.skip(); return; }
+        const opened: JsonObject[] = [];
+        const host = await JdvHost.create({
+            viewOpen: (_peer, params) => { opened.push(params); },
+            viewClosed: () => undefined, viewUpdateFailed: () => undefined, viewTracking: () => undefined,
+            disconnected: () => undefined,
+        });
+        try {
+            const id = await submit('`[[.review_list` <- function(x, i, ...) stop("review_list [[ called"); review <- structure(list(table=data.frame(z=1:3)), class="review_list"); outer <- list(review=review); outer');
+            assert.strictEqual((await finished(id)).state, 'success');
+            const output = events.find(event => event.executionId === id && event.data.kind === 'list'); assert.ok(output);
+            assert.ok(isJdvOutput(output.data));
+
+            const nested = await inspect({ method: 'jdv_open_viewer', params: {
+                handle_id: output.data.handleId, path: [{ type: 'index', index: 1 }, { type: 'index', index: 1 }], title: 'Cell: List$review$table', address: host.address,
+            } });
+            assert.strictEqual(nested as unknown, true);
+            const deadline = Date.now() + 10000;
+            while (opened.length === 0 && Date.now() < deadline) { await delay(25); }
+            assert.strictEqual(opened[0]?.kind, 'grid');
+            assert.strictEqual(opened[0]?.title, 'Cell: List$review$table');
+            assert.strictEqual(opened[0]?.nrow, 3);
+
+            const root = await inspect({ method: 'jdv_open_viewer', params: {
+                handle_id: output.data.handleId, path: [], title: 'Interactive root', address: host.address,
+            } });
+            assert.strictEqual(root as unknown, true);
+            const rootDeadline = Date.now() + 10000;
+            while (opened.length < 2 && Date.now() < rootDeadline) { await delay(25); }
+            assert.strictEqual(opened[1]?.kind, 'tree');
+            assert.strictEqual(opened[1]?.title, 'Interactive root');
+        } finally {
+            host.dispose();
+        }
+    });
+
     legacyViewerTest('data inspection preserves random draws and reproducible resampling across cells', async () => {
         const first = await submit(`set.seed(2026)
 expected <- replicate(100, mean(sample(mtcars$mpg, replace=TRUE)))

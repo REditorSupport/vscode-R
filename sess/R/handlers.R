@@ -1398,13 +1398,10 @@ handle_dataview_dispose <- function(params) {
   if (.jdv_is_arrow(x) && !requireNamespace("nanoarrow", quietly = TRUE)) {
     return(FALSE)
   }
-  if (!.jdv_connect(address)) {
-    return(FALSE)
-  }
   title <- if (nzchar(title_key)) title_key else NULL
   # Only jdv errors about the binding are retried without it; anything else
   # ends in FALSE so that View() falls back to the sess data viewer.
-  tryCatch({
+  .jdv_show_registered(function() {
     if (!is.null(binding) && !.jdv_is_arrow(x)) {
       registered <- tryCatch({
         jdv::jdv_register(x, title = title, mode = "paged", binding = binding)
@@ -1415,6 +1412,15 @@ handle_dataview_dispose <- function(params) {
       }
     }
     jdv::jdv_register(x, title = title, mode = "paged")
+  }, address)
+}
+
+# Connect and register a view, sharing the same failure contract for values and
+# Interactive handles. Registration may return metadata; callers only need success.
+.jdv_show_registered <- function(register, address = NULL) {
+  if (!.jdv_connect(address)) return(FALSE)
+  tryCatch({
+    register()
     TRUE
   }, error = function(e) FALSE)
 }

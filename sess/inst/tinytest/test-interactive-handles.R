@@ -100,11 +100,129 @@ expect_identical(request(tree$handleId, "object/children", list(
   path = list(list(type = "index", index = 2L)), offset = 0L, limit = 10L, attributes = FALSE
 ))$total_children, 1L)
 
-# The viewer opens the output's value or one typed item of it.
-entry <- ns$.interactive_handle_entry(tree$handleId)
-expect_identical(ns$.interactive_resolve_path(entry$value, list(list(type = "index", index = 2L))),
-                 data.frame(z = 1:2))
-expect_identical(ns$.interactive_resolve_path(entry$value, list()), entry$value)
+# Opening an Interactive handle registers the selected value through jdv's handle API.
+# The custom [[ method must not run while opening a nested table.
+local({
+  original_connect <- ns$.jdv_connect
+  review_handle_id <- NULL
+  registered_views <- list()
+  unlockBinding(".jdv_connect", ns)
+  assign(".jdv_connect", function(address = NULL) TRUE, envir = ns)
+  lockBinding(".jdv_connect", ns)
+  on.exit({
+    if (!is.null(review_handle_id)) {
+      ns$handle_jdv_handle_close(list(handle_id = review_handle_id))
+    }
+    for (view in registered_views) {
+      try(jdv::jdv_rpc(jsonlite::toJSON(list(
+        id = 1L, method = "view/close",
+        params = list(view = view$id, generation = view$generation)
+      ), auto_unbox = TRUE)), silent = TRUE)
+    }
+    jdv::jdv_notifications()
+    unlockBinding(".jdv_connect", ns)
+    assign(".jdv_connect", original_connect, envir = ns)
+    lockBinding(".jdv_connect", ns)
+  }, add = TRUE)
+
+  anchor <- jdv::jdv_register(data.frame(anchor = 1L), title = "interactive handles test anchor")
+  registered_views <- list(anchor)
+  jdv::jdv_notifications()
+  method_calls <- 0L
+  previous_method <- if (exists("[[.review_list", envir = .GlobalEnv, inherits = FALSE)) {
+    get("[[.review_list", envir = .GlobalEnv, inherits = FALSE)
+  }
+  assign("[[.review_list", function(x, i, ...) {
+    method_calls <<- method_calls + 1L
+    stop("review_list [[ method must not be called")
+  }, envir = .GlobalEnv)
+  on.exit({
+    if (is.null(previous_method)) {
+      if (exists("[[.review_list", envir = .GlobalEnv, inherits = FALSE)) {
+        rm("[[.review_list", envir = .GlobalEnv)
+      }
+    } else {
+      assign("[[.review_list", previous_method, envir = .GlobalEnv)
+    }
+  }, add = TRUE)
+  review <- structure(list(table = data.frame(z = 1:2)), class = "review_list")
+  review_preview <- preview(review, "list")
+  review_handle_id <- review_preview$handleId
+  expect_true(!is.null(review_preview))
+
+  opens <- function() {
+    messages <- lapply(jdv::jdv_notifications(), jsonlite::fromJSON,
+                       simplifyVector = FALSE)
+    result <- Filter(function(message) identical(message$method, "view/open"), messages)
+    registered_views <<- c(registered_views, lapply(result, function(message) {
+      list(id = message$params$view, generation = message$params$generation)
+    }))
+    result
+  }
+  opened <- function() lapply(opens(), `[[`, "params")
+  request <- function(method, params) {
+    parsed <- jsonlite::fromJSON(jdv::jdv_rpc(jsonlite::toJSON(
+      list(id = 1L, method = method, params = params), auto_unbox = TRUE
+    )), simplifyVector = FALSE)
+    parsed$result
+  }
+
+  expect_true(ns$handle_jdv_open_viewer(list(
+    handle_id = review_preview$handleId,
+    path = list(list(type = "index", index = 1L)),
+    title = "Cell: List$table"
+  )))
+  child <- opened()[[1L]]
+  expect_identical(child$kind, "grid")
+  expect_identical(child$title, "Cell: List$table")
+  rows <- request("grid/rows", list(view = child$view, generation = child$generation,
+                                    offset = 0L, limit = 2L))
+  expect_identical(length(rows$data$source_row), 2L)
+  expect_identical(method_calls, 0L)
+
+  # Empty paths register the root handle itself; named titles retain refresh behavior.
+  expect_true(ns$handle_jdv_open_viewer(list(
+    handle_id = review_preview$handleId, path = list(), title = "Interactive root"
+  )))
+  root_first <- opened()[[1L]]
+  expect_identical(root_first$kind, "tree")
+  expect_identical(root_first$title, "Interactive root")
+  expect_true(ns$handle_jdv_open_viewer(list(
+    handle_id = review_preview$handleId, path = list(), title = "Interactive root"
+  )))
+  root_refresh <- opened()[[1L]]
+  expect_identical(root_refresh$view, root_first$view)
+  expect_identical(root_refresh$generation, root_first$generation + 1L)
+
+  # Empty titles remain independent even though jdv handles carry their own fallback title.
+  expect_true(ns$handle_jdv_open_viewer(list(
+    handle_id = review_preview$handleId, path = list(), title = ""
+  )))
+  expect_true(ns$handle_jdv_open_viewer(list(
+    handle_id = review_preview$handleId, path = list(), title = ""
+  )))
+  untitled <- opened()
+  expect_identical(length(untitled), 2L)
+  expect_true(all(vapply(untitled, function(view) startsWith(view$title, "Interactive output "),
+                         logical(1L))))
+  expect_false(identical(untitled[[1L]]$view, untitled[[2L]]$view))
+
+  expect_false(ns$handle_jdv_open_viewer(list(
+    handle_id = review_preview$handleId,
+    path = list(list(type = "index", index = 99L)), title = "invalid path"
+  )))
+  unlockBinding(".jdv_connect", ns)
+  assign(".jdv_connect", function(address = NULL) FALSE, envir = ns)
+  lockBinding(".jdv_connect", ns)
+  expect_false(ns$handle_jdv_open_viewer(list(
+    handle_id = review_preview$handleId, path = list(), title = "disconnected"
+  )))
+  expect_true(ns$handle_jdv_handle_close(list(handle_id = review_preview$handleId)))
+  rows_after_handle_close <- request(
+    "grid/rows", list(view = child$view, generation = child$generation, offset = 0L, limit = 2L)
+  )
+  expect_identical(length(rows_after_handle_close$data$source_row), 2L)
+})
 
 # Only grid rows and object children can be requested.
 expect_error(ns$handle_jdv_request(list(handle_id = table$handleId, method = "view/close")),

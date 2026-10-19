@@ -456,7 +456,7 @@ interactive_execute <- function(id, code, source = NULL) {
     store <- .interactive_handle_store()
     .sess_env$interactive_handle_seq <- .sess_env$interactive_handle_seq + 1L
     id <- paste0("h", .sess_env$interactive_handle_seq)
-    assign(id, list(handle = handle, value = value), envir = store)
+    assign(id, list(handle = handle), envir = store)
     .sess_env$interactive_handle_order <- c(.sess_env$interactive_handle_order, id)
     while (length(.sess_env$interactive_handle_order) > .interactive_handle_limit) {
       .interactive_handle_close(.sess_env$interactive_handle_order[[1L]])
@@ -485,19 +485,20 @@ handle_jdv_handle_close <- function(params) {
   TRUE
 }
 
-# Select the value at a typed jdv path (index, binding, slot or attr steps).
-.interactive_resolve_path <- function(value, path) {
-  for (step in path) {
-    value <- switch(
-      step$type,
-      index = value[[as.integer(step$index)]],
-      binding = get(step$name, envir = value, inherits = FALSE),
-      slot = methods::slot(value, step$name),
-      attr = attr(value, step$name, exact = TRUE),
-      stop("Unsupported path step")
-    )
-  }
-  value
+# Register the captured value without invoking R subsetting methods or forcing
+# bindings. A temporary child is released even when registration fails; the view
+# itself has an independent lifetime.
+.jdv_show_handle <- function(handle, path, title_key, address = NULL) {
+  .jdv_show_registered(function() {
+    if (length(path)) {
+      handle <- jdv::jdv_handle_open(handle, path, mode = "paged")
+      on.exit(jdv::jdv_handle_close(handle), add = TRUE)
+    }
+    # NULL would reuse the handle's title, hence refresh an unrelated view. The
+    # handle API requires an explicit unique title for an untitled independent view.
+    title <- if (nzchar(title_key)) title_key else basename(tempfile("Interactive output "))
+    jdv::jdv_handle_register(handle, title = title, mode = "paged")
+  }, address)
 }
 
 # Show the output's value, or the element at `path`, in the Data Viewer panel by
@@ -505,11 +506,11 @@ handle_jdv_handle_close <- function(params) {
 # cannot be opened.
 handle_jdv_open_viewer <- function(params) {
   entry <- .interactive_handle_entry(params$handle_id)
-  value <- .interactive_resolve_path(entry$value, params$path %||% list())
   title <- params$title
   address <- params$address
-  .jdv_show(value, if (is.character(title) && length(title) == 1L) title else "",
-            address = if (is.character(address) && length(address) == 1L) address)
+  .jdv_show_handle(entry$handle, params$path %||% list(),
+                   if (is.character(title) && length(title) == 1L && !is.na(title)) title else "",
+                   address = if (is.character(address) && length(address) == 1L) address)
 }
 
 .interactive_rich_value <- function(value) {
