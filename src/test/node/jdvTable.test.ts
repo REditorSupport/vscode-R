@@ -1,6 +1,6 @@
 import * as assert from 'node:assert/strict';
 import { createListAdapter, isJdvOutput, listRequest, normalizeJdvDisplay, queryJdvTablePage } from '../../interactive/jdvTable';
-import { columnOperators, filterOperatorLabel, TableColumn } from '../../interactive/tableQuery';
+import { columnOperators, filterNeedsValue, filterOperatorLabel, TableColumn } from '../../interactive/tableQuery';
 
 const capabilities = { seek: true, sort: true, filter: true, known_total: true, next: false, children: false, refresh: false, track: false };
 const gridDescriptor = {
@@ -74,13 +74,23 @@ suite('Interactive jdv tables', () => {
 
     test('offers the operators of the column type', () => {
         const columns = normalizeJdvDisplay(display()).columns as TableColumn[];
-        assert.deepEqual(columnOperators(columns[1]).slice(-2), ['blank', 'notBlank']);
-        assert.equal(filterOperatorLabel('blank', columns[1]), 'is NA');
-        assert.equal(filterOperatorLabel('notBlank', columns[1]), 'is not NA');
+        assert.deepEqual(columnOperators(columns[1]).slice(-2), ['jdvIsNa', 'jdvNotNa']);
+        assert.equal(filterOperatorLabel('jdvIsNa'), 'is NA');
+        assert.equal(filterOperatorLabel('jdvNotNa'), 'is not NA');
         assert.ok(columnOperators(columns[1]).includes('greaterThan'));
-        assert.deepEqual(columnOperators(columns[3]), ['equals', 'blank', 'notBlank']);
-        assert.equal(filterOperatorLabel('blank', { field: 'legacy', headerName: 'legacy' }), 'is blank');
-        assert.equal(filterOperatorLabel('notBlank', { field: 'legacy', headerName: 'legacy' }), 'is not blank');
+        assert.ok(!columnOperators(columns[1]).includes('blank'));
+        assert.deepEqual(columnOperators(columns[3]), ['equals', 'jdvIsNa', 'jdvNotNa']);
+        assert.equal(filterOperatorLabel('blank'), 'is blank');
+        assert.equal(filterOperatorLabel('notBlank'), 'is not blank');
+        assert.equal(filterNeedsValue('jdvIsNa'), false);
+        // Text columns additionally offer empty-string filters, separate from NA.
+        const text = { field: '1', headerName: 's', jdv: { filterOptions: ['contains', 'jdvIsEmpty', 'jdvNotEmpty'] } };
+        assert.deepEqual(columnOperators(text), ['contains', 'jdvIsEmpty', 'jdvNotEmpty', 'jdvIsNa', 'jdvNotNa']);
+        assert.equal(filterOperatorLabel('jdvIsEmpty'), 'is empty');
+        assert.equal(filterOperatorLabel('jdvNotEmpty'), 'is not empty');
+        assert.equal(filterNeedsValue('jdvIsEmpty'), false);
+        assert.equal(filterNeedsValue('jdvNotEmpty'), false);
+        assert.equal(filterNeedsValue('contains'), true);
         assert.ok(!columnOperators(columns[1]).includes('inRange'));
     });
 

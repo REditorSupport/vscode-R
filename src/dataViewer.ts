@@ -186,6 +186,10 @@ export function getDataViewerScript(): string {
             if (column.jdv) {
                 // jdv cells hold R-formatted display text, and R evaluates filters.
                 // Offer only the operators jdv implements for this column.
+                const customOption = (displayKey, displayName) => ({ displayKey, displayName, predicate: () => true, numberOfInputs: 0 });
+                const textOptions = column.jdv.filterOptions.map(option =>
+                    option === 'jdvIsEmpty' ? customOption(option, 'Is empty') :
+                    option === 'jdvNotEmpty' ? customOption(option, 'Is not empty') : option);
                 const naOptions = column.jdv.naOptions ? [
                     { displayKey: 'jdvIsNa', displayName: 'Is NA', predicate: () => true, numberOfInputs: 0 },
                     { displayKey: 'jdvNotNa', displayName: 'Is not NA', predicate: () => true, numberOfInputs: 0 }
@@ -197,7 +201,7 @@ export function getDataViewerScript(): string {
                 column.filterParams = {
                     ...column.filterParams,
                     buttons: ['reset', 'apply'],
-                    filterOptions: [...column.jdv.filterOptions, ...naOptions],
+                    filterOptions: [...textOptions, ...naOptions],
                     inRangeInclusive: true,
                     ...(column.jdv.units ? { filterPlaceholder: 'Value (' + column.jdv.units + ')' } : {})
                 };

@@ -166,6 +166,38 @@ suite('jdv adapter', () => {
         });
     });
 
+    test('converts empty-string filters for text columns only', () => {
+        const textGrid = parseDescriptor({
+            ...grid, columns: [
+                ...grid.columns!.slice(0, 2),
+                { position: 2, name: 's', type: 'string', native_type: ['character'], sortable: true, filterable: true },
+            ],
+        });
+        const filter = (field: string, type: string) => toJdvFilter({ [field]: { filterType: 'text', type } }, textGrid);
+        const isNa = (col: number) => ({ op: 'is_na', col });
+        const empty = (col: number) => ({ op: 'text_equals', col, value: '' });
+        // Categorical and string columns; NA stays a separate condition.
+        for (const col of [1, 2]) {
+            const field = String(col + 1);
+            assert.ok(gridColumnDefs(textGrid)[col + 1].jdv?.filterOptions.includes('jdvIsEmpty'));
+            assert.deepEqual(filter(field, 'jdvIsEmpty'), empty(col));
+            assert.deepEqual(filter(field, 'jdvNotEmpty'),
+                { op: 'and', args: [{ op: 'not', arg: empty(col) }, { op: 'not', arg: isNa(col) }] });
+            assert.deepEqual(filter(field, 'jdvIsNa'), isNa(col));
+            // blank and notBlank are no longer mapped to is_na.
+            for (const type of ['blank', 'notBlank']) {
+                assert.throws(() => filter(field, type), (e: unknown) => e instanceof JdvRequestError && e.code === 'unsupported');
+            }
+        }
+        // Is NA OR Is empty in one AG Grid model.
+        assert.deepEqual(toJdvFilter({ '3': { filterType: 'text', operator: 'OR', conditions: [
+            { filterType: 'text', type: 'jdvIsNa' }, { filterType: 'text', type: 'jdvIsEmpty' },
+        ] } }, textGrid), { op: 'or', args: [isNa(2), empty(2)] });
+        // A number column has no empty-string filters.
+        assert.ok(!gridColumnDefs(textGrid)[1].jdv?.filterOptions.includes('jdvIsEmpty'));
+        assert.throws(() => filter('1', 'jdvIsEmpty'), (e: unknown) => e instanceof JdvRequestError && e.code === 'unsupported');
+    });
+
     test('selects displayed columns by field, excluding the row label', () => {
         const select = (fields: unknown) => tableRowsParams(grid, 0, 10, [], {}, fields);
         assert.deepEqual(select(['0', '3', '1', '3']).cols, [2, 0]);

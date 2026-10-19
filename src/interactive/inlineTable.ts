@@ -157,7 +157,7 @@ export function createInlineTable(parent: HTMLElement, toolbar: HTMLElement, sta
         const column = columns().find(column => column.field === filterColumn.value);
         operator.replaceChildren();
         if (column) {
-            for (const op of columnOperators(column)) { operator.add(new Option(filterOperatorLabel(op, column), op)); }
+            for (const op of columnOperators(column)) { operator.add(new Option(filterOperatorLabel(op), op)); }
         }
         const filter = state.filters[filterColumn.value];
         value.value = '';
@@ -188,7 +188,7 @@ export function createInlineTable(parent: HTMLElement, toolbar: HTMLElement, sta
             const column = columns().find(column => column.field === field);
             const name = column?.headerName ?? field;
             const remove = document.createElement('button'); remove.type = 'button'; remove.className = 'r-interactive-button';
-            remove.textContent = `${name} ${filterOperatorLabel(filter.type, column)} ${filter.filter ?? ''} ×`;
+            remove.textContent = `${name} ${filterOperatorLabel(filter.type)} ${filter.filter ?? ''} ×`;
             remove.setAttribute('aria-label', `Remove filter for ${name}`);
             remove.onclick = () => { const filters = { ...state.filters }; delete filters[field]; request(0, state.sort, filters); };
             chips.append(remove);

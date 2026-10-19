@@ -11,22 +11,20 @@ export type TableFilters = Record<string, TableFilter>;
 export const filterOperators = {
     equals: '=', notEqual: '≠', lessThan: '<', lessThanOrEqual: '≤', greaterThan: '>', greaterThanOrEqual: '≥',
     contains: 'contains', notContains: 'does not contain', startsWith: 'starts with', endsWith: 'ends with',
-    blank: 'is blank', notBlank: 'is not blank', true: 'is true', false: 'is false',
+    blank: 'is blank', notBlank: 'is not blank', jdvIsEmpty: 'is empty', jdvNotEmpty: 'is not empty', jdvIsNa: 'is NA', jdvNotNa: 'is not NA', true: 'is true', false: 'is false',
 };
-export function filterOperatorLabel(type: string, column?: TableColumn): string {
-    if (column?.jdv && type === 'blank') { return 'is NA'; }
-    if (column?.jdv && type === 'notBlank') { return 'is not NA'; }
+export function filterOperatorLabel(type: string): string {
     return filterOperators[type as keyof typeof filterOperators] ?? type;
 }
 export function columnOperators(column: TableColumn): string[] {
     // An inline filter is one condition, so the range operator is not offered.
-    if (column.jdv) { return [...column.jdv.filterOptions.filter(option => option !== 'inRange'), 'blank', 'notBlank']; }
+    if (column.jdv) { return [...column.jdv.filterOptions.filter(option => option !== 'inRange'), 'jdvIsNa', 'jdvNotNa']; }
     if (column.type === 'booleanColumn') { return ['true', 'false', 'blank', 'notBlank']; }
     return ['numericColumn', 'bigintColumn', 'dateColumn', 'datetimeColumn'].includes(String(column.type))
         ? ['equals', 'notEqual', 'lessThan', 'lessThanOrEqual', 'greaterThan', 'greaterThanOrEqual', 'blank', 'notBlank']
         : ['contains', 'notContains', 'equals', 'notEqual', 'startsWith', 'endsWith', 'blank', 'notBlank'];
 }
-export const filterNeedsValue = (type: string): boolean => !['blank', 'notBlank', 'true', 'false'].includes(type);
+export const filterNeedsValue = (type: string): boolean => !['blank', 'notBlank', 'jdvIsEmpty', 'jdvNotEmpty', 'jdvIsNa', 'jdvNotNa', 'true', 'false'].includes(type);
 // Slicing can turn automatic row numbers into explicit character row names.
 // The synthetic index is never sorted/filtered and is not part of the data schema.
 export const tableSchema = (columns: TableColumn[]): unknown[][] => columns.filter(column => column.field !== '0')

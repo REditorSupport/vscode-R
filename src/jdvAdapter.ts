@@ -198,7 +198,11 @@ export interface GridColumnDef {
     jdv?: { filterOptions: string[]; naOptions: boolean; units?: string };
 }
 
-const TEXT_FILTER_OPTIONS = ['contains', 'notContains', 'equals', 'notEqual', 'startsWith', 'endsWith'];
+export const EMPTY_FILTER_OPTION = 'jdvIsEmpty';
+export const NOT_EMPTY_FILTER_OPTION = 'jdvNotEmpty';
+const TEXT_FILTER_OPTIONS = [
+    'contains', 'notContains', 'equals', 'notEqual', 'startsWith', 'endsWith', EMPTY_FILTER_OPTION, NOT_EMPTY_FILTER_OPTION,
+];
 const ORDER_FILTER_OPTIONS = [
     'equals', 'notEqual', 'lessThan', 'lessThanOrEqual', 'greaterThan', 'greaterThanOrEqual', 'inRange',
 ];
@@ -438,10 +442,10 @@ const ORDER_OPS: Record<string, string> = {
 function conditionNode(condition: JsonObject, col: number, column: JdvColumnSchema): FilterNode {
     const type = condition.type;
     const isNa = { op: 'is_na', col };
-    if (type === NA_FILTER_OPTION || type === 'blank') {
+    if (type === NA_FILTER_OPTION) {
         return isNa;
     }
-    if (type === NOT_NA_FILTER_OPTION || type === 'notBlank') {
+    if (type === NOT_NA_FILTER_OPTION) {
         return { op: 'not', arg: isNa };
     }
     if (!column.filterable) {
@@ -495,6 +499,8 @@ function conditionNode(condition: JsonObject, col: number, column: JdvColumnSche
                 op: 'and', args: [{ op: 'not', arg: node }, { op: 'not', arg: isNa }],
             });
             switch (type) {
+                case EMPTY_FILTER_OPTION: return { op: 'text_equals', col, value: '' };
+                case NOT_EMPTY_FILTER_OPTION: return negate({ op: 'text_equals', col, value: '' });
                 case 'contains': return { op: 'contains', col, value };
                 case 'notContains': return negate({ op: 'contains', col, value });
                 case 'equals': return { op: 'text_equals', col, value };

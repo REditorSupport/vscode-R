@@ -416,6 +416,15 @@ sess::display("display-${cell}", "text/plain"); cat("stderr-${cell}\\n", file=st
         // Row labels show the original row after sorting.
         assert.strictEqual((filtered.rows as Record<string, string>[])[0]['0'], '99');
 
+        // Empty strings and NA are separate filters.
+        const blankId = await submit('blanks <- data.frame(s=c("a", "", NA, "b"), stringsAsFactors=FALSE); blanks');
+        assert.strictEqual((await finished(blankId)).state, 'success');
+        const blanks = events.find(event => event.executionId === blankId && event.data.kind === 'table'); assert.ok(blanks);
+        for (const [type, expected] of [['jdvIsEmpty', 1], ['jdvNotEmpty', 2], ['jdvIsNa', 1], ['jdvNotNa', 3]] as const) {
+            const result = await queryJdvTablePage(blanks.data, { start: 0, size: 20, filterModel: { '1': { type } } }, inspect);
+            assert.strictEqual(result.totalRows, expected, type);
+        }
+
         // A page past the end is clamped to the last page.
         const clamped = await queryJdvTablePage(table.data, { start: 400, size: 20 }, inspect);
         assert.strictEqual(clamped.startRow, 80);

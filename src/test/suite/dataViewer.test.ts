@@ -260,6 +260,7 @@ suite('Data viewer', () => {
             { field: '2', headerName: 'i', type: 'bigintColumn', filter: 'agBigIntColumnFilter', jdv: { filterOptions: ['equals'], naOptions: false } },
             { field: '3', headerName: 'd', type: 'dateColumn', filter: 'agDateColumnFilter', jdv: { filterOptions: [], naOptions: true } },
             { field: '4', headerName: 'dt', type: 'datetimeColumn', filter: 'agDateColumnFilter', jdv: { filterOptions: ['equals', 'inRange'], naOptions: true } },
+            { field: '5', headerName: 's', filter: 'agTextColumnFilter', jdv: { filterOptions: ['contains', 'jdvIsEmpty', 'jdvNotEmpty'], naOptions: true } },
         ] as (ColDef & { jdv?: unknown })[];
         const bigintFields = viewer.script.prepareViewerColumns(jdvColumns);
         assert.strictEqual(bigintFields.length, 0);
@@ -270,6 +271,7 @@ suite('Data viewer', () => {
         assert.deepStrictEqual(options(jdvColumns[0]), ['equals', 'inRange', 'jdvIsNa', 'jdvNotNa']);
         assert.deepStrictEqual(options(jdvColumns[1]), ['equals']);
         assert.deepStrictEqual(options(jdvColumns[2]), ['jdvIsNa', 'jdvNotNa']);
+        assert.deepStrictEqual(options(jdvColumns[4]), ['contains', 'jdvIsEmpty', 'jdvNotEmpty', 'jdvIsNa', 'jdvNotNa']);
         assert.strictEqual((jdvColumns[0].filterParams as { inRangeInclusive: boolean }).inRangeInclusive, true);
         assert.strictEqual((jdvColumns[0].filterParams as { filterPlaceholder: string }).filterPlaceholder, 'Value (hours)');
         assert.strictEqual((jdvColumns[2].filterParams as { browserDatePicker: boolean }).browserDatePicker, true);
