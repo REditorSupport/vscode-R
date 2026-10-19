@@ -69,7 +69,7 @@ expect_identical(unlist(multi_event$page), expected_pages)
 wide_pages <- lapply(wide_preview$page, jsonlite::fromJSON, simplifyVector = FALSE)
 wide_rows <- unlist(lapply(wide_pages, function(page) page$data$source_row))
 expect_true(length(wide_rows) < 20L)
-expect_identical(wide_rows, seq_len(length(wide_rows)) - 1L)
+expect_identical(wide_rows, seq_along(wide_rows) - 1L)
 factor_values <- sum(vapply(wide_pages, function(page) {
   length(page$data$columns[[3L]]$data$values)
 }, 0L))
@@ -115,11 +115,12 @@ local({
   expect_identical(length(empty$page), 0L)
   ns$.interactive_event("display", c(list(kind = "table"), empty))
   expect_identical(captured$type, "display")
-  expect_true(nchar(ns$.interactive_event_json("display", empty), type = "bytes") < 2L * 1024L * 1024L)
+  empty_json <- ns$.interactive_event_json("display", empty)
+  expect_true(nchar(empty_json, type = "bytes") < 2L * 1024L * 1024L)
 
   # The last-resort truncation path releases the captured handle.
   ns$.interactive_event("display", c(list(kind = "table"), empty,
-                                      list(extra = strrep("x", 2L * 1024L * 1024L))))
+                                     list(extra = strrep("x", 2L * 1024L * 1024L))))
   expect_identical(captured$type, "truncated")
   expect_error(ns$.interactive_handle_entry(empty$handleId), "no longer available")
 })
