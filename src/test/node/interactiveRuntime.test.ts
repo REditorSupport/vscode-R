@@ -120,7 +120,8 @@ const delay = (ms: number): Promise<void> => new Promise(resolve => setTimeout(r
         };
         client.on('event', onEvent);
         try {
-            const id = await submit('utils::View(data.frame(a = 1:3, b = letters[1:3]), "interactive jdv test")');
+            // Repeated strings keep the R fixture small while its encoded page exceeds the byte budget.
+            const id = await submit('utils::View(data.frame(a = 1:300, b = rep(letters, length.out = 300), c = rep(strrep("x", 12000), 300), d = rep(strrep("y", 12000), 300)), "interactive jdv test")');
             assert.strictEqual((await finished(id)).state, 'success');
             const { peer, params } = await Promise.race([
                 opened,
@@ -133,7 +134,7 @@ const delay = (ms: number): Promise<void> => new Promise(resolve => setTimeout(r
             }) as JsonObject;
             const data = result.data as JsonObject;
             assert.deepStrictEqual(data.source_row, [0, 1]);
-            assert.strictEqual(result.total, 3);
+            assert.strictEqual(result.total, 300);
             const selected = await peer.request('grid/rows', {
                 view: params.view, generation: params.generation, offset: 0, limit: 2, cols: [1],
             }) as JsonObject;
@@ -141,6 +142,19 @@ const delay = (ms: number): Promise<void> => new Promise(resolve => setTimeout(r
             assert.deepStrictEqual(selectedData.source_row, [0, 1]);
             assert.deepStrictEqual(selectedData.columns.map(column => column.schema.position), [1]);
             assert.deepStrictEqual(selectedData.columns[0].data.values, ['a', 'b']);
+            const shortened = await peer.request('grid/rows', {
+                view: params.view, generation: params.generation, offset: 0, limit: 300, cols: [2, 3],
+            }) as JsonObject;
+            const shortenedData = shortened.data as typeof selectedData;
+            assert.strictEqual(shortened.total, 300);
+            assert.ok(shortenedData.source_row.length > 0 && shortenedData.source_row.length < 300);
+            assert.deepStrictEqual(shortenedData.source_row,
+                Array.from({ length: shortenedData.source_row.length }, (_, index) => index));
+            assert.deepStrictEqual(shortenedData.columns.map(column => column.schema.position), [2, 3]);
+            for (const [index, column] of shortenedData.columns.entries()) {
+                assert.strictEqual(column.data.values.length, shortenedData.source_row.length);
+                assert.strictEqual(column.data.values[0], (index === 0 ? 'x' : 'y').repeat(12000));
+            }
         } finally {
             client.off('event', onEvent);
             host.dispose();

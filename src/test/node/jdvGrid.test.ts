@@ -28,27 +28,17 @@ suite('jdv grid block fetching', () => {
         assert.equal(result.totalUnfiltered, 7);
     });
 
-    test('retries at the same offset without cols for the rest of an oversized block', async () => {
-        const requests: JsonObject[] = [];
-        const result = await fetchGridPage(descriptor, message, (_method, params) => {
-            requests.push(params);
-            if (params.offset === 2 && params.cols) {
-                return Promise.reject(new JdvRequestError('limit_exceeded', 'page too large'));
-            }
-            return Promise.resolve(page(Number(params.offset), Math.min(2, Number(params.limit))));
-        });
-        assert.deepEqual(requests.map(params => [params.offset, params.cols]),
-            [[0, [0]], [2, [0]], [2, undefined], [4, undefined]]);
-        assert.deepEqual(result.rows.map(row => row.__sourceRow), [0, 1, 2, 3, 4]);
-    });
-
-    test('retries empty selections once and propagates all-column failures', async () => {
-        let calls = 0;
-        await assert.rejects(fetchGridPage(descriptor, { ...message, columns: [] }, (_method, params) => {
-            assert.deepEqual(params.cols, calls++ === 0 ? [] : undefined);
-            return Promise.reject(new JdvRequestError('limit_exceeded', 'row too large'));
-        }), /row too large/);
-        assert.equal(calls, 2);
+    test('propagates limit_exceeded for selected, empty and all columns without retrying', async () => {
+        for (const columns of [['1'], [], undefined]) {
+            let calls = 0;
+            const error = new JdvRequestError('limit_exceeded', 'row too large');
+            await assert.rejects(fetchGridPage(descriptor, { ...message, columns }, (_method, params) => {
+                calls++;
+                assert.deepEqual(params.cols, columns?.map(field => Number(field) - 1));
+                return Promise.reject(error);
+            }), (received: unknown) => received === error);
+            assert.equal(calls, 1);
+        }
     });
 
     test('propagates other errors without retrying', async () => {
