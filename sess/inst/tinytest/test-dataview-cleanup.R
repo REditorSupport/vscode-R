@@ -19,6 +19,7 @@ if (requireNamespace("arrow", quietly = TRUE) &&
       sess:::runtime_start(use_rstudioapi = FALSE, plot_backend = "native")
     }
     con <- DBI::dbConnect(RSQLite::SQLite(), ":memory:")
+    unopened_con <- DBI::dbConnect(RSQLite::SQLite(), ":memory:")
     states <- list()
     on.exit({
       for (state in states) {
@@ -26,12 +27,14 @@ if (requireNamespace("arrow", quietly = TRUE) &&
         sess:::dataview_arrow_result_cache_cleanup(state)
       }
       DBI::dbDisconnect(con)
+      DBI::dbDisconnect(unopened_con)
       sess:::runtime_stop()
     }, add = TRUE)
     DBI::dbWriteTable(con, "fixture", data)
     table <- dplyr::tbl(con, "fixture")
     # Include a query whose cache exists but whose cursor has not been opened.
-    unopened <- sess:::dataview_register(dplyr::filter(table, id > 0L))
+    DBI::dbWriteTable(unopened_con, "fixture", data)
+    unopened <- sess:::dataview_register(dplyr::tbl(unopened_con, "fixture"))
     states[[1L]] <- sess:::dataview_get_state(unopened$view_id)
     view <- sess:::dataview_register(table)
     states[[2L]] <- sess:::dataview_get_state(view$view_id)

@@ -5,7 +5,7 @@ dataview_is_dbi_lazy <- function(data) {
 dataview_dbi_cache_block_size <- 5000L
 dataview_dbi_cache_rows <- 20000L
 
-dataview_dbi_source <- function(data) {
+dataview_dbi_source <- function(data, view_id = NULL) {
   if (!requireNamespace("DBI", quietly = TRUE) ||
         !requireNamespace("dbplyr", quietly = TRUE)) {
     stop("Viewing lazy database tables requires the optional 'DBI' and 'dbplyr' packages")
@@ -14,6 +14,18 @@ dataview_dbi_source <- function(data) {
   if (!inherits(con, "DBIConnection") || !DBI::dbIsValid(con)) {
     stop("the lazy table does not have a valid DBI connection")
   }
+  # Reserve the connection before even querying metadata: some DBI drivers
+  # invalidate an existing result whenever another statement is executed.
+  for (id in names(.sess_env$dataviews)) {
+    previous <- .sess_env$dataviews[[id]]
+    if (!identical(previous$dbi$con, con)) next
+    if (!identical(id, view_id)) {
+      stop("Connection already has a Data Viewer. Use a separate connection for another viewer.")
+    }
+    # Reopening the same viewer replaces its execution without leaving a
+    # partially fetched cursor for the metadata query to invalidate.
+    dataview_dbi_result_reset(previous$dbi_cache, clear_cache = TRUE)
+  }
   # Let dbplyr translate metadata SQL for the connection's dialect. Execute the
   # original top-level query when fetching rows, preserving its own operations.
   source_sql <- suppressWarnings(dbplyr::sql_render(data, subquery = TRUE))
@@ -21,8 +33,8 @@ dataview_dbi_source <- function(data) {
   list(con = con, query_sql = as.character(dbplyr::sql_render(data)), schema = schema)
 }
 
-dataview_dbi_to_state <- function(data) {
-  source <- dataview_dbi_source(data)
+dataview_dbi_to_state <- function(data, view_id = NULL) {
+  source <- dataview_dbi_source(data, view_id)
   colnames <- names(source$schema)
   headers <- c(" ", trimws(colnames))
   fields <- as.character(seq_along(headers) - 1L)
@@ -54,7 +66,7 @@ dataview_dbi_cache_state <- function() {
 }
 
 dataview_dbi_result_reset <- function(cache_state, clear_cache = FALSE) {
-  if (!is.null(cache_state$result)) {
+  if (!is.null(cache_state$result) && DBI::dbIsValid(cache_state$result)) {
     try(DBI::dbClearResult(cache_state$result), silent = TRUE)
   }
   cache_state$result <- NULL
@@ -164,6 +176,12 @@ dataview_dbi_result_cache_slice <- function(state, row_idx, positions) {
 
   if (target > cache_state$result_cache_rows &&
         !isTRUE(cache_state$result_complete)) {
+    if (!is.null(cache_state$result) && !DBI::dbIsValid(cache_state$result)) {
+      stop(paste(
+        "The Data Viewer result is no longer valid; its connection was reused or disconnected.",
+        "Reopen the viewer with a dedicated connection."
+      ))
+    }
     if (is.null(cache_state$result)) {
       cache_state$result <- DBI::dbSendQuery(
         state$dbi$con, state$dbi$query_sql

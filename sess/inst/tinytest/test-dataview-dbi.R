@@ -46,6 +46,7 @@ if (requireNamespace("DBI", quietly = TRUE) &&
     fixture$big <- bit64::as.integer64(rep("9007199254740993", nrow(fixture)))
   }
   method("dbIsValid", "dataview_dbi_test", function(dbObj, ...) TRUE)
+  method("dbIsValid", "dataview_dbi_test_result", function(dbObj, ...) result_open)
   method("dbGetInfo", "dataview_dbi_test", function(dbObj, ...) {
     list(dbms.name = "Generic database")
   })

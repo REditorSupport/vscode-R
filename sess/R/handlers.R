@@ -887,7 +887,11 @@ dataview_register <- function(data, view_id = NULL, live = FALSE, total_rows = N
     view_id <- dataview_new_id()
   }
 
-  state <- dataview_to_state(data)
+  state <- if (dataview_is_dbi_lazy(data)) {
+    dataview_dbi_to_state(data, view_id)
+  } else {
+    dataview_to_state(data)
+  }
   if (inherits(data, "arrow_dplyr_query")) {
     if (is.numeric(total_rows) && length(total_rows) == 1L &&
           is.finite(total_rows) && total_rows >= 0 && total_rows == floor(total_rows)) {
