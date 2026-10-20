@@ -19,7 +19,7 @@ function listen(server: Server, port = 0): Promise<void> {
 
 function close(server: Server): Promise<void> {
     return new Promise((resolve, reject) => {
-        server.close(error => error ? reject(error) : resolve());
+        server.close((error) => (error ? reject(error) : resolve()));
     });
 }
 
@@ -36,7 +36,9 @@ suite('HTTP(S) help transport', () => {
                 response.writeHead(200);
                 response.write('partial');
             } else if (pathname.startsWith('/redirect/')) {
-                response.writeHead(Number(pathname.split('/')[2]), { Location: '../help?topic=mean' });
+                response.writeHead(Number(pathname.split('/')[2]), {
+                    Location: '../help?topic=mean',
+                });
                 response.end();
             } else if (pathname === '/loop') {
                 response.writeHead(302, { Location: '/loop' });
@@ -54,9 +56,14 @@ suite('HTTP(S) help transport', () => {
             } else if (pathname.startsWith('/compressed/')) {
                 const encoding = pathname.split('/')[2];
                 const compressors: Record<string, (input: string) => Buffer> = {
-                    gzip: gzipSync, deflate: deflateSync, raw: deflateRawSync, br: brotliCompressSync
+                    gzip: gzipSync,
+                    deflate: deflateSync,
+                    raw: deflateRawSync,
+                    br: brotliCompressSync,
                 };
-                response.writeHead(200, { 'Content-Encoding': encoding === 'raw' ? 'deflate' : encoding });
+                response.writeHead(200, {
+                    'Content-Encoding': encoding === 'raw' ? 'deflate' : encoding,
+                });
                 response.end(compressors[encoding](html));
             } else if (pathname === '/invalid-gzip') {
                 response.writeHead(200, { 'Content-Encoding': 'gzip' });
@@ -73,30 +80,46 @@ suite('HTTP(S) help transport', () => {
         await listen(server);
         origin = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
     });
-    teardown(async () => { await close(server); });
+    teardown(async () => {
+        await close(server);
+    });
 
     test('aborts a pending response body and enforces the request timeout', async () => {
         const controller = new AbortController();
         const request = getHttpResponse(new URL('/stall', origin), { signal: controller.signal });
         const timer = setTimeout(() => controller.abort(), 20);
-        try { await assert.rejects(request, /abort/i); }
-        finally { clearTimeout(timer); }
-        await assert.rejects(getHttpResponse(new URL('/stall', origin), { timeoutMs: 20 }), /aborted|timed out/i);
-        await assert.rejects(getHttpResponse(new URL('/help', origin), { signal: controller.signal }), /abort/i);
+        try {
+            await assert.rejects(request, /abort/i);
+        } finally {
+            clearTimeout(timer);
+        }
+        await assert.rejects(
+            getHttpResponse(new URL('/stall', origin), { timeoutMs: 20 }),
+            /aborted|timed out/i,
+        );
+        await assert.rejects(
+            getHttpResponse(new URL('/help', origin), { signal: controller.signal }),
+            /abort/i,
+        );
     });
     test('does not forward the httpgd token or cookies to another origin', async () => {
         let headers: http.IncomingHttpHeaders = {};
-        const external = createServer((request, response) => { headers = request.headers; response.end('ok'); });
+        const external = createServer((request, response) => {
+            headers = request.headers;
+            response.end('ok');
+        });
         await listen(external);
         externalUrl = `http://127.0.0.1:${(external.address() as AddressInfo).port}/help`;
         try {
             const response = await getHttpResponse(new URL('/external', origin), {
-                headers: { 'X-HTTPGD-TOKEN': 'secret', Cookie: 'session=secret' }
+                headers: { 'X-HTTPGD-TOKEN': 'secret', Cookie: 'session=secret' },
             });
             assert.strictEqual(response.body.toString(), 'ok');
             assert.strictEqual(headers['x-httpgd-token'], undefined);
             assert.strictEqual(headers.cookie, undefined);
-        } finally { await close(external); }
+        } finally {
+            await close(external);
+        }
     });
     test('collects UTF-8 HTML even when a character spans response chunks', async () => {
         const url = new URL('/help', origin);
@@ -105,7 +128,11 @@ suite('HTTP(S) help transport', () => {
     test('follows relative redirects and retains the final URL and query', async () => {
         for (const status of [301, 302, 303, 307, 308]) {
             const response = await getHttpText(new URL(`/redirect/${status}`, origin));
-            assert.deepStrictEqual(response, { status: 200, url: `${origin}/help?topic=mean`, text: html });
+            assert.deepStrictEqual(response, {
+                status: 200,
+                url: `${origin}/help?topic=mean`,
+                text: html,
+            });
         }
     });
     test('preserves unsuccessful status codes', async () => {
@@ -131,8 +158,11 @@ suite('HTTP(S) help transport', () => {
     test('follows the Windows FAQ redirect using the HTTPS transport', async () => {
         externalUrl = 'https://cran.r-project.org/bin/windows/base/rw-FAQ.html';
         // Route the HTTPS transport call to the local fixture, without accessing CRAN.
-        const httpsGet = sinon.stub(https, 'get').callsFake((_url, options, callback) =>
-            http.get(new URL('/help', origin), options, callback));
+        const httpsGet = sinon
+            .stub(https, 'get')
+            .callsFake((_url, options, callback) =>
+                http.get(new URL('/help', origin), options, callback),
+            );
         try {
             const response = await getHttpText(new URL('/external', origin));
             assert.deepStrictEqual(response, { status: 200, url: externalUrl, text: html });
@@ -159,7 +189,9 @@ suite('HTTP(S) help transport', () => {
         externalUrl = `${externalOrigin}/redirect`;
         try {
             assert.deepStrictEqual(await getHttpText(new URL('/external', origin)), {
-                status: 200, url: `${externalOrigin}/manual`, text: html
+                status: 200,
+                url: `${externalOrigin}/manual`,
+                text: html,
             });
         } finally {
             await close(external);
@@ -196,9 +228,15 @@ suite('HTTP(S) help transport', () => {
         }
         try {
             const url = new URL('http://127.0.0.1:10080/help');
-            assert.deepStrictEqual(await getHttpText(url), { status: 200, url: url.href, text: html });
+            assert.deepStrictEqual(await getHttpText(url), {
+                status: 200,
+                url: url.href,
+                text: html,
+            });
             assert.deepStrictEqual(await getHttpText(new URL('/redirect', url)), {
-                status: 200, url: url.href, text: html
+                status: 200,
+                url: url.href,
+                text: html,
             });
         } finally {
             await close(blockedPortServer);

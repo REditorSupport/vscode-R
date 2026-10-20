@@ -10,7 +10,12 @@ import type { GridApi, GridOptions, IDatasource } from 'ag-grid-community';
 import * as extension from '../../extension';
 import * as session from '../../session';
 import * as util from '../../util';
-import { initializeHtmlWidgetViewers, restoreHtmlViewer, runHtmlViewerCommand, shutdownHtmlWidgetViewers } from '../../webViewer';
+import {
+    initializeHtmlWidgetViewers,
+    restoreHtmlViewer,
+    runHtmlViewerCommand,
+    shutdownHtmlWidgetViewers,
+} from '../../webViewer';
 import { mockExtensionContext } from '../common/mockvscode';
 
 interface Request {
@@ -28,7 +33,13 @@ interface Client {
 interface Panel {
     panel: vscode.WebviewPanel;
     receive: (message: unknown) => Promise<void>;
-    replies: Array<{ ok?: boolean; error?: string; message?: string; text?: string; result?: unknown }>;
+    replies: Array<{
+        ok?: boolean;
+        error?: string;
+        message?: string;
+        text?: string;
+        result?: unknown;
+    }>;
 }
 
 async function waitFor(condition: () => boolean): Promise<void> {
@@ -37,7 +48,7 @@ async function waitFor(condition: () => boolean): Promise<void> {
         if (Date.now() > deadline) {
             throw new Error('Timed out waiting for viewer IPC');
         }
-        await new Promise(resolve => setTimeout(resolve, 10));
+        await new Promise((resolve) => setTimeout(resolve, 10));
     }
 }
 
@@ -51,11 +62,13 @@ suite('Viewer session ownership', () => {
     setup(() => {
         sandbox = sinon.createSandbox();
         information = sandbox.stub(vscode.window, 'showInformationMessage').resolves();
-        sandbox.stub(vscode.window, 'registerWebviewPanelSerializer').returns({ dispose: sandbox.stub() });
+        sandbox
+            .stub(vscode.window, 'registerWebviewPanelSerializer')
+            .returns({ dispose: sandbox.stub() });
         const root = path.join(__dirname, '..', '..', '..');
         mockExtensionContext(root, sandbox);
         htmlViewers = initializeHtmlWidgetViewers(extension.extensionContext, {
-            resolveSession: source => session.getViewerSessionContext(source.sessionId, source)!,
+            resolveSession: (source) => session.getViewerSessionContext(source.sessionId, source)!,
             getActiveSessionId: () => session.activeSession?.sessionId,
         });
         sandbox.stub(extension, 'enableSessionWatcher').value(true);
@@ -63,51 +76,71 @@ suite('Viewer session ownership', () => {
             get: (_key: string, defaultValue: unknown) => defaultValue,
         } as vscode.WorkspaceConfiguration);
         session.deploySessionWatcher(root);
-        sandbox.stub(vscode.window, 'createWebviewPanel').callsFake((_type, title, _column, options) => {
-            const disposed = new vscode.EventEmitter<void>();
-            const listeners: Array<(message: unknown) => unknown> = [];
-            let closed = false;
-            let html = '';
-            const item: Panel = {
-                panel: undefined as unknown as vscode.WebviewPanel,
-                receive: async message => { await Promise.all(listeners.map(listener => listener(message))); }, replies: [],
-            };
-            item.panel = {
-                title, viewColumn: vscode.ViewColumn.Two, reveal: sandbox.stub(),
-                webview: {
-                    get html() { return html; },
-                    set html(value: string) {
-                        html = value;
-                        const generation = Number(/data-generation="(\d+)"/.exec(value)?.[1]);
-                        if (generation) { queueMicrotask(() => { void item.receive({ message: 'widget/loaded', generation }); }); }
+        sandbox
+            .stub(vscode.window, 'createWebviewPanel')
+            .callsFake((_type, title, _column, options) => {
+                const disposed = new vscode.EventEmitter<void>();
+                const listeners: Array<(message: unknown) => unknown> = [];
+                let closed = false;
+                let html = '';
+                const item: Panel = {
+                    panel: undefined as unknown as vscode.WebviewPanel,
+                    receive: async (message) => {
+                        await Promise.all(listeners.map((listener) => listener(message)));
                     },
-                    options: options ?? {}, asWebviewUri: (uri: vscode.Uri) => uri,
-                    onDidReceiveMessage: (listener: Panel['receive']) => {
-                        listeners.push(listener);
-                        return { dispose: () => { listeners.splice(listeners.indexOf(listener), 1); } };
+                    replies: [],
+                };
+                item.panel = {
+                    title,
+                    viewColumn: vscode.ViewColumn.Two,
+                    reveal: sandbox.stub(),
+                    webview: {
+                        get html() {
+                            return html;
+                        },
+                        set html(value: string) {
+                            html = value;
+                            const generation = Number(/data-generation="(\d+)"/.exec(value)?.[1]);
+                            if (generation) {
+                                queueMicrotask(() => {
+                                    void item.receive({ message: 'widget/loaded', generation });
+                                });
+                            }
+                        },
+                        options: options ?? {},
+                        asWebviewUri: (uri: vscode.Uri) => uri,
+                        onDidReceiveMessage: (listener: Panel['receive']) => {
+                            listeners.push(listener);
+                            return {
+                                dispose: () => {
+                                    listeners.splice(listeners.indexOf(listener), 1);
+                                },
+                            };
+                        },
+                        postMessage: (reply: Panel['replies'][number]) => {
+                            item.replies.push(reply);
+                            return Promise.resolve(true);
+                        },
                     },
-                    postMessage: (reply: Panel['replies'][number]) => {
-                        item.replies.push(reply);
-                        return Promise.resolve(true);
+                    onDidDispose: disposed.event,
+                    onDidChangeViewState: sandbox.stub(),
+                    dispose: () => {
+                        if (!closed) {
+                            closed = true;
+                            disposed.fire();
+                            disposed.dispose();
+                        }
                     },
-                },
-                onDidDispose: disposed.event,
-                onDidChangeViewState: sandbox.stub(),
-                dispose: () => {
-                    if (!closed) {
-                        closed = true;
-                        disposed.fire();
-                        disposed.dispose();
-                    }
-                },
-            } as unknown as vscode.WebviewPanel;
-            panels.push(item);
-            return item.panel;
-        });
+                } as unknown as vscode.WebviewPanel;
+                panels.push(item);
+                return item.panel;
+            });
     });
 
     teardown(async () => {
-        panels.splice(0).forEach(item => { item.panel.dispose(); });
+        panels.splice(0).forEach((item) => {
+            item.panel.dispose();
+        });
         await shutdownHtmlWidgetViewers();
         session.deferWorkspaceRefresh();
         for (const client of clients.splice(0)) {
@@ -130,7 +163,12 @@ suite('Viewer session ownership', () => {
         client.socket.write(JSON.stringify({ jsonrpc: '2.0', method, params }) + '\n');
     }
 
-    async function attach(id: string, pid = id, version = '4.6.0', host = 'viewer-test-host'): Promise<Client> {
+    async function attach(
+        id: string,
+        pid = id,
+        version = '4.6.0',
+        host = 'viewer-test-host',
+    ): Promise<Client> {
         const previousSocket = session.activeSession?.socket;
         const socket = net.createConnection(await session.getGlobalPipePath());
         const client = { id, socket, requests: [] as Request[] };
@@ -145,13 +183,30 @@ suite('Viewer session ownership', () => {
                 client.requests.push(request);
                 let result: unknown = true;
                 switch (request.method) {
-                    case 'workspace': result = { globalenv: {}, search: [], loaded_namespaces: [] }; break;
-                    case 'dataview_init': result = { columns: [], totalRows: 1 }; break;
-                    case 'dataview_page': result = { rows: [{ owner: id }], totalRows: 1, totalUnfiltered: 1, lastRow: 1 }; break;
-                    case 'workspace_children': result = { children: [], next_start: null }; break;
+                    case 'workspace':
+                        result = { globalenv: {}, search: [], loaded_namespaces: [] };
+                        break;
+                    case 'dataview_init':
+                        result = { columns: [], totalRows: 1 };
+                        break;
+                    case 'dataview_page':
+                        result = {
+                            rows: [{ owner: id }],
+                            totalRows: 1,
+                            totalUnfiltered: 1,
+                            lastRow: 1,
+                        };
+                        break;
+                    case 'workspace_children':
+                        result = { children: [], next_start: null };
+                        break;
                     case 'listview_navigate':
                     case 'listview_view':
-                        result = { title: 'x$child', path: [1], breadcrumbs: [{ label: 'x', path: [] }] };
+                        result = {
+                            title: 'x$child',
+                            path: [1],
+                            breadcrumbs: [{ label: 'x', path: [] }],
+                        };
                         break;
                 }
                 if (socket.writable) {
@@ -164,11 +219,19 @@ suite('Viewer session ownership', () => {
             socket.once('error', reject);
         });
         notify(client, 'attach', {
-            protocol_version: 2, session_id: id, host, pid,
-            version, tempdir: '/tmp', wd: '/tmp',
+            protocol_version: 2,
+            session_id: id,
+            host,
+            pid,
+            version,
+            tempdir: '/tmp',
+            wd: '/tmp',
         });
-        await waitFor(() => session.activeSession?.sessionId === id &&
-            session.activeSession.socket !== previousSocket);
+        await waitFor(
+            () =>
+                session.activeSession?.sessionId === id &&
+                session.activeSession.socket !== previousSocket,
+        );
         // A round trip ensures the new connection has completed its handshake.
         await session.sessionRequest({ method: 'workspace' }, id);
         return client;
@@ -176,7 +239,10 @@ suite('Viewer session ownership', () => {
 
     async function htmlSessionInfo(panel: vscode.WebviewPanel): Promise<string> {
         for (const viewer of panels) {
-            Object.defineProperty(viewer.panel, 'active', { value: viewer.panel === panel, configurable: true });
+            Object.defineProperty(viewer.panel, 'active', {
+                value: viewer.panel === panel,
+                configurable: true,
+            });
         }
         await runHtmlViewerCommand('info');
         const label = panel.title.slice('HTML Viewer · '.length);
@@ -186,19 +252,21 @@ suite('Viewer session ownership', () => {
     }
 
     function htmlPosition(panel: vscode.WebviewPanel): string {
-        const entry = [...htmlViewers.viewers.values()].find(entry => entry.panel === panel)!;
+        const entry = [...htmlViewers.viewers.values()].find((entry) => entry.panel === panel)!;
         return `${entry.state.index + 1} / ${entry.state.history.length}`;
     }
 
     test('HTML widget notifications use their source session while another session is active', async () => {
         const read: sinon.SinonStub = sandbox.stub(fs, 'readFile');
-        read.callsFake(file => Promise.resolve(`<div>${String(file)}</div>`));
+        read.callsFake((file) => Promise.resolve(`<div>${String(file)}</div>`));
         const first = await attach('html-source', '12101', '4.6.1');
         const second = await attach('html-active', '12102', '4.6.2');
         assert.strictEqual(session.activeSession?.sessionId, second.id);
 
         notify(first, 'webview', { url: '/tmp/first-widget.html' });
-        await waitFor(() => panels.length === 1 && panels[0].panel.webview.html.includes('first-widget.html'));
+        await waitFor(
+            () => panels.length === 1 && panels[0].panel.webview.html.includes('first-widget.html'),
+        );
         const original = panels[0].panel;
         assert.ok((await htmlSessionInfo(original)).includes('R 4.6.1: 12101'));
         notify(first, 'webview', { url: '/tmp/updated-widget.html' });
@@ -206,7 +274,10 @@ suite('Viewer session ownership', () => {
         assert.strictEqual(panels.length, 1);
 
         notify(second, 'webview', { url: '/tmp/second-widget.html' });
-        await waitFor(() => panels.length === 2 && panels[1].panel.webview.html.includes('second-widget.html'));
+        await waitFor(
+            () =>
+                panels.length === 2 && panels[1].panel.webview.html.includes('second-widget.html'),
+        );
         assert.ok((await htmlSessionInfo(panels[1].panel)).includes('R 4.6.2: 12102'));
         assert.ok(original.webview.html.includes('updated-widget.html'));
         assert.strictEqual(session.activeSession?.sessionId, second.id);
@@ -214,7 +285,7 @@ suite('Viewer session ownership', () => {
 
     function outputTitle(panel: vscode.WebviewPanel): string | undefined {
         assert.strictEqual(panel.title, 'HTML Viewer');
-        const viewer = [...htmlViewers.viewers.values()].find(viewer => viewer.panel === panel)!;
+        const viewer = [...htmlViewers.viewers.values()].find((viewer) => viewer.panel === panel)!;
         const item = viewer.state.history[viewer.state.index];
         assert.ok(panel.webview.html.includes(`<div>${item.file}</div>`));
         return item.title;
@@ -222,11 +293,13 @@ suite('Viewer session ownership', () => {
 
     test('page_viewer and browser HTML share widget history, source ownership, and restoration', async () => {
         const read: sinon.SinonStub = sandbox.stub(fs, 'readFile');
-        read.callsFake(file => Promise.resolve(`<div>${String(file)}</div>`));
+        read.callsFake((file) => Promise.resolve(`<div>${String(file)}</div>`));
         const source = await attach('html-mixed-source', '12101', '4.6.1');
         const other = await attach('html-mixed-active', '12102', '4.6.2');
         notify(source, 'webview', { url: '/tmp/widget.html', title: 'Widget' });
-        await waitFor(() => panels.length === 1 && panels[0].panel.webview.html.includes('widget.html'));
+        await waitFor(
+            () => panels.length === 1 && panels[0].panel.webview.html.includes('widget.html'),
+        );
         const viewer = panels[0];
         // htmlwidgets::print.suppress_viewer sends profvis through page_viewer.
         notify(source, 'page_viewer', { url: '/tmp/profvis/index.html' });
@@ -242,10 +315,12 @@ suite('Viewer session ownership', () => {
         assert.strictEqual(htmlPosition(viewer.panel), '3 / 3');
         assert.strictEqual(outputTitle(viewer.panel), 'Report');
         assert.strictEqual(session.activeSession?.sessionId, other.id);
-        const navigate = (direction: 'back' | 'forward') => viewer.receive({
-            message: 'widget/navigate', direction,
-            generation: Number(/data-generation="(\d+)"/.exec(viewer.panel.webview.html)?.[1]),
-        });
+        const navigate = (direction: 'back' | 'forward') =>
+            viewer.receive({
+                message: 'widget/navigate',
+                direction,
+                generation: Number(/data-generation="(\d+)"/.exec(viewer.panel.webview.html)?.[1]),
+            });
         await navigate('back');
         assert.strictEqual(outputTitle(viewer.panel), 'Page Viewer');
         assert.ok(viewer.panel.webview.html.includes('/tmp/profvis'));
@@ -260,7 +335,11 @@ suite('Viewer session ownership', () => {
         assert.ok((await htmlSessionInfo(panels[1].panel)).includes('R 4.6.1: 12101'));
 
         notify(other, 'page_viewer', { url: '/tmp/other-profvis.html', title: 'Other profile' });
-        await waitFor(() => panels.length === 3 && panels[2].panel.webview.html.includes('<div>/tmp/other-profvis.html</div>'));
+        await waitFor(
+            () =>
+                panels.length === 3 &&
+                panels[2].panel.webview.html.includes('<div>/tmp/other-profvis.html</div>'),
+        );
         assert.strictEqual(htmlPosition(panels[2].panel), '1 / 1');
         assert.strictEqual(outputTitle(panels[2].panel), 'Other profile');
         assert.ok((await htmlSessionInfo(panels[2].panel)).includes('R 4.6.2: 12102'));
@@ -271,10 +350,14 @@ suite('Viewer session ownership', () => {
         read.resolves('<div>Widget</div>');
         const source = await attach('html-server-source', '12101', '4.6.1');
         notify(source, 'webview', { url: '/tmp/widget.html' });
-        await waitFor(() => panels.length === 1 && panels[0].panel.webview.html.includes('data-generation='));
+        await waitFor(
+            () => panels.length === 1 && panels[0].panel.webview.html.includes('data-generation='),
+        );
         const html = panels[0].panel.webview.html;
         const commands = sandbox.stub(vscode.commands, 'executeCommand').resolves();
-        const externalUri = sandbox.stub(vscode.env, 'asExternalUri').resolves(vscode.Uri.parse('https://forwarded.invalid/shiny'));
+        const externalUri = sandbox
+            .stub(vscode.env, 'asExternalUri')
+            .resolves(vscode.Uri.parse('https://forwarded.invalid/shiny'));
         const routes = ['webview', 'page_viewer', 'browser'];
         for (const [index, method] of routes.entries()) {
             notify(source, method, { url: 'http://localhost:4321' });
@@ -291,36 +374,55 @@ suite('Viewer session ownership', () => {
 
     test('disabled Page Viewer and Browser settings open local HTML externally without adding history', async () => {
         (util.config as sinon.SinonStub).returns({
-            get: (key: string, fallback: unknown) => key === 'session.viewers.viewColumn'
-                ? { viewer: 'Two', pageViewer: 'Disable', browser: 'Disable' } : fallback,
+            get: (key: string, fallback: unknown) =>
+                key === 'session.viewers.viewColumn'
+                    ? { viewer: 'Two', pageViewer: 'Disable', browser: 'Disable' }
+                    : fallback,
         });
         const read: sinon.SinonStub = sandbox.stub(fs, 'readFile');
         read.resolves('<div>Widget</div>');
         const external = sandbox.stub(vscode.env, 'openExternal').resolves(true);
         const source = await attach('html-disabled-routes', '12101', '4.6.1');
         notify(source, 'webview', { url: '/tmp/widget.html' });
-        await waitFor(() => panels.length === 1 && panels[0].panel.webview.html.includes('data-generation='));
+        await waitFor(
+            () => panels.length === 1 && panels[0].panel.webview.html.includes('data-generation='),
+        );
         const html = panels[0].panel.webview.html;
         notify(source, 'page_viewer', { url: '/tmp/profvis.html' });
         await waitFor(() => external.callCount === 1);
-        assert.strictEqual((external.lastCall.args[0] as vscode.Uri).fsPath, vscode.Uri.file('/tmp/profvis.html').fsPath);
+        assert.strictEqual(
+            (external.lastCall.args[0] as vscode.Uri).fsPath,
+            vscode.Uri.file('/tmp/profvis.html').fsPath,
+        );
         notify(source, 'browser', { url: '/tmp/report.htm' });
         await waitFor(() => external.callCount === 2);
-        assert.strictEqual((external.lastCall.args[0] as vscode.Uri).fsPath, vscode.Uri.file('/tmp/report.htm').fsPath);
+        assert.strictEqual(
+            (external.lastCall.args[0] as vscode.Uri).fsPath,
+            vscode.Uri.file('/tmp/report.htm').fsPath,
+        );
         assert.strictEqual(panels.length, 1);
         assert.strictEqual(panels[0].panel.webview.html, html);
     });
 
     async function open(
-        client: Client, source: 'list' | 'table', existing?: Panel, stateGeneration = 1,
+        client: Client,
+        source: 'list' | 'table',
+        existing?: Panel,
+        stateGeneration = 1,
     ): Promise<Panel> {
         const count = panels.length;
         const html = existing?.panel.webview.html;
         notify(client, 'dataview', {
-            source, type: 'json', title: 'x', view_id: `same-${source}-id`, state_generation: stateGeneration,
+            source,
+            type: 'json',
+            title: 'x',
+            view_id: `same-${source}-id`,
+            state_generation: stateGeneration,
             navigation: { title: 'x', path: [], breadcrumbs: [{ label: 'x', path: [] }] },
         });
-        await waitFor(() => existing ? existing.panel.webview.html !== html : panels.length > count);
+        await waitFor(() =>
+            existing ? existing.panel.webview.html !== html : panels.length > count,
+        );
         if (existing) {
             assert.strictEqual(panels.length, count);
         }
@@ -328,11 +430,14 @@ suite('Viewer session ownership', () => {
     }
 
     async function send(panel: Panel, message: Record<string, unknown>): Promise<void> {
-        const documentGeneration = Number(/const documentGeneration = (\d+)/.exec(panel.panel.webview.html)?.[1]);
+        const documentGeneration = Number(
+            /const documentGeneration = (\d+)/.exec(panel.panel.webview.html)?.[1],
+        );
         await panel.receive({ documentGeneration, requestId: 1, path: [], start: 1, ...message });
     }
 
-    const viewerRequests = (client: Client) => client.requests.filter(request => request.method !== 'workspace');
+    const viewerRequests = (client: Client) =>
+        client.requests.filter((request) => request.method !== 'workspace');
 
     test('lazy row counts use fetched rows until EOF, while known counts stay exact', async () => {
         const webview = { asWebviewUri: (uri: vscode.Uri) => uri } as vscode.Webview;
@@ -341,36 +446,57 @@ suite('Viewer session ownership', () => {
         for (const initialTotal of [undefined, 0, 10, 12010]) {
             const count = { textContent: '' };
             const element = {
-                textContent: '', dataset: {}, classList: { add() { }, remove() { }, toggle() { } },
+                textContent: '',
+                dataset: {},
+                classList: { add() {}, remove() {}, toggle() {} },
             };
             let datasource!: IDatasource;
             let reply: Record<string, unknown> = {};
             const listeners: Record<string, (event: { data: unknown }) => void> = {};
             const context = vm.createContext({
-                console, setTimeout, clearTimeout,
+                console,
+                setTimeout,
+                clearTimeout,
                 document: {
                     body: { classList: { contains: () => false } },
-                    addEventListener() { },
-                    querySelector: (selector: string) => selector === '#viewerRowCount' ? count : element,
+                    addEventListener() {},
+                    querySelector: (selector: string) =>
+                        selector === '#viewerRowCount' ? count : element,
                 },
                 acquireVsCodeApi: () => ({
-                    postMessage: (message: { action: string; documentGeneration: number; requestId: number }) => {
-                        queueMicrotask(() => listeners.message({ data: {
-                            message: 'dataview/response', documentGeneration: message.documentGeneration,
-                            requestId: message.requestId, ok: true,
-                            result: message.action === 'init' ? { columns: [], totalRows: initialTotal } : reply,
-                        } }));
+                    postMessage: (message: {
+                        action: string;
+                        documentGeneration: number;
+                        requestId: number;
+                    }) => {
+                        queueMicrotask(() =>
+                            listeners.message({
+                                data: {
+                                    message: 'dataview/response',
+                                    documentGeneration: message.documentGeneration,
+                                    requestId: message.requestId,
+                                    ok: true,
+                                    result:
+                                        message.action === 'init'
+                                            ? { columns: [], totalRows: initialTotal }
+                                            : reply,
+                                },
+                            }),
+                        );
                     },
                 }),
                 window: {
-                    addEventListener: (event: string, listener: (event: { data: unknown }) => void) => {
+                    addEventListener: (
+                        event: string,
+                        listener: (event: { data: unknown }) => void,
+                    ) => {
                         listeners[event] = listener;
                     },
                     agGrid: {
                         themeBalham: { withPart: () => ({}) },
                         createGrid: (_element: unknown, options: GridOptions) => {
                             datasource = options.datasource!;
-                            return { refreshHeader() { } };
+                            return { refreshHeader() {} };
                         },
                     },
                 },
@@ -382,26 +508,55 @@ suite('Viewer session ownership', () => {
             context.updateFetchStatusPosition = sandbox.stub();
             await vm.runInContext('initialize()', context);
             const format = new Intl.NumberFormat();
-            assert.strictEqual(count.textContent, initialTotal === undefined ? '' : `${format.format(initialTotal)} rows`);
-            const results = initialTotal === undefined ? [
-                { rows: [{ '0': 1 }], lastRow: -1, fetchedRows: 5000 },
-                { rows: [{ '0': 5001 }], lastRow: -1, fetchedRows: 10000 },
-                { rows: [{ '0': 1 }], lastRow: -1, fetchedRows: 10000 }, // Backward scroll.
-                { rows: [{ '0': 12001 }], lastRow: 12010, totalRows: 12010, totalUnfiltered: 12010 },
-                { rows: [{ '0': 1 }], lastRow: 3, totalRows: 3, totalUnfiltered: 12010 },
-                { rows: [], lastRow: 0, totalRows: 0, totalUnfiltered: 0 },
-            ] : [{ rows: [], lastRow: initialTotal, totalRows: initialTotal, totalUnfiltered: initialTotal }];
+            assert.strictEqual(
+                count.textContent,
+                initialTotal === undefined ? '' : `${format.format(initialTotal)} rows`,
+            );
+            const results =
+                initialTotal === undefined
+                    ? [
+                          { rows: [{ '0': 1 }], lastRow: -1, fetchedRows: 5000 },
+                          { rows: [{ '0': 5001 }], lastRow: -1, fetchedRows: 10000 },
+                          { rows: [{ '0': 1 }], lastRow: -1, fetchedRows: 10000 }, // Backward scroll.
+                          {
+                              rows: [{ '0': 12001 }],
+                              lastRow: 12010,
+                              totalRows: 12010,
+                              totalUnfiltered: 12010,
+                          },
+                          { rows: [{ '0': 1 }], lastRow: 3, totalRows: 3, totalUnfiltered: 12010 },
+                          { rows: [], lastRow: 0, totalRows: 0, totalUnfiltered: 0 },
+                      ]
+                    : [
+                          {
+                              rows: [],
+                              lastRow: initialTotal,
+                              totalRows: initialTotal,
+                              totalUnfiltered: initialTotal,
+                          },
+                      ];
             for (reply of results) {
                 const success = sandbox.spy();
-                await Promise.resolve(datasource.getRows({
-                    startRow: 0, endRow: 500, sortModel: [],
-                    filterModel: reply.totalRows === 3 ? { '1': { type: 'equals', filter: 1 } } : {},
-                    successCallback: success, failCallback: () => assert.fail('Page request failed'), context: {}, api: {} as GridApi,
-                }));
+                await Promise.resolve(
+                    datasource.getRows({
+                        startRow: 0,
+                        endRow: 500,
+                        sortModel: [],
+                        filterModel:
+                            reply.totalRows === 3 ? { '1': { type: 'equals', filter: 1 } } : {},
+                        successCallback: success,
+                        failCallback: () => assert.fail('Page request failed'),
+                        context: {},
+                        api: {} as GridApi,
+                    }),
+                );
                 sinon.assert.calledWithExactly(success, reply.rows, reply.lastRow);
-                const expected = reply.lastRow === -1 ? `${format.format(Number(reply.fetchedRows))}+ rows`
-                    : reply.totalRows === 3 ? `3 of ${format.format(12010)} rows`
-                        : `${format.format(Number(reply.totalRows))} rows`;
+                const expected =
+                    reply.lastRow === -1
+                        ? `${format.format(Number(reply.fetchedRows))}+ rows`
+                        : reply.totalRows === 3
+                          ? `3 of ${format.format(12010)} rows`
+                          : `${format.format(Number(reply.totalRows))} rows`;
                 assert.strictEqual(count.textContent, expected);
             }
         }
@@ -418,18 +573,42 @@ suite('Viewer session ownership', () => {
         const table = await open(a, 'table');
         for (const viewer of [list, table]) {
             assert.ok(viewer.panel.webview.html.includes(expected));
-            assert.ok(viewer.panel.webview.html.includes('class="codicon codicon-info" aria-hidden="true"'));
+            assert.ok(
+                viewer.panel.webview.html.includes(
+                    'class="codicon codicon-info" aria-hidden="true"',
+                ),
+            );
             assert.ok(viewer.panel.webview.html.includes('aria-label="R 4.6.1: 12101"'));
-            assert.ok(viewer.panel.webview.html.includes('aria-describedby="viewer-session-tooltip"'));
+            assert.ok(
+                viewer.panel.webview.html.includes('aria-describedby="viewer-session-tooltip"'),
+            );
             assert.ok(!viewer.panel.webview.html.includes('Source R session:'));
         }
         await open(a, 'list', list, 2);
         await open(a, 'table', table, 2);
 
         sandbox.stub(util, 'readContent').resolves('{"columns":[],"data":[]}');
-        await session.showDataView('table', 'json', 'file table', '/tmp/viewer-header.json', 'Two', undefined, undefined, a.id);
+        await session.showDataView(
+            'table',
+            'json',
+            'file table',
+            '/tmp/viewer-header.json',
+            'Two',
+            undefined,
+            undefined,
+            a.id,
+        );
         assert.ok(panels.at(-1)?.panel.webview.html.includes(expected));
-        await session.showDataView('list', 'json', 'unbound', '', 'Two', undefined, undefined, null);
+        await session.showDataView(
+            'list',
+            'json',
+            'unbound',
+            '',
+            'Two',
+            undefined,
+            undefined,
+            null,
+        );
         assert.ok(!panels.at(-1)?.panel.webview.html.includes('<span class="viewer-session"'));
 
         await session.cleanupSession(a.id);
@@ -446,35 +625,82 @@ suite('Viewer session ownership', () => {
         let processState: 'running' | 'denied' | 'exited' = 'running';
         const kill = process.kill.bind(process);
         sandbox.stub(process, 'kill').callsFake((pid, signal) => {
-            if (pid !== sourcePid || signal !== 0) { return kill(pid, signal); }
+            if (pid !== sourcePid || signal !== 0) {
+                return kill(pid, signal);
+            }
             if (processState !== 'running') {
-                throw Object.assign(new Error(processState), { code: processState === 'exited' ? 'ESRCH' : 'EPERM' });
+                throw Object.assign(new Error(processState), {
+                    code: processState === 'exited' ? 'ESRCH' : 'EPERM',
+                });
             }
             return true;
         });
         const sourceHost = os.hostname().toUpperCase();
-        const owner = session.registerSessionTransport('persistent-viewer', sourceHost, '/tmp', sandbox.stub().resolves({}));
-        owner.pid = String(sourcePid); owner.rVer = 'R version 4.6.1 (2026-06-01)';
+        const owner = session.registerSessionTransport(
+            'persistent-viewer',
+            sourceHost,
+            '/tmp',
+            sandbox.stub().resolves({}),
+        );
+        owner.pid = String(sourcePid);
+        owner.rVer = 'R version 4.6.1 (2026-06-01)';
         const statusBar = { text: '', show: sandbox.stub() } as unknown as vscode.StatusBarItem;
         sandbox.stub(extension, 'sessionStatusBarItem').value(statusBar);
         const native = await attach('native-viewer', String(sourcePid), '4.6.1', sourceHost);
         const other = await attach('lifecycle-other', '12102');
         try {
-            await session.showDataView('list', 'json', 'list', '', 'Two', 'persistent-list', undefined, owner.sessionId);
-            await session.showDataView('table', 'json', 'table', '', 'Two', 'persistent-table', undefined, owner.sessionId);
+            await session.showDataView(
+                'list',
+                'json',
+                'list',
+                '',
+                'Two',
+                'persistent-list',
+                undefined,
+                owner.sessionId,
+            );
+            await session.showDataView(
+                'table',
+                'json',
+                'table',
+                '',
+                'Two',
+                'persistent-table',
+                undefined,
+                owner.sessionId,
+            );
             sandbox.stub(util, 'readContent').resolves('{"columns":[],"data":[]}');
-            await session.showDataView('table', 'json', 'file table', '/tmp/viewer.json', 'Two', undefined, undefined, owner.sessionId);
-            await session.showDataView('list', 'json', 'static list', '', 'Two', undefined, undefined, owner.sessionId);
+            await session.showDataView(
+                'table',
+                'json',
+                'file table',
+                '/tmp/viewer.json',
+                'Two',
+                undefined,
+                undefined,
+                owner.sessionId,
+            );
+            await session.showDataView(
+                'list',
+                'json',
+                'static list',
+                '',
+                'Two',
+                undefined,
+                undefined,
+                owner.sessionId,
+            );
             await open(native, 'table');
             await open(native, 'list');
             const viewers = panels.slice();
-            const originalHtml = viewers.map(viewer => viewer.panel.webview.html);
+            const originalHtml = viewers.map((viewer) => viewer.panel.webview.html);
             await session.cleanupSession(native.id);
             session.unregisterSessionTransport(owner);
             for (const viewer of viewers) {
                 await viewer.receive({ message: 'viewer-session/ready' });
                 assert.deepStrictEqual(viewer.replies.at(-1), {
-                    message: 'viewer-session/update', text: `R 4.6.1: ${sourcePid}`,
+                    message: 'viewer-session/update',
+                    text: `R 4.6.1: ${sourcePid}`,
                 });
             }
             processState = 'denied';
@@ -484,28 +710,71 @@ suite('Viewer session ownership', () => {
             disposed.panel.dispose();
             const disposedReplyCount = disposed.replies.length;
             processState = 'exited';
-            await waitFor(() => viewers.every(viewer => viewer.replies.at(-1)?.text === 'R: (not attached)'));
+            await waitFor(() =>
+                viewers.every((viewer) => viewer.replies.at(-1)?.text === 'R: (not attached)'),
+            );
             for (const [index, viewer] of viewers.entries()) {
                 assert.strictEqual(viewer.panel.webview.html, originalHtml[index]);
             }
             assert.strictEqual(disposed.replies.length, disposedReplyCount);
             assert.strictEqual(session.activeSession?.sessionId, other.id);
             assert.strictEqual(statusBar.text, 'R 4.6.0: 12102');
-        } finally { session.unregisterSessionTransport(owner); }
+        } finally {
+            session.unregisterSessionTransport(owner);
+        }
     });
 
     test('viewers share polling and release it when the last viewer closes', async () => {
         const clock = sandbox.useFakeTimers();
         const kill = sandbox.stub(process, 'kill').returns(true);
         const request = sandbox.stub().resolves({});
-        const first = session.registerSessionTransport('shared-polling-first', os.hostname(), '/tmp', request);
-        const second = session.registerSessionTransport('shared-polling-second', os.hostname(), '/tmp', request);
-        first.pid = '2147483645'; first.rVer = '4.6.1';
-        second.pid = '2147483646'; second.rVer = '4.6.2';
+        const first = session.registerSessionTransport(
+            'shared-polling-first',
+            os.hostname(),
+            '/tmp',
+            request,
+        );
+        const second = session.registerSessionTransport(
+            'shared-polling-second',
+            os.hostname(),
+            '/tmp',
+            request,
+        );
+        first.pid = '2147483645';
+        first.rVer = '4.6.1';
+        second.pid = '2147483646';
+        second.rVer = '4.6.2';
         try {
-            await session.showDataView('list', 'json', 'list', '', 'Two', undefined, undefined, first.sessionId);
-            await session.showDataView('table', 'json', 'table', '', 'Two', undefined, undefined, first.sessionId);
-            await session.showDataView('list', 'json', 'other', '', 'Two', undefined, undefined, second.sessionId);
+            await session.showDataView(
+                'list',
+                'json',
+                'list',
+                '',
+                'Two',
+                undefined,
+                undefined,
+                first.sessionId,
+            );
+            await session.showDataView(
+                'table',
+                'json',
+                'table',
+                '',
+                'Two',
+                undefined,
+                undefined,
+                first.sessionId,
+            );
+            await session.showDataView(
+                'list',
+                'json',
+                'other',
+                '',
+                'Two',
+                undefined,
+                undefined,
+                second.sessionId,
+            );
             assert.strictEqual(clock.countTimers(), 1);
             clock.tick(1000);
             sinon.assert.calledTwice(kill);
@@ -515,7 +784,11 @@ suite('Viewer session ownership', () => {
             session.unregisterSessionTransport(first);
             kill.resetHistory();
             clock.tick(1000);
-            assert.strictEqual(kill.callCount, 2, 'transport detachment must keep monitoring the source');
+            assert.strictEqual(
+                kill.callCount,
+                2,
+                'transport detachment must keep monitoring the source',
+            );
             panels[0].panel.dispose();
             panels[1].panel.dispose();
             kill.resetHistory();
@@ -530,36 +803,80 @@ suite('Viewer session ownership', () => {
     });
 
     test('viewer info uses confirmed Interactive exit even when the source host cannot be probed', async () => {
-        const owner = session.registerSessionTransport('exited-viewer', 'foreign-host', '/tmp', sandbox.stub().resolves({}));
-        owner.pid = '12103'; owner.rVer = '4.6.2';
+        const owner = session.registerSessionTransport(
+            'exited-viewer',
+            'foreign-host',
+            '/tmp',
+            sandbox.stub().resolves({}),
+        );
+        owner.pid = '12103';
+        owner.rVer = '4.6.2';
         try {
-            await session.showDataView('list', 'json', 'list', '', 'Two', 'exited-list', undefined, owner.sessionId);
-            await session.showDataView('table', 'json', 'table', '', 'Two', 'exited-table', undefined, owner.sessionId);
+            await session.showDataView(
+                'list',
+                'json',
+                'list',
+                '',
+                'Two',
+                'exited-list',
+                undefined,
+                owner.sessionId,
+            );
+            await session.showDataView(
+                'table',
+                'json',
+                'table',
+                '',
+                'Two',
+                'exited-table',
+                undefined,
+                owner.sessionId,
+            );
             const disposed = panels[0];
             disposed.panel.dispose();
             const disposedReplyCount = disposed.replies.length;
             owner.processExited = true;
-            assert.deepStrictEqual(panels[1].replies.at(-1), {
-                message: 'viewer-session/update', text: 'R: (not attached)',
-            }, 'confirmed exit should update viewers immediately, without polling or a ready message');
+            assert.deepStrictEqual(
+                panels[1].replies.at(-1),
+                {
+                    message: 'viewer-session/update',
+                    text: 'R: (not attached)',
+                },
+                'confirmed exit should update viewers immediately, without polling or a ready message',
+            );
             assert.strictEqual(disposed.replies.length, disposedReplyCount);
             // Exited state events can clear the process metadata.
-            owner.pid = ''; owner.rVer = '';
+            owner.pid = '';
+            owner.rVer = '';
             await panels[1].receive({ message: 'viewer-session/ready' });
             assert.strictEqual(panels[1].replies.at(-1)?.text, 'R: (not attached)');
-        } finally { session.unregisterSessionTransport(owner); }
+        } finally {
+            session.unregisterSessionTransport(owner);
+        }
     });
 
     test('a saved confirmed exit remains authoritative when a matching transport still has stale metadata', () => {
-        const owner = session.registerSessionTransport('saved-exited-viewer', 'foreign-host', '/tmp', sandbox.stub().resolves({}));
-        owner.pid = '12103'; owner.rVer = '4.6.2';
+        const owner = session.registerSessionTransport(
+            'saved-exited-viewer',
+            'foreign-host',
+            '/tmp',
+            sandbox.stub().resolves({}),
+        );
+        owner.pid = '12103';
+        owner.rVer = '4.6.2';
         try {
             const context = session.getViewerSessionContext(owner.sessionId, {
-                sessionId: owner.sessionId, host: owner.host, pid: owner.pid, rVer: owner.rVer, processExited: true,
+                sessionId: owner.sessionId,
+                host: owner.host,
+                pid: owner.pid,
+                rVer: owner.rVer,
+                processExited: true,
             })!;
             assert.strictEqual(context.hasExited, true);
             assert.ok(context.getHtml().includes('R: (not attached)'));
-        } finally { session.unregisterSessionTransport(owner); }
+        } finally {
+            session.unregisterSessionTransport(owner);
+        }
     });
 
     test('identical viewer ids stay separate and background views keep their originating session', async () => {
@@ -576,28 +893,53 @@ suite('Viewer session ownership', () => {
 
         const exercise = async (list: Panel, table: Panel) => {
             await send(table, { message: 'dataview/request', action: 'init' });
-            await send(table, { message: 'dataview/request', action: 'page', startRow: 0, endRow: 1 });
+            await send(table, {
+                message: 'dataview/request',
+                action: 'page',
+                startRow: 0,
+                endRow: 1,
+            });
             await send(list, { message: 'listview/page' });
             await send(list, { message: 'listview/navigate' });
             await send(list, { message: 'listview/view', index: 1 });
         };
-        const expected = ['dataview_init', 'dataview_page', 'workspace_children', 'listview_navigate', 'listview_view'];
+        const expected = [
+            'dataview_init',
+            'dataview_page',
+            'workspace_children',
+            'listview_navigate',
+            'listview_view',
+        ];
         await exercise(aList, aTable);
-        assert.deepStrictEqual(viewerRequests(a).map(request => request.method), expected);
+        assert.deepStrictEqual(
+            viewerRequests(a).map((request) => request.method),
+            expected,
+        );
         assert.deepStrictEqual(viewerRequests(b), []);
         assert.strictEqual(await session.activateSessionById(a.id), true);
         await exercise(bList, bTable);
-        assert.deepStrictEqual(viewerRequests(b).map(request => request.method), expected);
+        assert.deepStrictEqual(
+            viewerRequests(b).map((request) => request.method),
+            expected,
+        );
 
         await open(b, 'list', bList, 2);
         await open(b, 'table', bTable, 2);
         bList.panel.dispose();
         bTable.panel.dispose();
         await waitFor(() => viewerRequests(b).length === 7);
-        assert.deepStrictEqual(viewerRequests(b).slice(-2).map(request => request.params?.view_id),
-            ['same-list-id', 'same-table-id']);
-        assert.deepStrictEqual(viewerRequests(b).slice(-2).map(request => request.params?.state_generation),
-            [2, 2]);
+        assert.deepStrictEqual(
+            viewerRequests(b)
+                .slice(-2)
+                .map((request) => request.params?.view_id),
+            ['same-list-id', 'same-table-id'],
+        );
+        assert.deepStrictEqual(
+            viewerRequests(b)
+                .slice(-2)
+                .map((request) => request.params?.state_generation),
+            [2, 2],
+        );
         assert.strictEqual(viewerRequests(a).length, 5);
         await open(a, 'list', aList);
         await open(a, 'table', aTable);
@@ -607,7 +949,16 @@ suite('Viewer session ownership', () => {
         const request = sandbox.stub().resolves({ columns: [], columnProjection: true });
         const owner = session.registerSessionTransport('lazy-viewer', 'host', '/tmp', request);
         try {
-            await session.showDataView('table', 'json', 'lazy', '', 'Two', 'lazy-table', undefined, owner.sessionId);
+            await session.showDataView(
+                'table',
+                'json',
+                'lazy',
+                '',
+                'Two',
+                'lazy-table',
+                undefined,
+                owner.sessionId,
+            );
             const panel = panels[0];
             await send(panel, { message: 'dataview/request', action: 'init' });
             assert.strictEqual(panel.replies.at(-1)?.ok, true);
@@ -617,7 +968,12 @@ suite('Viewer session ownership', () => {
                 { rows: [{ '0': 1 }], lastRow: 10, totalRows: 10, totalUnfiltered: 10 },
             ]) {
                 request.resolves(result);
-                await send(panel, { message: 'dataview/request', action: 'page', startRow: 0, endRow: 500 });
+                await send(panel, {
+                    message: 'dataview/request',
+                    action: 'page',
+                    startRow: 0,
+                    endRow: 500,
+                });
                 assert.strictEqual(panel.replies.at(-1)?.ok, true);
                 assert.deepStrictEqual(panel.replies.at(-1)?.result, result);
             }
@@ -627,27 +983,62 @@ suite('Viewer session ownership', () => {
                 assert.strictEqual(panel.replies.at(-1)?.ok, false);
                 assert.match(panel.replies.at(-1)?.error ?? '', /Invalid dataview_page response/);
             }
-        } finally { session.unregisterSessionTransport(owner); }
+        } finally {
+            session.unregisterSessionTransport(owner);
+        }
     });
 
     test('Interactive viewers retain transcript tables and dispose standalone list state', async () => {
         const request = sandbox.stub().resolves({ columns: [], totalRows: 1 });
-        const owner = session.registerSessionTransport('interactive-viewer', 'host', '/tmp', request);
-        owner.pid = '12103'; owner.rVer = '4.6.2';
+        const owner = session.registerSessionTransport(
+            'interactive-viewer',
+            'host',
+            '/tmp',
+            request,
+        );
+        owner.pid = '12103';
+        owner.rVer = '4.6.2';
         try {
             const other = await attach('other-viewer-session');
-            await session.showDataView('table', 'json', 'table', '', 'Two', 'transcript-table', undefined, owner.sessionId);
-            assert.ok(panels[0].panel.webview.html.includes('role="tooltip">R 4.6.2: 12103</span>'));
+            await session.showDataView(
+                'table',
+                'json',
+                'table',
+                '',
+                'Two',
+                'transcript-table',
+                undefined,
+                owner.sessionId,
+            );
+            assert.ok(
+                panels[0].panel.webview.html.includes('role="tooltip">R 4.6.2: 12103</span>'),
+            );
             await send(panels[0], { message: 'dataview/request', action: 'init' });
-            sinon.assert.calledWithExactly(request, { method: 'dataview_init', params: { view_id: 'transcript-table' } });
+            sinon.assert.calledWithExactly(request, {
+                method: 'dataview_init',
+                params: { view_id: 'transcript-table' },
+            });
             request.resetHistory();
             panels[0].panel.dispose();
             sinon.assert.notCalled(request);
-            await session.showDataView('list', 'json', 'list', '', 'Two', 'standalone-list', undefined, owner.sessionId, 3);
-            assert.ok(panels[1].panel.webview.html.includes('role="tooltip">R 4.6.2: 12103</span>'));
+            await session.showDataView(
+                'list',
+                'json',
+                'list',
+                '',
+                'Two',
+                'standalone-list',
+                undefined,
+                owner.sessionId,
+                3,
+            );
+            assert.ok(
+                panels[1].panel.webview.html.includes('role="tooltip">R 4.6.2: 12103</span>'),
+            );
             panels[1].panel.dispose();
             sinon.assert.calledOnceWithExactly(request, {
-                method: 'dataview_dispose', params: { view_id: 'standalone-list', state_generation: 3 },
+                method: 'dataview_dispose',
+                params: { view_id: 'standalone-list', state_generation: 3 },
             });
             assert.deepStrictEqual(viewerRequests(other), []);
         } finally {
@@ -666,8 +1057,10 @@ suite('Viewer session ownership', () => {
         await open(replacement, 'table', table);
         await send(list, { message: 'listview/page' });
         await send(table, { message: 'dataview/request', action: 'init' });
-        assert.deepStrictEqual(viewerRequests(replacement).map(request => request.method),
-            ['workspace_children', 'dataview_init']);
+        assert.deepStrictEqual(
+            viewerRequests(replacement).map((request) => request.method),
+            ['workspace_children', 'dataview_init'],
+        );
         assert.deepStrictEqual(viewerRequests(a), []);
         assert.deepStrictEqual(viewerRequests(b), []);
 

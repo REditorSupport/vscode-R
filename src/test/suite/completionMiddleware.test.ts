@@ -12,10 +12,16 @@ suite('Completion signature help', () => {
     let configuration: sinon.SinonStub;
     let enabled: sinon.SinonStub;
     const position = new vscode.Position(0, 3);
-    const context = { triggerKind: vscode.CompletionTriggerKind.Invoke, triggerCharacter: undefined };
+    const context = {
+        triggerKind: vscode.CompletionTriggerKind.Invoke,
+        triggerCharacter: undefined,
+    };
     const provide = completionMiddleware.provideCompletionItem!;
 
-    function callItem(label = 'fun1', kind = vscode.CompletionItemKind.Function): vscode.CompletionItem {
+    function callItem(
+        label = 'fun1',
+        kind = vscode.CompletionItemKind.Function,
+    ): vscode.CompletionItem {
         const item = new vscode.CompletionItem(label, kind);
         item.insertText = new vscode.SnippetString(`${label}($0)`);
         return item;
@@ -27,7 +33,9 @@ suite('Completion signature help', () => {
         sandbox = sinon.createSandbox();
         enabled = sandbox.stub().returns(true);
         configuration = sandbox.stub(vscode.workspace, 'getConfiguration').callThrough();
-        configuration.withArgs('editor', document).returns({ get: enabled } as unknown as vscode.WorkspaceConfiguration);
+        configuration
+            .withArgs('editor', document)
+            .returns({ get: enabled } as unknown as vscode.WorkspaceConfiguration);
     });
 
     teardown(() => {
@@ -36,8 +44,12 @@ suite('Completion signature help', () => {
     });
 
     test('adds a command to function, package, method, and constructor call snippets', async () => {
-        const items = [callItem(), callItem('pkg::fun1'), callItem('`run task`', vscode.CompletionItemKind.Method),
-            callItem('new', vscode.CompletionItemKind.Constructor)];
+        const items = [
+            callItem(),
+            callItem('pkg::fun1'),
+            callItem('`run task`', vscode.CompletionItemKind.Method),
+            callItem('new', vscode.CompletionItemKind.Constructor),
+        ];
         const next = sandbox.stub().resolves(items);
         const result = await provide(document, position, context, cancellation.token, next);
 
@@ -55,10 +67,16 @@ suite('Completion signature help', () => {
         const item = callItem();
         const list = new vscode.CompletionList([item], true);
         const next = () => list;
-        assert.strictEqual(await provide(document, position, context, cancellation.token, next), list);
+        assert.strictEqual(
+            await provide(document, position, context, cancellation.token, next),
+            list,
+        );
         assert.strictEqual(item.command, undefined);
         enabled.returns(true);
-        assert.strictEqual(await provide(document, position, context, cancellation.token, next), list);
+        assert.strictEqual(
+            await provide(document, position, context, cancellation.token, next),
+            list,
+        );
         assert.strictEqual(list.items[0].command?.command, 'editor.action.triggerParameterHints');
         assert.strictEqual(list.isIncomplete, true);
     });
@@ -73,19 +91,35 @@ suite('Completion signature help', () => {
         const afterCall = callItem();
         afterCall.insertText = new vscode.SnippetString('fun1()$0');
         const hasCommand = callItem();
-        const command = { title: 'Existing command', command: 'existing.command', arguments: ['original'] };
+        const command = {
+            title: 'Existing command',
+            command: 'existing.command',
+            arguments: ['original'],
+        };
         hasCommand.command = command;
-        const items = [nameOnly, plainText, snippetName, afterCall, callItem('field', vscode.CompletionItemKind.Field),
-            new vscode.CompletionItem('fun1', vscode.CompletionItemKind.Function)];
+        const items = [
+            nameOnly,
+            plainText,
+            snippetName,
+            afterCall,
+            callItem('field', vscode.CompletionItemKind.Field),
+            new vscode.CompletionItem('fun1', vscode.CompletionItemKind.Function),
+        ];
 
-        await provide(document, position, context, cancellation.token, () => [...items, hasCommand]);
-        assert.ok(items.every(item => item.command === undefined));
+        await provide(document, position, context, cancellation.token, () => [
+            ...items,
+            hasCommand,
+        ]);
+        assert.ok(items.every((item) => item.command === undefined));
         assert.strictEqual(hasCommand.command, command);
     });
 
     test('passes through empty and cancelled results', async () => {
         for (const result of [undefined, null, [], new vscode.CompletionList()]) {
-            assert.strictEqual(await provide(document, position, context, cancellation.token, () => result), result);
+            assert.strictEqual(
+                await provide(document, position, context, cancellation.token, () => result),
+                result,
+            );
         }
         const item = callItem();
         const result = await provide(document, position, context, cancellation.token, () => {
@@ -97,30 +131,57 @@ suite('Completion signature help', () => {
     });
 
     test('handles LSP insert text, text edits, insert/replace edits, and completion-list defaults', async () => {
-        const client = new lsp.LanguageClient('completion-converter-test', 'Completion converter test',
-            { command: 'unused' }, { documentSelector: [] });
+        const client = new lsp.LanguageClient(
+            'completion-converter-test',
+            'Completion converter test',
+            { command: 'unused' },
+            { documentSelector: [] },
+        );
         const range = lsp.Range.create(0, 0, 0, 3);
-        const base = { label: 'fun1', kind: lsp.CompletionItemKind.Function, insertTextFormat: lsp.InsertTextFormat.Snippet };
+        const base = {
+            label: 'fun1',
+            kind: lsp.CompletionItemKind.Function,
+            insertTextFormat: lsp.InsertTextFormat.Snippet,
+        };
         const responses: Array<lsp.CompletionItem[] | lsp.CompletionList> = [
             [{ ...base, insertText: 'fun1($0)' }],
             [{ ...base, insertText: 'ignored', textEdit: { range, newText: 'fun1($0)' } }],
             [{ ...base, textEdit: { insert: range, replace: range, newText: 'fun1($0)' } }],
-            { isIncomplete: true, itemDefaults: { editRange: range, insertTextFormat: lsp.InsertTextFormat.Snippet },
-                items: [{ label: 'fun1', kind: lsp.CompletionItemKind.Function, textEditText: 'fun1($0)' }] }
+            {
+                isIncomplete: true,
+                itemDefaults: { editRange: range, insertTextFormat: lsp.InsertTextFormat.Snippet },
+                items: [
+                    {
+                        label: 'fun1',
+                        kind: lsp.CompletionItemKind.Function,
+                        textEditText: 'fun1($0)',
+                    },
+                ],
+            },
         ];
         try {
             for (const response of responses) {
                 const converted = await client.protocol2CodeConverter.asCompletionResult(response);
-                const result = await provide(document, position, context, cancellation.token, () => converted);
+                const result = await provide(
+                    document,
+                    position,
+                    context,
+                    cancellation.token,
+                    () => converted,
+                );
                 assert.ok(result);
                 const item = (Array.isArray(result) ? result : result.items)[0];
                 assert.strictEqual(item.command?.command, 'editor.action.triggerParameterHints');
                 // languageserver resolves documentation on the supplied item and
                 // returns it, including its command, through these converters.
                 const resolved = client.protocol2CodeConverter.asCompletionItem({
-                    ...client.code2ProtocolConverter.asCompletionItem(item), documentation: 'Function documentation'
+                    ...client.code2ProtocolConverter.asCompletionItem(item),
+                    documentation: 'Function documentation',
                 });
-                assert.strictEqual(resolved.command?.command, 'editor.action.triggerParameterHints');
+                assert.strictEqual(
+                    resolved.command?.command,
+                    'editor.action.triggerParameterHints',
+                );
                 assert.strictEqual(resolved.documentation, 'Function documentation');
             }
         } finally {
@@ -137,7 +198,7 @@ suite('Completion signature help acceptance', () => {
         const deadline = Date.now() + 5000;
         while (!predicate()) {
             assert.ok(Date.now() < deadline, 'Timed out waiting for completion or signature help');
-            await new Promise(resolve => setTimeout(resolve, 10));
+            await new Promise((resolve) => setTimeout(resolve, 10));
         }
     }
 
@@ -146,47 +207,80 @@ suite('Completion signature help acceptance', () => {
     });
 
     suiteTeardown(async () => {
-        await settings().update('parameterHints.enabled', previousHints, vscode.ConfigurationTarget.Global, true);
+        await settings().update(
+            'parameterHints.enabled',
+            previousHints,
+            vscode.ConfigurationTarget.Global,
+            true,
+        );
     });
 
     for (const enabled of [true, false]) {
         test(`accepting a resolved call snippet ${enabled ? 'requests' : 'does not request'} signature help when hints are ${enabled ? 'enabled' : 'disabled'}`, async () => {
-            await settings().update('parameterHints.enabled', enabled, vscode.ConfigurationTarget.Global, true);
+            await settings().update(
+                'parameterHints.enabled',
+                enabled,
+                vscode.ConfigurationTarget.Global,
+                true,
+            );
             const toServer = new PassThrough();
             const toClient = new PassThrough();
             const server = lsp.createProtocolConnection(toServer, toClient);
             const signatures: lsp.SignatureHelpParams[] = [];
             let resolutions = 0;
-            server.onRequest(lsp.InitializeRequest.type, (): lsp.InitializeResult => ({ capabilities: {
-                textDocumentSync: lsp.TextDocumentSyncKind.Full,
-                completionProvider: { resolveProvider: true },
-                signatureHelpProvider: { triggerCharacters: ['(', ','] }
-            } }));
-            server.onRequest(lsp.CompletionRequest.type, () => [{
-                label: 'fun1', kind: lsp.CompletionItemKind.Function,
-                insertTextFormat: lsp.InsertTextFormat.Snippet, insertText: 'fun1($0)'
-            }]);
-            server.onRequest(lsp.CompletionResolveRequest.type, item => {
+            server.onRequest(lsp.InitializeRequest.type, (): lsp.InitializeResult => ({
+                capabilities: {
+                    textDocumentSync: lsp.TextDocumentSyncKind.Full,
+                    completionProvider: { resolveProvider: true },
+                    signatureHelpProvider: { triggerCharacters: ['(', ','] },
+                },
+            }));
+            server.onRequest(lsp.CompletionRequest.type, () => [
+                {
+                    label: 'fun1',
+                    kind: lsp.CompletionItemKind.Function,
+                    insertTextFormat: lsp.InsertTextFormat.Snippet,
+                    insertText: 'fun1($0)',
+                },
+            ]);
+            server.onRequest(lsp.CompletionResolveRequest.type, (item) => {
                 resolutions++;
                 return { ...item, documentation: 'Adds 1 to its input.' };
             });
-            server.onRequest(lsp.SignatureHelpRequest.type, params => {
+            server.onRequest(lsp.SignatureHelpRequest.type, (params) => {
                 signatures.push(params);
-                return { signatures: [{ label: 'fun1(x)', parameters: [{ label: 'x' }] }], activeSignature: 0, activeParameter: 0 };
+                return {
+                    signatures: [{ label: 'fun1(x)', parameters: [{ label: 'x' }] }],
+                    activeSignature: 0,
+                    activeParameter: 0,
+                };
             });
             server.onRequest(lsp.ShutdownRequest.type, () => undefined);
             server.listen();
-            const client = new lsp.LanguageClient('completion-acceptance-test', 'Completion acceptance test',
+            const client = new lsp.LanguageClient(
+                'completion-acceptance-test',
+                'Completion acceptance test',
                 () => Promise.resolve({ reader: toClient, writer: toServer }),
-                { documentSelector: [{ scheme: 'untitled', language: 'r' }], middleware: completionMiddleware });
+                {
+                    documentSelector: [{ scheme: 'untitled', language: 'r' }],
+                    middleware: completionMiddleware,
+                },
+            );
             try {
                 await client.start();
-                const document = await vscode.workspace.openTextDocument({ language: 'r', content: 'fun' });
+                const document = await vscode.workspace.openTextDocument({
+                    language: 'r',
+                    content: 'fun',
+                });
                 const editor = await vscode.window.showTextDocument(document);
                 editor.selection = new vscode.Selection(0, 3, 0, 3);
                 await vscode.commands.executeCommand('editor.action.triggerSuggest');
                 await until(() => resolutions > 0);
-                assert.strictEqual(signatures.length, 0, 'Browsing completions must not request signature help');
+                assert.strictEqual(
+                    signatures.length,
+                    0,
+                    'Browsing completions must not request signature help',
+                );
                 await vscode.commands.executeCommand('acceptSelectedSuggestion');
                 await until(() => document.getText() === 'fun1()');
                 if (enabled) {
@@ -194,7 +288,7 @@ suite('Completion signature help acceptance', () => {
                     assert.deepStrictEqual(signatures[0].position, { line: 0, character: 5 });
                     assert.strictEqual(signatures[0].textDocument.uri, document.uri.toString());
                 } else {
-                    await new Promise(resolve => setTimeout(resolve, 100));
+                    await new Promise((resolve) => setTimeout(resolve, 100));
                     assert.strictEqual(signatures.length, 0);
                 }
                 assert.strictEqual(editor.selection.active.character, 5);

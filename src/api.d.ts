@@ -1,4 +1,3 @@
-
 // declaration of the api exported by the extension
 // implemented in apiImplementation.ts
 // used e.g. by vscode-r-debugger to show the help panel from within debug sessions
@@ -113,7 +112,9 @@ export interface RSessionApi {
      * During script execution, R may wait up to 180 seconds for install consent or 300 seconds
      * for another setup's lock. These are R-side waits, not a total startup timeout.
      */
-    prepareAttachment(options?: RSessionPreparationOptions): Promise<RSessionPreparation | undefined>;
+    prepareAttachment(
+        options?: RSessionPreparationOptions,
+    ): Promise<RSessionPreparation | undefined>;
     /**
      * Sess connection history is delivered as immutable snapshots in FIFO order after each
      * transition is committed. During replacement, `disconnected(old)` is followed by
@@ -154,7 +155,10 @@ export interface RSessionApi {
      * recalled; the consumer must retain its preparation while the runtime keeps its submission
      * queue occupied until execution finishes.
      */
-    registerTerminalIntegration(terminal: vscode.Terminal, integration: RExternalTerminalIntegration): vscode.Disposable;
+    registerTerminalIntegration(
+        terminal: vscode.Terminal,
+        integration: RExternalTerminalIntegration,
+    ): vscode.Disposable;
 }
 
 export type HelpSubMenu = 'doc' | 'pkgList' | 'refresh' | '?' | '??';

@@ -1,11 +1,9 @@
 import * as assert from 'assert';
 
-
 import { cleanLine } from '../../lineCache';
 
 // Defines a Mocha test suite to group tests of similar kind together
 suite('lineCache Tests', () => {
-
     test('cleanLine', () => {
         assert.strictEqual(cleanLine('abcde  '), 'abcde');
         assert.strictEqual(cleanLine('abcde  "abc"  '), 'abcde  "abc"');

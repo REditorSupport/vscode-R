@@ -28,14 +28,24 @@ const decompressBrotli = promisify(brotliDecompress);
 
 // R help/httpgd servers and private CRAN repositories can use Fetch-blocked ports
 // or Basic Auth URLs. Node's HTTP(S) transport preserves access to those URLs.
-export async function getHttpText(input: URL | string, redirectsLeft = 20): Promise<HttpTextResponse> {
+export async function getHttpText(
+    input: URL | string,
+    redirectsLeft = 20,
+): Promise<HttpTextResponse> {
     const response = await getHttpResponse(input, {}, redirectsLeft);
     return { status: response.status, url: response.url, text: response.body.toString('utf8') };
 }
 
-export async function getHttpResponse(input: URL | string, options: HttpRequestOptions = {}, redirectsLeft = 20): Promise<HttpResponse> {
+export async function getHttpResponse(
+    input: URL | string,
+    options: HttpRequestOptions = {},
+    redirectsLeft = 20,
+): Promise<HttpResponse> {
     let current = new URL(input);
-    const headers: Record<string, string> = { accept: '*/*', 'accept-encoding': 'gzip, deflate, br' };
+    const headers: Record<string, string> = {
+        accept: '*/*',
+        'accept-encoding': 'gzip, deflate, br',
+    };
     for (const [name, value] of Object.entries(options.headers ?? {})) {
         headers[name.toLowerCase()] = value;
     }
@@ -55,7 +65,9 @@ export async function getHttpResponse(input: URL | string, options: HttpRequestO
             const request = transport.get(current, { headers, signal: options.signal }, resolve);
             request.on('error', reject);
             if (options.timeoutMs) {
-                request.setTimeout(options.timeoutMs, () => request.destroy(new Error('HTTP request timed out')));
+                request.setTimeout(options.timeoutMs, () =>
+                    request.destroy(new Error('HTTP request timed out')),
+                );
             }
         });
         const status = response.statusCode ?? 0;
@@ -92,7 +104,9 @@ export async function getHttpResponse(input: URL | string, options: HttpRequestO
                 case 'deflate':
                 case 'x-deflate':
                     // Like node-fetch, accept both zlib-wrapped and raw deflate.
-                    body = await ((body[0] & 0x0f) === 0x08 ? decompressDeflate(body) : decompressRawDeflate(body));
+                    body = await ((body[0] & 0x0f) === 0x08
+                        ? decompressDeflate(body)
+                        : decompressRawDeflate(body));
                     break;
                 case 'br':
                     body = await decompressBrotli(body);

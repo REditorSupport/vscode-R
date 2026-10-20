@@ -16,7 +16,10 @@ interface Deferred<T> {
 function deferred<T>(): Deferred<T> {
     let resolve!: (value: T) => void;
     let reject!: (error: Error) => void;
-    const promise = new Promise<T>((res, rej) => { resolve = res; reject = rej; });
+    const promise = new Promise<T>((res, rej) => {
+        resolve = res;
+        reject = rej;
+    });
     return { promise, resolve, reject };
 }
 
@@ -42,11 +45,14 @@ suite('Standard plot viewer request coordination', () => {
         sandbox.stub(session, 'globalPipePath').value('test-pipe');
         activeSession = sandbox.stub(session, 'activeSession').value(undefined);
         sandbox.stub(util, 'config').returns({
-            get: (key: string, defaultValue?: unknown) => key === 'plot.format' ? 'svglite' : defaultValue
+            get: (key: string, defaultValue?: unknown) =>
+                key === 'plot.format' ? 'svglite' : defaultValue,
         } as unknown as vscode.WorkspaceConfiguration);
         sandbox.stub(vscode.window, 'createWebviewPanel').callsFake(() => {
             const disposed = new vscode.EventEmitter<void>();
-            let receiveMessage: ((message: { type: string; width?: number; height?: number }) => Promise<void>) | undefined;
+            let receiveMessage:
+                | ((message: { type: string; width?: number; height?: number }) => Promise<void>)
+                | undefined;
             const postMessage = sandbox.stub().resolves(true);
             const panel = {
                 title: 'R Plot',
@@ -55,15 +61,21 @@ suite('Standard plot viewer request coordination', () => {
                 webview: {
                     html: '',
                     postMessage,
-                    onDidReceiveMessage: (listener: typeof receiveMessage) => { receiveMessage = listener; },
+                    onDidReceiveMessage: (listener: typeof receiveMessage) => {
+                        receiveMessage = listener;
+                    },
                 },
                 onDidDispose: disposed.event,
-                dispose: () => { disposed.fire(); disposed.dispose(); },
+                dispose: () => {
+                    disposed.fire();
+                    disposed.dispose();
+                },
             } as unknown as vscode.WebviewPanel;
             panels.push({
                 panel,
                 postMessage,
-                resize: (width, height) => receiveMessage?.({ type: 'resize', width, height }) ?? Promise.resolve(),
+                resize: (width, height) =>
+                    receiveMessage?.({ type: 'resize', width, height }) ?? Promise.resolve(),
             });
             return panel;
         });
@@ -82,8 +94,13 @@ suite('Standard plot viewer request coordination', () => {
         const secondStarted = deferred<void>();
         const thirdStarted = deferred<void>();
         const request = sandbox.stub(session, 'sessionRequest').callsFake(() => {
-            if (request.callCount === 1) { return firstRequest.promise; }
-            if (request.callCount === 2) { secondStarted.resolve(); return secondRequest.promise; }
+            if (request.callCount === 1) {
+                return firstRequest.promise;
+            }
+            if (request.callCount === 2) {
+                secondStarted.resolve();
+                return secondRequest.promise;
+            }
             thirdStarted.resolve();
             return thirdRequest.promise;
         });
@@ -101,7 +118,7 @@ suite('Standard plot viewer request coordination', () => {
         sinon.assert.calledTwice(request);
         assert.deepStrictEqual(request.secondCall.args[0], {
             method: 'plot_latest',
-            params: { width: 300, height: 500, format: 'svglite', devArgs: undefined }
+            params: { width: 300, height: 500, format: 'svglite', devArgs: undefined },
         });
 
         const pendingResize = firstPanel.resize(700, 800);
@@ -112,11 +129,20 @@ suite('Standard plot viewer request coordination', () => {
         sinon.assert.calledThrice(request);
         assert.deepStrictEqual(request.thirdCall.args[0], {
             method: 'plot_latest',
-            params: { width: 700, height: 800, format: 'svglite', devArgs: undefined }
+            params: { width: 700, height: 800, format: 'svglite', devArgs: undefined },
         });
         thirdRequest.resolve({ data: 'third', format: 'svg' });
-        await Promise.all([firstResize, update, latestResize, anotherResize, pendingResize, pendingUpdate]);
-        sinon.assert.calledOnce(firstPanel.postMessage.withArgs({ type: 'update', data: 'third', format: 'svg' }));
+        await Promise.all([
+            firstResize,
+            update,
+            latestResize,
+            anotherResize,
+            pendingResize,
+            pendingUpdate,
+        ]);
+        sinon.assert.calledOnce(
+            firstPanel.postMessage.withArgs({ type: 'update', data: 'third', format: 'svg' }),
+        );
     });
 
     test('does not retry a rejected same-session request queued during the failure', async () => {
@@ -141,7 +167,9 @@ suite('Standard plot viewer request coordination', () => {
         const secondRequest = deferred<unknown>();
         const secondStarted = deferred<void>();
         const request = sandbox.stub(session, 'sessionRequest').callsFake(() => {
-            if (request.callCount === 1) { return firstRequest.promise; }
+            if (request.callCount === 1) {
+                return firstRequest.promise;
+            }
             secondStarted.resolve();
             return secondRequest.promise;
         });
@@ -168,7 +196,9 @@ suite('Standard plot viewer request coordination', () => {
         secondRequest.resolve({ data: 'current', format: 'svg' });
         await Promise.all([oldResize, newResize]);
         sinon.assert.calledOnceWithExactly(newPanel.postMessage, {
-            type: 'update', data: 'current', format: 'svg'
+            type: 'update',
+            data: 'current',
+            format: 'svg',
         });
     });
 
@@ -195,7 +225,9 @@ suite('Standard plot viewer request coordination', () => {
         const secondRequest = deferred<unknown>();
         const secondStarted = deferred<void>();
         const request = sandbox.stub(session, 'sessionRequest').callsFake(() => {
-            if (request.callCount === 1) { return firstRequest.promise; }
+            if (request.callCount === 1) {
+                return firstRequest.promise;
+            }
             secondStarted.resolve();
             return secondRequest.promise;
         });
@@ -213,7 +245,9 @@ suite('Standard plot viewer request coordination', () => {
         secondRequest.resolve({ data: 'B plot', format: 'svg' });
         await Promise.all([firstResize, sessionBUpdate]);
         sinon.assert.calledOnceWithExactly(panels[0].postMessage, {
-            type: 'update', data: 'B plot', format: 'svg'
+            type: 'update',
+            data: 'B plot',
+            format: 'svg',
         });
     });
 
@@ -225,7 +259,9 @@ suite('Standard plot viewer request coordination', () => {
         const secondRequest = deferred<unknown>();
         const secondStarted = deferred<void>();
         const request = sandbox.stub(session, 'sessionRequest').callsFake(() => {
-            if (request.callCount === 1) { return firstRequest.promise; }
+            if (request.callCount === 1) {
+                return firstRequest.promise;
+            }
             secondStarted.resolve();
             return secondRequest.promise;
         });
@@ -242,7 +278,9 @@ suite('Standard plot viewer request coordination', () => {
         secondRequest.resolve({ data: 'B plot', format: 'svg' });
         await Promise.all([firstResize, sessionBUpdate]);
         sinon.assert.calledOnceWithExactly(panels[0].postMessage, {
-            type: 'update', data: 'B plot', format: 'svg'
+            type: 'update',
+            data: 'B plot',
+            format: 'svg',
         });
     });
 
@@ -255,7 +293,9 @@ suite('Standard plot viewer request coordination', () => {
         const secondRequest = deferred<unknown>();
         const secondStarted = deferred<void>();
         const request = sandbox.stub(session, 'sessionRequest').callsFake(() => {
-            if (request.callCount === 1) { return firstRequest.promise; }
+            if (request.callCount === 1) {
+                return firstRequest.promise;
+            }
             secondStarted.resolve();
             return secondRequest.promise;
         });
@@ -275,7 +315,9 @@ suite('Standard plot viewer request coordination', () => {
         secondRequest.resolve({ data: 'current C', format: 'svg' });
         await Promise.all([firstResize, updateB, updateC]);
         sinon.assert.calledOnceWithExactly(panels[0].postMessage, {
-            type: 'update', data: 'current C', format: 'svg'
+            type: 'update',
+            data: 'current C',
+            format: 'svg',
         });
     });
 
@@ -319,7 +361,9 @@ suite('Standard plot viewer request coordination', () => {
     });
 
     test('waits for the initial webview resize before requesting the first plot', async () => {
-        const request = sandbox.stub(session, 'sessionRequest').resolves({ data: 'plot', format: 'svg' });
+        const request = sandbox
+            .stub(session, 'sessionRequest')
+            .resolves({ data: 'plot', format: 'svg' });
         await viewer.update();
         sinon.assert.notCalled(request);
         await panels[0].resize(640, 480);
