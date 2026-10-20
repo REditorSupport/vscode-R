@@ -13,6 +13,8 @@ import { SessionAgent } from '../../interactive/agentMain';
 import { AgentClient } from '../../interactive/client';
 import { InteractiveSerializer, DISPLAY_MIME } from '../../interactive/notebook';
 import { AgentConfig, SessionManifest } from '../../interactive/protocol';
+import type { SessionEvent } from '../../interactive/protocol';
+import type { Transcript, TranscriptCell } from '../../interactive/transcript';
 import { AssetStorageStats, exportedAssetName, readAsset } from '../../interactive/assets';
 import { resolveExecutable } from '../../interactive/executable';
 import { shellQuote } from '../../interactive/launcher';
@@ -1490,6 +1492,64 @@ cat("\n")`;
             for (const panel of panels.returnValues) { panel.dispose(); }
             saved.restore(); format.restore(); panels.restore();
         }
+    });
+
+    test('continues processing runtime events while a plot update is delayed', async function () {
+        if (!manifests[0].capabilities.jgd) { this.skip(); }
+        await vscode.commands.executeCommand('r.interactive.open', manifests[0]);
+        const manager = interactiveManager(bundleContext()) as unknown as {
+            views: Map<string, { client: AgentClient; model: Transcript; chain: Promise<void>; outputQueue: { flush(): Promise<void> } }>;
+            outputs(view: unknown, cell: TranscriptCell): Promise<vscode.NotebookCellOutput[]>;
+        };
+        const view = [...manager.views.values()].find(view => view.client.manifest.id === manifests[0].id); assert.ok(view);
+        let release!: () => void;
+        const delayed = new Promise<void>(resolve => { release = resolve; });
+        let executionId: string | undefined, completed: SessionEvent | undefined;
+        const original = manager.outputs.bind(manager);
+        const output = sinon.stub(manager, 'outputs').callsFake(async (current, cell) => {
+            if (current === view && cell.record.code.includes('delayed_plot_update') && cell.outputs.some(item => item.data.kind === 'plot') && !executionId) {
+                executionId = cell.record.id;
+                await delayed;
+            }
+            return original(current, cell);
+        });
+        const listener = (event: SessionEvent): void => {
+            if (event.executionId === executionId && event.type === 'finished') { completed = event; }
+        };
+        view.client.on('event', listener);
+        let observed: string | undefined, released = 0;
+        try {
+            await vscode.commands.executeCommand('r.runSelection', 'delayed_plot_update <- TRUE; plot(1:3); Sys.sleep(0.7); title("final delayed plot"); cat("tail after plot\\n")');
+            await until(() => !!completed, 'The R execution must finish while the output update is still pending');
+            await new Promise(resolve => setTimeout(resolve, 350));
+            observed = view.model.cells.get(executionId!)?.record.state;
+        } finally {
+            released = Date.now();
+            release(); view.client.off('event', listener);
+            await view.chain;
+            await view.outputQueue.flush();
+            output.restore();
+        }
+        assert.strictEqual(observed, 'success', 'Output delivery must not block processing the runtime completion event');
+        const notebook = vscode.workspace.notebookDocuments.find(doc => doc.metadata.rSessionId === manifests[0].id); assert.ok(notebook);
+        const cell = notebook.getCells().find(cell => cell.metadata.rExecutionId === executionId); assert.ok(cell);
+        await until(() => cell.executionSummary?.success === true);
+        const timing = cell.executionSummary?.timing; assert.ok(timing);
+        assert.ok(timing.endTime >= released, 'The completed timer must include the delayed output delivery');
+        assert.ok(completed && timing.endTime - completed.time >= 300, 'Completion must not backdate the live timer to R finishing');
+        const finalSvg = cell.outputs.flatMap(output => output.items).find(item => item.mime === 'image/svg+xml'); assert.ok(finalSvg);
+        assert.match(Buffer.from(finalSvg.data).toString(), /final delayed plot/);
+        const text = cell.outputs.flatMap(output => output.items).filter(item => item.mime === 'application/vnd.code.notebook.stdout')
+            .map(item => Buffer.from(item.data).toString()).join('');
+        assert.strictEqual(text, 'tail after plot\n', 'Events arriving during the delayed update must retain their console output');
+        const key = `${manifests[0].id}:${view.model.generation}:${executionId!}`;
+        const saved = new Map(bundleContext().workspaceState.get<[string, typeof timing][]>('r.interactive.executionTimings', []));
+        assert.deepStrictEqual(saved.get(key), timing, 'Total timing must be saved for reconnect and restore');
+        await vscode.commands.executeCommand('r.interactive.detach', notebook.uri);
+        await vscode.commands.executeCommand('r.interactive.open', manifests[0]);
+        const restored = vscode.workspace.notebookDocuments.find(doc => doc.metadata.rSessionId === manifests[0].id)?.getCells()
+            .find(cell => cell.metadata.rExecutionId === executionId);
+        assert.deepStrictEqual(restored?.executionSummary?.timing, timing, 'Reconnecting must preserve the displayed duration');
     });
 
     test('streams an eight-panel plot in place without rereading unchanged assets', async function () {
