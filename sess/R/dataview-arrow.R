@@ -491,6 +491,14 @@ dataview_arrow_reader_select <- function(reader_state, row_idx) {
     row_idx <- row_idx[row_idx > batch_last]
   }
 
+  # At a consumed batch boundary, check EOF without scanning the query. If a
+  # next batch exists, ensure_batch retains it in the cache for later pages.
+  if (!is.null(reader_state$result_cache_dir) &&
+        !is.null(reader_state$batch) &&
+        reader_state$batch_row >= nrow(reader_state$batch)) {
+    dataview_arrow_reader_ensure_batch(reader_state)
+  }
+
   if (!length(pages)) {
     return(NULL)
   }

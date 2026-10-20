@@ -502,6 +502,7 @@ interface DataViewPageResult {
     rows: Record<string, unknown>[];
     totalRows?: number;
     totalUnfiltered?: number;
+    fetchedRows?: number;
     lastRow: number;
 }
 
@@ -637,6 +638,8 @@ function attachDynamicDataViewBridge(panel: vscode.WebviewPanel, viewId: string,
                     if (!result || !Array.isArray(result.rows) ||
                         typeof result.lastRow !== 'number' ||
                         (result.totalRows !== undefined && typeof result.totalRows !== 'number') ||
+                        (result.lastRow < 0 && (typeof result.fetchedRows !== 'number' ||
+                            !Number.isSafeInteger(result.fetchedRows) || result.fetchedRows < 0)) ||
                         (result.totalUnfiltered !== undefined &&
                             typeof result.totalUnfiltered !== 'number')) {
                         throw new Error('Invalid dataview_page response');
@@ -2553,17 +2556,18 @@ export async function getTableHtml(
                         totalRows = Number.isFinite(result.totalUnfiltered)
                             ? result.totalUnfiltered : result.totalRows;
                         rowCountKnown = true;
-                    } else if (!rowCountKnown &&
-                        Number.isFinite(result.lastRow) && result.lastRow >= 0) {
+                    } else if (Number.isFinite(result.lastRow) && result.lastRow >= 0) {
                         filteredRows = result.lastRow;
                         totalRows = result.lastRow;
                         rowCountKnown = true;
+                    } else {
+                        filteredRows = result.fetchedRows;
+                        totalRows = undefined;
+                        rowCountKnown = false;
                     }
-                    if (rowCountKnown) {
-                        isFiltered = Object.keys(params.filterModel || {}).length > 0;
-                        updateViewerRowCount(filteredRows, totalRows);
-                        gridApi?.refreshHeader();
-                    }
+                    isFiltered = rowCountKnown && Object.keys(params.filterModel || {}).length > 0;
+                    updateViewerRowCount(filteredRows, totalRows);
+                    gridApi?.refreshHeader();
                     updateScrollPosition();
                     const rows = prepareViewerRows(result.rows || [], bigintFields);
                     params.successCallback(rows, result.lastRow);

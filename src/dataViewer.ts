@@ -216,8 +216,10 @@ export function getDataViewerScript(): string {
 
     function updateViewerRowCount(filtered, total) {
         const format = value => new Intl.NumberFormat().format(value);
-        document.querySelector('#viewerRowCount').textContent = filtered === total
-            ? format(total) + ' rows' : format(filtered) + ' of ' + format(total) + ' rows';
+        document.querySelector('#viewerRowCount').textContent = !Number.isFinite(total)
+            ? format(filtered) + '+ rows'
+            : filtered === total
+                ? format(total) + ' rows' : format(filtered) + ' of ' + format(total) + ' rows';
     }
 
     function updateViewerSizingButtons() {

@@ -80,6 +80,10 @@ dataview_lazy_totals <- function(state) {
   }
   c(
     list(lastRow = total %||% -1L),
-    if (!is.null(total)) list(totalRows = total, totalUnfiltered = original_total)
+    if (!is.null(total)) {
+      list(totalRows = total, totalUnfiltered = original_total)
+    } else {
+      list(fetchedRows = cache$result_cache_rows)
+    }
   )
 }
