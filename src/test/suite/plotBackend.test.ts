@@ -11,16 +11,20 @@ import { mockExtensionContext } from '../common/mockvscode';
 
 suite('Plot backend setting migration', () => {
     let sandbox: sinon.SinonSandbox;
-    setup(() => { sandbox = sinon.createSandbox(); });
-    teardown(() => { sandbox.restore(); });
+    setup(() => {
+        sandbox = sinon.createSandbox();
+    });
+    teardown(() => {
+        sandbox.restore();
+    });
 
     function settings(
         canonical: Record<string, unknown> = {},
-        legacy: Record<string, unknown> = {}
+        legacy: Record<string, unknown> = {},
     ): void {
         sandbox.stub(util, 'config').returns({
-            get: (key: string) => key === 'plot.backend' ? 'auto' : false,
-            inspect: (key: string) => key === 'plot.backend' ? canonical : legacy
+            get: (key: string) => (key === 'plot.backend' ? 'auto' : false),
+            inspect: (key: string) => (key === 'plot.backend' ? canonical : legacy),
         } as unknown as vscode.WorkspaceConfiguration);
     }
 
@@ -29,8 +33,12 @@ suite('Plot backend setting migration', () => {
         for (const legacyScope of scopes) {
             test(`canonical ${canonicalScope} versus legacy ${legacyScope}`, () => {
                 settings({ [canonicalScope]: 'standard' }, { [legacyScope]: true });
-                assert.strictEqual(resolveBackend(),
-                    scopes.indexOf(canonicalScope) >= scopes.indexOf(legacyScope) ? 'standard' : 'httpgd');
+                assert.strictEqual(
+                    resolveBackend(),
+                    scopes.indexOf(canonicalScope) >= scopes.indexOf(legacyScope)
+                        ? 'standard'
+                        : 'httpgd',
+                );
             });
         }
     }
@@ -90,13 +98,17 @@ suite('Plot backend setting migration', () => {
         sinon.assert.notCalled(remove);
         sinon.assert.calledOnce(start);
 
-        const listener = onChange.firstCall.args[0] as (event: vscode.ConfigurationChangeEvent) => void;
+        const listener = onChange.firstCall.args[0] as (
+            event: vscode.ConfigurationChangeEvent,
+        ) => void;
         for (const backend of ['auto', 'native', 'standard', 'httpgd'] as const) {
             canonical.workspaceValue = backend;
             replace.resetHistory();
             remove.resetHistory();
             start.resetHistory();
-            listener({ affectsConfiguration: key => key === 'r.plot.backend' } as vscode.ConfigurationChangeEvent);
+            listener({
+                affectsConfiguration: (key) => key === 'r.plot.backend',
+            } as vscode.ConfigurationChangeEvent);
             if (backend === 'auto') {
                 sinon.assert.calledOnceWithExactly(replace, 'JGD_SOCKET', 'test-jgd-socket');
                 sinon.assert.notCalled(remove);

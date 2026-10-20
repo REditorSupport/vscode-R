@@ -5,7 +5,7 @@ import { getChunks } from '../../rmarkdown/chunks';
 suite('R code chunk boundaries', () => {
     async function chunkCode(text: string, language = 'r') {
         const document = await vscode.workspace.openTextDocument({ language, content: text });
-        return getChunks(document).map(chunk => document.getText(chunk.codeRange));
+        return getChunks(document).map((chunk) => document.getText(chunk.codeRange));
     }
 
     test('includes the final code line without a trailing newline', async () => {

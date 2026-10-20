@@ -1,7 +1,9 @@
 import * as assert from 'assert';
 import { NativeTerminalPidWaitRegistry } from '../../nativeTerminalPidWait';
 
-interface Terminal { id: string }
+interface Terminal {
+    id: string;
+}
 
 function deferred<Value>() {
     let resolve!: (value: Value) => void;
@@ -19,13 +21,21 @@ function trackedSignal() {
     const signal = {
         aborted: false,
         addEventListener: (_type: string, callback: EventListenerOrEventListenerObject) => {
-            listener = typeof callback === 'function' ? () => callback(new Event('abort')) : () => callback.handleEvent(new Event('abort'));
+            listener =
+                typeof callback === 'function'
+                    ? () => callback(new Event('abort'))
+                    : () => callback.handleEvent(new Event('abort'));
         },
-        removeEventListener: () => { removals++; listener = undefined; },
+        removeEventListener: () => {
+            removals++;
+            listener = undefined;
+        },
     } as unknown as AbortSignal;
     return {
         signal,
-        get removals() { return removals; },
+        get removals() {
+            return removals;
+        },
         abort() {
             (signal as { aborted: boolean }).aborted = true;
             listener?.();
@@ -65,16 +75,22 @@ suite('Native terminal PID wait registry', () => {
         assert.strictEqual(freshTerminalRead.kind, 'resolved');
         if (freshTerminalRead.kind === 'resolved') {
             assert.strictEqual(freshTerminalRead.isCurrent(), true);
-            if (terminalRead.kind === 'resolved') { assert.strictEqual(terminalRead.isCurrent(), false); }
+            if (terminalRead.kind === 'resolved') {
+                assert.strictEqual(terminalRead.isCurrent(), false);
+            }
         }
 
         const lifecycleRead = await registry.waitFor(second, () => 50);
         assert.strictEqual(lifecycleRead.kind, 'resolved');
         registry.invalidateAll();
-        if (lifecycleRead.kind === 'resolved') { assert.strictEqual(lifecycleRead.isCurrent(), false); }
+        if (lifecycleRead.kind === 'resolved') {
+            assert.strictEqual(lifecycleRead.isCurrent(), false);
+        }
         const freshLifecycleRead = await registry.waitFor(second, () => 51);
         assert.strictEqual(freshLifecycleRead.kind, 'resolved');
-        if (freshLifecycleRead.kind === 'resolved') { assert.strictEqual(freshLifecycleRead.isCurrent(), true); }
+        if (freshLifecycleRead.kind === 'resolved') {
+            assert.strictEqual(freshLifecycleRead.isCurrent(), true);
+        }
     });
 
     test('registration during the processId getter permanently invalidates that read', async () => {
@@ -86,10 +102,14 @@ suite('Native terminal PID wait registry', () => {
         const result = await resultPromise;
         assert.deepStrictEqual(result, { kind: 'invalidated', reason: 'terminal' });
         pending.resolve(42);
-        await new Promise<void>(resolve => setImmediate(resolve));
+        await new Promise<void>((resolve) => setImmediate(resolve));
 
         const fresh = await registry.waitFor(first, () => undefined);
-        assert.strictEqual(fresh.kind, 'resolved', 'disposing registration cannot revive an old operation, but a fresh read can run');
+        assert.strictEqual(
+            fresh.kind,
+            'resolved',
+            'disposing registration cannot revive an old operation, but a fresh read can run',
+        );
     });
 
     test('a late rejection after invalidation is observed without unhandled rejection', async () => {
@@ -98,7 +118,7 @@ suite('Native terminal PID wait registry', () => {
         registry.invalidate(first);
         assert.deepStrictEqual(await resultPromise, { kind: 'invalidated', reason: 'terminal' });
         pending.reject(new Error('late processId failure'));
-        await new Promise<void>(resolve => setImmediate(resolve));
+        await new Promise<void>((resolve) => setImmediate(resolve));
     });
 
     test('lifecycle invalidation affects old waits but not a fresh lifecycle read', async () => {
@@ -108,7 +128,9 @@ suite('Native terminal PID wait registry', () => {
         assert.deepStrictEqual(await oldWait, { kind: 'invalidated', reason: 'lifecycle' });
         const freshWait = await registry.waitFor(first, () => 43);
         assert.deepStrictEqual(freshWait.kind, 'resolved');
-        if (freshWait.kind === 'resolved') { assert.strictEqual(freshWait.value, 43); }
+        if (freshWait.kind === 'resolved') {
+            assert.strictEqual(freshWait.value, 43);
+        }
     });
 
     test('terminal invalidation is scoped to its terminal', async () => {
@@ -121,7 +143,9 @@ suite('Native terminal PID wait registry', () => {
         otherPending.resolve(44);
         const otherResult = await otherWait;
         assert.strictEqual(otherResult.kind, 'resolved');
-        if (otherResult.kind === 'resolved') { assert.strictEqual(otherResult.value, 44); }
+        if (otherResult.kind === 'resolved') {
+            assert.strictEqual(otherResult.value, 44);
+        }
     });
 
     test('AbortSignal invalidation cleans up its listener', async () => {
@@ -136,18 +160,35 @@ suite('Native terminal PID wait registry', () => {
 
     test('normal completion and read or eligibility errors clean up AbortSignal listeners', async () => {
         const completedSignal = trackedSignal();
-        const complete = await registry.waitFor(first, () => 46, { signal: completedSignal.signal });
+        const complete = await registry.waitFor(first, () => 46, {
+            signal: completedSignal.signal,
+        });
         assert.strictEqual(complete.kind, 'resolved');
         assert.strictEqual(completedSignal.removals, 1);
 
         const readSignal = trackedSignal();
-        await assert.rejects(registry.waitFor(first, () => { throw new Error('read failed'); }, { signal: readSignal.signal }), /read failed/);
+        await assert.rejects(
+            registry.waitFor(
+                first,
+                () => {
+                    throw new Error('read failed');
+                },
+                { signal: readSignal.signal },
+            ),
+            /read failed/,
+        );
         assert.strictEqual(readSignal.removals, 1);
 
         const eligibilitySignal = trackedSignal();
-        await assert.rejects(registry.waitFor(first, () => 47, {
-            signal: eligibilitySignal.signal, isEligible: () => { throw new Error('eligibility failed'); },
-        }), /eligibility failed/);
+        await assert.rejects(
+            registry.waitFor(first, () => 47, {
+                signal: eligibilitySignal.signal,
+                isEligible: () => {
+                    throw new Error('eligibility failed');
+                },
+            }),
+            /eligibility failed/,
+        );
         assert.strictEqual(eligibilitySignal.removals, 1);
     });
 
@@ -158,7 +199,9 @@ suite('Native terminal PID wait registry', () => {
         const wait = registry.waitFor(first, () => pending.promise, {
             signal: tracked.signal,
             isEligible: () => {
-                if (eligibilityFailure) { throw new Error('terminal eligibility changed'); }
+                if (eligibilityFailure) {
+                    throw new Error('terminal eligibility changed');
+                }
                 return true;
             },
         });

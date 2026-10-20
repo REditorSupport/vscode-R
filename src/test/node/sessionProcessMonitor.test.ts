@@ -8,14 +8,17 @@ suite('Session process monitor', () => {
     let kill: sinon.SinonStub;
     let monitor: SessionProcessMonitor<ReturnType<typeof owner>>;
     const owner = (sessionId = 'source', pid = '12345', host = 'local') => ({
-        sessionId, pid, host, processExited: false,
+        sessionId,
+        pid,
+        host,
+        processExited: false,
     });
 
     setup(() => {
         sandbox = sinon.createSandbox();
         clock = sandbox.useFakeTimers();
         kill = sandbox.stub(process, 'kill').returns(true);
-        monitor = new SessionProcessMonitor(host => host.toLowerCase() === 'local');
+        monitor = new SessionProcessMonitor((host) => host.toLowerCase() === 'local');
     });
 
     teardown(() => sandbox.restore());
@@ -23,8 +26,11 @@ suite('Session process monitor', () => {
     test('shares one timer and one probe per source, including reconnected transports', () => {
         const first = owner();
         const callbacks = [sandbox.stub(), sandbox.stub(), sandbox.stub()];
-        const viewers = [monitor.observe(first, callbacks[0]), monitor.observe(first, callbacks[1]),
-            monitor.observe(owner('source', '12345', 'LOCAL'), callbacks[2])];
+        const viewers = [
+            monitor.observe(first, callbacks[0]),
+            monitor.observe(first, callbacks[1]),
+            monitor.observe(owner('source', '12345', 'LOCAL'), callbacks[2]),
+        ];
         const other = monitor.observe(owner('other', '23456'), sandbox.stub());
         assert.strictEqual(clock.countTimers(), 1);
         clock.tick(1000);
@@ -40,8 +46,8 @@ suite('Session process monitor', () => {
         sinon.assert.notCalled(callbacks[0]);
         sinon.assert.calledOnce(callbacks[1]);
         sinon.assert.calledOnce(callbacks[2]);
-        assert.ok(viewers.every(viewer => viewer.exited));
-        viewers.forEach(viewer => viewer.dispose());
+        assert.ok(viewers.every((viewer) => viewer.exited));
+        viewers.forEach((viewer) => viewer.dispose());
         assert.strictEqual(clock.countTimers(), 1, 'the other process still needs monitoring');
         other.dispose();
         assert.strictEqual(clock.countTimers(), 0);
@@ -50,21 +56,25 @@ suite('Session process monitor', () => {
     test('confirmed exit immediately notifies every viewer and stops polling', () => {
         const source = owner();
         const callbacks = [sandbox.stub(), sandbox.stub()];
-        const viewers = callbacks.map(callback => monitor.observe(source, callback));
+        const viewers = callbacks.map((callback) => monitor.observe(source, callback));
         source.processExited = true;
         monitor.markExited(source);
-        callbacks.forEach(callback => sinon.assert.calledOnce(callback));
-        assert.ok(viewers.every(viewer => viewer.exited));
+        callbacks.forEach((callback) => sinon.assert.calledOnce(callback));
+        assert.ok(viewers.every((viewer) => viewer.exited));
         assert.strictEqual(clock.countTimers(), 0);
         monitor.markExited(source);
         clock.tick(1000);
-        callbacks.forEach(callback => sinon.assert.calledOnce(callback));
+        callbacks.forEach((callback) => sinon.assert.calledOnce(callback));
         sinon.assert.notCalled(kill);
-        viewers.forEach(viewer => viewer.dispose());
+        viewers.forEach((viewer) => viewer.dispose());
     });
 
     test('remote hosts and invalid PIDs need no polling timer', () => {
-        for (const source of [owner('remote', '12345', 'foreign'), owner('invalid', 'not-a-pid'), owner('empty', '')]) {
+        for (const source of [
+            owner('remote', '12345', 'foreign'),
+            owner('invalid', 'not-a-pid'),
+            owner('empty', ''),
+        ]) {
             const callback = sandbox.stub();
             const viewer = monitor.observe(source, callback);
             assert.strictEqual(clock.countTimers(), 0);
@@ -88,7 +98,8 @@ suite('Session process monitor', () => {
         const next = monitor.observe(reconnected, sandbox.stub());
         assert.strictEqual(next.exited, true);
         assert.strictEqual(clock.countTimers(), 0);
-        viewer.dispose(); next.dispose();
+        viewer.dispose();
+        next.dispose();
     });
 
     test('permission and unknown errors do not mark the source exited', () => {
@@ -124,7 +135,8 @@ suite('Session process monitor', () => {
         assert.strictEqual(replacement.exited, false);
         clock.tick(1000);
         sinon.assert.calledOnceWithExactly(kill, 23456, 0);
-        reopened.dispose(); replacement.dispose();
+        reopened.dispose();
+        replacement.dispose();
     });
 
     test('monitoring resumes if the last viewer closes before the source exits', () => {
@@ -156,7 +168,8 @@ suite('Session process monitor', () => {
         assert.strictEqual(first.exited, true);
         assert.strictEqual(second.exited, false);
         assert.strictEqual(monitor.hasExited(replacement), false);
-        first.dispose(); second.dispose();
+        first.dispose();
+        second.dispose();
     });
 
     test('an exit without PID metadata cannot select between reused session IDs', () => {
@@ -167,7 +180,8 @@ suite('Session process monitor', () => {
         monitor.markExited({ ...owner('ambiguous', ''), processExited: true });
         sinon.assert.notCalled(firstCallback);
         sinon.assert.notCalled(secondCallback);
-        first.dispose(); second.dispose();
+        first.dispose();
+        second.dispose();
     });
 
     test('a captured source can confirm exit after its viewers are restored through a new owner object', () => {

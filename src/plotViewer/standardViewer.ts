@@ -1,4 +1,3 @@
-
 import * as vscode from 'vscode';
 import { asViewColumn, config, UriIcon } from '../util';
 import * as session from '../session';
@@ -31,7 +30,10 @@ export class StandardPlotViewer implements PlotViewer {
     private plotRequest: Promise<void> | undefined;
 
     public async update(): Promise<void> {
-        const viewColumn = asViewColumn(config().get<string>('session.viewers.viewColumn.plot'), vscode.ViewColumn.Two);
+        const viewColumn = asViewColumn(
+            config().get<string>('session.viewers.viewColumn.plot'),
+            vscode.ViewColumn.Two,
+        );
         if (!this.panel) {
             this.createPanel(viewColumn);
         } else {
@@ -65,12 +67,12 @@ export class StandardPlotViewer implements PlotViewer {
             'R Plot',
             {
                 viewColumn,
-                preserveFocus: true
+                preserveFocus: true,
             },
             {
                 enableScripts: true,
-                retainContextWhenHidden: true
-            }
+                retainContextWhenHidden: true,
+            },
         );
         this.panel = panel;
         const generation = ++this.panelGeneration;
@@ -78,13 +80,19 @@ export class StandardPlotViewer implements PlotViewer {
         panel.iconPath = new UriIcon('graph');
         panel.webview.html = this.getHtml();
 
-        panel.webview.onDidReceiveMessage(async (msg: { type: string, width?: number, height?: number }) => {
-            if (this.panel === panel && this.panelGeneration === generation && msg.type === 'resize') {
-                this.viewWidth = msg.width || this.viewWidth;
-                this.viewHeight = msg.height || this.viewHeight;
-                await this.requestPlot();
-            }
-        });
+        panel.webview.onDidReceiveMessage(
+            async (msg: { type: string; width?: number; height?: number }) => {
+                if (
+                    this.panel === panel &&
+                    this.panelGeneration === generation &&
+                    msg.type === 'resize'
+                ) {
+                    this.viewWidth = msg.width || this.viewWidth;
+                    this.viewHeight = msg.height || this.viewHeight;
+                    await this.requestPlot();
+                }
+            },
+        );
 
         panel.onDidDispose(() => {
             if (this.panel === panel && this.panelGeneration === generation) {
@@ -107,7 +115,7 @@ export class StandardPlotViewer implements PlotViewer {
             width: this.viewWidth,
             height: this.viewHeight,
             format: config().get<string>('plot.format', 'svglite'),
-            devArgs: config().get<Record<string, unknown>>('plot.devArgs')
+            devArgs: config().get<Record<string, unknown>>('plot.devArgs'),
         };
         return this.startPlotDrain();
     }
@@ -120,30 +128,35 @@ export class StandardPlotViewer implements PlotViewer {
         // Publish the flight before starting the drain because a requester can
         // synchronously trigger another viewer event while starting its RPC.
         let resolveFlight!: () => void;
-        const flight = new Promise<void>(resolve => { resolveFlight = resolve; });
+        const flight = new Promise<void>((resolve) => {
+            resolveFlight = resolve;
+        });
         this.plotRequest = flight;
 
         const drain = () => {
-            void this.drainPlotRequests().then(() => {
-                if (this.plotRequest !== flight) {
-                    resolveFlight();
-                    return;
-                }
-                if (this.pendingPlotRequest) {
-                    // Keep the queued descriptor as captured; never recapture
-                    // the active session while handing off the same flight.
-                    drain();
-                    return;
-                }
-                this.plotRequest = undefined;
-                resolveFlight();
-            }, error => {
-                console.error('Failed to update the standard plot viewer:', error);
-                if (this.plotRequest === flight) {
+            void this.drainPlotRequests().then(
+                () => {
+                    if (this.plotRequest !== flight) {
+                        resolveFlight();
+                        return;
+                    }
+                    if (this.pendingPlotRequest) {
+                        // Keep the queued descriptor as captured; never recapture
+                        // the active session while handing off the same flight.
+                        drain();
+                        return;
+                    }
                     this.plotRequest = undefined;
-                }
-                resolveFlight();
-            });
+                    resolveFlight();
+                },
+                (error) => {
+                    console.error('Failed to update the standard plot viewer:', error);
+                    if (this.plotRequest === flight) {
+                        this.plotRequest = undefined;
+                    }
+                    resolveFlight();
+                },
+            );
         };
 
         drain();
@@ -160,15 +173,18 @@ export class StandardPlotViewer implements PlotViewer {
 
             let response: PlotResponse | undefined;
             try {
-                response = await session.sessionRequest({
-                    method: 'plot_latest',
-                    params: {
-                        width: request.width,
-                        height: request.height,
-                        format: request.format,
-                        devArgs: request.devArgs
-                    }
-                }, request.targetSession) as PlotResponse | undefined;
+                response = (await session.sessionRequest(
+                    {
+                        method: 'plot_latest',
+                        params: {
+                            width: request.width,
+                            height: request.height,
+                            format: request.format,
+                            devArgs: request.devArgs,
+                        },
+                    },
+                    request.targetSession,
+                )) as PlotResponse | undefined;
             } catch {
                 // sessionRequest normally converts transport failures to undefined;
                 // keep the viewer resilient if a requester rejects directly.
@@ -187,17 +203,19 @@ export class StandardPlotViewer implements PlotViewer {
                 void request.panel.webview.postMessage({
                     type: 'update',
                     data: this.plotData,
-                    format: this.plotFormat
+                    format: this.plotFormat,
                 });
             }
         }
     }
 
     private isCurrentRequest(request: PendingPlotRequest): boolean {
-        return Boolean(session.globalPipePath)
-            && this.panel === request.panel
-            && this.panelGeneration === request.panelGeneration
-            && session.activeSession === request.targetSession;
+        return (
+            Boolean(session.globalPipePath) &&
+            this.panel === request.panel &&
+            this.panelGeneration === request.panelGeneration &&
+            session.activeSession === request.targetSession
+        );
     }
 
     private discardPendingForSession(targetSession: session.Session | undefined): void {

@@ -1,5 +1,3 @@
-
-
 interface Plot {
     // unique ID for this plot (w.r.t. this connection/device)
     id: string;
@@ -18,17 +16,15 @@ const vscode = acquireVsCodeApi() as { postMessage: (msg: any) => void };
 let oldHeight = -1;
 let oldWidth = -1;
 
-
 const handler = document.querySelector('#handler') as HTMLDivElement;
 const largePlotDiv = document.querySelector('#largePlot') as HTMLDivElement;
 const largeSvg = largePlotDiv.querySelector('svg') as SVGElement;
 const cssLink = document.querySelector('link.overwrites') as HTMLLinkElement;
 const smallPlotDiv = document.querySelector('#smallPlots') as HTMLDivElement;
 
-
 function getSmallPlots(): HTMLAnchorElement[] {
     const smallPlots: HTMLAnchorElement[] = [];
-    document.querySelectorAll('a.focusPlot').forEach(elm => {
+    document.querySelectorAll('a.focusPlot').forEach((elm) => {
         smallPlots.push(elm as HTMLAnchorElement);
     });
     return smallPlots;
@@ -36,22 +32,21 @@ function getSmallPlots(): HTMLAnchorElement[] {
 
 let isHandlerDragging = false;
 
-
 let isFullWindow = false;
 
-function postResizeMessage(userTriggered: boolean = false){
+function postResizeMessage(userTriggered: boolean = false) {
     let newHeight = largePlotDiv.clientHeight;
     let newWidth = largePlotDiv.clientWidth;
-    if(isFullWindow){
+    if (isFullWindow) {
         newHeight = window.innerHeight;
         newWidth = window.innerWidth;
     }
-    if(userTriggered || newHeight !== oldHeight || newWidth !== oldWidth){
+    if (userTriggered || newHeight !== oldHeight || newWidth !== oldWidth) {
         const msg: ResizeMessage = {
             message: 'resize',
             height: newHeight,
             width: newWidth,
-            userTriggered: userTriggered
+            userTriggered: userTriggered,
         };
         vscode.postMessage(msg);
         oldHeight = newHeight;
@@ -61,27 +56,27 @@ function postResizeMessage(userTriggered: boolean = false){
 
 window.addEventListener('message', (ev: MessageEvent<InMessage>) => {
     const msg = ev.data;
-    if(msg.message === 'updatePlot'){
+    if (msg.message === 'updatePlot') {
         updatePlot({
             id: String(msg.plotId),
-            svg: msg.svg
+            svg: msg.svg,
         });
-    } else if(msg.message === 'focusPlot'){
+    } else if (msg.message === 'focusPlot') {
         focusPlot(String(msg.plotId));
-    } else if(msg.message === 'toggleStyle'){
+    } else if (msg.message === 'toggleStyle') {
         toggleStyle(msg.useOverwrites);
-    } else if(msg.message === 'hidePlot'){
+    } else if (msg.message === 'hidePlot') {
         hidePlot(msg.plotId);
-    } else if(msg.message === 'addPlot'){
+    } else if (msg.message === 'addPlot') {
         addPlot(msg.html);
-    } else if(msg.message === 'togglePreviewPlotLayout'){
+    } else if (msg.message === 'togglePreviewPlotLayout') {
         togglePreviewPlotLayout(msg.style);
-    } else if(msg.message === 'toggleFullWindow'){
+    } else if (msg.message === 'toggleFullWindow') {
         toggleFullWindowMode(msg.useFullWindow);
     }
 });
 
-function addPlot(html: string){
+function addPlot(html: string) {
     const wrapper = document.createElement('div');
     wrapper.classList.add('wrapper');
     wrapper.innerHTML = html;
@@ -89,15 +84,14 @@ function addPlot(html: string){
 }
 
 function focusPlot(plotId: string): void {
-
     const smallPlots = getSmallPlots();
 
     const ind = findIndex(plotId, smallPlots);
-    if(ind < 0){
+    if (ind < 0) {
         return;
     }
 
-    for(const elm of smallPlots){
+    for (const elm of smallPlots) {
         elm.classList.remove('active');
     }
 
@@ -109,17 +103,16 @@ function focusPlot(plotId: string): void {
 }
 
 function updatePlot(plt: Plot): void {
-
     const smallPlots = getSmallPlots();
 
     const ind = findIndex(plt.id, smallPlots);
-    if(ind<0){
+    if (ind < 0) {
         return;
     }
 
     smallPlots[ind].innerHTML = plt.svg;
 
-    if(smallPlots[ind].classList.contains('active')){
+    if (smallPlots[ind].classList.contains('active')) {
         largePlotDiv.innerHTML = plt.svg;
     }
 }
@@ -128,11 +121,11 @@ function hidePlot(plotId: string): void {
     const smallPlots = getSmallPlots();
 
     const ind = findIndex(plotId, smallPlots);
-    if(ind<0){
+    if (ind < 0) {
         return;
     }
 
-    if(smallPlots[ind].classList.contains('active')){
+    if (smallPlots[ind].classList.contains('active')) {
         largePlotDiv.innerHTML = '';
     }
 
@@ -141,8 +134,8 @@ function hidePlot(plotId: string): void {
 
 function findIndex(plotId: string, smallPlots?: Element[]): number {
     smallPlots ||= getSmallPlots();
-    const ind = smallPlots.findIndex(elm => elm.getAttribute('plotId') === String(plotId));
-    if(ind<0){
+    const ind = smallPlots.findIndex((elm) => elm.getAttribute('plotId') === String(plotId));
+    if (ind < 0) {
         console.warn(`plotId not found: ${plotId}`);
     }
     return ind;
@@ -159,7 +152,7 @@ function togglePreviewPlotLayout(newStyle: PreviewPlotLayout): void {
 
 function toggleFullWindowMode(useFullWindow: boolean): void {
     isFullWindow = useFullWindow;
-    if(useFullWindow){
+    if (useFullWindow) {
         document.body.classList.add('fullWindow');
         window.scrollTo(0, 0);
     } else {
@@ -177,11 +170,9 @@ window.onload = () => {
     postResizeMessage(true);
 };
 
-
 ////
 // Resize bar
 ////
-
 
 document.addEventListener('mousedown', (e) => {
     // If mousedown event is fired from .handler, toggle flag to true
@@ -213,7 +204,7 @@ document.addEventListener('mousemove', (e) => {
     const newHeight = Math.max(largePlotMinHeight, pointerRelativeYpos - 5); // <- why 5?
     const newHeightString = `${newHeight}px`;
 
-    if(largePlotDiv.style.height !== newHeightString){
+    if (largePlotDiv.style.height !== newHeightString) {
         largePlotDiv.style.height = newHeightString;
         postResizeMessage();
     }
@@ -223,11 +214,10 @@ window.onresize = () => postResizeMessage();
 
 document.addEventListener('mouseup', () => {
     // Turn off dragging flag when user mouse is up
-    if(isHandlerDragging){
+    if (isHandlerDragging) {
         postResizeMessage(true);
         document.body.style.cursor = '';
     }
     handler.classList.remove('dragging');
     isHandlerDragging = false;
 });
-
