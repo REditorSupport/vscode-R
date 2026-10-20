@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- R files now default to two-space indentation to match lintr. This language-specific default overrides general indentation settings; set `editor.tabSize` in `[r]` user or workspace settings to choose a different width. (#1883)
 - Accepting a function or method completion that inserts parentheses now opens signature help, respecting `editor.parameterHints.enabled`.
 
 ## 3.2.0 - 2026-10-15

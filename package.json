@@ -2497,6 +2497,7 @@
     },
     "configurationDefaults": {
       "[r]": {
+        "editor.tabSize": 2,
         "editor.wordSeparators": "`~!@#$%^&*()-=+[{]}\\|;:'\",<>/"
       }
     },
