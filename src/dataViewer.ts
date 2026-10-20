@@ -121,7 +121,24 @@ export function getDataViewerScript(): string {
                 column.cellDataType = 'number';
             } else if (column.type === 'booleanColumn') {
                 column.cellDataType = 'boolean';
-                column.filterParams = { buttons: ['reset'] };
+                column.filterParams = {
+                    buttons: ['reset', 'apply'],
+                    // Keep AG Grid's boolean choices and include R's NA (null).
+                    filterOptions: [
+                        'empty',
+                        {
+                            displayKey: 'true', displayName: 'True',
+                            predicate: (_filterValues, cellValue) => cellValue === true,
+                            numberOfInputs: 0
+                        },
+                        {
+                            displayKey: 'false', displayName: 'False',
+                            predicate: (_filterValues, cellValue) => cellValue === false,
+                            numberOfInputs: 0
+                        },
+                        'blank'
+                    ]
+                };
             }
             if (column.field === '0') {
                 column.pinned = 'left';
