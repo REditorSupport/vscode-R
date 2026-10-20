@@ -8,4 +8,6 @@ const generation = Number(script.dataset.generation);
 initializeWidgetContent(vscode, generation, script.dataset.sessionOwned === 'true');
 initializeWidgetLoad(vscode, generation);
 const state = JSON.parse(script.dataset.viewerState ?? 'null') as HtmlViewerPanelReference | null;
-if (state) { initializeWidgetState(vscode, state); }
+if (state) {
+    initializeWidgetState(vscode, state);
+}

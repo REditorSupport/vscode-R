@@ -18,7 +18,9 @@ suite('List viewer panels', () => {
     });
 
     teardown(() => {
-        panels.splice(0).forEach(panel => { panel.dispose(); });
+        panels.splice(0).forEach((panel) => {
+            panel.dispose();
+        });
         sandbox.restore();
     });
 
@@ -51,21 +53,40 @@ suite('List viewer panels', () => {
         });
 
         test(`handles pending ${source} requests when a real VS Code panel closes`, async () => {
-            const panel = vscode.window.createWebviewPanel('dataview', 'x', vscode.ViewColumn.Two, {});
+            const panel = vscode.window.createWebviewPanel(
+                'dataview',
+                'x',
+                vscode.ViewColumn.Two,
+                {},
+            );
             panels.push(panel);
             const receive = sandbox.spy(panel.webview, 'onDidReceiveMessage');
             sandbox.stub(vscode.window, 'createWebviewPanel').returns(panel);
             await session.showDataView(source, 'json', 'x', '', 'Two', `test-pending-${source}`);
-            const documentGeneration = Number(/const documentGeneration = (\d+)/.exec(panel.webview.html)?.[1]);
+            const documentGeneration = Number(
+                /const documentGeneration = (\d+)/.exec(panel.webview.html)?.[1],
+            );
             const listener = receive.firstCall.args[0] as (message: unknown) => Promise<void>;
             // With no R session, requests settle asynchronously with an unavailable response.
-            const pending = source === 'table'
-                ? [listener({
-                    message: 'dataview/request', action: 'page', documentGeneration, requestId: 1,
-                })]
-                : ['listview/page', 'listview/navigate'].map(message => listener({
-                    message, documentGeneration, requestId: 1, path: [], start: 1,
-                }));
+            const pending =
+                source === 'table'
+                    ? [
+                          listener({
+                              message: 'dataview/request',
+                              action: 'page',
+                              documentGeneration,
+                              requestId: 1,
+                          }),
+                      ]
+                    : ['listview/page', 'listview/navigate'].map((message) =>
+                          listener({
+                              message,
+                              documentGeneration,
+                              requestId: 1,
+                              path: [],
+                              start: 1,
+                          }),
+                      );
             panel.dispose();
             await Promise.all(pending);
         });
@@ -73,23 +94,30 @@ suite('List viewer panels', () => {
 
     test('reuses separate list and table panels, updates titles, and reopens closed viewers', async () => {
         const reveals: sinon.SinonStub[] = [];
-        const create = sandbox.stub(vscode.window, 'createWebviewPanel').callsFake((_type, title) => {
-            const disposed = new vscode.EventEmitter<void>();
-            const reveal = sandbox.stub();
-            reveals.push(reveal);
-            const panel = {
-                title, viewColumn: vscode.ViewColumn.Three,
-                reveal,
-                webview: {
-                    html: '', asWebviewUri: (uri: vscode.Uri) => uri,
-                    onDidReceiveMessage: sandbox.stub(),
-                },
-                onDidDispose: disposed.event,
-                dispose: () => { disposed.fire(); disposed.dispose(); },
-            } as unknown as vscode.WebviewPanel;
-            panels.push(panel);
-            return panel;
-        });
+        const create = sandbox
+            .stub(vscode.window, 'createWebviewPanel')
+            .callsFake((_type, title) => {
+                const disposed = new vscode.EventEmitter<void>();
+                const reveal = sandbox.stub();
+                reveals.push(reveal);
+                const panel = {
+                    title,
+                    viewColumn: vscode.ViewColumn.Three,
+                    reveal,
+                    webview: {
+                        html: '',
+                        asWebviewUri: (uri: vscode.Uri) => uri,
+                        onDidReceiveMessage: sandbox.stub(),
+                    },
+                    onDidDispose: disposed.event,
+                    dispose: () => {
+                        disposed.fire();
+                        disposed.dispose();
+                    },
+                } as unknown as vscode.WebviewPanel;
+                panels.push(panel);
+                return panel;
+            });
 
         await session.showDataView('list', 'json', 'x', '', 'Two', 'test-list-x');
         await session.showDataView('list', 'json', 'x$a', '', 'Two', 'test-list-x');
@@ -112,8 +140,13 @@ suite('List viewer panels', () => {
         await session.showDataView('list', 'json', 'y', '', 'Two', 'test-list-y');
         assert.strictEqual(create.callCount, 3);
         await session.showDataView('list', 'json', 'x$id', '', 'Two', 'test-list-x', {
-            title: 'x$id', path: [1], vector: true,
-            breadcrumbs: [{ label: 'x', path: [] }, { label: 'id', path: [1] }],
+            title: 'x$id',
+            path: [1],
+            vector: true,
+            breadcrumbs: [
+                { label: 'x', path: [] },
+                { label: 'id', path: [1] },
+            ],
         });
         assert.strictEqual(create.callCount, 3);
         assert.strictEqual(panels[0].title, 'x$id');
@@ -132,31 +165,60 @@ suite('List viewer panels', () => {
         const postMessage = sandbox.stub().resolves(true);
         const disposed = new vscode.EventEmitter<void>();
         const panel = {
-            title: '', viewColumn: vscode.ViewColumn.Two, reveal: sandbox.stub(),
+            title: '',
+            viewColumn: vscode.ViewColumn.Two,
+            reveal: sandbox.stub(),
             webview: {
-                html: '', asWebviewUri: (uri: vscode.Uri) => uri, postMessage,
-                onDidReceiveMessage: (listener: typeof receive) => { receive = listener; },
+                html: '',
+                asWebviewUri: (uri: vscode.Uri) => uri,
+                postMessage,
+                onDidReceiveMessage: (listener: typeof receive) => {
+                    receive = listener;
+                },
             },
             onDidDispose: disposed.event,
-            dispose: () => { disposed.fire(); disposed.dispose(); },
+            dispose: () => {
+                disposed.fire();
+                disposed.dispose();
+            },
         } as unknown as vscode.WebviewPanel;
         panels.push(panel);
         sandbox.stub(vscode.window, 'createWebviewPanel').returns(panel);
-        const documentGeneration = () => Number(/const documentGeneration = (\d+)/.exec(panel.webview.html)?.[1]);
+        const documentGeneration = () =>
+            Number(/const documentGeneration = (\d+)/.exec(panel.webview.html)?.[1]);
         await session.showDataView('list', 'json', 'x', '', 'Two', 'test-list-document-generation');
 
         for (const message of ['listview/navigate', 'listview/page']) {
-            const request = { message, documentGeneration: documentGeneration(), requestId: 1, path: [], start: 1 };
+            const request = {
+                message,
+                documentGeneration: documentGeneration(),
+                requestId: 1,
+                path: [],
+                start: 1,
+            };
             // sessionRequest settles asynchronously even without an attached R session.
             const pending = receive(request);
-            await session.showDataView('list', 'json', 'x$updated', '', 'Two', 'test-list-document-generation');
+            await session.showDataView(
+                'list',
+                'json',
+                'x$updated',
+                '',
+                'Two',
+                'test-list-document-generation',
+            );
             await pending;
             sinon.assert.notCalled(postMessage);
             await receive(request);
             sinon.assert.notCalled(postMessage);
             assert.strictEqual(panel.title, 'x$updated');
         }
-        await receive({ message: 'listview/page', documentGeneration: documentGeneration(), requestId: 2, path: [], start: 1 });
+        await receive({
+            message: 'listview/page',
+            documentGeneration: documentGeneration(),
+            requestId: 2,
+            path: [],
+            start: 1,
+        });
         sinon.assert.calledOnce(postMessage);
         const response = postMessage.firstCall.args[0] as { documentGeneration: number };
         assert.strictEqual(response.documentGeneration, documentGeneration());
@@ -167,27 +229,50 @@ suite('List viewer panels', () => {
         const postMessage = sandbox.stub().resolves(true);
         const disposed = new vscode.EventEmitter<void>();
         const panel = {
-            title: '', viewColumn: vscode.ViewColumn.Two, reveal: sandbox.stub(),
+            title: '',
+            viewColumn: vscode.ViewColumn.Two,
+            reveal: sandbox.stub(),
             webview: {
-                html: '', asWebviewUri: (uri: vscode.Uri) => uri, postMessage,
-                onDidReceiveMessage: (listener: typeof receive) => { receive = listener; },
+                html: '',
+                asWebviewUri: (uri: vscode.Uri) => uri,
+                postMessage,
+                onDidReceiveMessage: (listener: typeof receive) => {
+                    receive = listener;
+                },
             },
             onDidDispose: disposed.event,
-            dispose: () => { disposed.fire(); disposed.dispose(); },
+            dispose: () => {
+                disposed.fire();
+                disposed.dispose();
+            },
         } as unknown as vscode.WebviewPanel;
         panels.push(panel);
         sandbox.stub(vscode.window, 'createWebviewPanel').returns(panel);
         const documentGeneration = () =>
             Number(/const documentGeneration = (\d+)/.exec(panel.webview.html)?.[1]);
-        await session.showDataView('table', 'json', 'x', '', 'Two', 'test-dataview-document-generation');
+        await session.showDataView(
+            'table',
+            'json',
+            'x',
+            '',
+            'Two',
+            'test-dataview-document-generation',
+        );
 
         const request = {
-            message: 'dataview/request', action: 'page',
-            documentGeneration: documentGeneration(), requestId: 1,
+            message: 'dataview/request',
+            action: 'page',
+            documentGeneration: documentGeneration(),
+            requestId: 1,
         };
         const pending = receive(request);
         await session.showDataView(
-            'table', 'json', 'x$updated', '', 'Two', 'test-dataview-document-generation'
+            'table',
+            'json',
+            'x$updated',
+            '',
+            'Two',
+            'test-dataview-document-generation',
         );
         await pending;
         sinon.assert.notCalled(postMessage);
@@ -195,7 +280,9 @@ suite('List viewer panels', () => {
         sinon.assert.notCalled(postMessage);
 
         await receive({
-            ...request, documentGeneration: documentGeneration(), requestId: 2,
+            ...request,
+            documentGeneration: documentGeneration(),
+            requestId: 2,
         });
         sinon.assert.calledOnce(postMessage);
         const response = postMessage.firstCall.args[0] as { documentGeneration: number };
@@ -205,14 +292,40 @@ suite('List viewer panels', () => {
     test('supported workspace children retain open actions alongside expansion', () => {
         for (const type of ['list', 'environment', 'pairlist', 'S4', 'double', 'closure']) {
             const structured = ['list', 'environment', 'pairlist', 'S4'].includes(type);
-            const node = new GlobalEnvItem('', type, '$ item', type, 1, undefined, structured,
-                'x', [{ kind: 'index', value: 1 }], undefined, true);
+            const node = new GlobalEnvItem(
+                '',
+                type,
+                '$ item',
+                type,
+                1,
+                undefined,
+                structured,
+                'x',
+                [{ kind: 'index', value: 1 }],
+                undefined,
+                true,
+            );
             assert.strictEqual(node.contextValue, 'viewableNode');
-            assert.strictEqual(node.collapsibleState, structured
-                ? vscode.TreeItemCollapsibleState.Collapsed : vscode.TreeItemCollapsibleState.None);
+            assert.strictEqual(
+                node.collapsibleState,
+                structured
+                    ? vscode.TreeItemCollapsibleState.Collapsed
+                    : vscode.TreeItemCollapsibleState.None,
+            );
         }
-        const unavailable = new GlobalEnvItem('', 'active_binding', '', 'active_binding', 1,
-            undefined, false, 'x', [], undefined, false);
+        const unavailable = new GlobalEnvItem(
+            '',
+            'active_binding',
+            '',
+            'active_binding',
+            1,
+            undefined,
+            false,
+            'x',
+            [],
+            undefined,
+            false,
+        );
         assert.notStrictEqual(unavailable.contextValue, 'viewableNode');
     });
 });

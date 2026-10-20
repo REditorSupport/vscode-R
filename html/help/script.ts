@@ -8,30 +8,27 @@ window.onmousedown = (ev) => {
     vscode.postMessage({
         message: 'mouseClick',
         button: Number(ev.button),
-        scrollY: window.scrollY
+        scrollY: window.scrollY,
     });
 };
-
 
 // handle requests from vscode ui
 window.addEventListener('message', (ev: MessageEvent) => {
     // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
     const message = ev.data;
     // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-    if(message.command === 'getScrollY'){
+    if (message.command === 'getScrollY') {
         vscode.postMessage({
             message: 'getScrollY',
-            scrollY: window.scrollY
+            scrollY: window.scrollY,
         });
     }
 });
 
-
 // do everything after loading the body
 window.document.body.onload = () => {
-
     // make relative path for hyperlinks
-    const relPath = (document.body.getAttribute('relPath') || '');
+    const relPath = document.body.getAttribute('relPath') || '';
 
     // notify vscode, used to restore help panels between sessions
     vscode.setState(relPath);
@@ -42,42 +39,41 @@ window.document.body.onload = () => {
 
     // scroll to desired position:
     const scrollYTo = Number(document.body.getAttribute('scrollYTo') ?? -1);
-    if(scrollYTo >= 0){
-        window.scrollTo(0,scrollYTo);
-    } else if(url1.hash){
+    if (scrollYTo >= 0) {
+        window.scrollTo(0, scrollYTo);
+    } else if (url1.hash) {
         document.location.hash = url1.hash;
     }
 
     // notify vscode when links are clicked:
     const hyperLinks = document.getElementsByTagName('a');
 
-    for(let i=0; i<hyperLinks.length; i++){
+    for (let i = 0; i < hyperLinks.length; i++) {
         const hrefAbs = hyperLinks[i].href;
         const hrefRel = hyperLinks[i].getAttribute('href') || '';
 
-        if(hrefRel.startsWith('#')){
+        if (hrefRel.startsWith('#')) {
             hyperLinks[i].onclick = () => {
                 document.location.hash = hrefRel;
             };
-        } else if(hrefAbs && hrefAbs.startsWith('vscode-webview://')){
+        } else if (hrefAbs && hrefAbs.startsWith('vscode-webview://')) {
             hyperLinks[i].onclick = () => {
-
                 const url2 = new URL(hrefRel, url1);
                 const finalHref = url2.toString();
 
                 vscode.postMessage({
                     message: 'linkClicked',
                     href: finalHref,
-                    scrollY: window.scrollY
+                    scrollY: window.scrollY,
                 });
             };
         }
     }
 
     // notify vscode when code is clicked:
-    if(document.body.classList.contains('preClickable')){
+    if (document.body.classList.contains('preClickable')) {
         const codeElements = document.getElementsByTagName('pre');
-        for(let i=0; i<codeElements.length; i++){
+        for (let i = 0; i < codeElements.length; i++) {
             const el = codeElements[i];
             el.onclick = (me: MouseEvent) => {
                 vscode.postMessage({
@@ -88,10 +84,9 @@ window.document.body.onload = () => {
                         ctrlKey: me.ctrlKey,
                         shiftKey: me.shiftKey,
                         metaKey: me.metaKey,
-                    }
+                    },
                 });
             };
         }
     }
 };
-

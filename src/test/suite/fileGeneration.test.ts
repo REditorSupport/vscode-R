@@ -17,7 +17,9 @@ suite('Generated file overwrite prompts', () => {
         sandbox = sinon.createSandbox();
         directory = fs.mkdtempSync(path.join(os.tmpdir(), 'vscode-r-overwrite-'));
         mockExtensionContext(path.resolve(__dirname, '../../..'), sandbox);
-        sandbox.stub(util, 'getCurrentWorkspaceFolder').returns({ uri: vscode.Uri.file(directory) } as vscode.WorkspaceFolder);
+        sandbox
+            .stub(util, 'getCurrentWorkspaceFolder')
+            .returns({ uri: vscode.Uri.file(directory) } as vscode.WorkspaceFolder);
         sandbox.stub(util, 'getRpath').resolves(undefined);
     });
     teardown(() => {
@@ -27,7 +29,9 @@ suite('Generated file overwrite prompts', () => {
 
     for (const answer of [undefined, 'No']) {
         test(`preserves existing files after ${answer ?? 'dismissal'}`, async () => {
-            sandbox.stub(vscode.window, 'showWarningMessage').callsFake(() => Promise.resolve(answer) as unknown as Thenable<never>);
+            sandbox
+                .stub(vscode.window, 'showWarningMessage')
+                .callsFake(() => Promise.resolve(answer) as unknown as Thenable<never>);
             const ignorePath = path.join(directory, '.gitignore');
             const cppPath = path.join(directory, '.vscode', 'c_cpp_properties.json');
             const lintrPath = path.join(directory, '.lintr');
@@ -39,7 +43,7 @@ suite('Generated file overwrite prompts', () => {
             await generateCppProperties();
             await createLintrConfig();
             // Flush any callback-based filesystem writes before inspecting the files.
-            await new Promise(resolve => setTimeout(resolve, 30));
+            await new Promise((resolve) => setTimeout(resolve, 30));
             assert.strictEqual(fs.readFileSync(ignorePath, 'utf8'), 'user ignore rules');
             assert.strictEqual(fs.readFileSync(cppPath, 'utf8'), 'user compiler settings');
             assert.strictEqual(fs.readFileSync(lintrPath, 'utf8'), 'user lint settings');
@@ -47,7 +51,9 @@ suite('Generated file overwrite prompts', () => {
     }
 
     test('failed compiler configuration generation preserves the existing file', async () => {
-        sandbox.stub(vscode.window, 'showWarningMessage').callsFake(() => Promise.resolve('Yes') as unknown as Thenable<never>);
+        sandbox
+            .stub(vscode.window, 'showWarningMessage')
+            .callsFake(() => Promise.resolve('Yes') as unknown as Thenable<never>);
         const cppPath = path.join(directory, '.vscode', 'c_cpp_properties.json');
         fs.mkdirSync(path.dirname(cppPath));
         fs.writeFileSync(cppPath, 'user compiler settings');
@@ -56,7 +62,9 @@ suite('Generated file overwrite prompts', () => {
     });
 
     test('unavailable R preserves the existing lint configuration after confirming overwrite', async () => {
-        sandbox.stub(vscode.window, 'showWarningMessage').callsFake(() => Promise.resolve('Yes') as unknown as Thenable<never>);
+        sandbox
+            .stub(vscode.window, 'showWarningMessage')
+            .callsFake(() => Promise.resolve('Yes') as unknown as Thenable<never>);
         sandbox.stub(util, 'executeRCommand').resolves(undefined);
         const lintrPath = path.join(directory, '.lintr');
         fs.writeFileSync(lintrPath, 'user lint settings');
@@ -66,14 +74,18 @@ suite('Generated file overwrite prompts', () => {
     });
 
     test('failed lint generation restores the original even after partial output', async () => {
-        sandbox.stub(vscode.window, 'showWarningMessage').callsFake(() => Promise.resolve('Yes') as unknown as Thenable<never>);
+        sandbox
+            .stub(vscode.window, 'showWarningMessage')
+            .callsFake(() => Promise.resolve('Yes') as unknown as Thenable<never>);
         const error = sandbox.stub(vscode.window, 'showErrorMessage');
         const lintrPath = path.join(directory, '.lintr');
         fs.writeFileSync(lintrPath, 'user lint settings');
         sandbox.stub(util, 'executeRCommand').callsFake((_command, _cwd, fallback) => {
             fs.writeFileSync(lintrPath, 'partial lint settings');
             const failure = new Error('lint generation failed');
-            if (typeof fallback === 'function') { return Promise.resolve(fallback(failure)); }
+            if (typeof fallback === 'function') {
+                return Promise.resolve(fallback(failure));
+            }
             throw failure;
         });
         assert.strictEqual(await createLintrConfig(), '');
@@ -84,7 +96,9 @@ suite('Generated file overwrite prompts', () => {
     });
 
     test('successful lint generation replaces the original and removes its backup', async () => {
-        sandbox.stub(vscode.window, 'showWarningMessage').callsFake(() => Promise.resolve('Yes') as unknown as Thenable<never>);
+        sandbox
+            .stub(vscode.window, 'showWarningMessage')
+            .callsFake(() => Promise.resolve('Yes') as unknown as Thenable<never>);
         const lintrPath = path.join(directory, '.lintr');
         fs.writeFileSync(lintrPath, 'user lint settings');
         sandbox.stub(util, 'executeRCommand').callsFake(() => {
