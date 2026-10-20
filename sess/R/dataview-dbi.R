@@ -72,8 +72,9 @@ dataview_dbi_result_reset <- function(cache_state, clear_cache = FALSE) {
   cache_state$result <- NULL
   if (clear_cache) {
     # A new execution must never append to rows from the failed cursor.
-    for (block in cache_state$result_cache_blocks) {
-      if (!is.null(block$path)) unlink(block$path, force = TRUE)
+    if (!is.null(cache_state$result_cache_dir)) {
+      # Include files finalized just before an interrupted cache publication.
+      unlink(list.files(cache_state$result_cache_dir, full.names = TRUE), force = TRUE)
     }
     cache_state$result_cache_blocks <- list()
     cache_state$result_cache_rows <- 0L
@@ -182,31 +183,28 @@ dataview_dbi_result_cache_slice <- function(state, row_idx, positions) {
         "Reopen the viewer with a dedicated connection."
       ))
     }
-    if (is.null(cache_state$result)) {
-      cache_state$result <- DBI::dbSendQuery(
-        state$dbi$con, state$dbi$query_sql
-      )
-    }
-
-    while (target > cache_state$result_cache_rows &&
-             !isTRUE(cache_state$result_complete)) {
-      block <- tryCatch(
-        DBI::dbFetch(cache_state$result, n = dataview_dbi_cache_block_size),
-        error = function(e) {
-          dataview_dbi_result_reset(cache_state, clear_cache = TRUE)
-          stop(e)
-        },
-        interrupt = function(e) {
-          dataview_dbi_result_reset(cache_state, clear_cache = TRUE)
-          stop(e)
-        }
-      )
-      dataview_dbi_result_cache_add(cache_state, block)
-      if (!nrow(block) || DBI::dbHasCompleted(cache_state$result)) {
-        cache_state$result_complete <- TRUE
-        dataview_dbi_result_reset(cache_state)
+    tryCatch({
+      if (is.null(cache_state$result)) {
+        cache_state$result <- DBI::dbSendQuery(
+          state$dbi$con, state$dbi$query_sql
+        )
       }
-    }
+      while (target > cache_state$result_cache_rows &&
+               !isTRUE(cache_state$result_complete)) {
+        block <- DBI::dbFetch(cache_state$result, n = dataview_dbi_cache_block_size)
+        dataview_dbi_result_cache_add(cache_state, block)
+        if (!nrow(block) || DBI::dbHasCompleted(cache_state$result)) {
+          cache_state$result_complete <- TRUE
+          dataview_dbi_result_reset(cache_state)
+        }
+      }
+    }, error = function(e) {
+      suspendInterrupts(dataview_dbi_result_reset(cache_state, clear_cache = TRUE))
+      stop(e)
+    }, interrupt = function(e) {
+      suspendInterrupts(dataview_dbi_result_reset(cache_state, clear_cache = TRUE))
+      stop(e)
+    })
   }
 
   available <- row_idx[row_idx <= cache_state$result_cache_rows]
