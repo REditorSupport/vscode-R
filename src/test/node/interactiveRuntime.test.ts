@@ -730,6 +730,25 @@ sess::display("display-${cell}", "text/plain"); cat("stderr-${cell}\\n", file=st
             assert.strictEqual(result.totalRows, expected, type);
         }
 
+        const flagsId = await submit('flags <- data.frame(flag=c(TRUE, FALSE, NA)); flags');
+        assert.strictEqual((await finished(flagsId)).state, 'success');
+        const flags = events.find(
+            (event) => event.executionId === flagsId && event.data.kind === 'table',
+        );
+        assert.ok(flags);
+        for (const [type, expected] of [
+            ['jdvIsNa', 1],
+            ['jdvNotNa', 2],
+            ['true', 1],
+        ] as const) {
+            const result = await queryJdvTablePage(
+                flags.data,
+                { start: 0, size: 20, filterModel: { '1': { type } } },
+                inspect,
+            );
+            assert.strictEqual(result.totalRows, expected, type);
+        }
+
         // A page past the end is clamped to the last page.
         const clamped = await queryJdvTablePage(table.data, { start: 400, size: 20 }, inspect);
         assert.strictEqual(clamped.startRow, 80);

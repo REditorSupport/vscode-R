@@ -82,7 +82,12 @@ export function normalizeJdvDisplay(data: Record<string, unknown>): Record<strin
         return {
             ...rest,
             descriptor,
-            columns: gridColumnDefs(descriptor),
+            // AG Grid supplies boolean filters itself; inline tables need explicit operators.
+            columns: gridColumnDefs(descriptor).map((column) =>
+                column.type === 'booleanColumn' && column.filter !== false
+                    ? { ...column, jdv: { filterOptions: ['true', 'false'] } }
+                    : column,
+            ),
             rows,
             totalRows,
             previewPartial: rows.length < Math.min(TABLE_PAGE_SIZE, totalRows),

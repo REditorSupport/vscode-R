@@ -171,6 +171,41 @@ suite('Interactive jdv tables', () => {
         assert.ok(!columnOperators(columns[1]).includes('inRange'));
     });
 
+    test('offers logical NA filters for jdv booleans and preserves legacy options', () => {
+        const descriptor = {
+            ...gridDescriptor,
+            ncol: 1,
+            columns: [
+                { position: 0, name: 'flag', type: 'boolean', sortable: true, filterable: true },
+            ],
+        };
+        const data = normalizeJdvDisplay(display({ descriptor: JSON.stringify(descriptor) }));
+        const column = (data.columns as TableColumn[])[1];
+        const operators = columnOperators(column);
+        assert.deepEqual(operators, ['true', 'false', 'jdvIsNa', 'jdvNotNa']);
+        assert.deepEqual(operators.map(filterOperatorLabel), [
+            'is true',
+            'is false',
+            'is NA',
+            'is not NA',
+        ]);
+        assert.ok(operators.every((operator) => !filterNeedsValue(operator)));
+        assert.deepEqual(
+            columnOperators({ field: '1', headerName: 'flag', type: 'booleanColumn' }),
+            ['true', 'false', 'blank', 'notBlank'],
+        );
+        const disabled = normalizeJdvDisplay(
+            display({
+                descriptor: JSON.stringify({
+                    ...descriptor,
+                    capabilities: { ...capabilities, filter: false },
+                }),
+            }),
+        );
+        assert.equal((disabled.columns as TableColumn[])[1].filter, false);
+        assert.equal((disabled.columns as TableColumn[])[1].jdv, undefined);
+    });
+
     test('queries the handle for sorted, filtered and refilled pages', async () => {
         const data = normalizeJdvDisplay(display());
         const requests: Record<string, unknown>[] = [];

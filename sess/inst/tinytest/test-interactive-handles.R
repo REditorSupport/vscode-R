@@ -73,7 +73,9 @@ expect_identical(wide_rows, seq_along(wide_rows) - 1L)
 factor_values <- sum(vapply(wide_pages, function(page) {
   length(page$data$columns[[3L]]$data$values)
 }, 0L))
-missing_values <- unlist(lapply(wide_pages, function(page) page$data$columns[[4L]]$data$na))
+missing_values <- unlist(lapply(wide_pages, function(page) {
+  (seq_along(page$data$source_row) - 1L) %in% page$data$columns[[4L]]$data[["na_rows"]]
+}))
 row_labels <- unlist(lapply(wide_pages, function(page) page$data$row_labels))
 empty_errors <- vapply(wide_pages, function(page) {
   identical(names(page$data$columns[[1L]]$errors), character())
