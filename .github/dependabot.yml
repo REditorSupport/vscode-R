@@ -9,4 +9,29 @@ updates:
     cooldown:
       default-days: 7
 
-# TODO: node ecosystem config (#1732)
+  # pnpm projects use the npm ecosystem.
+  - package-ecosystem: npm
+    directory: /
+    commit-message:
+      prefix: "chore: "
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    groups:
+      # Bundle routine updates; major updates still arrive one per PR.
+      dependencies:
+        dependency-type: production
+        update-types:
+          - patch
+      dev-dependencies:
+        dependency-type: development
+        update-types:
+          - patch
+    ignore:
+      # Tracks the minimum supported VS Code API; update with `engines.vscode`.
+      - dependency-name: "@types/vscode"
+      # Tracks the Node.js version bundled with the minimum supported VS Code.
+      - dependency-name: "@types/node"
+        update-types:
+          - version-update:semver-major
