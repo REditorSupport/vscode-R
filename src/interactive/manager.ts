@@ -15,6 +15,8 @@ import {
     sessionLabel,
 } from './protocol';
 import { AssetStore, AssetStorageStats, exportedAssetName, readAsset } from './assets';
+import { updateNotebookOutputs } from './notebookOutput';
+import { OutputQueue } from './outputQueue';
 import {
     defaultStorage,
     discoverSessions,
@@ -63,10 +65,12 @@ interface InteractiveView {
     controller: vscode.NotebookController;
     controllers: vscode.NotebookController[];
     inputUri?: vscode.Uri;
-    executions: Map<string, { task: vscode.NotebookCellExecution; started: boolean }>;
+    executions: Map<
+        string,
+        { task: vscode.NotebookCellExecution; started: boolean; startTime?: number }
+    >;
     chain: Promise<void>;
-    pending: Set<string>;
-    timer?: NodeJS.Timeout;
+    outputQueue: OutputQueue;
     reconnectTimer?: NodeJS.Timeout;
     disposed: boolean;
     prompts: Set<number>;
@@ -114,6 +118,18 @@ export class InteractiveManager
         string,
         { tableView?: string; listView?: string; selectedPlot?: string }
     >;
+    private executionTimings: Map<string, { startTime: number; endTime: number }>;
+    private timingWrites: OutputQueue;
+    // Display events replace their data object. Weak keys release superseded
+    // snapshots, while console/status updates can reuse encoded plot assets.
+    private renderedPlots = new WeakMap<
+        Record<string, unknown>,
+        {
+            context: string;
+            output: vscode.NotebookCellOutput;
+            data: Record<string, unknown>;
+        }
+    >();
     private status = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 20);
 
     constructor(private context: vscode.ExtensionContext) {
@@ -139,6 +155,25 @@ export class InteractiveManager
                 .map((id) => ({ id }));
         this.savedConnections = new Map(saved.map((connection) => [connection.id, connection]));
         this.outputViews = new Map(context.workspaceState.get('r.interactive.outputViews', []));
+        this.executionTimings = new Map(
+            context.workspaceState.get('r.interactive.executionTimings', []),
+        );
+        this.timingWrites = new OutputQueue(
+            async () => {
+                // Snapshot when the write starts, coalescing completions that
+                // arrived while the preceding storage update was in flight.
+                await context.workspaceState.update('r.interactive.executionTimings', [
+                    ...this.executionTimings,
+                ]);
+            },
+            (error) => {
+                if (this.closed) {
+                    console.error('R Interactive: could not save execution timings', error);
+                } else {
+                    this.report(error);
+                }
+            },
+        );
         const command = (name: string, handler: (...args: unknown[]) => unknown): void => {
             this.disposables.push(
                 vscode.commands.registerCommand(name, (...args: unknown[]) =>
@@ -335,12 +370,12 @@ export class InteractiveManager
                 if (event.affectsConfiguration('r.interactive.tableView')) {
                     for (const view of this.views.values()) {
                         view.chain = view.chain
-                            .then(async () => {
+                            .then(() => {
                                 for (const cell of this.transcriptCells(view)) {
                                     if (
                                         cell.outputs.some((output) => output.data.kind === 'table')
                                     ) {
-                                        await this.render(view, cell.record.id);
+                                        view.outputQueue.schedule(cell.record.id);
                                     }
                                 }
                             })
@@ -694,41 +729,50 @@ export class InteractiveManager
             if (view.disposed) {
                 return;
             }
-            const edits: vscode.NotebookEdit[] = [];
             const handles: string[] = [];
-            for (const cell of view.notebook.getCells().slice().reverse()) {
-                const id = cell.metadata.rExecutionId as string | undefined;
-                const transcript = id
-                    ? this.transcriptCells(view).find((cell) => cell.record.id === id)
-                    : undefined;
-                const record = transcript?.record;
-                if (record && !['queued', 'running', 'unknown'].includes(record.state)) {
-                    // Cleared outputs release their jdv handles in R.
-                    if (transcript?.generation === view.model.generation) {
-                        for (const output of transcript.outputs) {
-                            if (output.type === 'display' && isJdvOutput(output.data)) {
-                                handles.push(String(output.data.handleId));
+            await view.outputQueue.pause();
+            try {
+                const edits: vscode.NotebookEdit[] = [];
+                for (const cell of view.notebook.getCells().slice().reverse()) {
+                    const id = cell.metadata.rExecutionId as string | undefined;
+                    const transcript = id
+                        ? this.transcriptCells(view).find((cell) => cell.record.id === id)
+                        : undefined;
+                    const record = transcript?.record;
+                    if (
+                        record &&
+                        !view.executions.has(record.id) &&
+                        !['queued', 'running', 'unknown'].includes(record.state)
+                    ) {
+                        // Cleared outputs release their jdv handles in R.
+                        if (transcript?.generation === view.model.generation) {
+                            for (const output of transcript.outputs) {
+                                if (output.type === 'display' && isJdvOutput(output.data)) {
+                                    handles.push(String(output.data.handleId));
+                                }
                             }
                         }
-                    }
-                    view.hidden.add(record.id);
-                    const adjacent = edits.at(-1);
-                    if (adjacent?.range.start === cell.index + 1) {
-                        edits[edits.length - 1] = vscode.NotebookEdit.deleteCells(
-                            new vscode.NotebookRange(cell.index, adjacent.range.end),
-                        );
-                    } else {
-                        edits.push(
-                            vscode.NotebookEdit.deleteCells(
-                                new vscode.NotebookRange(cell.index, cell.index + 1),
-                            ),
-                        );
+                        view.hidden.add(record.id);
+                        const adjacent = edits.at(-1);
+                        if (adjacent?.range.start === cell.index + 1) {
+                            edits[edits.length - 1] = vscode.NotebookEdit.deleteCells(
+                                new vscode.NotebookRange(cell.index, adjacent.range.end),
+                            );
+                        } else {
+                            edits.push(
+                                vscode.NotebookEdit.deleteCells(
+                                    new vscode.NotebookRange(cell.index, cell.index + 1),
+                                ),
+                            );
+                        }
                     }
                 }
+                const edit = new vscode.WorkspaceEdit();
+                edit.set(view.notebook.uri, edits);
+                await vscode.workspace.applyEdit(edit);
+            } finally {
+                view.outputQueue.resume();
             }
-            const edit = new vscode.WorkspaceEdit();
-            edit.set(view.notebook.uri, edits);
-            await vscode.workspace.applyEdit(edit);
             if (!['exited', 'stopping'].includes(view.client.manifest.status)) {
                 for (const handle of handles) {
                     await view.client
@@ -1497,7 +1541,10 @@ export class InteractiveManager
                 inputUri,
                 executions: new Map(),
                 chain: Promise.resolve(),
-                pending: new Set(),
+                outputQueue: new OutputQueue(
+                    (id) => this.render(view, id),
+                    (error) => this.report(error),
+                ),
                 disposed: false,
                 prompts: new Set(),
                 base: '',
@@ -1665,6 +1712,21 @@ export class InteractiveManager
         view: InteractiveView,
         snapshot: AgentSnapshot,
         preserveDrafts = true,
+    ): Promise<void> {
+        // Wait only for the current notebook write. A reconnected R process may
+        // keep streaming indefinitely; suspend pending writes during restore.
+        await view.outputQueue.pause();
+        try {
+            await this.restoreSnapshot(view, snapshot, preserveDrafts);
+        } finally {
+            view.outputQueue.resume();
+        }
+    }
+
+    private async restoreSnapshot(
+        view: InteractiveView,
+        snapshot: AgentSnapshot,
+        preserveDrafts: boolean,
     ): Promise<void> {
         const previousCells = preserveDrafts ? view.notebook.getCells() : [];
         for (const { task } of view.executions.values()) {
@@ -1948,7 +2010,7 @@ export class InteractiveManager
                 await this.sessionNotice(view, 'stopped');
                 for (const cell of this.transcriptCells(view)) {
                     if (cell.outputs.some((output) => output.type === 'display')) {
-                        await this.render(view, cell.record.id);
+                        view.outputQueue.schedule(cell.record.id);
                     }
                 }
             }
@@ -2058,46 +2120,13 @@ export class InteractiveManager
             if (execution) {
                 execution.task.executionOrder = Number(event.data.order);
                 if (!execution.started) {
+                    execution.startTime = event.time;
                     execution.task.start(event.time);
                     execution.started = true;
                 }
             }
         }
-        if (event.type === 'finished' || event.type === 'uncertain') {
-            view.pending.delete(changed);
-            try {
-                await this.render(view, changed);
-            } finally {
-                const execution = view.executions.get(changed);
-                if (execution) {
-                    execution.task.end(
-                        event.data.state === 'success'
-                            ? true
-                            : event.data.state === 'error'
-                              ? false
-                              : undefined,
-                        event.time,
-                    );
-                    view.executions.delete(changed);
-                }
-            }
-        } else {
-            view.pending.add(changed);
-            if (!view.timer) {
-                view.timer = setTimeout(() => {
-                    view.timer = undefined;
-                    const ids = [...view.pending];
-                    view.pending.clear();
-                    view.chain = view.chain
-                        .then(async () => {
-                            for (const id of ids) {
-                                await this.render(view, id);
-                            }
-                        })
-                        .catch((error) => this.report(error));
-                }, 40);
-            }
-        }
+        view.outputQueue.schedule(changed, event.type === 'finished' || event.type === 'uncertain');
     }
 
     private async cellData(
@@ -2129,9 +2158,12 @@ export class InteractiveManager
                       ? false
                       : undefined,
             timing:
-                cell.record.started && cell.record.ended
+                this.executionTimings.get(
+                    `${view.client.manifest.id}:${cell.generation}:${cell.record.id}`,
+                ) ??
+                (cell.record.started && cell.record.ended
                     ? { startTime: cell.record.started, endTime: cell.record.ended }
-                    : undefined,
+                    : undefined),
         };
         data.outputs = await this.outputs(view, cell, portable);
         return data;
@@ -2144,8 +2176,21 @@ export class InteractiveManager
     ): Promise<vscode.NotebookCellOutput[]> {
         const outputs: vscode.NotebookCellOutput[] = [];
         const plots: { output: vscode.NotebookCellOutput; data: Record<string, unknown> }[] = [];
+        const plotContext = JSON.stringify([
+            view.base,
+            cell.generation,
+            view.model.generation,
+            view.client.connected,
+            !['exited', 'stopping'].includes(view.client.manifest.status),
+        ]);
         for (const output of cell.outputs) {
             const data = output.data;
+            const cachedPlot = !portable && this.renderedPlots.get(data);
+            if (cachedPlot && cachedPlot.context === plotContext) {
+                plots.push(cachedPlot);
+                outputs.push(cachedPlot.output);
+                continue;
+            }
             let items: vscode.NotebookCellOutputItem[];
             if (output.type === 'stream') {
                 items = [
@@ -2264,7 +2309,11 @@ export class InteractiveManager
                     const plotOutput = new vscode.NotebookCellOutput(items, {
                         rDisplayId: data.displayId,
                     });
-                    plots.push({ output: plotOutput, data: display });
+                    const rendered = { output: plotOutput, data: display, context: plotContext };
+                    if (!portable) {
+                        this.renderedPlots.set(data, rendered);
+                    }
+                    plots.push(rendered);
                     outputs.push(plotOutput);
                     continue;
                 }
@@ -2303,6 +2352,49 @@ export class InteractiveManager
     }
 
     private async render(view: InteractiveView, id: string): Promise<void> {
+        try {
+            await this.renderOutputs(view, id);
+        } finally {
+            // OutputQueue reports delivery failures separately. Completion
+            // still reflects R's result and must release the execution handle.
+            const execution = view.executions.get(id),
+                record = view.model.cells.get(id)?.record;
+            if (
+                !view.disposed &&
+                !view.outputQueue.has(id) &&
+                execution &&
+                record &&
+                !['queued', 'running'].includes(record.state)
+            ) {
+                // The live timer includes output delivery. End it when the last
+                // notebook update completes, rather than backdating it to R's
+                // earlier completion event. Keep the journal's R timing intact.
+                const endTime = Math.max(execution.startTime ?? 0, Date.now());
+                execution.task.end(
+                    record.state === 'success'
+                        ? true
+                        : record.state === 'error'
+                          ? false
+                          : undefined,
+                    endTime,
+                );
+                view.executions.delete(id);
+                if (execution.startTime !== undefined) {
+                    const key = `${view.client.manifest.id}:${view.model.generation}:${id}`;
+                    this.executionTimings.delete(key);
+                    this.executionTimings.set(key, { startTime: execution.startTime, endTime });
+                    while (this.executionTimings.size > 1000) {
+                        this.executionTimings.delete(
+                            this.executionTimings.keys().next().value as string,
+                        );
+                    }
+                    this.timingWrites.schedule('executionTimings', true);
+                }
+            }
+        }
+    }
+
+    private async renderOutputs(view: InteractiveView, id: string): Promise<void> {
         if (view.disposed || view.notebook.isClosed) {
             return;
         }
@@ -2318,9 +2410,18 @@ export class InteractiveManager
         ) {
             return;
         }
-        const outputs = await this.outputs(view, data);
+        // Rendering may await asset reads while the transcript receives newer
+        // events. Snapshot mutable streams and defer obsolete output writes.
+        const snapshot = {
+            ...data,
+            outputs: data.outputs.map((output) => ({
+                ...output,
+                data: output.type === 'stream' ? { ...output.data } : output.data,
+            })),
+        };
+        const outputs = await this.outputs(view, snapshot);
         // Asset reads can outlive detach or reconnection. Re-read the live handle.
-        if (view.disposed || view.notebook.isClosed) {
+        if (view.disposed || view.notebook.isClosed || view.outputQueue.has(id)) {
             return;
         }
         const cell = this.cell(view, id);
@@ -2331,10 +2432,11 @@ export class InteractiveManager
         if (execution) {
             // A dispatch failure may have diagnostics but no R start event.
             if (!execution.started) {
-                execution.task.start(data.record.started);
+                execution.startTime = snapshot.record.started ?? Date.now();
+                execution.task.start(execution.startTime);
                 execution.started = true;
             }
-            await execution.task.replaceOutput(outputs);
+            await updateNotebookOutputs(execution.task, cell.outputs, outputs);
         } else {
             // Updating a late plot must preserve the cell URI, edited code, selection, and diagnostics.
             const summary = cell.executionSummary;
@@ -2342,7 +2444,7 @@ export class InteractiveManager
             update.executionOrder = summary?.executionOrder;
             update.start(summary?.timing?.startTime);
             try {
-                await update.replaceOutput(outputs);
+                await updateNotebookOutputs(update, cell.outputs, outputs);
             } finally {
                 update.end(summary?.success, summary?.timing?.endTime);
             }
@@ -3186,9 +3288,7 @@ export class InteractiveManager
                 throw new Error('Reconnect to the R session before restarting it.');
             }
             await view.chain;
-            clearTimeout(view.timer);
-            view.timer = undefined;
-            view.pending.clear();
+            await view.outputQueue.flush();
             for (const { task } of view.executions.values()) {
                 task.end(undefined);
             }
@@ -3264,9 +3364,10 @@ export class InteractiveManager
             // Refresh asset URLs and disable process-specific controls without replacing old cells.
             for (const cell of this.transcriptCells(view)) {
                 if (cell.outputs.some((output) => output.type === 'display')) {
-                    await this.render(view, cell.record.id);
+                    view.outputQueue.schedule(cell.record.id);
                 }
             }
+            await view.outputQueue.flush();
             if (snapshot.manifest.status === 'exited') {
                 throw new Error('The replacement R process exited during startup');
             }
@@ -3451,7 +3552,7 @@ export class InteractiveManager
             return;
         }
         view.disposed = true;
-        clearTimeout(view.timer);
+        view.outputQueue.dispose();
         clearTimeout(view.reconnectTimer);
         disposeJdvHost(
             interactiveJdvHostKey(view.client.manifest.id, view.client.manifest.generation),
@@ -3485,6 +3586,7 @@ export class InteractiveManager
 
     dispose(): void {
         this.closed = true;
+        // Already scheduled timing writes may drain after the views close.
         setInteractiveExecutor(undefined);
         for (const view of this.views.values()) {
             this.disposeView(view);
