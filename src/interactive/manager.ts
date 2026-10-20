@@ -71,6 +71,11 @@ export class InteractiveManager implements vscode.Disposable, vscode.TreeDataPro
     private clientId: string;
     private savedConnections: Map<string, SavedConnection>;
     private outputViews: Map<string, { tableView?: string; listView?: string; selectedPlot?: string }>;
+    // Display events replace their data object. Weak keys release superseded
+    // snapshots, while console/status updates can reuse encoded plot assets.
+    private renderedPlots = new WeakMap<Record<string, unknown>, {
+        context: string; output: vscode.NotebookCellOutput; data: Record<string, unknown>;
+    }>();
     private status = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 20);
 
     constructor(private context: vscode.ExtensionContext) {
@@ -1070,8 +1075,14 @@ export class InteractiveManager implements vscode.Disposable, vscode.TreeDataPro
     private async outputs(view: InteractiveView, cell: TranscriptCell, portable = false): Promise<vscode.NotebookCellOutput[]> {
         const outputs: vscode.NotebookCellOutput[] = [];
         const plots: { output: vscode.NotebookCellOutput; data: Record<string, unknown> }[] = [];
+        const plotContext = JSON.stringify([view.base, cell.generation, view.model.generation, view.client.connected,
+            !['exited', 'stopping'].includes(view.client.manifest.status)]);
         for (const output of cell.outputs) {
             const data = output.data;
+            const cachedPlot = !portable && this.renderedPlots.get(data);
+            if (cachedPlot && cachedPlot.context === plotContext) {
+                plots.push(cachedPlot); outputs.push(cachedPlot.output); continue;
+            }
             let items: vscode.NotebookCellOutputItem[];
             if (output.type === 'stream') {
                 items = [data.channel === 'stderr' ? vscode.NotebookCellOutputItem.stderr(String(data.text)) : vscode.NotebookCellOutputItem.stdout(String(data.text))];
@@ -1127,7 +1138,9 @@ export class InteractiveManager implements vscode.Disposable, vscode.TreeDataPro
                 }
                 if (data.kind === 'plot' || data.kind === 'image') {
                     const plotOutput = new vscode.NotebookCellOutput(items, { rDisplayId: data.displayId });
-                    plots.push({ output: plotOutput, data: display }); outputs.push(plotOutput); continue;
+                    const rendered = { output: plotOutput, data: display, context: plotContext };
+                    if (!portable) { this.renderedPlots.set(data, rendered); }
+                    plots.push(rendered); outputs.push(plotOutput); continue;
                 }
             }
             outputs.push(new vscode.NotebookCellOutput(items, { rDisplayId: data.displayId }));

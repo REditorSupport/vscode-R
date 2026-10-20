@@ -1492,6 +1492,47 @@ cat("\n")`;
         }
     });
 
+    test('streams an eight-panel plot in place without rereading unchanged assets', async function () {
+        if (!manifests[0].capabilities.jgd) { this.skip(); }
+        await vscode.commands.executeCommand('r.interactive.open', manifests[0]);
+        const notebook = vscode.workspace.notebookDocuments.find(doc => doc.metadata.rSessionId === manifests[0].id);
+        assert.ok(notebook);
+        const manager = interactiveManager(bundleContext()) as unknown as { views: Map<string, { client: AgentClient }> };
+        const view = [...manager.views.values()].find(view => view.client.manifest.id === manifests[0].id); assert.ok(view);
+        const requests = sinon.spy(view.client, 'request');
+        const index = notebook.cellCount;
+        try {
+            await vscode.commands.executeCommand('r.runSelection', `local({
+  old <- par(mfrow=c(2,4), mar=c(3,3,2,2)); on.exit(par(old))
+  set.seed(123)
+  for (group in 1:2) for (metric in 1:4) {
+    values <- apply(matrix(rnorm(900), ncol=3), 2, cumsum)
+    values <- sweep(values, 1, values[,1], "-")
+    matplot(values, type="n", main=paste("Metric", (group-1)*4+metric))
+    abline(v=seq(30,300,by=30), col="gray92")
+    matlines(values, lty=1, lwd=1.2)
+    legend("topleft", c("alpha","beta","gamma"), col=1:3, lty=1, bty="n")
+    Sys.sleep(0.3)
+  }
+  for (i in 1:3) { cat("progress", i, "\\n"); Sys.sleep(0.15) }
+})`);
+            const plot = (): vscode.NotebookCellOutput | undefined => notebook.cellCount > index
+                ? notebook.cellAt(index).outputs.find(output => typeof output.metadata?.rDisplayId === 'string') : undefined;
+            await until(() => !!plot());
+            // VS Code rematerializes the API object on item changes. Its output
+            // ID is the identity delivered to the notebook renderer.
+            const outputId = (): string => (plot() as vscode.NotebookCellOutput & { id: string }).id;
+            const first = outputId(); assert.strictEqual(typeof first, 'string');
+            const finalSvg = (): string => Buffer.from(plot()?.items.find(item => item.mime === 'image/svg+xml')?.data ?? []).toString();
+            await until(() => notebook.cellAt(index).executionSummary?.success === true && finalSvg().includes('Metric 8'));
+            assert.strictEqual(outputId(), first, 'All partial and final frames must retain the renderer output identity');
+            for (let panel = 1; panel <= 8; panel++) { assert.match(finalSvg(), new RegExp(`Metric ${panel}`)); }
+            const assets = requests.getCalls().filter(call => call.args[0] === 'asset').map(call => String(call.args[1]?.id));
+            assert.ok(assets.length >= 2, 'Exercise multiple partial snapshots');
+            assert.strictEqual(assets.length, new Set(assets).size, 'Console and completion updates must reuse encoded plot assets');
+        } finally { requests.restore(); }
+    });
+
     test('groups two four-panel plot pages and exports every page without transient URLs', async function () {
         if (!manifests[0].capabilities.jgd) { this.skip(); }
         const notebook = vscode.workspace.notebookDocuments.find(doc => doc.metadata.rSessionId === manifests[0].id);
