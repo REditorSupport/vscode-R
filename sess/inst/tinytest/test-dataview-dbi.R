@@ -46,7 +46,9 @@ if (requireNamespace("DBI", quietly = TRUE) &&
     fixture$big <- bit64::as.integer64(rep("9007199254740993", nrow(fixture)))
   }
   method("dbIsValid", "dataview_dbi_test", function(dbObj, ...) TRUE)
-  method("dbGetInfo", "dataview_dbi_test", function(dbObj, ...) list(dbms.name = "Generic database"))
+  method("dbGetInfo", "dataview_dbi_test", function(dbObj, ...) {
+    list(dbms.name = "Generic database")
+  })
   method("dbListFields", c("dataview_dbi_test", "character"), function(conn, name, ...) {
     names(fixture)
   })
@@ -171,9 +173,11 @@ if (requireNamespace("DBI", quietly = TRUE) &&
         view_id = view$view_id, state_generation = view$state_generation
       ))
     }, add = TRUE)
-    page <- function(start, end) sess:::handle_dataview_page(list(
-      view_id = view$view_id, startRow = start, endRow = end, fields = "1"
-    ))
+    page <- function(start, end) {
+      sess:::handle_dataview_page(list(
+        view_id = view$view_id, startRow = start, endRow = end, fields = "1"
+      ))
+    }
     page(20000L, 20002L)
     cache <- sess:::dataview_get_state(view$view_id)$dbi_cache
     spilled <- list.files(cache$result_cache_dir, full.names = TRUE)
