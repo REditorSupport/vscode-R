@@ -13,6 +13,8 @@ import { SessionAgent } from '../../interactive/agentMain';
 import { AgentClient } from '../../interactive/client';
 import { InteractiveSerializer, DISPLAY_MIME } from '../../interactive/notebook';
 import { AgentConfig, SessionManifest } from '../../interactive/protocol';
+import type { SessionEvent } from '../../interactive/protocol';
+import type { Transcript, TranscriptCell } from '../../interactive/transcript';
 import { AssetStorageStats, exportedAssetName, readAsset } from '../../interactive/assets';
 import { resolveExecutable } from '../../interactive/executable';
 import { shellQuote } from '../../interactive/launcher';
@@ -2789,6 +2791,381 @@ cat("\n")`;
             saved.restore();
             format.restore();
             panels.restore();
+        }
+    });
+
+    test('coalesces timing storage writes without blocking completed cells', async () => {
+        await vscode.commands.executeCommand('r.interactive.open', manifests[0]);
+        const context = bundleContext();
+        const manager = interactiveManager(context) as unknown as {
+            timingWrites?: { flush(): Promise<void> };
+        };
+        await manager.timingWrites?.flush();
+        const notebook = vscode.workspace.notebookDocuments.find(
+            (doc) => doc.metadata.rSessionId === manifests[0].id,
+        );
+        assert.ok(notebook);
+        type Timings = [string, { startTime: number; endTime: number }][];
+        const snapshots: Timings[] = [],
+            keys: string[] = [];
+        let release!: () => void;
+        const delayed = new Promise<void>((resolve) => {
+            release = resolve;
+        });
+        const original = context.workspaceState.update.bind(context.workspaceState);
+        const storage = sinon
+            .stub(context.workspaceState, 'update')
+            .callsFake(async (key, value) => {
+                if (key === 'r.interactive.executionTimings') {
+                    snapshots.push(value as Timings);
+                    if (snapshots.length === 1) {
+                        await delayed;
+                    }
+                }
+                await original(key, value);
+            });
+        try {
+            for (let index = 0; index < 3; index++) {
+                const position = notebook.cellCount;
+                await vscode.commands.executeCommand(
+                    'r.runSelection',
+                    `timing_storage_cell <- ${index}`,
+                );
+                await until(
+                    () =>
+                        notebook.cellCount > position &&
+                        notebook.cellAt(position).executionSummary?.success === true,
+                );
+                const cell = notebook.cellAt(position);
+                keys.push(
+                    `${manifests[0].id}:${manifests[0].generation}:${String(cell.metadata.rExecutionId)}`,
+                );
+            }
+            assert.strictEqual(
+                snapshots.length,
+                1,
+                'Timing writes must not overlap while cells continue completing',
+            );
+        } finally {
+            release();
+            await manager.timingWrites?.flush();
+            await Promise.all(storage.returnValues);
+            storage.restore();
+        }
+        assert.strictEqual(
+            snapshots.length,
+            2,
+            'The next write must coalesce intervening completions',
+        );
+        const saved = new Map(
+            context.workspaceState.get<Timings>('r.interactive.executionTimings', []),
+        );
+        for (const key of keys) {
+            assert.ok(saved.has(key), `Missing completed execution ${key}`);
+        }
+    });
+
+    test('reports final output failures while preserving R success and allowing the next cell', async () => {
+        await vscode.commands.executeCommand('r.interactive.open', manifests[0]);
+        const manager = interactiveManager() as unknown as {
+            views: Map<
+                string,
+                {
+                    client: AgentClient;
+                    model: Transcript;
+                    executions: Map<string, unknown>;
+                    outputQueue: { flush(): Promise<void> };
+                }
+            >;
+            renderOutputs(view: unknown, id: string): Promise<void>;
+        };
+        const view = [...manager.views.values()].find(
+            (view) => view.client.manifest.id === manifests[0].id,
+        );
+        assert.ok(view);
+        const notebook = vscode.workspace.notebookDocuments.find(
+            (doc) => doc.metadata.rSessionId === manifests[0].id,
+        );
+        assert.ok(notebook);
+        const original = manager.renderOutputs.bind(manager);
+        const failure = new Error('Final notebook output could not be delivered');
+        const errors = sinon.stub(vscode.window, 'showErrorMessage').resolves(undefined);
+        let failedId: string | undefined;
+        const render = sinon.stub(manager, 'renderOutputs').callsFake((current, id) => {
+            const record = view.model.cells.get(id)?.record;
+            if (
+                current === view &&
+                record?.code.startsWith('final_output_failure_runs <-') &&
+                record.state === 'success'
+            ) {
+                failedId = id;
+                return Promise.reject(failure);
+            }
+            return original(current, id);
+        });
+        try {
+            const position = notebook.cellCount;
+            await vscode.commands.executeCommand(
+                'r.runSelection',
+                'final_output_failure_runs <- get0("final_output_failure_runs", ifnotfound=0L) + 1L; cat("before failure\\n"); Sys.sleep(0.4); cat("final output\\n")',
+            );
+            await until(
+                () =>
+                    notebook.cellCount > position &&
+                    notebook.cellAt(position).executionSummary?.success === true &&
+                    errors.called,
+            );
+            await view.outputQueue.flush();
+            const cell = notebook.cellAt(position),
+                id = String(cell.metadata.rExecutionId);
+            assert.strictEqual(failedId, id, 'Exercise the final output update');
+            assert.strictEqual(
+                view.model.cells.get(id)?.record.state,
+                'success',
+                'The evaluation result must remain R success',
+            );
+            assert.ok(
+                !view.executions.has(id),
+                'A failed output update must release the execution handle',
+            );
+            assert.ok(
+                cell.executionSummary?.timing,
+                'Failed delivery must still finish the elapsed timer',
+            );
+            assert.ok(
+                errors.getCalls().some((call) => String(call.args[0]).includes(failure.message)),
+                'Delivery failures must be reported',
+            );
+            const next = notebook.cellCount;
+            await vscode.commands.executeCommand(
+                'r.runSelection',
+                'cat("runs=", final_output_failure_runs, sep="")',
+            );
+            await until(
+                () =>
+                    notebook.cellCount > next &&
+                    notebook.cellAt(next).executionSummary?.success === true,
+            );
+            const text = notebook
+                .cellAt(next)
+                .outputs.flatMap((output) => output.items)
+                .filter((item) => item.mime === 'application/vnd.code.notebook.stdout')
+                .map((item) => Buffer.from(item.data).toString())
+                .join('');
+            assert.strictEqual(text, 'runs=1', 'Recovery must not rerun successful R code');
+        } finally {
+            await view.outputQueue.flush();
+            render.restore();
+            errors.restore();
+        }
+    });
+
+    test('continues processing runtime events while a plot update is delayed', async function () {
+        if (!manifests[0].capabilities.jgd) {
+            this.skip();
+        }
+        await vscode.commands.executeCommand('r.interactive.open', manifests[0]);
+        const manager = interactiveManager(bundleContext()) as unknown as {
+            views: Map<
+                string,
+                {
+                    client: AgentClient;
+                    model: Transcript;
+                    chain: Promise<void>;
+                    outputQueue: { flush(): Promise<void> };
+                }
+            >;
+            outputs(view: unknown, cell: TranscriptCell): Promise<vscode.NotebookCellOutput[]>;
+        };
+        const view = [...manager.views.values()].find(
+            (view) => view.client.manifest.id === manifests[0].id,
+        );
+        assert.ok(view);
+        let release!: () => void;
+        const delayed = new Promise<void>((resolve) => {
+            release = resolve;
+        });
+        let executionId: string | undefined, completed: SessionEvent | undefined;
+        const original = manager.outputs.bind(manager);
+        const output = sinon.stub(manager, 'outputs').callsFake(async (current, cell) => {
+            if (
+                current === view &&
+                cell.record.code.includes('delayed_plot_update') &&
+                cell.outputs.some((item) => item.data.kind === 'plot') &&
+                !executionId
+            ) {
+                executionId = cell.record.id;
+                await delayed;
+            }
+            return original(current, cell);
+        });
+        const listener = (event: SessionEvent): void => {
+            if (event.executionId === executionId && event.type === 'finished') {
+                completed = event;
+            }
+        };
+        view.client.on('event', listener);
+        let observed: string | undefined,
+            released = 0;
+        try {
+            await vscode.commands.executeCommand(
+                'r.runSelection',
+                'delayed_plot_update <- TRUE; plot(1:3); Sys.sleep(0.7); title("final delayed plot"); cat("tail after plot\\n")',
+            );
+            await until(
+                () => !!completed,
+                'The R execution must finish while the output update is still pending',
+            );
+            await new Promise((resolve) => setTimeout(resolve, 350));
+            observed = view.model.cells.get(executionId!)?.record.state;
+        } finally {
+            released = Date.now();
+            release();
+            view.client.off('event', listener);
+            await view.chain;
+            await view.outputQueue.flush();
+            output.restore();
+        }
+        assert.strictEqual(
+            observed,
+            'success',
+            'Output delivery must not block processing the runtime completion event',
+        );
+        const notebook = vscode.workspace.notebookDocuments.find(
+            (doc) => doc.metadata.rSessionId === manifests[0].id,
+        );
+        assert.ok(notebook);
+        const cell = notebook.getCells().find((cell) => cell.metadata.rExecutionId === executionId);
+        assert.ok(cell);
+        await until(() => cell.executionSummary?.success === true);
+        const timing = cell.executionSummary?.timing;
+        assert.ok(timing);
+        assert.ok(
+            timing.endTime >= released,
+            'The completed timer must include the delayed output delivery',
+        );
+        assert.ok(
+            completed && timing.endTime - completed.time >= 300,
+            'Completion must not backdate the live timer to R finishing',
+        );
+        const finalSvg = cell.outputs
+            .flatMap((output) => output.items)
+            .find((item) => item.mime === 'image/svg+xml');
+        assert.ok(finalSvg);
+        assert.match(Buffer.from(finalSvg.data).toString(), /final delayed plot/);
+        const text = cell.outputs
+            .flatMap((output) => output.items)
+            .filter((item) => item.mime === 'application/vnd.code.notebook.stdout')
+            .map((item) => Buffer.from(item.data).toString())
+            .join('');
+        assert.strictEqual(
+            text,
+            'tail after plot\n',
+            'Events arriving during the delayed update must retain their console output',
+        );
+        const key = `${manifests[0].id}:${view.model.generation}:${executionId!}`;
+        const saved = new Map(
+            bundleContext().workspaceState.get<[string, typeof timing][]>(
+                'r.interactive.executionTimings',
+                [],
+            ),
+        );
+        assert.deepStrictEqual(
+            saved.get(key),
+            timing,
+            'Total timing must be saved for reconnect and restore',
+        );
+        await vscode.commands.executeCommand('r.interactive.detach', notebook.uri);
+        await vscode.commands.executeCommand('r.interactive.open', manifests[0]);
+        const restored = vscode.workspace.notebookDocuments
+            .find((doc) => doc.metadata.rSessionId === manifests[0].id)
+            ?.getCells()
+            .find((cell) => cell.metadata.rExecutionId === executionId);
+        assert.deepStrictEqual(
+            restored?.executionSummary?.timing,
+            timing,
+            'Reconnecting must preserve the displayed duration',
+        );
+    });
+
+    test('streams an eight-panel plot in place without rereading unchanged assets', async function () {
+        if (!manifests[0].capabilities.jgd) {
+            this.skip();
+        }
+        await vscode.commands.executeCommand('r.interactive.open', manifests[0]);
+        const notebook = vscode.workspace.notebookDocuments.find(
+            (doc) => doc.metadata.rSessionId === manifests[0].id,
+        );
+        assert.ok(notebook);
+        const manager = interactiveManager(bundleContext()) as unknown as {
+            views: Map<string, { client: AgentClient }>;
+        };
+        const view = [...manager.views.values()].find(
+            (view) => view.client.manifest.id === manifests[0].id,
+        );
+        assert.ok(view);
+        const requests = sinon.spy(view.client, 'request');
+        const index = notebook.cellCount;
+        try {
+            await vscode.commands.executeCommand(
+                'r.runSelection',
+                `local({
+  old <- par(mfrow=c(2,4), mar=c(3,3,2,2)); on.exit(par(old))
+  set.seed(123)
+  for (group in 1:2) for (metric in 1:4) {
+    values <- apply(matrix(rnorm(900), ncol=3), 2, cumsum)
+    values <- sweep(values, 1, values[,1], "-")
+    matplot(values, type="n", main=paste("Metric", (group-1)*4+metric))
+    abline(v=seq(30,300,by=30), col="gray92")
+    matlines(values, lty=1, lwd=1.2)
+    legend("topleft", c("alpha","beta","gamma"), col=1:3, lty=1, bty="n")
+    Sys.sleep(0.3)
+  }
+  for (i in 1:3) { cat("progress", i, "\\n"); Sys.sleep(0.15) }
+})`,
+            );
+            const plot = (): vscode.NotebookCellOutput | undefined =>
+                notebook.cellCount > index
+                    ? notebook
+                          .cellAt(index)
+                          .outputs.find((output) => typeof output.metadata?.rDisplayId === 'string')
+                    : undefined;
+            await until(() => !!plot());
+            // VS Code rematerializes the API object on item changes. Its output
+            // ID is the identity delivered to the notebook renderer.
+            const outputId = (): string =>
+                (plot() as vscode.NotebookCellOutput & { id: string }).id;
+            const first = outputId();
+            assert.strictEqual(typeof first, 'string');
+            const finalSvg = (): string =>
+                Buffer.from(
+                    plot()?.items.find((item) => item.mime === 'image/svg+xml')?.data ?? [],
+                ).toString();
+            await until(
+                () =>
+                    notebook.cellAt(index).executionSummary?.success === true &&
+                    finalSvg().includes('Metric 8'),
+            );
+            assert.strictEqual(
+                outputId(),
+                first,
+                'All partial and final frames must retain the renderer output identity',
+            );
+            for (let panel = 1; panel <= 8; panel++) {
+                assert.match(finalSvg(), new RegExp(`Metric ${panel}`));
+            }
+            const assets = requests
+                .getCalls()
+                .filter((call) => call.args[0] === 'asset')
+                .map((call) => String(call.args[1]?.id));
+            assert.ok(assets.length >= 2, 'Exercise multiple partial snapshots');
+            assert.strictEqual(
+                assets.length,
+                new Set(assets).size,
+                'Console and completion updates must reuse encoded plot assets',
+            );
+        } finally {
+            requests.restore();
         }
     });
 
