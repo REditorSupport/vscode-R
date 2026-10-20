@@ -11,7 +11,8 @@ export function updateFollowButton(button: HTMLButtonElement, tracking: JdvTrack
     button.disabled = lost;
     button.setAttribute('aria-pressed', String(tracking.state === 'active'));
     if (lost) {
-        button.title = tracking.message || `The variable "${tracking.name}" is no longer available.`;
+        button.title =
+            tracking.message || `The variable "${tracking.name}" is no longer available.`;
     } else if (tracking.state === 'active') {
         button.title = `Following "${tracking.name}": the view updates when the variable changes. Click to pause.`;
     } else {
@@ -24,7 +25,10 @@ export function updateFollowButton(button: HTMLButtonElement, tracking: JdvTrack
  * source snippets that show a status; `onError` can use `message.error`.
  */
 export function getFollowScript(
-    tracking: JdvTracking, buttonId: string, onStart: string, onError: string,
+    tracking: JdvTracking,
+    buttonId: string,
+    onStart: string,
+    onError: string,
 ): string {
     return `
     (() => {

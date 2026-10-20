@@ -13,7 +13,13 @@ export interface ListViewNavigation {
 }
 
 export interface ListViewPage {
-    children: { label: string; str: string; index: number; viewable?: boolean; has_children?: boolean }[];
+    children: {
+        label: string;
+        str: string;
+        index: number;
+        viewable?: boolean;
+        has_children?: boolean;
+    }[];
     next_start?: number | null;
 }
 export interface ListViewReply extends Partial<ListViewPage> {
@@ -29,17 +35,36 @@ export interface ListViewer {
 
 /** Shared tree, paging and navigation for the panel and Interactive cells. */
 export function createListViewer(
-    { root, list, back, reset, breadcrumbs, navigationStatus }: {
-        root: HTMLElement; list: HTMLElement; back: HTMLButtonElement; reset: HTMLButtonElement;
-        breadcrumbs: HTMLElement; navigationStatus: HTMLElement;
+    {
+        root,
+        list,
+        back,
+        reset,
+        breadcrumbs,
+        navigationStatus,
+    }: {
+        root: HTMLElement;
+        list: HTMLElement;
+        back: HTMLButtonElement;
+        reset: HTMLButtonElement;
+        breadcrumbs: HTMLElement;
+        navigationStatus: HTMLElement;
     },
     initial: ListViewNavigation,
-    request: (message: { message: string; path: number[]; index?: number; start?: number }) => number,
+    request: (message: {
+        message: string;
+        path: number[];
+        index?: number;
+        start?: number;
+    }) => number,
     initialPage?: ListViewPage,
     live = true,
 ): ListViewer {
     const pending = new Map<number, (message: ListViewReply) => void>();
-    const pages = new Map<string, { element: HTMLElement; scrollTop: number; loader: { loadOnce(): void } }>();
+    const pages = new Map<
+        string,
+        { element: HTMLElement; scrollTop: number; loader: { loadOnce(): void } }
+    >();
     const history: ListViewNavigation[] = [];
     let current: ListViewNavigation | undefined;
     let navigating = false;
@@ -48,15 +73,27 @@ export function createListViewer(
         const key = JSON.stringify(navigation.path);
         if (current) {
             pages.get(JSON.stringify(current.path))!.scrollTop = list.scrollTop;
-            if (goingBack) { history.pop(); }
-            else if (JSON.stringify(current.path) !== key) { history.push(current); }
+            if (goingBack) {
+                history.pop();
+            } else if (JSON.stringify(current.path) !== key) {
+                history.push(current);
+            }
         }
         current = navigation;
         root.classList.toggle('vector', !!navigation.vector);
         let page = pages.get(key);
         if (!page) {
             const element = document.createElement('div');
-            page = { element, scrollTop: 0, loader: createPage(element, navigation.path, navigation.vector, pages.size === 0 ? initialPage : undefined) };
+            page = {
+                element,
+                scrollTop: 0,
+                loader: createPage(
+                    element,
+                    navigation.path,
+                    navigation.vector,
+                    pages.size === 0 ? initialPage : undefined,
+                ),
+            };
             pages.set(key, page);
         }
         list.replaceChildren(page.element);
@@ -76,18 +113,28 @@ export function createListViewer(
             item.className = 'breadcrumb';
             item.textContent = crumb.label;
             item.title = crumb.label;
-            if (isCurrent) { item.setAttribute('aria-current', 'page'); }
-            else {
+            if (isCurrent) {
+                item.setAttribute('aria-current', 'page');
+            } else {
                 (item as HTMLButtonElement).disabled = !live;
-                item.addEventListener('click', () => navigate('listview/navigate', { path: crumb.path }));
+                item.addEventListener('click', () =>
+                    navigate('listview/navigate', { path: crumb.path }),
+                );
             }
             breadcrumbs.appendChild(item);
         });
         page.loader.loadOnce();
     }
 
-    function navigate(message: string, params: { path: number[]; index?: number }, goingBack = false, resetting = false): void {
-        if (disposed || !live || navigating) { return; }
+    function navigate(
+        message: string,
+        params: { path: number[]; index?: number },
+        goingBack = false,
+        resetting = false,
+    ): void {
+        if (disposed || !live || navigating) {
+            return;
+        }
         navigating = true;
         navigationStatus.textContent = '';
         const requestId = request({ message, ...params });
@@ -97,7 +144,10 @@ export function createListViewer(
                 navigationStatus.textContent = response.error;
             } else if (response.navigation) {
                 if (resetting) {
-                    pending.clear(); pages.clear(); history.length = 0; current = undefined;
+                    pending.clear();
+                    pages.clear();
+                    history.length = 0;
+                    current = undefined;
                 }
                 showNavigation(response.navigation, goingBack);
             }
@@ -105,11 +155,20 @@ export function createListViewer(
     }
 
     back.addEventListener('click', () => {
-        if (history.length) { navigate('listview/navigate', { path: history[history.length - 1].path }, true); }
+        if (history.length) {
+            navigate('listview/navigate', { path: history[history.length - 1].path }, true);
+        }
     });
-    reset.addEventListener('click', () => navigate('listview/navigate', { path: initial.path }, false, true));
+    reset.addEventListener('click', () =>
+        navigate('listview/navigate', { path: initial.path }, false, true),
+    );
 
-    function createPage(container: HTMLElement, path: number[], vector = false, savedPage?: ListViewPage): { loadOnce(): void } {
+    function createPage(
+        container: HTMLElement,
+        path: number[],
+        vector = false,
+        savedPage?: ListViewPage,
+    ): { loadOnce(): void } {
         const rows = document.createElement('div');
         const more = document.createElement('button');
         more.className = 'load-more';
@@ -124,7 +183,9 @@ export function createListViewer(
         let loaded = false;
 
         function loadPage(): void {
-            if (disposed || (!live && !savedPage) || loading || nextStart === null) { return; }
+            if (disposed || (!live && !savedPage) || loading || nextStart === null) {
+                return;
+            }
             loading = true;
             more.disabled = true;
             more.textContent = 'Loading…';
@@ -145,7 +206,9 @@ export function createListViewer(
                     row.className = 'item';
                     if (!vector) {
                         const arrow = document.createElement('span');
-                        arrow.className = expandable ? 'arrow codicon codicon-chevron-right' : 'arrow';
+                        arrow.className = expandable
+                            ? 'arrow codicon codicon-chevron-right'
+                            : 'arrow';
                         arrow.setAttribute('aria-hidden', 'true');
                         row.appendChild(arrow);
                     }
@@ -181,7 +244,10 @@ export function createListViewer(
                         entry.appendChild(children);
                         let page: { loadOnce(): void } | undefined;
                         entry.addEventListener('toggle', () => {
-                            if ((entry as HTMLDetailsElement).open && !live && !page) { (entry as HTMLDetailsElement).open = false; return; }
+                            if ((entry as HTMLDetailsElement).open && !live && !page) {
+                                (entry as HTMLDetailsElement).open = false;
+                                return;
+                            }
                             if ((entry as HTMLDetailsElement).open) {
                                 page ??= createPage(children, [...path, item.index]);
                                 page.loadOnce();
@@ -196,13 +262,21 @@ export function createListViewer(
                 status.textContent = rows.childElementCount ? '' : 'No items';
             };
             if (savedPage) {
-                const page = savedPage; savedPage = undefined; receive({ ...page, requestId: 0 });
+                const page = savedPage;
+                savedPage = undefined;
+                receive({ ...page, requestId: 0 });
             } else {
                 pending.set(request({ message: 'listview/page', path, start: nextStart }), receive);
             }
         }
         more.addEventListener('click', loadPage);
-        return { loadOnce: () => { if (!loaded) { loadPage(); } } };
+        return {
+            loadOnce: () => {
+                if (!loaded) {
+                    loadPage();
+                }
+            },
+        };
     }
 
     showNavigation(initial);
@@ -210,16 +284,29 @@ export function createListViewer(
         navigation: () => current!,
         reply(message) {
             const receive = pending.get(message.requestId);
-            if (receive) { pending.delete(message.requestId); receive(message); }
+            if (receive) {
+                pending.delete(message.requestId);
+                receive(message);
+            }
         },
-        dispose() { disposed = true; pending.clear(); },
+        dispose() {
+            disposed = true;
+            pending.clear();
+        },
     };
 }
 
 /** Panel wrapper and its interaction tests. Keep panel focus/blur hooks here. */
-export function getListViewerScript(documentGeneration: number, initial: ListViewNavigation = {
-    title: '', path: [], breadcrumbs: [{ label: '', path: [] }],
-}, refreshable = false, tracking?: JdvTracking): string {
+export function getListViewerScript(
+    documentGeneration: number,
+    initial: ListViewNavigation = {
+        title: '',
+        path: [],
+        breadcrumbs: [{ label: '', path: [] }],
+    },
+    refreshable = false,
+    tracking?: JdvTracking,
+): string {
     return `
     const vscode = acquireVsCodeApi();
     const documentGeneration = ${documentGeneration};
@@ -236,7 +323,9 @@ export function getListViewerScript(documentGeneration: number, initial: ListVie
         const message = event.data;
         if (['listview/page', 'listview/navigation'].includes(message.message) && message.documentGeneration === documentGeneration) viewer.reply(message);
     });
-    ${refreshable ? `
+    ${
+        refreshable
+            ? `
     const refreshButton = document.getElementById('refresh');
     refreshButton.addEventListener('click', () => {
         refreshButton.disabled = true;
@@ -250,10 +339,19 @@ export function getListViewerScript(documentGeneration: number, initial: ListVie
             refreshButton.disabled = false;
             document.getElementById('navigation-status').textContent = message.error;
         }
-    });` : ''}
-    ${tracking ? getFollowScript(tracking, 'follow',
-        "document.getElementById('navigation-status').textContent = '';",
-        "document.getElementById('navigation-status').textContent = message.error;") : ''}
+    });`
+            : ''
+    }
+    ${
+        tracking
+            ? getFollowScript(
+                  tracking,
+                  'follow',
+                  "document.getElementById('navigation-status').textContent = '';",
+                  "document.getElementById('navigation-status').textContent = message.error;",
+              )
+            : ''
+    }
     `;
 }
 

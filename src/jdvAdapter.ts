@@ -19,7 +19,14 @@ export interface JdvCapabilities {
 }
 
 const CAPABILITY_NAMES = [
-    'seek', 'sort', 'filter', 'known_total', 'next', 'children', 'refresh', 'track',
+    'seek',
+    'sort',
+    'filter',
+    'known_total',
+    'next',
+    'children',
+    'refresh',
+    'track',
 ] as const;
 
 export interface JdvColumnSchema {
@@ -80,7 +87,10 @@ export type JdvPathStep =
     | { type: 'binding' | 'slot' | 'attr'; name: string };
 
 export class JdvRequestError extends Error {
-    constructor(readonly code: string, message: string) {
+    constructor(
+        readonly code: string,
+        message: string,
+    ) {
         super(message);
     }
 }
@@ -91,24 +101,40 @@ function isObject(value: unknown): value is JsonObject {
 
 /** Text of a scalar filter operand or channel value; other values become ''. */
 function scalarText(value: unknown): string {
-    return typeof value === 'string' || typeof value === 'number' || typeof value === 'bigint' ||
-        typeof value === 'boolean' ? String(value) : '';
+    return typeof value === 'string' ||
+        typeof value === 'number' ||
+        typeof value === 'bigint' ||
+        typeof value === 'boolean'
+        ? String(value)
+        : '';
 }
 
 /** Validate the params of a `view/open` notification. */
 export function parseDescriptor(value: unknown): JdvDescriptor {
-    if (!isObject(value) || typeof value.view !== 'string' || value.view === '' ||
-        typeof value.generation !== 'number' || !Number.isSafeInteger(value.generation) || value.generation < 1 ||
+    if (
+        !isObject(value) ||
+        typeof value.view !== 'string' ||
+        value.view === '' ||
+        typeof value.generation !== 'number' ||
+        !Number.isSafeInteger(value.generation) ||
+        value.generation < 1 ||
         (value.kind !== 'grid' && value.kind !== 'tree') ||
-        typeof value.access !== 'string' || typeof value.encoding !== 'string') {
+        typeof value.access !== 'string' ||
+        typeof value.encoding !== 'string'
+    ) {
         throw new Error('Invalid jdv view descriptor');
     }
     // An omitted capabilities object or flag means false.
     const supplied = value.capabilities === undefined ? {} : value.capabilities;
-    if (!isObject(supplied) || CAPABILITY_NAMES.some(name => name in supplied && typeof supplied[name] !== 'boolean')) {
+    if (
+        !isObject(supplied) ||
+        CAPABILITY_NAMES.some((name) => name in supplied && typeof supplied[name] !== 'boolean')
+    ) {
         throw new Error('Invalid jdv view descriptor capabilities');
     }
-    const capabilities = Object.fromEntries(CAPABILITY_NAMES.map(name => [name, supplied[name] === true]));
+    const capabilities = Object.fromEntries(
+        CAPABILITY_NAMES.map((name) => [name, supplied[name] === true]),
+    );
     value.capabilities = capabilities;
     if (value.kind === 'grid') {
         validateGridDescriptor(value, capabilities as unknown as JdvCapabilities);
@@ -129,34 +155,59 @@ export function parseDescriptor(value: unknown): JdvDescriptor {
 
 function validateGridDescriptor(value: JsonObject, capabilities: JdvCapabilities): void {
     const invalid = (reason: string) => new Error(`Invalid jdv grid descriptor: ${reason}`);
-    if (!Array.isArray(value.columns)) { throw invalid('columns'); }
+    if (!Array.isArray(value.columns)) {
+        throw invalid('columns');
+    }
     if (value.access === 'sequential') {
         const cap = value.max_page_rows;
-        if (value.encoding !== 'arrow-ipc' || typeof cap !== 'number' || !Number.isSafeInteger(cap) || cap < 1 ||
-            !capabilities.next) {
+        if (
+            value.encoding !== 'arrow-ipc' ||
+            typeof cap !== 'number' ||
+            !Number.isSafeInteger(cap) ||
+            cap < 1 ||
+            !capabilities.next
+        ) {
             throw invalid('sequential access');
         }
         return;
     }
-    if ((value.access !== 'snapshot' && value.access !== 'random') || value.encoding !== 'jdv-json') {
+    if (
+        (value.access !== 'snapshot' && value.access !== 'random') ||
+        value.encoding !== 'jdv-json'
+    ) {
         throw invalid('access or encoding');
     }
-    if (value.collation !== 'C' && value.collation !== 'locale') { throw invalid('collation'); }
-    if (value.access === 'random' && (typeof value.nrow !== 'number' || !Number.isSafeInteger(value.nrow) ||
-        value.nrow < 0 || !capabilities.seek || !capabilities.known_total)) {
+    if (value.collation !== 'C' && value.collation !== 'locale') {
+        throw invalid('collation');
+    }
+    if (
+        value.access === 'random' &&
+        (typeof value.nrow !== 'number' ||
+            !Number.isSafeInteger(value.nrow) ||
+            value.nrow < 0 ||
+            !capabilities.seek ||
+            !capabilities.known_total)
+    ) {
         throw invalid('random access');
     }
 }
 
 /** Validate a `tracking` object; a malformed one is dropped (`undefined`). */
 export function parseTracking(value: unknown): JdvTracking | undefined {
-    if (!isObject(value) || typeof value.name !== 'string' ||
-        (value.state !== 'active' && value.state !== 'paused' && value.state !== 'lost')) {
+    if (
+        !isObject(value) ||
+        typeof value.name !== 'string' ||
+        (value.state !== 'active' && value.state !== 'paused' && value.state !== 'lost')
+    ) {
         return undefined;
     }
     const tracking: JdvTracking = { name: value.name, state: value.state };
-    if (typeof value.reason === 'string') { tracking.reason = value.reason; }
-    if (typeof value.message === 'string') { tracking.message = value.message; }
+    if (typeof value.reason === 'string') {
+        tracking.reason = value.reason;
+    }
+    if (typeof value.message === 'string') {
+        tracking.message = value.message;
+    }
     return tracking;
 }
 
@@ -201,10 +252,23 @@ export interface GridColumnDef {
 export const EMPTY_FILTER_OPTION = 'jdvIsEmpty';
 export const NOT_EMPTY_FILTER_OPTION = 'jdvNotEmpty';
 const TEXT_FILTER_OPTIONS = [
-    'contains', 'notContains', 'equals', 'notEqual', 'startsWith', 'endsWith', EMPTY_FILTER_OPTION, NOT_EMPTY_FILTER_OPTION,
+    'contains',
+    'notContains',
+    'equals',
+    'notEqual',
+    'startsWith',
+    'endsWith',
+    EMPTY_FILTER_OPTION,
+    NOT_EMPTY_FILTER_OPTION,
 ];
 const ORDER_FILTER_OPTIONS = [
-    'equals', 'notEqual', 'lessThan', 'lessThanOrEqual', 'greaterThan', 'greaterThanOrEqual', 'inRange',
+    'equals',
+    'notEqual',
+    'lessThan',
+    'lessThanOrEqual',
+    'greaterThan',
+    'greaterThanOrEqual',
+    'inRange',
 ];
 // jdv implements only exact equality and inclusive ranges for integer64.
 const INT64_FILTER_OPTIONS = ['equals', 'inRange'];
@@ -244,7 +308,10 @@ function rowLabelColumn(): GridColumnDef {
 function sequentialColumnDefs(descriptor: JdvDescriptor): GridColumnDef[] {
     const columns = [rowLabelColumn()];
     for (const column of (descriptor.columns ?? []) as unknown as {
-        position: number; name: string; type: string; unsupported: string | null;
+        position: number;
+        name: string;
+        type: string;
+        unsupported: string | null;
     }[]) {
         // The descriptor no longer carries the Arrow schema, so a dictionary column
         // (whose format is its index type) is aligned like a number.
@@ -328,7 +395,9 @@ export function gridColumnDefs(descriptor: JdvDescriptor): GridColumnDef[] {
             jdv: {
                 filterOptions,
                 naOptions: true,
-                ...(column.type === 'duration' && typeof column.units === 'string' ? { units: column.units } : {}),
+                ...(column.type === 'duration' && typeof column.units === 'string'
+                    ? { units: column.units }
+                    : {}),
             },
         };
         if (column.drillable === true && descriptor.capabilities.children) {
@@ -361,7 +430,11 @@ export interface JdvSort {
 
 function fieldPosition(field: string, descriptor: JdvDescriptor): number {
     const position = Number(field) - 1;
-    if (!Number.isSafeInteger(position) || position < 0 || position >= (descriptor.columns?.length ?? 0)) {
+    if (
+        !Number.isSafeInteger(position) ||
+        position < 0 ||
+        position >= (descriptor.columns?.length ?? 0)
+    ) {
         throw new JdvRequestError('invalid_request', `Unknown column: ${field}`);
     }
     return position;
@@ -371,11 +444,14 @@ export function toJdvSort(sortModel: unknown, descriptor: JdvDescriptor): JdvSor
     if (!Array.isArray(sortModel)) {
         return [];
     }
-    return sortModel.map(item => {
+    return sortModel.map((item) => {
         const sortItem = item as Partial<AgSortModelItem>;
         const col = fieldPosition(String(sortItem.colId), descriptor);
         if (!descriptor.columns![col].sortable) {
-            throw new JdvRequestError('unsupported', `Column "${descriptor.columns![col].name}" cannot be sorted`);
+            throw new JdvRequestError(
+                'unsupported',
+                `Column "${descriptor.columns![col].name}" cannot be sorted`,
+            );
         }
         return { col, desc: sortItem.sort === 'desc' };
     });
@@ -384,14 +460,19 @@ export function toJdvSort(sortModel: unknown, descriptor: JdvDescriptor): JdvSor
 type FilterNode = JsonObject;
 
 function unsupportedFilter(column: JdvColumnSchema, type: unknown): never {
-    throw new JdvRequestError('unsupported',
-        `Filter "${String(type)}" is not supported for column "${column.name}" (${column.type})`);
+    throw new JdvRequestError(
+        'unsupported',
+        `Filter "${String(type)}" is not supported for column "${column.name}" (${column.type})`,
+    );
 }
 
 function canonicalInt64(value: unknown, column: JdvColumnSchema): string {
     const text = scalarText(value).trim();
     if (!/^[+-]?\d+$/.test(text)) {
-        throw new JdvRequestError('invalid_request', `Invalid integer64 value for column "${column.name}"`);
+        throw new JdvRequestError(
+            'invalid_request',
+            `Invalid integer64 value for column "${column.name}"`,
+        );
     }
     return BigInt(text).toString();
 }
@@ -401,8 +482,12 @@ function numberOperand(value: unknown, column: JdvColumnSchema): unknown {
     if (Number.isNaN(number) || value === null || value === undefined || value === '') {
         throw new JdvRequestError('invalid_request', `Invalid number for column "${column.name}"`);
     }
-    if (number === Infinity) { return { special: 'pos_inf' }; }
-    if (number === -Infinity) { return { special: 'neg_inf' }; }
+    if (number === Infinity) {
+        return { special: 'pos_inf' };
+    }
+    if (number === -Infinity) {
+        return { special: 'neg_inf' };
+    }
     return number;
 }
 
@@ -419,24 +504,39 @@ function dateOperand(value: unknown, column: JdvColumnSchema): string {
     // datetime text intact (including fractional seconds and explicit offsets)
     // so jdv can interpret it without a JavaScript Date round trip.
     const text = scalarText(value);
-    const invalid = () => new JdvRequestError('invalid_request', `Invalid date for column "${column.name}"`);
+    const invalid = () =>
+        new JdvRequestError('invalid_request', `Invalid date for column "${column.name}"`);
     if (column.type === 'date') {
         const date = /^(\d{4}-\d{2}-\d{2})$(?![\s\S])/.exec(text);
-        if (date) { return date[1]; }
+        if (date) {
+            return date[1];
+        }
         // AG Grid's filter model writes a date as "YYYY-MM-DD 00:00:00"; an actual time
         // or timezone is never discarded.
         const midnight = /^(\d{4}-\d{2}-\d{2})[ T]00:00:00$(?![\s\S])/.exec(text);
-        if (midnight) { return midnight[1]; }
+        if (midnight) {
+            return midnight[1];
+        }
         throw invalid();
     }
-    const datetime = /^(\d{4}-\d{2}-\d{2})(?:[ T](\d{2}:\d{2}:\d{2})(\.\d+)?(Z|[+-]\d{2}:\d{2})?)?$(?![\s\S])/.exec(text);
-    if (!datetime) { throw invalid(); }
+    const datetime =
+        /^(\d{4}-\d{2}-\d{2})(?:[ T](\d{2}:\d{2}:\d{2})(\.\d+)?(Z|[+-]\d{2}:\d{2})?)?$(?![\s\S])/.exec(
+            text,
+        );
+    if (!datetime) {
+        throw invalid();
+    }
     // An operand without offset uses the column's time zone in jdv.
     return `${datetime[1]}T${datetime[2] ?? '00:00:00'}${datetime[3] ?? ''}${datetime[4] ?? ''}`;
 }
 
 const ORDER_OPS: Record<string, string> = {
-    equals: 'eq', notEqual: 'ne', lessThan: 'lt', lessThanOrEqual: 'le', greaterThan: 'gt', greaterThanOrEqual: 'ge',
+    equals: 'eq',
+    notEqual: 'ne',
+    lessThan: 'lt',
+    lessThanOrEqual: 'le',
+    greaterThan: 'gt',
+    greaterThanOrEqual: 'ge',
 };
 
 function conditionNode(condition: JsonObject, col: number, column: JdvColumnSchema): FilterNode {
@@ -453,8 +553,12 @@ function conditionNode(condition: JsonObject, col: number, column: JdvColumnSche
     }
     switch (column.type) {
         case 'boolean':
-            if (type === 'true') { return { op: 'is_true', col }; }
-            if (type === 'false') { return { op: 'is_false', col }; }
+            if (type === 'true') {
+                return { op: 'is_true', col };
+            }
+            if (type === 'false') {
+                return { op: 'is_false', col };
+            }
             return unsupportedFilter(column, type);
         case 'integer':
         case 'number':
@@ -462,12 +566,16 @@ function conditionNode(condition: JsonObject, col: number, column: JdvColumnSche
             const operand = column.type === 'duration' ? durationOperand : numberOperand;
             if (type === 'inRange') {
                 return {
-                    op: 'between', col,
-                    lower: operand(condition.filter, column), upper: operand(condition.filterTo, column),
+                    op: 'between',
+                    col,
+                    lower: operand(condition.filter, column),
+                    upper: operand(condition.filterTo, column),
                 };
             }
             const op = ORDER_OPS[String(type)];
-            return op ? { op, col, value: operand(condition.filter, column) } : unsupportedFilter(column, type);
+            return op
+                ? { op, col, value: operand(condition.filter, column) }
+                : unsupportedFilter(column, type);
         }
         case 'int64':
             if (type === 'equals') {
@@ -475,8 +583,10 @@ function conditionNode(condition: JsonObject, col: number, column: JdvColumnSche
             }
             if (type === 'inRange') {
                 return {
-                    op: 'between', col,
-                    lower: canonicalInt64(condition.filter, column), upper: canonicalInt64(condition.filterTo, column),
+                    op: 'between',
+                    col,
+                    lower: canonicalInt64(condition.filter, column),
+                    upper: canonicalInt64(condition.filterTo, column),
                 };
             }
             return unsupportedFilter(column, type);
@@ -484,30 +594,47 @@ function conditionNode(condition: JsonObject, col: number, column: JdvColumnSche
         case 'datetime': {
             if (type === 'inRange') {
                 return {
-                    op: 'between', col,
-                    lower: dateOperand(condition.dateFrom, column), upper: dateOperand(condition.dateTo, column),
+                    op: 'between',
+                    col,
+                    lower: dateOperand(condition.dateFrom, column),
+                    upper: dateOperand(condition.dateTo, column),
                 };
             }
             const op = ORDER_OPS[String(type)];
-            return op ? { op, col, value: dateOperand(condition.dateFrom, column) } : unsupportedFilter(column, type);
+            return op
+                ? { op, col, value: dateOperand(condition.dateFrom, column) }
+                : unsupportedFilter(column, type);
         }
         case 'string':
         case 'categorical': {
             const value = scalarText(condition.filter);
             // As in the previous viewer, negated text conditions exclude missing values.
             const negate = (node: FilterNode): FilterNode => ({
-                op: 'and', args: [{ op: 'not', arg: node }, { op: 'not', arg: isNa }],
+                op: 'and',
+                args: [
+                    { op: 'not', arg: node },
+                    { op: 'not', arg: isNa },
+                ],
             });
             switch (type) {
-                case EMPTY_FILTER_OPTION: return { op: 'text_equals', col, value: '' };
-                case NOT_EMPTY_FILTER_OPTION: return negate({ op: 'text_equals', col, value: '' });
-                case 'contains': return { op: 'contains', col, value };
-                case 'notContains': return negate({ op: 'contains', col, value });
-                case 'equals': return { op: 'text_equals', col, value };
-                case 'notEqual': return negate({ op: 'text_equals', col, value });
-                case 'startsWith': return { op: 'starts_with', col, value };
-                case 'endsWith': return { op: 'ends_with', col, value };
-                default: return unsupportedFilter(column, type);
+                case EMPTY_FILTER_OPTION:
+                    return { op: 'text_equals', col, value: '' };
+                case NOT_EMPTY_FILTER_OPTION:
+                    return negate({ op: 'text_equals', col, value: '' });
+                case 'contains':
+                    return { op: 'contains', col, value };
+                case 'notContains':
+                    return negate({ op: 'contains', col, value });
+                case 'equals':
+                    return { op: 'text_equals', col, value };
+                case 'notEqual':
+                    return negate({ op: 'text_equals', col, value });
+                case 'startsWith':
+                    return { op: 'starts_with', col, value };
+                case 'endsWith':
+                    return { op: 'ends_with', col, value };
+                default:
+                    return unsupportedFilter(column, type);
             }
         }
         default:
@@ -517,7 +644,10 @@ function conditionNode(condition: JsonObject, col: number, column: JdvColumnSche
 }
 
 /** Convert an AG Grid filter model to the jdv filter AST, or `undefined` for no filter. */
-export function toJdvFilter(filterModel: unknown, descriptor: JdvDescriptor): FilterNode | undefined {
+export function toJdvFilter(
+    filterModel: unknown,
+    descriptor: JdvDescriptor,
+): FilterNode | undefined {
     if (!isObject(filterModel)) {
         return undefined;
     }
@@ -528,12 +658,19 @@ export function toJdvFilter(filterModel: unknown, descriptor: JdvDescriptor): Fi
         }
         const col = fieldPosition(field, descriptor);
         const column = descriptor.columns![col];
-        const conditions = Array.isArray(model.conditions) ? model.conditions.filter(isObject) : undefined;
+        const conditions = Array.isArray(model.conditions)
+            ? model.conditions.filter(isObject)
+            : undefined;
         if (conditions && conditions.length > 0) {
-            const args = conditions.map(condition => conditionNode(condition, col, column));
-            nodes.push(args.length === 1 ? args[0] : {
-                op: String(model.operator).toUpperCase() === 'OR' ? 'or' : 'and', args,
-            });
+            const args = conditions.map((condition) => conditionNode(condition, col, column));
+            nodes.push(
+                args.length === 1
+                    ? args[0]
+                    : {
+                          op: String(model.operator).toUpperCase() === 'OR' ? 'or' : 'and',
+                          args,
+                      },
+            );
         } else {
             nodes.push(conditionNode(model, col, column));
         }
@@ -545,15 +682,25 @@ export function toJdvFilter(filterModel: unknown, descriptor: JdvDescriptor): Fi
 }
 
 /** `object/open` params that open one drillable grid cell as a child view. */
-export function cellOpenParams(descriptor: JdvDescriptor, sourceRow: unknown, column: unknown): JsonObject {
+export function cellOpenParams(
+    descriptor: JdvDescriptor,
+    sourceRow: unknown,
+    column: unknown,
+): JsonObject {
     if (descriptor.kind !== 'grid' || !descriptor.capabilities.children) {
         throw new JdvRequestError('unsupported', 'This view has no cells that can be opened.');
     }
-    if (typeof sourceRow !== 'number' || !Number.isSafeInteger(sourceRow) || sourceRow < 0 ||
-        typeof column !== 'number' || !Number.isSafeInteger(column) || column < 0) {
+    if (
+        typeof sourceRow !== 'number' ||
+        !Number.isSafeInteger(sourceRow) ||
+        sourceRow < 0 ||
+        typeof column !== 'number' ||
+        !Number.isSafeInteger(column) ||
+        column < 0
+    ) {
         throw new JdvRequestError('invalid_request', 'Invalid cell address.');
     }
-    const schema = descriptor.columns?.find(candidate => candidate.position === column);
+    const schema = descriptor.columns?.find((candidate) => candidate.position === column);
     if (!schema?.drillable) {
         throw new JdvRequestError('invalid_request', 'This column cannot be opened.');
     }
@@ -593,7 +740,8 @@ function pageColumns(descriptor: JdvDescriptor, fields: unknown): number[] | und
         if (field === '0') {
             continue;
         }
-        const position = typeof field === 'string' && /^[1-9][0-9]*$/.test(field) ? Number(field) - 1 : -1;
+        const position =
+            typeof field === 'string' && /^[1-9][0-9]*$/.test(field) ? Number(field) - 1 : -1;
         if (position < 0 || position >= ncol) {
             return undefined;
         }
@@ -603,7 +751,11 @@ function pageColumns(descriptor: JdvDescriptor, fields: unknown): number[] | und
 }
 
 export function tableRowsParams(
-    descriptor: JdvDescriptor, startRow: number, endRow: number, sortModel: unknown, filterModel: unknown,
+    descriptor: JdvDescriptor,
+    startRow: number,
+    endRow: number,
+    sortModel: unknown,
+    filterModel: unknown,
     columns?: unknown,
 ): TableRowsParams {
     const offset = Math.max(0, Math.floor(startRow));
@@ -648,7 +800,12 @@ export interface GridPage {
     returned: number;
 }
 
-function cellValue(column: JdvColumnSchema, channels: ColumnChannels, naRows: Set<number>, row: number): unknown {
+function cellValue(
+    column: JdvColumnSchema,
+    channels: ColumnChannels,
+    naRows: Set<number>,
+    row: number,
+): unknown {
     if (naRows.has(row)) {
         // Missing cells use the grid's NA renderer, unless R labels them differently
         // (NaN, or a class-specific missing label).
@@ -673,20 +830,29 @@ function columnErrorText(errors: unknown): string | undefined {
     if (!isObject(errors)) {
         return undefined;
     }
-    const messages = Object.entries(errors).map(([channel, message]) => `${channel}: ${String(message)}`);
+    const messages = Object.entries(errors).map(
+        ([channel, message]) => `${channel}: ${String(message)}`,
+    );
     return messages.length > 0 ? messages.join('; ') : undefined;
 }
 
 /** Convert a `grid/rows` result to row objects keyed by the grid field ids. */
 export function gridPageFromRows(result: unknown, startRow: number, requested: number): GridPage {
-    if (!isObject(result) || !isObject(result.data) || typeof result.total !== 'number' ||
-        typeof result.total_unfiltered !== 'number' || !Array.isArray(result.data.source_row)) {
+    if (
+        !isObject(result) ||
+        !isObject(result.data) ||
+        typeof result.total !== 'number' ||
+        typeof result.total_unfiltered !== 'number' ||
+        !Array.isArray(result.data.source_row)
+    ) {
         throw new Error('Invalid jdv grid/rows result');
     }
     const data = result.data;
     const sourceRow = data.source_row as number[];
-    const rowLabels = Array.isArray(data.row_labels) ? data.row_labels as (string | null)[] : undefined;
-    const columns = Array.isArray(data.columns) ? data.columns as PageColumn[] : [];
+    const rowLabels = Array.isArray(data.row_labels)
+        ? (data.row_labels as (string | null)[])
+        : undefined;
+    const columns = Array.isArray(data.columns) ? (data.columns as PageColumn[]) : [];
     // `source_row` is zero-based; the browser shows it plus one.
     const rows: Record<string, unknown>[] = sourceRow.map((index, row) => ({
         [ROW_LABEL_FIELD]: rowLabels?.[row] ?? String(index + 1),
@@ -702,9 +868,12 @@ export function gridPageFromRows(result: unknown, startRow: number, requested: n
         const error = columnErrorText(column.errors);
         const naRows = new Set(channels.na_rows);
         for (let row = 0; row < rows.length; row++) {
-            rows[row][field] = channels.display || channels.values || channels.na_rows
-                ? cellValue(column.schema, channels, naRows, row)
-                : error ? `<error: ${error}>` : null;
+            rows[row][field] =
+                channels.display || channels.values || channels.na_rows
+                    ? cellValue(column.schema, channels, naRows, row)
+                    : error
+                      ? `<error: ${error}>`
+                      : null;
         }
     }
     const total = result.total;
@@ -766,17 +935,24 @@ export function isVectorType(type: string | undefined, classes: string[]): boole
 }
 
 export function isTableClass(classes: string[]): boolean {
-    return classes.some(cls => TABLE_CLASSES.has(cls));
+    return classes.some((cls) => TABLE_CLASSES.has(cls));
 }
 
 function childTitle(parent: TreeNode, child: TreeChild): string {
     const step = child.path?.[child.path.length - 1];
-    if (step?.type === 'slot') { return `${parent.title}@${step.name}`; }
-    if (step?.type === 'attr') { return `attr(${parent.title}, "${step.name}")`; }
-    if (step?.type === 'binding') { return `${parent.title}$${step.name}`; }
+    if (step?.type === 'slot') {
+        return `${parent.title}@${step.name}`;
+    }
+    if (step?.type === 'attr') {
+        return `attr(${parent.title}, "${step.name}")`;
+    }
+    if (step?.type === 'binding') {
+        return `${parent.title}$${step.name}`;
+    }
     const label = child.label;
     return /^\[\[?\d+\]\]?$/.test(label) || label === ''
-        ? `${parent.title}[[${child.index}]]` : `${parent.title}$${label}`;
+        ? `${parent.title}[[${child.index}]]`
+        : `${parent.title}$${label}`;
 }
 
 /**
@@ -786,16 +962,28 @@ function childTitle(parent: TreeNode, child: TreeChild): string {
 export class TreeAdapter {
     private readonly nodes = new Map<string, TreeNode>();
 
-    constructor(public descriptor: JdvDescriptor, private readonly title: string) {
+    constructor(
+        public descriptor: JdvDescriptor,
+        private readonly title: string,
+    ) {
         this.nodes.set('[]', {
-            path: [], label: title, title, class: descriptor.class ?? [], type: descriptor.type, hasChildren: true, viewable: true,
+            path: [],
+            label: title,
+            title,
+            class: descriptor.class ?? [],
+            type: descriptor.type,
+            hasChildren: true,
+            viewable: true,
         });
     }
 
     private node(path: number[]): TreeNode {
         const node = this.nodes.get(JSON.stringify(path));
         if (!node) {
-            throw new JdvRequestError('unavailable', 'This item is no longer available. Reload the parent list.');
+            throw new JdvRequestError(
+                'unavailable',
+                'This item is no longer available. Reload the parent list.',
+            );
         }
         return node;
     }
@@ -813,7 +1001,12 @@ export class TreeAdapter {
             const prefix = path.slice(0, depth);
             breadcrumbs.push({ label: this.node(prefix).label, path: prefix });
         }
-        return { title: node.title, path, breadcrumbs, vector: isVectorType(node.type, node.class) };
+        return {
+            title: node.title,
+            path,
+            breadcrumbs,
+            vector: isVectorType(node.type, node.class),
+        };
     }
 
     childrenParams(path: number[], start: number): JsonObject {
@@ -830,14 +1023,21 @@ export class TreeAdapter {
     }
 
     /** Record the children of `path` and convert them to List Viewer rows. */
-    children(path: number[], result: unknown): { children: ListViewChild[]; next_start: number | null } {
-        if (!isObject(result) || !Array.isArray(result.children) || typeof result.offset !== 'number' ||
-            typeof result.total_children !== 'number') {
+    children(
+        path: number[],
+        result: unknown,
+    ): { children: ListViewChild[]; next_start: number | null } {
+        if (
+            !isObject(result) ||
+            !Array.isArray(result.children) ||
+            typeof result.offset !== 'number' ||
+            typeof result.total_children !== 'number'
+        ) {
             throw new Error('Invalid jdv object/children result');
         }
         const parent = this.node(path);
         const vector = isVectorType(parent.type, parent.class);
-        const children = (result.children as TreeChild[]).map(child => {
+        const children = (result.children as TreeChild[]).map((child) => {
             const addressable = Array.isArray(child.path) && child.viewable !== false;
             if (addressable) {
                 this.nodes.set(JSON.stringify([...path, child.index]), {
@@ -851,14 +1051,15 @@ export class TreeAdapter {
                 });
             }
             const hasChildren = child.has_children === true;
-            const summary = child.unavailable ? `(${child.unavailable})` : child.summary ?? '';
+            const summary = child.unavailable ? `(${child.unavailable})` : (child.summary ?? '');
             return {
                 // Unnamed elements are labeled by position, as in the previous List Viewer.
                 label: child.label === '' ? `[[${child.index}]]` : child.label,
                 str: summary,
                 index: child.index,
                 // Vector elements are terminal rows; other leaves have nothing to open.
-                viewable: addressable && !vector && (hasChildren || isTableClass(child.class ?? [])),
+                viewable:
+                    addressable && !vector && (hasChildren || isTableClass(child.class ?? [])),
                 has_children: hasChildren,
             };
         });
@@ -867,7 +1068,11 @@ export class TreeAdapter {
     }
 
     /** What opening the child at `path`/`index` should do. */
-    open(path: number[], index: number): { kind: 'navigate'; navigation: ListViewNavigation }
+    open(
+        path: number[],
+        index: number,
+    ):
+        | { kind: 'navigate'; navigation: ListViewNavigation }
         | { kind: 'object'; params: JsonObject; title: string } {
         const childPath = [...path, index];
         const node = this.node(childPath);
@@ -879,7 +1084,12 @@ export class TreeAdapter {
                 kind: 'object',
                 title: node.title,
                 // Paged keeps sorting and filtering in R, as for top-level grids.
-                params: { view: this.descriptor.view, generation: this.descriptor.generation, path: node.path, mode: 'paged' },
+                params: {
+                    view: this.descriptor.view,
+                    generation: this.descriptor.generation,
+                    path: node.path,
+                    mode: 'paged',
+                },
             };
         }
         return { kind: 'navigate', navigation: this.navigation(childPath) };

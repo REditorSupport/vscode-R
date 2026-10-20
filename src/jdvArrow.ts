@@ -70,7 +70,8 @@ export function formatScaled(coefficient: bigint, scale: number): string {
     const negative = coefficient < 0n;
     const digits = (negative ? -coefficient : coefficient).toString();
     const sign = negative ? '-' : '';
-    const fixedLength = sign.length + (scale <= 0 ? digits.length - scale : Math.max(digits.length, scale + 1) + 1);
+    const fixedLength =
+        sign.length + (scale <= 0 ? digits.length - scale : Math.max(digits.length, scale + 1) + 1);
     // Arrow decimal coefficients have at most 76 digits; never expand a huge scale.
     if (fixedLength > CELL_TEXT_LIMIT) {
         return `${sign}${digits}e${-scale}`;
@@ -95,7 +96,11 @@ function floorDiv(value: bigint, divisor: bigint): bigint {
     return value % divisor < 0n ? quotient - 1n : quotient;
 }
 
-export function formatTimestamp(ticks: bigint, unit: number, timezone: string | null = null): string {
+export function formatTimestamp(
+    ticks: bigint,
+    unit: number,
+    timezone: string | null = null,
+): string {
     const nanoseconds = ticks * NANOSECONDS[unit];
     const seconds = floorDiv(nanoseconds, 1_000_000_000n);
     const fraction = nanoseconds - seconds * 1_000_000_000n;
@@ -110,10 +115,19 @@ export function formatTimestamp(ticks: bigint, unit: number, timezone: string | 
     }
     try {
         const formatter = new Intl.DateTimeFormat('en-US-u-ca-iso8601-nu-latn', {
-            timeZone: timezone, year: 'numeric', month: '2-digit', day: '2-digit',
-            hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23', timeZoneName: 'longOffset',
+            timeZone: timezone,
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit',
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit',
+            hourCycle: 'h23',
+            timeZoneName: 'longOffset',
         });
-        const parts = Object.fromEntries(formatter.formatToParts(date).map(({ type, value }) => [type, value]));
+        const parts = Object.fromEntries(
+            formatter.formatToParts(date).map(({ type, value }) => [type, value]),
+        );
         const offset = (parts.timeZoneName ?? '').replace(/^GMT/, '') || '+00:00';
         return `${parts.year}-${parts.month}-${parts.day}T${parts.hour}:${parts.minute}:${parts.second}${suffix}${offset} [${timezone}]`;
     } catch {
@@ -132,11 +146,17 @@ function chunkAt(vector: ArrowVector, row: number): { data: ArrowData; row: numb
 }
 
 function boundedText(value: string): string {
-    return value.length > CELL_TEXT_LIMIT ? value.slice(0, CELL_TEXT_LIMIT) + '… [truncated]' : value;
+    return value.length > CELL_TEXT_LIMIT
+        ? value.slice(0, CELL_TEXT_LIMIT) + '… [truncated]'
+        : value;
 }
 
 /** Display text of one Arrow value, or `null` for a missing value. */
-export function formatArrowValue(vector: ArrowVector, row: number, dictionaries = new Set<ArrowData>()): string | null {
+export function formatArrowValue(
+    vector: ArrowVector,
+    row: number,
+    dictionaries = new Set<ArrowData>(),
+): string | null {
     if (!Number.isSafeInteger(row) || row < 0 || row >= vector.length) {
         throw new Error('Arrow row is outside its buffers.');
     }
@@ -149,7 +169,12 @@ export function formatArrowValue(vector: ArrowVector, row: number, dictionaries 
     const start = local * data.stride;
     if (type.typeId === TYPE_DICTIONARY) {
         const index = Number(data.values[start]);
-        if (!data.dictionary || !Number.isSafeInteger(index) || index < 0 || index >= data.dictionary.length) {
+        if (
+            !data.dictionary ||
+            !Number.isSafeInteger(index) ||
+            index < 0 ||
+            index >= data.dictionary.length
+        ) {
             throw new Error('Invalid Arrow dictionary index.');
         }
         if (dictionaries.has(data) || dictionaries.size >= 32) {
@@ -162,7 +187,10 @@ export function formatArrowValue(vector: ArrowVector, row: number, dictionaries 
         return BigInt(data.values[start]).toString();
     }
     if (type.typeId === TYPE_DECIMAL) {
-        return formatScaled(signedWords(data.values, start, (type.bitWidth ?? 128) / 32), type.scale ?? 0);
+        return formatScaled(
+            signedWords(data.values, start, (type.bitWidth ?? 128) / 32),
+            type.scale ?? 0,
+        );
     }
     if (type.typeId === TYPE_TIMESTAMP) {
         return formatTimestamp(BigInt(data.values[start]), type.unit ?? 0, type.timezone ?? null);
@@ -170,8 +198,14 @@ export function formatArrowValue(vector: ArrowVector, row: number, dictionaries 
     if (type.typeId === TYPE_TIME || type.typeId === TYPE_DURATION) {
         return `${String(data.values[start])} ${UNIT_NAMES[type.unit ?? 0]}`;
     }
-    if (type.typeId === TYPE_LIST || type.typeId === TYPE_FIXED_SIZE_LIST || type.typeId === TYPE_LARGE_LIST) {
-        const size = type.listSize ?? Number(data.valueOffsets![local + 1]) - Number(data.valueOffsets![local]);
+    if (
+        type.typeId === TYPE_LIST ||
+        type.typeId === TYPE_FIXED_SIZE_LIST ||
+        type.typeId === TYPE_LARGE_LIST
+    ) {
+        const size =
+            type.listSize ??
+            Number(data.valueOffsets![local + 1]) - Number(data.valueOffsets![local]);
         return `<list: ${size} items>`;
     }
     if (type.typeId === TYPE_STRUCT) {
@@ -183,13 +217,17 @@ export function formatArrowValue(vector: ArrowVector, row: number, dictionaries 
     const value = vector.get(row);
     if (value instanceof Uint8Array) {
         const shown = value.subarray(0, CELL_TEXT_LIMIT / 2);
-        return Array.from(shown, byte => byte.toString(16).padStart(2, '0')).join('') +
-            (shown.length < value.length ? '… [truncated]' : '');
+        return (
+            Array.from(shown, (byte) => byte.toString(16).padStart(2, '0')).join('') +
+            (shown.length < value.length ? '… [truncated]' : '')
+        );
     }
     if (type.typeId === TYPE_DATE) {
         return new Date(Number(value)).toISOString().slice(0, 10);
     }
-    return boundedText(typeof value === 'string' ? value : String(value as number | boolean | bigint));
+    return boundedText(
+        typeof value === 'string' ? value : String(value as number | boolean | bigint),
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -241,10 +279,18 @@ function totalBytes(): number {
 
 function parseProgress(result: unknown, requested: number, rowsSeen: number): StreamPageResult {
     const value = result as Partial<StreamPageResult> | null;
-    const integer = (field: unknown) => typeof field === 'number' && Number.isSafeInteger(field) && field >= 0;
-    if (!value || !integer(value.first_row) || !integer(value.rows_fetched) || !integer(value.rows_seen) ||
-        typeof value.done !== 'boolean' || value.rows_seen !== value.first_row! + value.rows_fetched! ||
-        value.rows_fetched! > requested || value.first_row! < rowsSeen) {
+    const integer = (field: unknown) =>
+        typeof field === 'number' && Number.isSafeInteger(field) && field >= 0;
+    if (
+        !value ||
+        !integer(value.first_row) ||
+        !integer(value.rows_fetched) ||
+        !integer(value.rows_seen) ||
+        typeof value.done !== 'boolean' ||
+        value.rows_seen !== value.first_row! + value.rows_fetched! ||
+        value.rows_fetched! > requested ||
+        value.first_row! < rowsSeen
+    ) {
         throw new JdvRequestError('invalid_request', 'Invalid jdv stream page metadata.');
     }
     return value as StreamPageResult;
@@ -268,8 +314,10 @@ export class SequentialStream {
     readonly pageRows: number;
 
     constructor(
-        readonly descriptor: JdvDescriptor, private readonly next: FetchNext,
-        preferredRows = 1000, private readonly viewCacheBytes = VIEW_CACHE_BYTES,
+        readonly descriptor: JdvDescriptor,
+        private readonly next: FetchNext,
+        preferredRows = 1000,
+        private readonly viewCacheBytes = VIEW_CACHE_BYTES,
     ) {
         this.columns = (descriptor.columns ?? []) as unknown as SequentialColumn[];
         // parseDescriptor() guarantees a positive safe-integer cap for sequential views.
@@ -291,7 +339,9 @@ export class SequentialStream {
                 throw this.failed;
             }
             // One stream/next per view generation at a time.
-            this.fetching ??= this.fetchUntil(endRow).finally(() => { this.fetching = undefined; });
+            this.fetching ??= this.fetchUntil(endRow).finally(() => {
+                this.fetching = undefined;
+            });
             const rowsBeforeFetch = this.rowsSeen;
             await this.fetching;
             // fetchUntil() bounds consecutive empty pages. Do not immediately
@@ -320,7 +370,10 @@ export class SequentialStream {
             // A gap (first_row > rowsSeen) has no page; rows() reports it as unavailable.
             if (progress.rows_fetched > 0) {
                 if (!response.body) {
-                    throw new JdvRequestError('invalid_request', 'The jdv stream page has no Arrow body.');
+                    throw new JdvRequestError(
+                        'invalid_request',
+                        'The jdv stream page has no Arrow body.',
+                    );
                 }
                 this.store(progress, response.body);
                 empty = 0;
@@ -340,8 +393,11 @@ export class SequentialStream {
 
     private store(progress: StreamPageResult, ipc: Uint8Array): void {
         const page: StoredPage = {
-            firstRow: progress.first_row, rows: progress.rows_fetched, ipc,
-            charge: ipc.byteLength + PAGE_OVERHEAD_BYTES, sequence: ++pageSequence,
+            firstRow: progress.first_row,
+            rows: progress.rows_fetched,
+            ipc,
+            charge: ipc.byteLength + PAGE_OVERHEAD_BYTES,
+            sequence: ++pageSequence,
         };
         this.pages.push(page);
         this.bytes += page.charge;
@@ -352,7 +408,10 @@ export class SequentialStream {
         while (totalBytes() > TOTAL_CACHE_BYTES) {
             let victim: SequentialStream | undefined;
             for (const stream of streams) {
-                if (stream.pages.length > 0 && (!victim || stream.pages[0].sequence < victim.pages[0].sequence)) {
+                if (
+                    stream.pages.length > 0 &&
+                    (!victim || stream.pages[0].sequence < victim.pages[0].sequence)
+                ) {
                     victim = stream;
                 }
             }
@@ -397,7 +456,10 @@ export class SequentialStream {
         } else {
             table = tableFromIPC(page.ipc) as unknown as ArrowTable;
             if (table.numRows !== page.rows && table.numCols !== 0) {
-                throw new JdvRequestError('invalid_request', 'Arrow rows do not match the stream page metadata.');
+                throw new JdvRequestError(
+                    'invalid_request',
+                    'Arrow rows do not match the stream page metadata.',
+                );
             }
         }
         this.decoded.set(page, table);
@@ -424,7 +486,10 @@ export class SequentialStream {
                 } else {
                     const vector = table.getChildAt(column.ipc_index) as ArrowVector | null;
                     if (!vector) {
-                        throw new JdvRequestError('invalid_request', 'Arrow column mapping is outside the IPC schema.');
+                        throw new JdvRequestError(
+                            'invalid_request',
+                            'Arrow column mapping is outside the IPC schema.',
+                        );
                     }
                     output[field] = formatArrowValue(vector, row - page.firstRow);
                 }

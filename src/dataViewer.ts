@@ -48,7 +48,11 @@ export function getDataViewerStyle(): string {
     `;
 }
 
-export function getDataViewerToolbarHtml(sessionHtml = '', refreshable = false, followable = false): string {
+export function getDataViewerToolbarHtml(
+    sessionHtml = '',
+    refreshable = false,
+    followable = false,
+): string {
     return `
     <div id="viewerToolbar" role="group" aria-label="Data viewer controls">
         <div id="viewerControls">

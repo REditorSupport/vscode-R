@@ -7,14 +7,21 @@ export async function disposeJdvHostIfCurrentAddress<T>(
     dispose: (host: T) => void,
 ): Promise<boolean> {
     const pending = hosts.get(hostKey);
-    if (!pending) { return false; }
-    let host: T;
-    try { host = await pending; }
-    catch {
-        if (hosts.get(hostKey) === pending) { hosts.delete(hostKey); }
+    if (!pending) {
         return false;
     }
-    if (hosts.get(hostKey) !== pending || addressOf(host) !== expectedAddress) { return false; }
+    let host: T;
+    try {
+        host = await pending;
+    } catch {
+        if (hosts.get(hostKey) === pending) {
+            hosts.delete(hostKey);
+        }
+        return false;
+    }
+    if (hosts.get(hostKey) !== pending || addressOf(host) !== expectedAddress) {
+        return false;
+    }
     hosts.delete(hostKey);
     dispose(host);
     return true;

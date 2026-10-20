@@ -33,13 +33,29 @@ interface ProducerLimits {
 
 /** Error codes of the protocol; any other code is a general producer failure. */
 const ERROR_CODES = new Set([
-    'invalid_request', 'unsupported', 'limit_exceeded', 'schema_changed', 'producer_error', 'interrupted',
-    'cancelled', 'expired', 'unavailable', 'stale_generation', 'view_not_found', 'cache_changed', 'in_use',
-    'stream_failed', 'method_not_found',
+    'invalid_request',
+    'unsupported',
+    'limit_exceeded',
+    'schema_changed',
+    'producer_error',
+    'interrupted',
+    'cancelled',
+    'expired',
+    'unavailable',
+    'stale_generation',
+    'view_not_found',
+    'cache_changed',
+    'in_use',
+    'stream_failed',
+    'method_not_found',
 ]);
 const SESSION_ID = /^[A-Za-z0-9._:-]{1,128}$/;
 const LIMIT_NAMES = [
-    'max_unacked_frames', 'max_unacked_bytes', 'queue_messages', 'queue_bytes', 'max_request_bytes',
+    'max_unacked_frames',
+    'max_unacked_bytes',
+    'queue_messages',
+    'queue_bytes',
+    'max_request_bytes',
     'max_message_bytes',
 ] as const;
 
@@ -66,8 +82,15 @@ function positiveInteger(value: unknown): value is number {
 
 /** Producer or runtime metadata: string `name` and `version` of 1 to 256 UTF-8 bytes. */
 function validIdentity(value: unknown): boolean {
-    return isObject(value) && [value.name, value.version].every(field =>
-        typeof field === 'string' && Buffer.byteLength(field) >= 1 && Buffer.byteLength(field) <= 256);
+    return (
+        isObject(value) &&
+        [value.name, value.version].every(
+            (field) =>
+                typeof field === 'string' &&
+                Buffer.byteLength(field) >= 1 &&
+                Buffer.byteLength(field) <= 256,
+        )
+    );
 }
 
 /** One producer connection. Implements the host obligations of the jdv transport. */
@@ -98,8 +121,8 @@ export class JdvPeer {
             closed(peer: JdvPeer, reason: string): void;
         },
     ) {
-        socket.on('data', chunk => this.receive(chunk));
-        socket.on('error', error => this.close(`jdv connection error: ${error.message}`));
+        socket.on('data', (chunk) => this.receive(chunk));
+        socket.on('error', (error) => this.close(`jdv connection error: ${error.message}`));
         socket.on('close', () => this.close('The R session closed the jdv connection.'));
     }
 
@@ -113,18 +136,29 @@ export class JdvPeer {
 
     requestWithBody(method: string, params: JsonObject): Promise<JdvResponse> {
         if (this.closed) {
-            return Promise.reject(new JdvRequestError('view_not_found', 'The jdv connection is closed.'));
+            return Promise.reject(
+                new JdvRequestError('view_not_found', 'The jdv connection is closed.'),
+            );
         }
         if (this.pending.size >= MAX_LIVE_REQUESTS) {
-            return Promise.reject(new JdvRequestError('limit_exceeded', 'Too many pending jdv requests.'));
+            return Promise.reject(
+                new JdvRequestError('limit_exceeded', 'Too many pending jdv requests.'),
+            );
         }
         const id = `vscode-r-${++this.sequence}`;
         const bytes = Buffer.from(JSON.stringify({ id, method, params }) + '\n', 'utf8');
         if (this.limits && bytes.length > this.requestByteLimit()) {
-            return Promise.reject(new JdvRequestError('limit_exceeded', 'The jdv request is too large.'));
+            return Promise.reject(
+                new JdvRequestError('limit_exceeded', 'The jdv request is too large.'),
+            );
         }
         return new Promise<JdvResponse>((resolve, reject) => {
-            this.pending.set(id, { resolve, reject, view: params.view, generation: params.generation });
+            this.pending.set(id, {
+                resolve,
+                reject,
+                view: params.view,
+                generation: params.generation,
+            });
             this.outbound.push({ bytes, requestId: id });
             this.flush();
             this.updateWake();
@@ -165,7 +199,8 @@ export class JdvPeer {
             }
             return;
         }
-        let buffer = this.chunks.length === 1 ? this.chunks[0] : Buffer.concat(this.chunks, this.buffered);
+        let buffer =
+            this.chunks.length === 1 ? this.chunks[0] : Buffer.concat(this.chunks, this.buffered);
         try {
             while (!this.closed) {
                 if (this.body) {
@@ -200,13 +235,20 @@ export class JdvPeer {
                 const transfer = isObject(message.result) ? message.result.transfer : undefined;
                 if (isObject(transfer) && transfer.encoding === 'arrow-ipc') {
                     const length = transfer.byte_length;
-                    if (typeof length !== 'number' || !Number.isSafeInteger(length) || length < 0 ||
-                        typeof message.id !== 'string' || line.length > MAX_BINARY_HEADER_BYTES ||
-                        line.length + 1 + length > MAX_BINARY_FRAME_BYTES) {
+                    if (
+                        typeof length !== 'number' ||
+                        !Number.isSafeInteger(length) ||
+                        length < 0 ||
+                        typeof message.id !== 'string' ||
+                        line.length > MAX_BINARY_HEADER_BYTES ||
+                        line.length + 1 + length > MAX_BINARY_FRAME_BYTES
+                    ) {
                         throw new Error('Invalid jdv binary frame.');
                     }
-                    const timer = setTimeout(() => this.close('Timed out receiving a jdv Arrow page.'),
-                        BINARY_BODY_TIMEOUT_MS);
+                    const timer = setTimeout(
+                        () => this.close('Timed out receiving a jdv Arrow page.'),
+                        BINARY_BODY_TIMEOUT_MS,
+                    );
                     this.body = { header: message, length, timer };
                     continue;
                 }
@@ -247,13 +289,28 @@ export class JdvPeer {
             const known = typeof code === 'string' && ERROR_CODES.has(code);
             const detail = typeof text === 'string' ? text : 'jdv request failed';
             // An unrecognized code is a general producer failure; keep it visible in the text.
-            pending.reject(known ? new JdvRequestError(code, detail)
-                : new JdvRequestError('producer_error', typeof code === 'string' ? `${detail} (${code})` : detail));
+            pending.reject(
+                known
+                    ? new JdvRequestError(code, detail)
+                    : new JdvRequestError(
+                          'producer_error',
+                          typeof code === 'string' ? `${detail} (${code})` : detail,
+                      ),
+            );
             return;
         }
         const result = message.result;
-        if (body && isObject(result) && (result.view !== pending.view || result.generation !== pending.generation)) {
-            pending.reject(new JdvRequestError('stale_generation', 'The Arrow page belongs to another view generation.'));
+        if (
+            body &&
+            isObject(result) &&
+            (result.view !== pending.view || result.generation !== pending.generation)
+        ) {
+            pending.reject(
+                new JdvRequestError(
+                    'stale_generation',
+                    'The Arrow page belongs to another view generation.',
+                ),
+            );
             return;
         }
         pending.resolve({ result, body });
@@ -267,14 +324,19 @@ export class JdvPeer {
         if (version !== PROTOCOL_MAJOR) {
             throw new Error(`Unsupported jdv protocol: ${String(params.protocol)}`);
         }
-        if (typeof params.session !== 'string' || !SESSION_ID.test(params.session) ||
+        if (
+            typeof params.session !== 'string' ||
+            !SESSION_ID.test(params.session) ||
             !validIdentity(params.producer) ||
-            (isObject(params.producer) && params.producer.runtime !== undefined && !validIdentity(params.producer.runtime)) ||
-            (params.wake !== undefined && typeof params.wake !== 'boolean')) {
+            (isObject(params.producer) &&
+                params.producer.runtime !== undefined &&
+                !validIdentity(params.producer.runtime)) ||
+            (params.wake !== undefined && typeof params.wake !== 'boolean')
+        ) {
             throw new Error('Invalid jdv hello.');
         }
         const limits = params.limits;
-        if (!isObject(limits) || !LIMIT_NAMES.every(name => positiveInteger(limits[name]))) {
+        if (!isObject(limits) || !LIMIT_NAMES.every((name) => positiveInteger(limits[name]))) {
             throw new Error('Invalid jdv hello limits.');
         }
         this.limits = {
@@ -304,7 +366,9 @@ export class JdvPeer {
                 const pending = this.pending.get(frame.requestId);
                 if (pending) {
                     this.pending.delete(frame.requestId);
-                    pending.reject(new JdvRequestError('limit_exceeded', 'The jdv request is too large.'));
+                    pending.reject(
+                        new JdvRequestError('limit_exceeded', 'The jdv request is too large.'),
+                    );
                 }
             }
         }
@@ -312,8 +376,12 @@ export class JdvPeer {
 
     private acknowledge(params: JsonObject): void {
         const frames = params.frames;
-        if (typeof frames !== 'number' || !Number.isSafeInteger(frames) || frames < this.ackedFrames ||
-            frames > this.sentFrames) {
+        if (
+            typeof frames !== 'number' ||
+            !Number.isSafeInteger(frames) ||
+            frames < this.ackedFrames ||
+            frames > this.sentFrames
+        ) {
             throw new Error('Invalid jdv acknowledgement.');
         }
         while (this.ackedFrames < frames) {
@@ -331,8 +399,10 @@ export class JdvPeer {
         }
         while (this.outbound.length > 0) {
             const frame = this.outbound[0];
-            if (this.unconfirmed.length + 1 > limits.maxUnackedFrames ||
-                this.unconfirmedBytes + frame.bytes.length > limits.maxUnackedBytes) {
+            if (
+                this.unconfirmed.length + 1 > limits.maxUnackedFrames ||
+                this.unconfirmedBytes + frame.bytes.length > limits.maxUnackedBytes
+            ) {
                 return;
             }
             this.outbound.shift();
@@ -402,16 +472,18 @@ export class JdvHost {
         readonly socketPath: string,
         private readonly events: JdvHostEvents,
     ) {
-        server.on('connection', socket => this.accept(socket));
+        server.on('connection', (socket) => this.accept(socket));
     }
 
     static async create(events: JdvHostEvents): Promise<JdvHost> {
         const id = crypto.randomBytes(8).toString('hex');
         // Unix socket paths are limited to about 104-108 bytes; keep the name short.
-        const socketPath = process.platform === 'win32'
-            ? `\\\\.\\pipe\\vscode-r-jdv-${id}`
-            : path.join(os.tmpdir(), `vscr-jdv-${id}.sock`);
-        const address = process.platform === 'win32' ? `npipe:////./pipe/vscode-r-jdv-${id}` : socketPath;
+        const socketPath =
+            process.platform === 'win32'
+                ? `\\\\.\\pipe\\vscode-r-jdv-${id}`
+                : path.join(os.tmpdir(), `vscr-jdv-${id}.sock`);
+        const address =
+            process.platform === 'win32' ? `npipe:////./pipe/vscode-r-jdv-${id}` : socketPath;
         const server = net.createServer();
         await new Promise<void>((resolve, reject) => {
             server.once('error', reject);
@@ -445,8 +517,11 @@ export class JdvHost {
             notification: (peer, method, params) => {
                 if (method === 'view/open') {
                     this.events.viewOpen(peer, params);
-                } else if (method === 'view/closed' && typeof params.view === 'string' &&
-                    typeof params.generation === 'number') {
+                } else if (
+                    method === 'view/closed' &&
+                    typeof params.view === 'string' &&
+                    typeof params.generation === 'number'
+                ) {
                     this.events.viewClosed(peer, params.view, params.generation);
                 } else if (method === 'view/update_failed') {
                     this.events.viewUpdateFailed(peer, params);

@@ -1,8 +1,16 @@
-import { GridPage, JdvDescriptor, JdvRequestError, JsonObject, gridPageFromRows, tableRowsParams } from './jdvAdapter';
+import {
+    GridPage,
+    JdvDescriptor,
+    JdvRequestError,
+    JsonObject,
+    gridPageFromRows,
+    tableRowsParams,
+} from './jdvAdapter';
 
 /** Fill an AG Grid block, issuing further pages when jdv shortens a selected-column page. */
 export async function fetchGridPage(
-    descriptor: JdvDescriptor, message: JsonObject,
+    descriptor: JdvDescriptor,
+    message: JsonObject,
     request: (method: string, params: JsonObject) => Promise<unknown>,
 ): Promise<Omit<GridPage, 'returned'>> {
     const startRow = Number(message.startRow ?? 0);
@@ -12,7 +20,14 @@ export async function fetchGridPage(
     let offset = startRow;
     while (offset < endRow) {
         // Keep the displayed-column selection for every short page in the block.
-        const params = tableRowsParams(descriptor, offset, endRow, message.sortModel, message.filterModel, message.columns);
+        const params = tableRowsParams(
+            descriptor,
+            offset,
+            endRow,
+            message.sortModel,
+            message.filterModel,
+            message.columns,
+        );
         const result = await request('grid/rows', params);
         page = gridPageFromRows(result, offset, params.limit);
         for (const row of page.rows) {
@@ -26,5 +41,10 @@ export async function fetchGridPage(
     if (!page) {
         throw new JdvRequestError('invalid_request', 'Empty page request');
     }
-    return { rows, totalRows: page.totalRows, totalUnfiltered: page.totalUnfiltered, lastRow: page.totalRows };
+    return {
+        rows,
+        totalRows: page.totalRows,
+        totalUnfiltered: page.totalUnfiltered,
+        lastRow: page.totalRows,
+    };
 }

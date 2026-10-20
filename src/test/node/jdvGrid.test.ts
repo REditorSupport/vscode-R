@@ -3,14 +3,31 @@ import { JdvDescriptor, JdvRequestError, JsonObject, parseDescriptor } from '../
 import { fetchGridPage } from '../../jdvGrid';
 
 const descriptor: JdvDescriptor = parseDescriptor({
-    view: 'v', generation: 1, kind: 'grid', access: 'random', encoding: 'jdv-json',
-    capabilities: { seek: true, known_total: true }, collation: 'C', nrow: 5, ncol: 2,
-    columns: [{ position: 0, name: 'a', type: 'string' }, { position: 1, name: 'b', type: 'string' }],
+    view: 'v',
+    generation: 1,
+    kind: 'grid',
+    access: 'random',
+    encoding: 'jdv-json',
+    capabilities: { seek: true, known_total: true },
+    collation: 'C',
+    nrow: 5,
+    ncol: 2,
+    columns: [
+        { position: 0, name: 'a', type: 'string' },
+        { position: 1, name: 'b', type: 'string' },
+    ],
 });
 const message = { startRow: 0, endRow: 5, columns: ['1'] };
 const page = (offset: number, count: number) => ({
-    total: 5, total_unfiltered: 7, offset, limit: count,
-    data: { source_row: Array.from({ length: count }, (_, index) => offset + index), row_labels: null, columns: [] },
+    total: 5,
+    total_unfiltered: 7,
+    offset,
+    limit: count,
+    data: {
+        source_row: Array.from({ length: count }, (_, index) => offset + index),
+        row_labels: null,
+        columns: [],
+    },
 });
 
 suite('jdv grid block fetching', () => {
@@ -21,9 +38,18 @@ suite('jdv grid block fetching', () => {
             requests.push(params);
             return Promise.resolve(page(Number(params.offset), Math.min(2, Number(params.limit))));
         });
-        assert.deepEqual(requests.map(params => [params.offset, params.limit, params.cols]),
-            [[0, 5, [0]], [2, 3, [0]], [4, 1, [0]]]);
-        assert.deepEqual(result.rows.map(row => row.__sourceRow), [0, 1, 2, 3, 4]);
+        assert.deepEqual(
+            requests.map((params) => [params.offset, params.limit, params.cols]),
+            [
+                [0, 5, [0]],
+                [2, 3, [0]],
+                [4, 1, [0]],
+            ],
+        );
+        assert.deepEqual(
+            result.rows.map((row) => row.__sourceRow),
+            [0, 1, 2, 3, 4],
+        );
         assert.equal(result.lastRow, 5);
         assert.equal(result.totalUnfiltered, 7);
     });
@@ -32,21 +58,30 @@ suite('jdv grid block fetching', () => {
         for (const columns of [['1'], [], undefined]) {
             let calls = 0;
             const error = new JdvRequestError('limit_exceeded', 'row too large');
-            await assert.rejects(fetchGridPage(descriptor, { ...message, columns }, (_method, params) => {
-                calls++;
-                assert.deepEqual(params.cols, columns?.map(field => Number(field) - 1));
-                return Promise.reject(error);
-            }), (received: unknown) => received === error);
+            await assert.rejects(
+                fetchGridPage(descriptor, { ...message, columns }, (_method, params) => {
+                    calls++;
+                    assert.deepEqual(
+                        params.cols,
+                        columns?.map((field) => Number(field) - 1),
+                    );
+                    return Promise.reject(error);
+                }),
+                (received: unknown) => received === error,
+            );
             assert.equal(calls, 1);
         }
     });
 
     test('propagates other errors without retrying', async () => {
         let calls = 0;
-        await assert.rejects(fetchGridPage(descriptor, message, () => {
-            calls++;
-            return Promise.reject(new JdvRequestError('expired', 'expired'));
-        }), /expired/);
+        await assert.rejects(
+            fetchGridPage(descriptor, message, () => {
+                calls++;
+                return Promise.reject(new JdvRequestError('expired', 'expired'));
+            }),
+            /expired/,
+        );
         assert.equal(calls, 1);
     });
 
