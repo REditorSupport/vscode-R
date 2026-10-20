@@ -47,6 +47,10 @@ const loaded = img => new Promise((resolve,reject) => {
  img.addEventListener('load',()=>{ clearTimeout(timeout); resolve(); },{ once:true });
  img.addEventListener('error',()=>{ clearTimeout(timeout); reject(new Error('Plot load failed')); },{ once:true });
 });
+const until = async predicate => {
+ const deadline=Date.now()+5000;
+ while (!predicate()) { if (Date.now()>deadline) throw new Error('Renderer update timed out'); await new Promise(resolve=>setTimeout(resolve,10)); }
+};
 try {
  const listHost = document.querySelector('#list');
  const listData = {kind:'list',displayId:'list',generation:'r1',navigation:{title:'List',path:[],breadcrumbs:[{label:'List',path:[]}]},
@@ -266,7 +270,7 @@ try {
  const initialReady=plot.querySelector('img').complete && plot.querySelector('img').naturalWidth>0;
  save.click();
  let saveRequest=messages.at(-1);
- check(saveRequest.action==='saveAs' && saveRequest.pngReady===initialReady,'Save must request native formats and offer PNG only when the image is loaded');
+ check(saveRequest.action==='saveAs' && (!saveRequest.pngReady || initialReady),'Save must request native formats and offer PNG only when the image is loaded');
  check(save.disabled && !plot.querySelector('[role=menu]'),'Only one native picker may be pending per output');
  check(plot.getBoundingClientRect().height===initialHeight && window.scrollY===initialScroll,'Opening Save must preserve output height and scroll position');
  reply(saveRequest,{ result:'svg' });
@@ -314,28 +318,28 @@ try {
  check(messages.at(-1).action==='plotPage' && messages.at(-1).selectedPlot==='page1','Navigation must persist the selected page');
  check(control(gallery,'Previous plot').disabled && !control(gallery,'Next plot').disabled,'Plot boundaries must disable the corresponding arrow');
  check(gallery.getBoundingClientRect().height===galleryHeight,'Changing same-sized pages must not collapse the output while loading');
- await loaded(gallery.querySelector('img'));
+ await until(()=>gallery.querySelector('img').src.endsWith(pages[0].svgData));
  control(gallery,'Open plot').click(); check(messages.at(-1).displayId==='page1','Open must target the selected page');
  control(gallery,'Fit R device to cell width').click(); check(messages.at(-1).displayId==='page1' && messages.at(-1).generation==='gallery-generation','Fit must target the selected page and process');
  control(gallery,'Save plot as').click(); const gallerySave=messages.at(-1);
  check(gallerySave.displayId==='page1' && control(gallery,'Next plot').disabled,'Pending Save must freeze navigation to preserve image identity');
  reply(gallerySave,{ result:'png' });
  check(messages.at(-1).action==='savePng' && messages.at(-1).displayId==='page1' && !control(gallery,'Next plot').disabled,'Save must export the selected page and restore navigation');
- render('gallery-updated',{ ...galleryData,pages:[...pages,{ ...plotData,displayId:'page3' }] },gallery);
+ render('gallery',{ ...galleryData,pages:[...pages,{ ...plotData,displayId:'page3' }] },gallery);
  await loaded(gallery.querySelector('img'));
  check(gallery.querySelector('[data-plot-page]').textContent==='Plot 1 of 3','New frames must not reset a user-selected page');
- render('gallery-offline',{ ...galleryData,connected:false },gallery); await loaded(gallery.querySelector('img'));
+ render('gallery',{ ...galleryData,connected:false },gallery); await loaded(gallery.querySelector('img'));
  control(gallery,'Next plot').click(); await loaded(gallery.querySelector('img'));
  check(gallery.querySelector('[data-plot-page]').textContent==='Plot 2 of 2' && control(gallery,'Save plot as').disabled,'Saved galleries must remain locally pageable');
- render('gallery-stopped',{ ...galleryData,running:false },gallery);
+ render('gallery',{ ...galleryData,running:false },gallery);
  control(gallery,'Previous plot').click();
  check(gallery.querySelector('[data-plot-page]').textContent==='Plot 1 of 2' && control(gallery,'Fit R device to cell width').disabled && !control(gallery,'Save plot as').disabled,'Stopped galleries must support navigation and export but not device resize');
- render('static-image',{ kind:'plot',displayId:'static-image',mime:'image/svg+xml',imageData:plotData.svgData,resizable:false },gallery);
+ render('gallery',{ kind:'plot',displayId:'static-image',mime:'image/svg+xml',imageData:plotData.svgData,resizable:false },gallery);
  await loaded(gallery.querySelector('img'));
  check(getComputedStyle(control(gallery,'Fit R device to cell width')).display==='none' && !control(gallery,'Save plot as').disabled,'Standard graphics images must be viewable and exportable without offering resize');
- renderer.disposeOutputItem('static-image'); gallery.remove();
+ renderer.disposeOutputItem('gallery'); gallery.remove();
  const temporary=document.createElement('div'); document.body.append(temporary);
- render('temporary',plotData,temporary);
+ render('temporary',{...plotData,displayId:'replacement'},temporary);
  const oldTrigger=control(temporary,'Save plot as'); oldTrigger.click(); const oldRequest=messages.at(-1);
  render('temporary',plotData,temporary);
  const beforeStale=messages.length; reply(oldRequest,{ result:'svg' }); oldTrigger.click();
@@ -344,6 +348,42 @@ try {
  renderer.disposeOutputItem('temporary'); reply(disposedRequest,{ result:'svg' });
  check(messages.at(-1)===disposedRequest,'Disposing output must discard pending format replies');
  temporary.remove();
+ // Hold actual browser image loads to model a slow asset tunnel. There should
+ // be only one outstanding request plus the newest queued snapshot.
+ const slow=document.createElement('div'); document.body.append(slow);
+ render('slow',plotData,slow); await loaded(slow.querySelector('img')); await new Promise(resolve=>setTimeout(resolve,0));
+ const firstImage=slow.querySelector('img'), firstToolbar=slow.querySelector('.r-interactive-toolbar');
+ const firstHeight=slow.getBoundingClientRect().height;
+ const create=document.createElement.bind(document), source=Object.getOwnPropertyDescriptor(HTMLImageElement.prototype,'src');
+ const downloads=[];
+ document.createElement=(tag,...args)=>{
+   const node=create(tag,...args);
+   if (tag==='img') Object.defineProperty(node,'src',{get(){return source.get.call(this);},set(value){downloads.push({node,value,finish:()=>source.set.call(node,value)});}});
+   return node;
+ };
+ try {
+   const frame=n=>({...plotData,svgData:btoa(String.fromCharCode(...new TextEncoder().encode(svg.replace('retained SVG',`panel ${n}`))))});
+   render('slow',frame(2),slow);
+   for(let n=3;n<=8;n++) render('slow',frame(n),slow);
+   check(slow.querySelector('img')===firstImage && firstImage.isConnected,'Incoming frames must retain the displayed plot while loading');
+   check(slow.querySelector('.r-interactive-toolbar')===firstToolbar && slow.getBoundingClientRect().height===firstHeight,'Live updates must retain the toolbar and output dimensions');
+   check(downloads.length===1,`Slow loading must not start a request for every intermediate frame (received ${downloads.length})`);
+   control(slow,'Save plot as').click(); check(!messages.at(-1).pngReady,'PNG must not export an older snapshot under the new frame identity');
+   reply(messages.at(-1),{result:undefined});
+   downloads[0].finish(); await until(()=>downloads.length===2);
+   check(slow.querySelector('img')===firstImage && downloads[1].value.endsWith(frame(8).svgData),'After a slow load, only the newest pending frame should be requested');
+   downloads[1].finish(); await until(()=>slow.querySelector('img')===downloads[1].node);
+   check(slow.querySelector('img').naturalWidth===640,'The final frame must become visible after loading');
+   render('slow',frame(8),slow); check(downloads.length===2,'Unchanged final output must not load again');
+   render('slow',{...frame(8),url:'http://127.0.0.1:1/unavailable.svg'},slow);
+   check(downloads.length===2,'Embedded SVG must avoid a second request through a failing asset tunnel');
+   render('slow',{...plotData,svgData:undefined,url:'data:image/svg+xml;base64,invalid'},slow);
+   const failed=downloads.at(-1); failed.finish(); await until(()=>slow.querySelector('[data-status]').textContent.includes('Could not load'));
+   check(slow.querySelector('img')===downloads[1].node,'A failed replacement must retain the last displayed image');
+   render('slow',frame(9),slow); const disposed=downloads.at(-1);
+   renderer.disposeOutputItem('slow'); disposed.finish(); await new Promise(resolve=>setTimeout(resolve,30));
+   check(slow.querySelector('img')===downloads[1].node,'Disposed image loads must not replace the output');
+ } finally { document.createElement=create; renderer.disposeOutputItem('slow'); slow.remove(); }
  const broken=document.createElement('div'); document.body.append(broken);
  render('broken',{ kind:'plot',svgData:'invalid' },broken);
  await new Promise(resolve=>broken.querySelector('img').addEventListener('error',resolve,{ once:true }));

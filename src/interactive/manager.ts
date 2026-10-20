@@ -5,6 +5,7 @@ import { randomUUID } from 'crypto';
 import { AgentClient } from './client';
 import { AgentConfig, AgentSnapshot, DEFAULT_MAX_ASSET_BYTES, ExecutionRecord, SessionEvent, SessionManifest, SourceLocation, object, sessionLabel } from './protocol';
 import { AssetStore, AssetStorageStats, exportedAssetName, readAsset } from './assets';
+import { updateNotebookOutputs } from './notebookOutput';
 import { defaultStorage, discoverSessions, hasSessionEndpoint, launchAgent, newIdentity, prepareNodeRuntime } from './launcher';
 import { NodeRuntime, resolveNodeRuntime } from './nodeExecutable';
 import { backendDescriptor, prepareBackendRuntime } from './backendRegistry';
@@ -1165,7 +1166,7 @@ export class InteractiveManager implements vscode.Disposable, vscode.TreeDataPro
         if (execution) {
             // A dispatch failure may have diagnostics but no R start event.
             if (!execution.started) { execution.task.start(data.record.started); execution.started = true; }
-            await execution.task.replaceOutput(outputs);
+            await updateNotebookOutputs(execution.task, cell.outputs, outputs);
         }
         else {
             // Updating a late plot must preserve the cell URI, edited code, selection, and diagnostics.
@@ -1173,7 +1174,7 @@ export class InteractiveManager implements vscode.Disposable, vscode.TreeDataPro
             const update = view.controller.createNotebookCellExecution(cell);
             update.executionOrder = summary?.executionOrder;
             update.start(summary?.timing?.startTime);
-            try { await update.replaceOutput(outputs); }
+            try { await updateNotebookOutputs(update, cell.outputs, outputs); }
             finally { update.end(summary?.success, summary?.timing?.endTime); }
         }
     }

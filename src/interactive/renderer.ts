@@ -3,6 +3,7 @@
 import { createInlineTable, InlineTable, InlineTableState, inlineTableStyle } from './inlineTable';
 import { createListViewer, ListViewer, ListViewNavigation, ListViewPage, ListViewReply, listViewerStyle } from '../listViewer';
 import { toolbarButton as button, toolbarStyle } from './rendererToolbar';
+import { PlotImage } from './plotImage';
 
 interface OutputItem { id: string; json(): Record<string, unknown> }
 interface RendererContext {
@@ -15,6 +16,7 @@ export function activate(context: RendererContext): { renderOutputItem(item: Out
         element: HTMLElement; data: Record<string, unknown>;
         table?: InlineTable; list?: ListViewer;
         saveRequest?: number; saveButton?: HTMLButtonElement; savePlot?(format: string): void; updatePlotPaging?(): void;
+        updatePlot?(data: Record<string, unknown>): void;
         dispose?(): void;
     }
     const outputs = new Map<string, OutputState>();
@@ -57,8 +59,14 @@ export function activate(context: RendererContext): { renderOutputItem(item: Out
     });
     return {
         renderOutputItem(item, element) {
+            const data = item.json();
+            const previous = outputs.get(item.id);
+            if (previous?.updatePlot && previous.element === element && data.kind === 'plot'
+                && previous.data.displayId === data.displayId && previous.data.generation === data.generation) {
+                previous.updatePlot(data); return;
+            }
             outputs.get(item.id)?.dispose?.();
-            const data = item.json(); element.replaceChildren();
+            element.replaceChildren();
             const choiceKey = `${typeof data.generation === 'string' ? data.generation : ''}:${typeof data.displayId === 'string' ? data.displayId : item.id}`;
             const choice = choices.get(choiceKey);
             const connected = data.connected !== false;
@@ -154,20 +162,23 @@ export function activate(context: RendererContext): { renderOutputItem(item: Out
                 toolbar.append(open, toggle, reset); status.textContent = connectionHint(data); showView();
                 state.dispose = () => { state.list?.dispose(); open.onclick = null; toggle.onclick = null; };
             } else if (data.kind === 'plot') {
-                const pages = (Array.isArray(data.pages) && data.pages.length ? data.pages : [data]) as Record<string, unknown>[];
+                let pages = (Array.isArray(data.pages) && data.pages.length ? data.pages : [data]) as Record<string, unknown>[];
                 const selected = choice?.selectedPlot ?? data.selectedPlot;
                 let index = pages.findIndex(page => page.displayId === selected);
                 if (index < 0) { index = pages.length - 1; }
-                const current = (): Record<string, unknown> => ({ ...pages[index], generation: data.generation });
-                const image = document.createElement('img'); image.crossOrigin = 'anonymous';
-                image.style.cssText = 'display:block;max-width:100%;height:auto'; element.append(image);
-                const pngReady = (): boolean => image.complete && image.naturalWidth > 0;
+                const current = (): Record<string, unknown> => ({ ...pages[index], generation: state.data.generation });
+                const viewport = document.createElement('div'); element.append(viewport);
+                const image = new PlotImage(viewport, error => {
+                    status.textContent = error ? 'Could not load this plot. Reconnect to the session and try again.' : connectionHint(state.data);
+                });
+                const pngReady = (): boolean => image.ready();
                 const savePng = (): void => {
-                    const canvas = document.createElement('canvas'); canvas.width = image.naturalWidth; canvas.height = image.naturalHeight;
+                    const loaded = image.image!;
+                    const canvas = document.createElement('canvas'); canvas.width = loaded.naturalWidth; canvas.height = loaded.naturalHeight;
                     const ctx = canvas.getContext('2d');
                     try {
                         if (!ctx) { throw new Error('Canvas unavailable'); }
-                        ctx.drawImage(image, 0, 0); send(item, current(), 'savePng', { image: canvas.toDataURL('image/png') });
+                        ctx.drawImage(loaded, 0, 0); send(item, current(), 'savePng', { image: canvas.toDataURL('image/png') });
                     } catch { status.textContent = 'Open the plot to export this image.'; }
                 };
                 // The host's native picker does not resize or scroll the notebook output.
@@ -179,7 +190,7 @@ export function activate(context: RendererContext): { renderOutputItem(item: Out
                 save.disabled = !connected;
                 save.setAttribute('aria-haspopup', 'dialog'); state.saveButton = save;
                 state.savePlot = format => {
-                    if (!connected) { return; }
+                    if (state.data.connected === false) { return; }
                     if (format === 'svg') { send(item, current(), 'save'); }
                     else if (format === 'png' && pngReady()) { savePng(); }
                 };
@@ -194,35 +205,37 @@ export function activate(context: RendererContext): { renderOutputItem(item: Out
                     previous.disabled = state.saveRequest !== undefined || index === 0;
                     next.disabled = state.saveRequest !== undefined || index === pages.length - 1;
                     counter.textContent = `Plot ${index + 1} of ${pages.length}`;
-                    fit.disabled = !live || pages[index].resizable === false;
+                    fit.disabled = state.data.connected === false || state.data.archived === true || state.data.running === false || pages[index].resizable === false;
                     fit.hidden = pages[index].resizable === false;
+                    previous.hidden = counter.hidden = next.hidden = pages.length < 2;
                 };
                 const showPlot = (): void => {
-                    const page = pages[index];
-                    // Reserve the previous page's dimensions until the new image
-                    // loads, so equal-sized pages do not collapse between clicks.
-                    if (Number(page.width) > 0 && Number(page.height) > 0) {
-                        image.width = Number(page.width); image.height = Number(page.height);
-                    }
-                    image.alt = pages.length > 1 ? `R plot ${index + 1} of ${pages.length}` : 'R plot';
-                    image.src = typeof page.url === 'string' && page.url ? page.url : typeof page.imageData === 'string' && page.imageData
-                        ? `data:${String(page.mime)};base64,${page.imageData}` : `data:image/svg+xml;base64,${typeof page.svgData === 'string' ? page.svgData : ''}`;
+                    image.update(pages[index], pages.length > 1 ? `R plot ${index + 1} of ${pages.length}` : 'R plot');
                     state.updatePlotPaging?.();
                 };
                 const select = (page: number): void => {
                     if (state.saveRequest !== undefined || page < 0 || page >= pages.length) { return; }
                     index = page;
                     remember(choiceKey, { selectedPlot: String(pages[index].displayId) });
-                    send(item, data, 'plotPage', { selectedPlot: pages[index].displayId });
-                    status.textContent = connectionHint(data); showPlot();
+                    send(item, state.data, 'plotPage', { selectedPlot: pages[index].displayId });
+                    status.textContent = connectionHint(state.data); showPlot();
                 };
-                image.onload = () => { image.width = image.naturalWidth; image.height = image.naturalHeight; };
-                image.onerror = () => { status.textContent = 'Could not load this plot. Reconnect to the session and try again.'; };
+                state.updatePlot = updated => {
+                    // A pending format picker belongs to the preceding snapshot.
+                    state.saveRequest = undefined;
+                    state.data = { ...updated };
+                    pages = (Array.isArray(updated.pages) && updated.pages.length ? updated.pages : [updated]) as Record<string, unknown>[];
+                    const selected = choices.get(choiceKey)?.selectedPlot ?? updated.selectedPlot;
+                    index = pages.findIndex(page => page.displayId === selected);
+                    if (index < 0) { index = pages.length - 1; }
+                    open.disabled = save.disabled = updated.connected === false;
+                    status.textContent = connectionHint(updated); showPlot();
+                };
                 state.dispose = () => {
                     for (const control of [save, open, fit, previous, next]) { control.onclick = null; }
-                    image.onload = null; image.onerror = null;
+                    image.dispose();
                 };
-                if (pages.length > 1) { toolbar.append(previous, counter, next); }
+                toolbar.append(previous, counter, next);
                 toolbar.append(open, save, fit); showPlot();
             } else if (data.kind === 'html' || data.kind === 'htmlText') {
                 const iframe = document.createElement('iframe');
