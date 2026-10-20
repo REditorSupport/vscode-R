@@ -975,9 +975,9 @@ export class InteractiveManager
     }
 
     private defaultExportUri(view: InteractiveView, suffix: string): vscode.Uri {
-        // eslint-disable-next-line no-control-regex -- export names must exclude control characters
         const name =
             view.client.manifest.label
+                // eslint-disable-next-line no-control-regex -- export names must exclude control characters
                 .replace(/[<>:"/\\|?*\x00-\x1f]/g, '-')
                 .replace(/[. ]+$/, '') || 'R';
         return vscode.Uri.file(path.join(view.target.workingDir, `${name}-${suffix}`));
