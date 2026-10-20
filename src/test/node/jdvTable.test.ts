@@ -184,8 +184,8 @@ suite('Interactive jdv tables', () => {
         const operators = columnOperators(column);
         assert.deepEqual(operators, ['true', 'false', 'jdvIsNa', 'jdvNotNa']);
         assert.deepEqual(operators.map(filterOperatorLabel), [
-            'is true',
-            'is false',
+            'is TRUE',
+            'is FALSE',
             'is NA',
             'is not NA',
         ]);

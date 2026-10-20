@@ -36,8 +36,8 @@ export const filterOperators = {
     jdvNotEmpty: 'is not empty',
     jdvIsNa: 'is NA',
     jdvNotNa: 'is not NA',
-    true: 'is true',
-    false: 'is false',
+    true: 'is TRUE',
+    false: 'is FALSE',
 };
 export function filterOperatorLabel(type: string): string {
     return filterOperators[type as keyof typeof filterOperators] ?? type;
