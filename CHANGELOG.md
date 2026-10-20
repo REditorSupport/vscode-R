@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Accepting a function or method completion that inserts parentheses now opens signature help, respecting `editor.parameterHints.enabled`.
+
+## 3.2.0 - 2026-10-15
+
 ### Compatibility and upgrade notes
 
 - Lowered the minimum supported VS Code version from 1.110 to **1.98.2**. (#1832, #1855)
@@ -46,6 +50,8 @@
 - Added daily pre-releases to the VS Code Marketplace and Open VSX after successful verification. (#1833, #1834)
 - Reduced VSIX assets and runtime dependencies, including replacing `httpgd-js` with built-in transports. (#1849, #1855)
 - Updated build tooling, shared release verification, and dependencies, including security fixes. (#1792, #1814, #1818, #1823)
+
+**Full Changelog**: <https://github.com/REditorSupport/vscode-R/compare/v3.0.1...v3.2.0>
 
 ## 3.0.1 - 2026-09-28
 
