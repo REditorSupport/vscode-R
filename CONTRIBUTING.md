@@ -36,8 +36,11 @@ including JavaScript, JSON, Markdown, YAML, R, C, and EJS files, are not formatt
 The checked-in `.oxfmtrc.jsonc` is shared by the CLI and the recommended Oxc
 VS Code extension, and its `ignorePatterns` restrict both to TypeScript files.
 TypeScript files use four-space indentation and single quotes. Import and
-`package.json` sorting are disabled. Oxfmt respects the repository's `.gitignore`
-files, so generated bundles, compiled tests, and dependencies are excluded.
+`package.json` sorting are disabled. The CLI also respects the repository's
+`.gitignore` files, so generated bundles, compiled tests, and dependencies are
+excluded from `pnpm run format` and `pnpm run format:check`. The editor
+integration does not apply `.gitignore`, so it can still format generated files
+under `out/` or `dist/` if you open and save them.
 
 Workspace settings select Oxc as the formatter and enable format on save for
 TypeScript. Run `pnpm run lint` and `pnpm run typecheck` separately to check
