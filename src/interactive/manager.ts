@@ -111,6 +111,7 @@ export class InteractiveManager
         { tableView?: string; listView?: string; selectedPlot?: string }
     >;
     private executionTimings: Map<string, { startTime: number; endTime: number }>;
+    private timingWrites: OutputQueue;
     // Display events replace their data object. Weak keys release superseded
     // snapshots, while console/status updates can reuse encoded plot assets.
     private renderedPlots = new WeakMap<
@@ -148,6 +149,22 @@ export class InteractiveManager
         this.outputViews = new Map(context.workspaceState.get('r.interactive.outputViews', []));
         this.executionTimings = new Map(
             context.workspaceState.get('r.interactive.executionTimings', []),
+        );
+        this.timingWrites = new OutputQueue(
+            async () => {
+                // Snapshot when the write starts, coalescing completions that
+                // arrived while the preceding storage update was in flight.
+                await context.workspaceState.update('r.interactive.executionTimings', [
+                    ...this.executionTimings,
+                ]);
+            },
+            (error) => {
+                if (this.closed) {
+                    console.error('R Interactive: could not save execution timings', error);
+                } else {
+                    this.report(error);
+                }
+            },
         );
         const command = (name: string, handler: (...args: unknown[]) => unknown): void => {
             this.disposables.push(
@@ -2292,6 +2309,8 @@ export class InteractiveManager
         try {
             await this.renderOutputs(view, id);
         } finally {
+            // OutputQueue reports delivery failures separately. Completion
+            // still reflects R's result and must release the execution handle.
             const execution = view.executions.get(id),
                 record = view.model.cells.get(id)?.record;
             if (
@@ -2323,9 +2342,7 @@ export class InteractiveManager
                             this.executionTimings.keys().next().value as string,
                         );
                     }
-                    void this.context.workspaceState
-                        .update('r.interactive.executionTimings', [...this.executionTimings])
-                        .then(undefined, (error) => this.report(error));
+                    this.timingWrites.schedule('executionTimings', true);
                 }
             }
         }
@@ -3417,6 +3434,7 @@ export class InteractiveManager
 
     dispose(): void {
         this.closed = true;
+        // Already scheduled timing writes may drain after the views close.
         setInteractiveExecutor(undefined);
         for (const view of this.views.values()) {
             this.disposeView(view);

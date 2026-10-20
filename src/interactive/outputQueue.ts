@@ -1,4 +1,4 @@
-/** Serialize notebook writes without blocking incoming runtime events. */
+/** Coalesce output-related work without blocking incoming runtime events. */
 export class OutputQueue {
     private pending = new Set<string>();
     private timer?: NodeJS.Timeout;
