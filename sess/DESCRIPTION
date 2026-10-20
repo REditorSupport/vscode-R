@@ -42,6 +42,7 @@ Suggests:
     tinytest,
     arrow,
     DBI,
+    RSQLite,
     dbplyr,
     dplyr
 NeedsCompilation: no
