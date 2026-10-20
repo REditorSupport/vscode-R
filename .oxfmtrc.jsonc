@@ -1,0 +1,14 @@
+{
+  "$schema": "./node_modules/oxfmt/configuration_schema.json",
+  "printWidth": 100,
+  "tabWidth": 4,
+  "singleQuote": true,
+  "endOfLine": "lf",
+  // Keep imports and package metadata in their existing order.
+  "sortImports": false,
+  "sortPackageJson": false,
+  // Format TypeScript files only for now: ignore everything, then re-include
+  // directories and TypeScript sources. The CLI and the Oxc VS Code extension
+  // both read this file.
+  "ignorePatterns": ["*", "!*/", "!*.ts", "!*.tsx", "!*.mts", "!*.cts"],
+}

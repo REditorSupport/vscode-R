@@ -5,7 +5,14 @@ export const MAX_CODE_BYTES = 1024 * 1024;
 export const DEFAULT_MAX_ASSET_BYTES = 1024 * 1024 * 1024;
 
 export type ProviderKind = 'r' | 'arf' | 'arf-existing';
-export type ExecutionState = 'queued' | 'running' | 'success' | 'error' | 'interrupted' | 'cancelled' | 'unknown';
+export type ExecutionState =
+    | 'queued'
+    | 'running'
+    | 'success'
+    | 'error'
+    | 'interrupted'
+    | 'cancelled'
+    | 'unknown';
 
 export interface SessionIdentity {
     id: string;
@@ -91,7 +98,10 @@ export interface AgentSettings extends SessionIdentity {
 }
 
 /** Persisted backend descriptor. Its definition validates and owns its options. */
-export interface BackendDescriptor { kind: string; options: Record<string, unknown> }
+export interface BackendDescriptor {
+    kind: string;
+    options: Record<string, unknown>;
+}
 
 export interface AgentConfig extends AgentSettings {
     backend?: BackendDescriptor;
@@ -112,7 +122,11 @@ export interface Request {
 
 export function sessionLabel(value: unknown): string {
     const label = typeof value === 'string' ? value.trim() : '';
-    if (!label || label.length > 80 || label.split('').some(char => char.charCodeAt(0) < 32 || char.charCodeAt(0) === 127)) {
+    if (
+        !label ||
+        label.length > 80 ||
+        label.split('').some((char) => char.charCodeAt(0) < 32 || char.charCodeAt(0) === 127)
+    ) {
         throw new Error('Use a session name of 1–80 characters without control characters');
     }
     return label;
@@ -135,17 +149,28 @@ export function identifier(value: unknown): string {
 export function submission(value: unknown): Submission {
     const data = object(value);
     const id = identifier(data.id);
-    if (typeof data.code !== 'string' || !data.code.trim() || Buffer.byteLength(data.code) > MAX_CODE_BYTES) {
+    if (
+        typeof data.code !== 'string' ||
+        !data.code.trim() ||
+        Buffer.byteLength(data.code) > MAX_CODE_BYTES
+    ) {
         throw new Error('Code must be nonempty and no larger than 1 MiB');
     }
     let source: SourceLocation | undefined;
     if (data.source) {
         const location = object(data.source);
-        if (typeof location.uri !== 'string' || typeof location.line !== 'number' || location.line < 0) {
+        if (
+            typeof location.uri !== 'string' ||
+            typeof location.line !== 'number' ||
+            location.line < 0
+        ) {
             throw new Error('Invalid source location');
         }
-        source = { uri: location.uri, line: location.line,
-            version: typeof location.version === 'number' ? location.version : undefined };
+        source = {
+            uri: location.uri,
+            line: location.line,
+            version: typeof location.version === 'number' ? location.version : undefined,
+        };
     }
     return { id, code: data.code, source };
 }

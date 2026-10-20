@@ -1,4 +1,3 @@
-
 import * as vscode from 'vscode';
 import { PlotViewer, PlotManager } from './types';
 import { HttpgdManager, HttpgdViewer } from './httpgdViewer';
@@ -16,12 +15,12 @@ export function resolveBackend(): PlotBackend {
         config(),
         'plot.backend',
         'plot.useHttpgd',
-        value => value !== 'auto' && value !== false
+        (value) => value !== 'auto' && value !== false,
     )?.value;
     if (selected === true) {
         return 'httpgd';
     }
-    return typeof selected === 'string' ? selected as PlotBackend : 'auto';
+    return typeof selected === 'string' ? (selected as PlotBackend) : 'auto';
 }
 
 export function jgdEnabled(backend = resolveBackend()): boolean {
@@ -45,7 +44,7 @@ const commands = [
     'closePlot',
     'resetPlots',
     'zoomIn',
-    'zoomOut'
+    'zoomOut',
 ] as const;
 
 export class CommonPlotManager implements PlotManager {
@@ -71,7 +70,11 @@ export class CommonPlotManager implements PlotManager {
 
     get activeViewer(): PlotViewer | undefined {
         if (jgdEnabled()) {
-            return this.jgdManager.getViewer() || this.httpgdManager.getRecentViewer() || this.standardPlotViewer;
+            return (
+                this.jgdManager.getViewer() ||
+                this.httpgdManager.getRecentViewer() ||
+                this.standardPlotViewer
+            );
         }
         return this.httpgdManager.getRecentViewer() || this.standardPlotViewer;
     }
@@ -82,19 +85,25 @@ export class CommonPlotManager implements PlotManager {
         for (const cmd of commands) {
             const fullCommand = `r.plot.${cmd}`;
             extensionContext.subscriptions.push(
-                vscode.commands.registerCommand(fullCommand, (hostOrWebviewUri?: string | vscode.Uri, ...args: unknown[]) => {
-                    void this.handleCommand(cmd, hostOrWebviewUri, ...args);
-                })
+                vscode.commands.registerCommand(
+                    fullCommand,
+                    (hostOrWebviewUri?: string | vscode.Uri, ...args: unknown[]) => {
+                        void this.handleCommand(cmd, hostOrWebviewUri, ...args);
+                    },
+                ),
             );
         }
 
         this.applyBackend();
         extensionContext.subscriptions.push(
-            vscode.workspace.onDidChangeConfiguration(e => {
-                if (e.affectsConfiguration('r.plot.backend') || e.affectsConfiguration('r.plot.useHttpgd')) {
+            vscode.workspace.onDidChangeConfiguration((e) => {
+                if (
+                    e.affectsConfiguration('r.plot.backend') ||
+                    e.affectsConfiguration('r.plot.useHttpgd')
+                ) {
                     this.applyBackend();
                 }
-            })
+            }),
         );
     }
 
@@ -132,7 +141,11 @@ export class CommonPlotManager implements PlotManager {
         this.jgdManager.stop();
     }
 
-    private async handleCommand(command: string, hostOrWebviewUri?: string | vscode.Uri, ...args: unknown[]): Promise<void> {
+    private async handleCommand(
+        command: string,
+        hostOrWebviewUri?: string | vscode.Uri,
+        ...args: unknown[]
+    ): Promise<void> {
         if (command === 'showViewers') {
             for (const viewer of this.viewers) {
                 viewer.show(true);
@@ -148,9 +161,13 @@ export class CommonPlotManager implements PlotManager {
         // Identify the correct viewer
         let viewer: PlotViewer | undefined;
         if (typeof hostOrWebviewUri === 'string') {
-            viewer = this.httpgdManager.viewers.find((v: HttpgdViewer) => v.host === hostOrWebviewUri);
+            viewer = this.httpgdManager.viewers.find(
+                (v: HttpgdViewer) => v.host === hostOrWebviewUri,
+            );
         } else if (hostOrWebviewUri instanceof vscode.Uri) {
-            viewer = this.httpgdManager.viewers.find((v: HttpgdViewer) => v.getPanelPath() === hostOrWebviewUri.path);
+            viewer = this.httpgdManager.viewers.find(
+                (v: HttpgdViewer) => v.getPanelPath() === hostOrWebviewUri.path,
+            );
         }
 
         // Fallback to active viewer

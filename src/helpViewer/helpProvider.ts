@@ -26,7 +26,7 @@ export class HelpProvider {
     private readonly cwd?: string;
     private readonly pkgListener?: () => void;
 
-    public constructor(options: RHelpProviderOptions){
+    public constructor(options: RHelpProviderOptions) {
         this.rPath = options.rPath || 'R';
         this.cwd = options.cwd;
         this.pkgListener = options.pkgListener;
@@ -39,7 +39,7 @@ export class HelpProvider {
         await this.cp.port;
     }
 
-    public launchRHelpServer(): ChildProcessWithPort{
+    public launchRHelpServer(): ChildProcessWithPort {
         const lim = '---vsc---';
         const portRegex = new RegExp(`.*${lim}(.*)${lim}.*`, 'ms');
 
@@ -55,7 +55,7 @@ export class HelpProvider {
             '-e',
             'base::source(base::commandArgs(TRUE))',
             '--args',
-            scriptPath
+            scriptPath,
         ];
         const cpOptions = {
             cwd: this.cwd,
@@ -63,7 +63,7 @@ export class HelpProvider {
                 ...process.env,
                 VSCR_LIB_PATHS: getRLibPaths(),
                 VSCR_LIM: lim,
-                VSCR_USE_RENV_LIB_PATH: config().get<boolean>('useRenvLibPath') ? 'TRUE' : 'FALSE'
+                VSCR_USE_RENV_LIB_PATH: config().get<boolean>('useRenvLibPath') ? 'TRUE' : 'FALSE',
             },
         };
 
@@ -73,16 +73,16 @@ export class HelpProvider {
         // promise containing the port number of the process (or 0)
         const portPromise = new Promise<number>((resolve) => {
             childProcess.stdout?.on('data', (data: Buffer) => {
-                try{
+                try {
                     str += data.toString();
                 } catch {
                     resolve(0);
                 }
-                if(portRegex.exec(str)){
+                if (portRegex.exec(str)) {
                     resolve(Number(str.replace(portRegex, '$1')));
                     str = str.replace(portRegex, '');
                 }
-                if(newPackageRegex.exec(str)){
+                if (newPackageRegex.exec(str)) {
                     this.pkgListener?.();
                     str = str.replace(newPackageRegex, '');
                 }
@@ -105,15 +105,16 @@ export class HelpProvider {
         return childProcess;
     }
 
-    public async getHelpFileFromRequestPath(requestPath: string): Promise<undefined|rHelp.HelpFile> {
-
+    public async getHelpFileFromRequestPath(
+        requestPath: string,
+    ): Promise<undefined | rHelp.HelpFile> {
         const port = await this.cp?.port;
-        if(!port || typeof port !== 'number'){
+        if (!port || typeof port !== 'number') {
             return undefined;
         }
 
         // remove leading '/'
-        while(requestPath.startsWith('/')){
+        while (requestPath.startsWith('/')) {
             requestPath = requestPath.slice(1);
         }
 
@@ -123,7 +124,7 @@ export class HelpProvider {
         // or manual is not installed locally (src/library/tools/R/dynamicHelp.R).
         // The initial request is loopback, but HTTP(S) redirects may be external.
         const rep = await getHttpText(url);
-        if(rep.status !== 200){
+        if (rep.status !== 200) {
             return undefined;
         }
         const html = rep.text;
@@ -138,7 +139,7 @@ export class HelpProvider {
             requestPath: requestPath1,
             html: html,
             isRealFile: false,
-            url: url.href
+            url: url.href,
         };
         return ret;
     }
@@ -147,7 +148,6 @@ export class HelpProvider {
         this.cp.dispose();
     }
 }
-
 
 export interface AliasProviderArgs {
     // R path, must be vanilla R
@@ -166,23 +166,22 @@ interface PackageAliases {
     aliasFile?: string;
     aliases?: {
         [key: string]: string;
-    },
-    error?: string
+    };
+    error?: string;
 }
 interface AllPackageAliases {
-    [key: string]: PackageAliases
+    [key: string]: PackageAliases;
 }
 
 // Implements the aliasProvider required by the help panel
 export class AliasProvider {
-
     private readonly rPath: string;
     private readonly cwd?: string;
     private readonly rScriptFile: string;
     private aliases?: undefined | rHelp.Alias[];
     private readonly persistentState?: Memento;
 
-    constructor(args: AliasProviderArgs){
+    constructor(args: AliasProviderArgs) {
         this.rPath = args.rPath;
         this.cwd = args.cwd;
         this.rScriptFile = args.rScriptFile;
@@ -199,13 +198,13 @@ export class AliasProvider {
     // get a list of all aliases
     public async getAllAliases(): Promise<rHelp.Alias[] | undefined> {
         // try this.aliases:
-        if(this.aliases){
+        if (this.aliases) {
             return this.aliases;
         }
 
         // try cached aliases:
         const cachedAliases = this.persistentState?.get<rHelp.Alias[]>('r.helpPanel.cachedAliases');
-        if(cachedAliases){
+        if (cachedAliases) {
             this.aliases = cachedAliases;
             return cachedAliases;
         }
@@ -221,7 +220,7 @@ export class AliasProvider {
     private async makeAllAliases(): Promise<rHelp.Alias[] | undefined> {
         // get aliases from R (nested format)
         const allPackageAliases = await this.getAliasesFromR();
-        if(!allPackageAliases){
+        if (!allPackageAliases) {
             return undefined;
         }
 
@@ -232,16 +231,18 @@ export class AliasProvider {
             const pkgName = item.package || pkg;
 
             if (item.error) {
-                void window.showErrorMessage(`An error occurred while reading the aliases file for package ${pkgName}: ${item.error}. The package files may be corrupted. Try reinstalling the package.`);
+                void window.showErrorMessage(
+                    `An error occurred while reading the aliases file for package ${pkgName}: ${item.error}. The package files may be corrupted. Try reinstalling the package.`,
+                );
                 continue;
             }
 
             const pkgAliases = item.aliases || {};
-            for(const fncName in pkgAliases){
+            for (const fncName in pkgAliases) {
                 allAliases.push({
                     name: pkgAliases[fncName],
                     alias: fncName,
-                    package: pkgName
+                    package: pkgName,
                 });
             }
         }
@@ -257,18 +258,11 @@ export class AliasProvider {
                 ...process.env,
                 VSCR_LIB_PATHS: getRLibPaths(),
                 VSCR_LIM: lim,
-                VSCR_USE_RENV_LIB_PATH: config().get<boolean>('useRenvLibPath') ? 'TRUE' : 'FALSE'
-            }
+                VSCR_USE_RENV_LIB_PATH: config().get<boolean>('useRenvLibPath') ? 'TRUE' : 'FALSE',
+            },
         };
 
-        const args = [
-            '--silent',
-            '--no-echo',
-            '--no-save',
-            '--no-restore',
-            '-f',
-            this.rScriptFile
-        ];
+        const args = ['--silent', '--no-echo', '--no-save', '--no-restore', '-f', this.rScriptFile];
 
         try {
             const result = await spawnAsync(this.rPath, args, options);

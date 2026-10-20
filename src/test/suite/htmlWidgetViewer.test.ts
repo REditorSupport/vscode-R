@@ -5,7 +5,14 @@ import * as path from 'path';
 import * as sinon from 'sinon';
 import * as vscode from 'vscode';
 import * as session from '../../session';
-import { HtmlViewerSessionAccess, initializeHtmlWidgetViewers, restoreHtmlViewer, runHtmlViewerCommand, showWebView, shutdownHtmlWidgetViewers } from '../../webViewer';
+import {
+    HtmlViewerSessionAccess,
+    initializeHtmlWidgetViewers,
+    restoreHtmlViewer,
+    runHtmlViewerCommand,
+    showWebView,
+    shutdownHtmlWidgetViewers,
+} from '../../webViewer';
 import { extensionContext } from '../../extension';
 import { widgetHistoryKey, WidgetHistory } from '../../webViewer/history';
 import type { HtmlViewerPanelState } from '../../webViewer/webviewMessages';
@@ -23,7 +30,10 @@ suite('Session-aware HTML widget Viewer', () => {
     let execute: sinon.SinonStub;
     let information: sinon.SinonStub;
     const contexts = new Map<string, unknown>();
-    const viewEvents = new Map<vscode.WebviewPanel, vscode.EventEmitter<vscode.WebviewPanelOnDidChangeViewStateEvent>>();
+    const viewEvents = new Map<
+        vscode.WebviewPanel,
+        vscode.EventEmitter<vscode.WebviewPanelOnDidChangeViewStateEvent>
+    >();
     const savedState = new Map<string, unknown>();
     let trustedWorkspace: boolean;
     let workspaceRoots: string[];
@@ -32,7 +42,7 @@ suite('Session-aware HTML widget Viewer', () => {
     let disposeLoadingStatus: sinon.SinonStub;
     let statusVisible: boolean;
     const viewerSessions: HtmlViewerSessionAccess = {
-        resolveSession: source => session.getViewerSessionContext(source.sessionId, source)!,
+        resolveSession: (source) => session.getViewerSessionContext(source.sessionId, source)!,
         getActiveSessionId: () => session.activeSession?.sessionId,
     };
 
@@ -42,103 +52,175 @@ suite('Session-aware HTML widget Viewer', () => {
         workspaceRoots = [];
         autoLoad = true;
         statusVisible = false;
-        sandbox.stub(vscode.window, 'createStatusBarItem').callThrough().withArgs(sinon.match.same('r.htmlViewer.loading')).callsFake((id, alignment) => {
-            assert.strictEqual(id, 'r.htmlViewer.loading');
-            assert.strictEqual(alignment, vscode.StatusBarAlignment.Right);
-            disposeLoadingStatus = sandbox.stub().callsFake(() => { statusVisible = false; });
-            loadingStatus = {
-                text: '', tooltip: undefined, command: undefined,
-                show: sandbox.stub().callsFake(() => { statusVisible = true; }),
-                hide: sandbox.stub().callsFake(() => { statusVisible = false; }),
-                dispose: disposeLoadingStatus,
-            } as unknown as vscode.StatusBarItem;
-            return loadingStatus;
-        });
+        sandbox
+            .stub(vscode.window, 'createStatusBarItem')
+            .callThrough()
+            .withArgs(sinon.match.same('r.htmlViewer.loading'))
+            .callsFake((id, alignment) => {
+                assert.strictEqual(id, 'r.htmlViewer.loading');
+                assert.strictEqual(alignment, vscode.StatusBarAlignment.Right);
+                disposeLoadingStatus = sandbox.stub().callsFake(() => {
+                    statusVisible = false;
+                });
+                loadingStatus = {
+                    text: '',
+                    tooltip: undefined,
+                    command: undefined,
+                    show: sandbox.stub().callsFake(() => {
+                        statusVisible = true;
+                    }),
+                    hide: sandbox.stub().callsFake(() => {
+                        statusVisible = false;
+                    }),
+                    dispose: disposeLoadingStatus,
+                } as unknown as vscode.StatusBarItem;
+                return loadingStatus;
+            });
         sandbox.stub(vscode.workspace, 'isTrusted').get(() => trustedWorkspace);
-        sandbox.stub(vscode.workspace, 'workspaceFolders').get(() => workspaceRoots.map((root, index) => ({
-            uri: vscode.Uri.file(path.resolve(root)), name: 'HTML viewer test workspace', index,
-        })));
+        sandbox.stub(vscode.workspace, 'workspaceFolders').get(() =>
+            workspaceRoots.map((root, index) => ({
+                uri: vscode.Uri.file(path.resolve(root)),
+                name: 'HTML viewer test workspace',
+                index,
+            })),
+        );
         activePanel = undefined;
         contexts.clear();
         execute = sandbox.stub(vscode.commands, 'executeCommand').callThrough();
-        execute.withArgs('setContext').callsFake((_command: string, key: string, value: unknown) => { contexts.set(key, value); return Promise.resolve(); });
+        execute
+            .withArgs('setContext')
+            .callsFake((_command: string, key: string, value: unknown) => {
+                contexts.set(key, value);
+                return Promise.resolve();
+            });
         information = sandbox.stub(vscode.window, 'showInformationMessage').resolves();
-        sandbox.stub(vscode.window, 'registerWebviewPanelSerializer').returns({ dispose: sandbox.stub() });
+        sandbox
+            .stub(vscode.window, 'registerWebviewPanelSerializer')
+            .returns({ dispose: sandbox.stub() });
         mockExtensionContext(path.resolve(__dirname, '../../..'), sandbox);
         savedState.clear();
-        (extensionContext.workspaceState.get as sinon.SinonStub).callsFake((key: string, fallback: unknown) => savedState.get(key) ?? fallback);
-        (extensionContext.workspaceState.update as sinon.SinonStub).callsFake((key: string, value: unknown) => {
-            savedState.set(key, JSON.parse(JSON.stringify(value)));
-            return Promise.resolve();
-        });
+        (extensionContext.workspaceState.get as sinon.SinonStub).callsFake(
+            (key: string, fallback: unknown) => savedState.get(key) ?? fallback,
+        );
+        (extensionContext.workspaceState.update as sinon.SinonStub).callsFake(
+            (key: string, value: unknown) => {
+                savedState.set(key, JSON.parse(JSON.stringify(value)));
+                return Promise.resolve();
+            },
+        );
         viewerManager = initializeHtmlWidgetViewers(extensionContext, viewerSessions);
         read = sandbox.stub(fs, 'readFile');
-        read.callsFake(file => Promise.resolve(
-            `<div>${String(file)}</div><script src="lib/widget.js"></script>`));
-        sandbox.stub(vscode.window, 'createWebviewPanel').callsFake((_type, title, _column, options) => {
-            const disposed = new vscode.EventEmitter<void>();
-            const viewState = new vscode.EventEmitter<vscode.WebviewPanelOnDidChangeViewStateEvent>();
-            const listeners: Array<(message: unknown) => unknown> = [];
-            let closed = false;
-            let html = '';
-            const webview = {
-                get html() { return html; },
-                set html(value: string) {
-                    html = value;
-                    const generation = Number(/data-generation="(\d+)"/.exec(value)?.[1]);
-                    if (autoLoad && generation) {
-                        queueMicrotask(() => { void receivers.get(panel)?.({ message: 'widget/loaded', generation }); });
-                    }
-                },
-                options, cspSource: 'webview-test:',
-                asWebviewUri: (uri: vscode.Uri) => uri,
-                onDidReceiveMessage: (listener: (message: unknown) => unknown) => {
-                    listeners.push(listener);
-                    return { dispose: () => { listeners.splice(listeners.indexOf(listener), 1); } };
-                },
-            };
-            const panel = {
-                title, viewType: 'r.htmlViewer', viewColumn: vscode.ViewColumn.Two,
-                get active() { return activePanel === panel; },
-                reveal: sandbox.stub().callsFake((_column: vscode.ViewColumn, preserveFocus: boolean) => {
-                    if (!preserveFocus) { activate(panel); }
-                }),
-                get webview() {
-                    assert.strictEqual(closed, false, 'Disposed panels must not be accessed');
-                    return webview;
-                },
-                onDidDispose: disposed.event,
-                onDidChangeViewState: viewState.event,
-                dispose: () => {
-                    if (closed) { return; }
-                    closed = true; disposed.fire(); disposed.dispose(); viewState.dispose(); listeners.length = 0;
-                },
-            } as unknown as vscode.WebviewPanel;
-            panels.push(panel);
-            activePanel = panel;
-            viewEvents.set(panel, viewState);
-            receivers.set(panel, async message => { await Promise.all(listeners.map(listener => listener(message))); });
-            return panel;
-        });
+        read.callsFake((file) =>
+            Promise.resolve(`<div>${String(file)}</div><script src="lib/widget.js"></script>`),
+        );
+        sandbox
+            .stub(vscode.window, 'createWebviewPanel')
+            .callsFake((_type, title, _column, options) => {
+                const disposed = new vscode.EventEmitter<void>();
+                const viewState =
+                    new vscode.EventEmitter<vscode.WebviewPanelOnDidChangeViewStateEvent>();
+                const listeners: Array<(message: unknown) => unknown> = [];
+                let closed = false;
+                let html = '';
+                const webview = {
+                    get html() {
+                        return html;
+                    },
+                    set html(value: string) {
+                        html = value;
+                        const generation = Number(/data-generation="(\d+)"/.exec(value)?.[1]);
+                        if (autoLoad && generation) {
+                            queueMicrotask(() => {
+                                void receivers.get(panel)?.({
+                                    message: 'widget/loaded',
+                                    generation,
+                                });
+                            });
+                        }
+                    },
+                    options,
+                    cspSource: 'webview-test:',
+                    asWebviewUri: (uri: vscode.Uri) => uri,
+                    onDidReceiveMessage: (listener: (message: unknown) => unknown) => {
+                        listeners.push(listener);
+                        return {
+                            dispose: () => {
+                                listeners.splice(listeners.indexOf(listener), 1);
+                            },
+                        };
+                    },
+                };
+                const panel = {
+                    title,
+                    viewType: 'r.htmlViewer',
+                    viewColumn: vscode.ViewColumn.Two,
+                    get active() {
+                        return activePanel === panel;
+                    },
+                    reveal: sandbox
+                        .stub()
+                        .callsFake((_column: vscode.ViewColumn, preserveFocus: boolean) => {
+                            if (!preserveFocus) {
+                                activate(panel);
+                            }
+                        }),
+                    get webview() {
+                        assert.strictEqual(closed, false, 'Disposed panels must not be accessed');
+                        return webview;
+                    },
+                    onDidDispose: disposed.event,
+                    onDidChangeViewState: viewState.event,
+                    dispose: () => {
+                        if (closed) {
+                            return;
+                        }
+                        closed = true;
+                        disposed.fire();
+                        disposed.dispose();
+                        viewState.dispose();
+                        listeners.length = 0;
+                    },
+                } as unknown as vscode.WebviewPanel;
+                panels.push(panel);
+                activePanel = panel;
+                viewEvents.set(panel, viewState);
+                receivers.set(panel, async (message) => {
+                    await Promise.all(listeners.map((listener) => listener(message)));
+                });
+                return panel;
+            });
     });
 
     teardown(async () => {
-        panels.splice(0).forEach(panel => { panel.dispose(); });
+        panels.splice(0).forEach((panel) => {
+            panel.dispose();
+        });
         await shutdownHtmlWidgetViewers();
         receivers.clear();
         viewEvents.clear();
-        owners.splice(0).forEach(owner => session.unregisterSessionTransport(owner));
+        owners.splice(0).forEach((owner) => session.unregisterSessionTransport(owner));
         sandbox.restore();
     });
 
     function owner(id: string): session.Session {
-        const result = session.registerSessionTransport(id, 'widget-test-host', '/tmp', sandbox.stub().resolves({}));
-        result.pid = String(1000 + owners.length); result.rVer = '4.6.1';
+        const result = session.registerSessionTransport(
+            id,
+            'widget-test-host',
+            '/tmp',
+            sandbox.stub().resolves({}),
+        );
+        result.pid = String(1000 + owners.length);
+        result.rVer = '4.6.1';
         owners.push(result);
         return result;
     }
 
-    function show(file: string, source: session.Session, title = 'Viewer', viewer: string | boolean = 'Two') {
+    function show(
+        file: string,
+        source: session.Session,
+        title = 'Viewer',
+        viewer: string | boolean = 'Two',
+    ) {
         return showWebView(file, title, viewer, session.getViewerSessionContext(source.sessionId));
     }
 
@@ -146,50 +228,74 @@ suite('Session-aware HTML widget Viewer', () => {
         assert.strictEqual(panel.title, 'HTML Viewer');
         const reference = panelReference(panel);
         const states = savedState.get('r.htmlViewer.panels') as HtmlViewerPanelState[];
-        const state = states.find(state => state.id === reference.id)!;
+        const state = states.find((state) => state.id === reference.id)!;
         const item = state.history[state.index];
-        assert.ok(panel.webview.html.includes(`<div>${item.file}</div>`), 'The retained title must belong to the rendered output');
+        assert.ok(
+            panel.webview.html.includes(`<div>${item.file}</div>`),
+            'The retained title must belong to the rendered output',
+        );
         return item.title;
     }
 
     function widgetDocument(panel: vscode.WebviewPanel): string {
-        assert.ok(!panel.webview.html.includes('widget-frame'), 'Outputs must render directly without the private iframe');
+        assert.ok(
+            !panel.webview.html.includes('widget-frame'),
+            'Outputs must render directly without the private iframe',
+        );
         return panel.webview.html;
     }
 
     function activate(panel?: vscode.WebviewPanel): void {
         activePanel = panel;
-        for (const [viewer, emitter] of viewEvents) { emitter.fire({ webviewPanel: viewer }); }
+        for (const [viewer, emitter] of viewEvents) {
+            emitter.fire({ webviewPanel: viewer });
+        }
     }
 
     function position(panel: vscode.WebviewPanel): string {
-        const entry = [...viewerManager.viewers.values()].find(entry => entry.panel === panel)!;
+        const entry = [...viewerManager.viewers.values()].find((entry) => entry.panel === panel)!;
         return `${entry.state.index + 1} / ${entry.state.history.length}`;
     }
 
     function panelReference(panel: vscode.WebviewPanel): { id: string } {
-        const value = /data-viewer-state="([^"]*)"/.exec(panel.webview.html)![1].replace(/&quot;/g, '"');
+        const value = /data-viewer-state="([^"]*)"/
+            .exec(panel.webview.html)![1]
+            .replace(/&quot;/g, '"');
         return JSON.parse(value) as { id: string };
     }
 
-    async function reloadPanel(panel: vscode.WebviewPanel, reference = panelReference(panel)): Promise<void> {
+    async function reloadPanel(
+        panel: vscode.WebviewPanel,
+        reference = panelReference(panel),
+    ): Promise<void> {
         await shutdownHtmlWidgetViewers(true);
         viewerManager = initializeHtmlWidgetViewers(extensionContext, viewerSessions);
-        const serializer = (vscode.window.registerWebviewPanelSerializer as sinon.SinonStub).lastCall.args[1] as vscode.WebviewPanelSerializer;
+        const serializer = (vscode.window.registerWebviewPanelSerializer as sinon.SinonStub)
+            .lastCall.args[1] as vscode.WebviewPanelSerializer;
         await serializer.deserializeWebviewPanel(panel, reference);
     }
 
     async function info(panel: vscode.WebviewPanel): Promise<string> {
         activate(panel);
         await runHtmlViewerCommand('info');
-        const label = panel.title.startsWith('HTML Viewer · ') ? panel.title.slice('HTML Viewer · '.length) : '';
+        const label = panel.title.startsWith('HTML Viewer · ')
+            ? panel.title.slice('HTML Viewer · '.length)
+            : '';
         await runHtmlViewerCommand('info');
         return label;
     }
 
-    async function navigate(panel: vscode.WebviewPanel, direction: 'back' | 'forward', oldGeneration?: number): Promise<void> {
+    async function navigate(
+        panel: vscode.WebviewPanel,
+        direction: 'back' | 'forward',
+        oldGeneration?: number,
+    ): Promise<void> {
         if (oldGeneration !== undefined) {
-            await receivers.get(panel)!({ message: 'widget/navigate', direction, generation: oldGeneration });
+            await receivers.get(panel)!({
+                message: 'widget/navigate',
+                direction,
+                generation: oldGeneration,
+            });
         } else {
             activate(panel);
             await runHtmlViewerCommand(direction);
@@ -229,12 +335,17 @@ suite('Session-aware HTML widget Viewer', () => {
             const records = savedState.get(widgetHistoryKey) as WidgetHistory[];
             delete records[0].viewColumn;
             configuration.withArgs('r').returns({
-                get: (key: string) => key === 'session.viewers.viewColumn' && viewer ? { viewer } : undefined,
+                get: (key: string) =>
+                    key === 'session.viewers.viewColumn' && viewer ? { viewer } : undefined,
             } as vscode.WorkspaceConfiguration);
             viewerManager = initializeHtmlWidgetViewers(extensionContext, viewerSessions);
             await restoreHtmlViewer(source.sessionId);
-            const options = (vscode.window.createWebviewPanel as sinon.SinonStub).lastCall.args[2] as { viewColumn: vscode.ViewColumn };
-            assert.strictEqual(options.viewColumn, viewer ? vscode.ViewColumn.Three : vscode.ViewColumn.Two);
+            const options = (vscode.window.createWebviewPanel as sinon.SinonStub).lastCall
+                .args[2] as { viewColumn: vscode.ViewColumn };
+            assert.strictEqual(
+                options.viewColumn,
+                viewer ? vscode.ViewColumn.Three : vscode.ViewColumn.Two,
+            );
         }
     });
 
@@ -250,8 +361,15 @@ suite('Session-aware HTML widget Viewer', () => {
         assert.ok(widgetDocument(panels[0]).includes('<base href="file:///tmp/widget-c/">'));
         assert.ok(widgetDocument(panels[0]).includes('src="lib/widget.js"'));
         assert.ok(panels[1].webview.html.includes('/tmp/widget-b/index.html'));
-        assert.ok(panels[0].webview.options.localResourceRoots?.some(root => root.fsPath === vscode.Uri.file('/tmp/widget-c').fsPath));
-        assert.deepStrictEqual((panels[0].reveal as sinon.SinonStub).lastCall.args, [vscode.ViewColumn.Two, true]);
+        assert.ok(
+            panels[0].webview.options.localResourceRoots?.some(
+                (root) => root.fsPath === vscode.Uri.file('/tmp/widget-c').fsPath,
+            ),
+        );
+        assert.deepStrictEqual((panels[0].reveal as sinon.SinonStub).lastCall.args, [
+            vscode.ViewColumn.Two,
+            true,
+        ]);
         assert.ok((await info(panels[0])).includes(`R 4.6.1: ${first.pid}`));
         assert.ok((await info(panels[1])).includes(`R 4.6.1: ${second.pid}`));
         assert.ok(!widgetDocument(panels[0]).includes('widget-toolbar'));
@@ -270,7 +388,11 @@ suite('Session-aware HTML widget Viewer', () => {
         await pending;
         assert.strictEqual(panels[0].webview.html, latest);
         assert.strictEqual(outputTitle(panels[0]), 'Latest');
-        assert.ok(panels[0].webview.options.localResourceRoots?.some(root => root.fsPath === vscode.Uri.file('/tmp/latest').fsPath));
+        assert.ok(
+            panels[0].webview.options.localResourceRoots?.some(
+                (root) => root.fsPath === vscode.Uri.file('/tmp/latest').fsPath,
+            ),
+        );
     });
 
     test('closing during a load allows a new panel and discards the old result', async () => {
@@ -319,7 +441,10 @@ suite('Session-aware HTML widget Viewer', () => {
             assert.strictEqual(retained.length, 1);
             assert.strictEqual(retained[0].source.host, replacement.host);
             assert.strictEqual(retained[0].source.pid, replacement.pid);
-            assert.deepStrictEqual(retained[0].history.map(item => item.title), ['New']);
+            assert.deepStrictEqual(
+                retained[0].history.map((item) => item.title),
+                ['New'],
+            );
 
             // Closing the original panel must not overwrite the replacement's
             // history or remove it from the panel-reuse map.
@@ -375,7 +500,7 @@ suite('Session-aware HTML widget Viewer', () => {
         await showWebView('/tmp/page-b/index.html', 'Page Viewer', 'Two');
         assert.strictEqual(panels.length, 2);
         assert.ok(!panels[0].webview.html.includes('widget-toolbar'));
-        assert.ok(panels.every(panel => panel.title === 'HTML Viewer'));
+        assert.ok(panels.every((panel) => panel.title === 'HTML Viewer'));
     });
 
     test('Back and Forward browse only the owning session with correct boundary states', async () => {
@@ -390,18 +515,30 @@ suite('Session-aware HTML widget Viewer', () => {
         assert.ok(!disabled(panel, 'back') && disabled(panel, 'forward'));
         assert.strictEqual(position(panel), '2 / 2');
         const roots = panel.webview.options.localResourceRoots;
-        assert.ok(!roots?.some(root => root.fsPath === vscode.Uri.file('/tmp/other').fsPath));
+        assert.ok(!roots?.some((root) => root.fsPath === vscode.Uri.file('/tmp/other').fsPath));
         await navigate(panel, 'back');
-        assert.strictEqual(panel.webview.options.localResourceRoots, roots, 'Back must not change permissions or reload the previous document');
+        assert.strictEqual(
+            panel.webview.options.localResourceRoots,
+            roots,
+            'Back must not change permissions or reload the previous document',
+        );
         assert.strictEqual(outputTitle(panel), 'A');
         assert.ok(widgetDocument(panel).includes('/tmp/a/index.html'));
-        assert.ok(panel.webview.options.localResourceRoots?.some(root => root.fsPath === vscode.Uri.file('/tmp/a').fsPath));
+        assert.ok(
+            panel.webview.options.localResourceRoots?.some(
+                (root) => root.fsPath === vscode.Uri.file('/tmp/a').fsPath,
+            ),
+        );
         assert.ok(disabled(panel, 'back') && !disabled(panel, 'forward'));
         const firstHtml = panel.webview.html;
         await navigate(panel, 'back');
         assert.strictEqual(panel.webview.html, firstHtml);
         await navigate(panel, 'forward');
-        assert.strictEqual(panel.webview.options.localResourceRoots, roots, 'Forward must not change permissions or reload the previous document');
+        assert.strictEqual(
+            panel.webview.options.localResourceRoots,
+            roots,
+            'Forward must not change permissions or reload the previous document',
+        );
         assert.strictEqual(outputTitle(panel), 'B');
         assert.ok(!disabled(panel, 'back') && disabled(panel, 'forward'));
         assert.strictEqual(panels.length, 2);
@@ -429,11 +566,15 @@ suite('Session-aware HTML widget Viewer', () => {
         const otherRoots = panels[1].webview.options.localResourceRoots;
         await remove(panels[0]);
         const roots = panels[0].webview.options.localResourceRoots!;
-        assert.ok(roots.some(root => root.fsPath === vscode.Uri.file('/tmp/a').fsPath));
-        assert.ok(!roots.some(root => root.fsPath === vscode.Uri.file('/tmp/b').fsPath));
+        assert.ok(roots.some((root) => root.fsPath === vscode.Uri.file('/tmp/a').fsPath));
+        assert.ok(!roots.some((root) => root.fsPath === vscode.Uri.file('/tmp/b').fsPath));
         assert.strictEqual(panels[1].webview.options.localResourceRoots, otherRoots);
         await remove(panels[0]);
-        assert.ok(!panels[0].webview.options.localResourceRoots?.some(root => root.fsPath === vscode.Uri.file('/tmp/a').fsPath));
+        assert.ok(
+            !panels[0].webview.options.localResourceRoots?.some(
+                (root) => root.fsPath === vscode.Uri.file('/tmp/a').fsPath,
+            ),
+        );
     });
 
     test('removing a middle output preserves other sessions and remaining Back/Forward history', async () => {
@@ -454,7 +595,12 @@ suite('Session-aware HTML widget Viewer', () => {
         assert.strictEqual(outputTitle(panels[0]), 'C');
         assert.strictEqual(panels[1].webview.html, otherHtml);
         const stored = savedState.get(widgetHistoryKey) as WidgetHistory[];
-        assert.deepStrictEqual(stored.find(record => record.source.sessionId === source.sessionId)?.history.map(item => item.title), ['A', 'C']);
+        assert.deepStrictEqual(
+            stored
+                .find((record) => record.source.sessionId === source.sessionId)
+                ?.history.map((item) => item.title),
+            ['A', 'C'],
+        );
     });
 
     test('removing the first and last outputs selects the remaining neighbor', async () => {
@@ -481,7 +627,9 @@ suite('Session-aware HTML widget Viewer', () => {
         assert.strictEqual(panels[0].title, 'HTML Viewer');
         assert.ok(widgetDocument(panels[0]).includes('No HTML outputs in this session'));
         assert.strictEqual(position(panels[0]), '0 / 0');
-        assert.ok((['back', 'forward', 'remove'] as const).every(button => disabled(panels[0], button)));
+        assert.ok(
+            (['back', 'forward', 'remove'] as const).every((button) => disabled(panels[0], button)),
+        );
         assert.deepStrictEqual(savedState.get(widgetHistoryKey), []);
         assert.strictEqual(read.callCount, 1, 'Empty history must not reload the deleted file');
         await remove(panels[0]);
@@ -666,7 +814,8 @@ suite('Session-aware HTML widget Viewer', () => {
         await show('/tmp/a.html', source, 'A');
         await runHtmlViewerCommand('info');
         source.processExited = true;
-        source.pid = ''; source.rVer = '';
+        source.pid = '';
+        source.rVer = '';
         await reloadPanel(panels[0]);
         assert.strictEqual(panels[0].title, 'HTML Viewer · R: (not attached)');
         assert.ok(panels[0].webview.html.includes('/tmp/a.html'));
@@ -689,15 +838,25 @@ suite('Session-aware HTML widget Viewer', () => {
         activate(panels[0]);
         assert.strictEqual(panels[0].title, `HTML Viewer · R 4.6.1: ${original.pid}`);
         assert.ok(panels[0].webview.html.includes('/tmp/old.html'));
-        assert.strictEqual(viewerManager.histories.entries.get(replacement.sessionId)?.source.pid, replacement.pid);
+        assert.strictEqual(
+            viewerManager.histories.entries.get(replacement.sessionId)?.source.pid,
+            replacement.pid,
+        );
         original.processExited = true;
         assert.strictEqual(panels[0].title, 'HTML Viewer · R: (not attached)');
-        assert.strictEqual(viewerManager.histories.entries.get(replacement.sessionId)?.source.pid, replacement.pid);
+        assert.strictEqual(
+            viewerManager.histories.entries.get(replacement.sessionId)?.source.pid,
+            replacement.pid,
+        );
     });
 
     test('reload ignores output-supplied paths and restores standalone HTML into its original panel', async () => {
         await showWebView('/tmp/standalone.html', 'Standalone', 'Two');
-        const reference = { ...panelReference(panels[0]), history: [{ file: '/tmp/forged.html', title: 'Forged' }], index: 0 };
+        const reference = {
+            ...panelReference(panels[0]),
+            history: [{ file: '/tmp/forged.html', title: 'Forged' }],
+            index: 0,
+        };
         await reloadPanel(panels[0], reference);
         assert.strictEqual(panels.length, 1);
         assert.ok(panels[0].webview.html.includes('/tmp/standalone.html'));
@@ -728,7 +887,8 @@ suite('Session-aware HTML widget Viewer', () => {
         await shutdownHtmlWidgetViewers(true);
         viewerManager = initializeHtmlWidgetViewers(extensionContext, viewerSessions);
         await show('/tmp/b.html', source, 'B');
-        const serializer = (vscode.window.registerWebviewPanelSerializer as sinon.SinonStub).lastCall.args[1] as vscode.WebviewPanelSerializer;
+        const serializer = (vscode.window.registerWebviewPanelSerializer as sinon.SinonStub)
+            .lastCall.args[1] as vscode.WebviewPanelSerializer;
         await serializer.deserializeWebviewPanel(original, reference);
         activate(original);
         assert.strictEqual(viewerManager.viewers.size, 1);
@@ -757,7 +917,9 @@ suite('Session-aware HTML widget Viewer', () => {
         const second = owner('html-injected-second');
         await show('/tmp/first.html', first, 'First');
         await show('/tmp/second.html', second, 'Second');
-        panels.forEach(panel => { panel.dispose(); });
+        panels.forEach((panel) => {
+            panel.dispose();
+        });
         const active = sandbox.stub(viewerSessions, 'getActiveSessionId').returns(first.sessionId);
         const resolve = sandbox.spy(viewerSessions, 'resolveSession');
         const pick = sandbox.stub(vscode.window, 'showQuickPick');
@@ -781,11 +943,16 @@ suite('Session-aware HTML widget Viewer', () => {
         const second = owner('html-history-pick-second');
         await show('/tmp/first.html', first, 'First');
         await show('/tmp/second.html', second, 'Second');
-        panels.forEach(panel => { panel.dispose(); });
+        panels.forEach((panel) => {
+            panel.dispose();
+        });
         session.unregisterSessionTransport(first);
         session.unregisterSessionTransport(second);
-        const pick = sandbox.stub(vscode.window, 'showQuickPick').callsFake((items: unknown) =>
-            Promise.resolve((items as Array<vscode.QuickPickItem>)[1]));
+        const pick = sandbox
+            .stub(vscode.window, 'showQuickPick')
+            .callsFake((items: unknown) =>
+                Promise.resolve((items as Array<vscode.QuickPickItem>)[1]),
+            );
         await restoreHtmlViewer();
         sinon.assert.calledOnce(pick);
         assert.strictEqual(outputTitle(panels[2]), 'Second');
@@ -855,7 +1022,9 @@ suite('Session-aware HTML widget Viewer', () => {
 
     test('full widget documents retain scripts, styles, and authored titles without an iframe', async () => {
         const source = owner('html-history-document');
-        read.resolves('<!doctype html><html><head><title>Authored &amp; original</title><style>body { margin: 0 }</style></head><body><script src="lib/widget.js"></script><div>Widget</div></body></html>');
+        read.resolves(
+            '<!doctype html><html><head><title>Authored &amp; original</title><style>body { margin: 0 }</style></head><body><script src="lib/widget.js"></script><div>Widget</div></body></html>',
+        );
         await show('/tmp/widget/index.html', source, '<Widget "title">');
         const document = widgetDocument(panels[0]);
         assert.ok(document.startsWith('<!doctype html><html><head><meta'));
@@ -877,13 +1046,25 @@ suite('Session-aware HTML widget Viewer', () => {
         read.resolves(original);
         await showWebView('/tmp/document.html', 'History title', 'Two');
         const rendered = panels[0].webview.html;
-        const headStart = original.indexOf('<HEAD data-example=">">') + '<HEAD data-example=">">'.length;
+        const headStart =
+            original.indexOf('<HEAD data-example=">">') + '<HEAD data-example=">">'.length;
         const headEnd = rendered.indexOf('\n            <title>Original title</title>', headStart);
         const scriptStart = rendered.lastIndexOf('<script src=');
         const scriptEnd = rendered.indexOf('</script>', scriptStart) + '</script>'.length;
-        assert.ok(rendered.slice(headStart, headEnd).startsWith('<meta http-equiv="Content-Security-Policy"'));
-        assert.ok(rendered.slice(scriptStart, scriptEnd).includes('/dist/webviews/webview/index.js'));
-        assert.strictEqual(rendered.slice(0, headStart) + rendered.slice(headEnd, scriptStart) + rendered.slice(scriptEnd), original);
+        assert.ok(
+            rendered
+                .slice(headStart, headEnd)
+                .startsWith('<meta http-equiv="Content-Security-Policy"'),
+        );
+        assert.ok(
+            rendered.slice(scriptStart, scriptEnd).includes('/dist/webviews/webview/index.js'),
+        );
+        assert.strictEqual(
+            rendered.slice(0, headStart) +
+                rendered.slice(headEnd, scriptStart) +
+                rendered.slice(scriptEnd),
+            original,
+        );
     });
 
     test('fragments without a document title do not receive the history title', async () => {
@@ -897,33 +1078,67 @@ suite('Session-aware HTML widget Viewer', () => {
         for (const fixture of [
             { href: 'assets/', target: '/tmp/output/assets/', root: '/tmp/output/assets' },
             { href: '', target: '/tmp/output/index.html', root: '/tmp/output' },
-            { href: vscode.Uri.file(path.resolve('/tmp/output/assets.html')).toString(), target: '/tmp/output/assets.html', root: '/tmp/output' },
-            { href: 'data:text/plain,ignored', target: '/tmp/output/index.html', root: '/tmp/output' },
+            {
+                href: vscode.Uri.file(path.resolve('/tmp/output/assets.html')).toString(),
+                target: '/tmp/output/assets.html',
+                root: '/tmp/output',
+            },
+            {
+                href: 'data:text/plain,ignored',
+                target: '/tmp/output/index.html',
+                root: '/tmp/output',
+            },
             { href: 'https://[', target: '/tmp/output/index.html', root: '/tmp/output' },
         ]) {
-            read.resolves(`<!doctype html><html><head><base target="_self"><base HREF='${fixture.href}' data-authored="yes"><base href="ignored/"></head><body>Output</body></html>`);
+            read.resolves(
+                `<!doctype html><html><head><base target="_self"><base HREF='${fixture.href}' data-authored="yes"><base href="ignored/"></head><body>Output</body></html>`,
+            );
             await showWebView(file, 'Authored base', 'Two');
             const panel = panels[panels.length - 1];
             let expected = vscode.Uri.file(path.resolve(fixture.target)).toString();
-            if (fixture.target.endsWith('/') && !expected.endsWith('/')) { expected += '/'; }
-            assert.ok(panel.webview.html.includes(`<base href="${expected}" data-authored="yes">`), fixture.href);
+            if (fixture.target.endsWith('/') && !expected.endsWith('/')) {
+                expected += '/';
+            }
+            assert.ok(
+                panel.webview.html.includes(`<base href="${expected}" data-authored="yes">`),
+                fixture.href,
+            );
             assert.ok(panel.webview.html.includes('<base target="_self">'));
             assert.ok(panel.webview.html.includes('<base href="ignored/">'));
             assert.strictEqual((panel.webview.html.match(/<base /g) ?? []).length, 3);
-            assert.ok(panel.webview.options.localResourceRoots?.some(uri => uri.fsPath === vscode.Uri.file(path.resolve(fixture.root)).fsPath), fixture.href);
+            assert.ok(
+                panel.webview.options.localResourceRoots?.some(
+                    (uri) => uri.fsPath === vscode.Uri.file(path.resolve(fixture.root)).fsPath,
+                ),
+                fixture.href,
+            );
         }
     });
 
     test('authored bases cannot grant access to the filesystem root or unrelated directories', async () => {
         const file = path.resolve('/tmp/output/index.html');
-        for (const href of ['/', '../', '../../', '../output-other/', '../shared%20assets/',
-            vscode.Uri.file(path.resolve('/tmp/external/')).toString() + '/']) {
+        for (const href of [
+            '/',
+            '../',
+            '../../',
+            '../output-other/',
+            '../shared%20assets/',
+            vscode.Uri.file(path.resolve('/tmp/external/')).toString() + '/',
+        ]) {
             read.resolves(`<html><head><base href="${href}"></head><body>Output</body></html>`);
             await showWebView(file, 'Untrusted base', 'Two');
-            assert.deepStrictEqual(panels[panels.length - 1].webview.options.localResourceRoots?.map(uri => uri.fsPath), [
-                vscode.Uri.file(path.dirname(file)).fsPath,
-                vscode.Uri.file(path.join(extensionContext.extensionPath, 'dist/webviews/webview')).fsPath,
-            ], href);
+            assert.deepStrictEqual(
+                panels[panels.length - 1].webview.options.localResourceRoots?.map(
+                    (uri) => uri.fsPath,
+                ),
+                [
+                    vscode.Uri.file(path.dirname(file)).fsPath,
+                    vscode.Uri.file(
+                        path.join(extensionContext.extensionPath, 'dist/webviews/webview'),
+                    ).fsPath,
+                ],
+                href,
+            );
         }
     });
 
@@ -931,14 +1146,26 @@ suite('Session-aware HTML widget Viewer', () => {
         workspaceRoots = ['/tmp'];
         for (const trusted of [false, true]) {
             trustedWorkspace = trusted;
-            read.resolves('<html><head><base href="../shared%20assets/"></head><body>Output</body></html>');
+            read.resolves(
+                '<html><head><base href="../shared%20assets/"></head><body>Output</body></html>',
+            );
             await showWebView(path.resolve('/tmp/output/index.html'), 'Shared dependencies', 'Two');
             const roots = panels[panels.length - 1].webview.options.localResourceRoots!;
-            assert.strictEqual(roots.some(uri => uri.fsPath === vscode.Uri.file(path.resolve('/tmp/shared assets')).fsPath), trusted);
+            assert.strictEqual(
+                roots.some(
+                    (uri) =>
+                        uri.fsPath === vscode.Uri.file(path.resolve('/tmp/shared assets')).fsPath,
+                ),
+                trusted,
+            );
         }
         trustedWorkspace = true;
         workspaceRoots = ['/tmp/output'];
-        await showWebView(path.resolve('/tmp/output/index.html'), 'Outside trusted workspace', 'Two');
+        await showWebView(
+            path.resolve('/tmp/output/index.html'),
+            'Outside trusted workspace',
+            'Two',
+        );
         assert.strictEqual(panels[panels.length - 1].webview.options.localResourceRoots?.length, 2);
     });
 
@@ -948,32 +1175,54 @@ suite('Session-aware HTML widget Viewer', () => {
         const source = owner('html-authored-base-uri');
         const file = path.resolve('/tmp/output/index.html');
         await show(file, source);
-        sandbox.stub(panels[0].webview, 'asWebviewUri').callsFake(uri => uri.with({ scheme: 'https', authority: 'widget-local.test' }));
-        read.resolves('<html><head><base href="../shared%20assets/" target="_self"></head><body>Output</body></html>');
+        sandbox
+            .stub(panels[0].webview, 'asWebviewUri')
+            .callsFake((uri) => uri.with({ scheme: 'https', authority: 'widget-local.test' }));
+        read.resolves(
+            '<html><head><base href="../shared%20assets/" target="_self"></head><body>Output</body></html>',
+        );
         await show(file, source);
-        const expected = vscode.Uri.file(path.resolve('/tmp/shared assets')).with({ scheme: 'https', authority: 'widget-local.test' }).toString() + '/';
+        const expected =
+            vscode.Uri.file(path.resolve('/tmp/shared assets'))
+                .with({ scheme: 'https', authority: 'widget-local.test' })
+                .toString() + '/';
         assert.ok(panels[0].webview.html.includes(`<base href="${expected}" target="_self">`));
-        assert.ok(panels[0].webview.options.localResourceRoots?.some(uri => uri.scheme === 'file' && uri.fsPath === vscode.Uri.file(path.resolve('/tmp/shared assets')).fsPath));
+        assert.ok(
+            panels[0].webview.options.localResourceRoots?.some(
+                (uri) =>
+                    uri.scheme === 'file' &&
+                    uri.fsPath === vscode.Uri.file(path.resolve('/tmp/shared assets')).fsPath,
+            ),
+        );
     });
 
     test('retained authored resource roots are rechecked when workspace trust changes', async () => {
         const source = owner('html-authored-base-trust');
         trustedWorkspace = true;
         workspaceRoots = ['/tmp'];
-        read.resolves('<html><head><base href="../shared assets/"></head><body>Output</body></html>');
+        read.resolves(
+            '<html><head><base href="../shared assets/"></head><body>Output</body></html>',
+        );
         await show('/tmp/output/index.html', source);
         const shared = vscode.Uri.file(path.resolve('/tmp/shared assets')).fsPath;
-        assert.ok(panels[0].webview.options.localResourceRoots?.some(root => root.fsPath === shared));
+        assert.ok(
+            panels[0].webview.options.localResourceRoots?.some((root) => root.fsPath === shared),
+        );
         trustedWorkspace = false;
         read.resolves('<html><body>Next output</body></html>');
         await show('/tmp/next/index.html', source);
-        assert.ok(!panels[0].webview.options.localResourceRoots?.some(root => root.fsPath === shared));
+        assert.ok(
+            !panels[0].webview.options.localResourceRoots?.some((root) => root.fsPath === shared),
+        );
         await navigate(panels[0], 'back');
-        assert.ok(!panels[0].webview.options.localResourceRoots?.some(root => root.fsPath === shared));
+        assert.ok(
+            !panels[0].webview.options.localResourceRoots?.some((root) => root.fsPath === shared),
+        );
     });
 
     test('absolute web bases and their authored attributes are preserved', async () => {
-        const original = "<base HREF='https://cdn.example.test/assets/?v=1&amp;mode=all' target='_self' data-authored='yes'>";
+        const original =
+            "<base HREF='https://cdn.example.test/assets/?v=1&amp;mode=all' target='_self' data-authored='yes'>";
         read.resolves(`<html><head>${original}</head><body>Output</body></html>`);
         await showWebView('/tmp/output/index.html', 'Remote base', 'Two');
         assert.ok(panels[0].webview.html.includes(original));
@@ -1008,7 +1257,7 @@ suite('Session-aware HTML widget Viewer', () => {
         assert.strictEqual(contexts.get('r.htmlViewer.canGoBack'), false);
         assert.strictEqual(contexts.get('r.htmlViewer.canGoForward'), true);
         activate();
-        assert.ok([...contexts.values()].every(value => value === false));
+        assert.ok([...contexts.values()].every((value) => value === false));
         await runHtmlViewerCommand('remove');
         assert.strictEqual(position(panels[0]), '1 / 2');
     });
@@ -1019,11 +1268,15 @@ suite('Session-aware HTML widget Viewer', () => {
         await show('/tmp/b.html', source, 'B');
         const slow = deferred<string>();
         autoLoad = false;
-        const previousGeneration = Number(/data-generation="(\d+)"/.exec(panels[0].webview.html)?.[1]);
+        const previousGeneration = Number(
+            /data-generation="(\d+)"/.exec(panels[0].webview.html)?.[1],
+        );
         read.onCall(2).returns(slow.promise);
         activate(panels[0]);
         const pending = runHtmlViewerCommand('back');
-        assert.ok((['back', 'forward', 'remove'] as const).every(button => disabled(panels[0], button)));
+        assert.ok(
+            (['back', 'forward', 'remove'] as const).every((button) => disabled(panels[0], button)),
+        );
         assert.strictEqual(contexts.get('r.htmlViewer.canShowInfo'), true);
         await runHtmlViewerCommand('remove');
         await runHtmlViewerCommand('forward');
@@ -1031,12 +1284,25 @@ suite('Session-aware HTML widget Viewer', () => {
         await pending;
         assert.strictEqual(position(panels[0]), '1 / 2');
         assert.strictEqual(outputTitle(panels[0]), 'A');
-        assert.ok((['back', 'forward', 'remove'] as const).every(button => disabled(panels[0], button)),
-            'Sending HTML does not mean the browser has loaded it');
-        await receivers.get(panels[0])!({ message: 'widget/loaded', generation: previousGeneration });
-        assert.strictEqual(contexts.get('r.htmlViewer.canGoForward'), false, 'Ignore readiness from the previous document');
+        assert.ok(
+            (['back', 'forward', 'remove'] as const).every((button) => disabled(panels[0], button)),
+            'Sending HTML does not mean the browser has loaded it',
+        );
+        await receivers.get(panels[0])!({
+            message: 'widget/loaded',
+            generation: previousGeneration,
+        });
+        assert.strictEqual(
+            contexts.get('r.htmlViewer.canGoForward'),
+            false,
+            'Ignore readiness from the previous document',
+        );
         await runHtmlViewerCommand('forward');
-        assert.strictEqual(position(panels[0]), '1 / 2', 'Ignore clicks until the replacement has loaded');
+        assert.strictEqual(
+            position(panels[0]),
+            '1 / 2',
+            'Ignore clicks until the replacement has loaded',
+        );
         const generation = Number(/data-generation="(\d+)"/.exec(panels[0].webview.html)?.[1]);
         await receivers.get(panels[0])!({ message: 'widget/loaded', generation });
         assert.strictEqual(contexts.get('r.htmlViewer.canGoForward'), true);
@@ -1047,22 +1313,37 @@ suite('Session-aware HTML widget Viewer', () => {
         const source = owner('html-load-timeout');
         await show('/tmp/a.html', source, 'A');
         autoLoad = false;
-        read.onCall(1).resolves('<html><head><meta http-equiv="Content-Security-Policy" content="script-src \'none\'"></head><body>Blocked acknowledgement</body></html>');
+        read.onCall(1).resolves(
+            '<html><head><meta http-equiv="Content-Security-Policy" content="script-src \'none\'"></head><body>Blocked acknowledgement</body></html>',
+        );
         await show('/tmp/b.html', source, 'B');
         const panel = panels[0];
         const html = panel.webview.html;
         assert.strictEqual(loadingStatus.text, '$(loading~spin) HTML Viewer: Loading HTML output…');
         clock.tick(4999);
-        assert.ok((['back', 'forward', 'remove'] as const).every(button => disabled(panel, button)));
+        assert.ok(
+            (['back', 'forward', 'remove'] as const).every((button) => disabled(panel, button)),
+        );
         clock.tick(1);
         assert.strictEqual(disabled(panel, 'back'), false);
         assert.strictEqual(disabled(panel, 'remove'), false);
         assert.strictEqual(panel.webview.html, html, 'Timeout must preserve the rendered content');
-        assert.strictEqual(loadingStatus.text, '$(loading~spin) HTML Viewer: Still loading. Please wait.');
-        assert.strictEqual(statusVisible, true, 'Timeout releases navigation without claiming loading completed');
+        assert.strictEqual(
+            loadingStatus.text,
+            '$(loading~spin) HTML Viewer: Still loading. Please wait.',
+        );
+        assert.strictEqual(
+            statusVisible,
+            true,
+            'Timeout releases navigation without claiming loading completed',
+        );
         const generation = Number(/data-generation="(\d+)"/.exec(html)?.[1]);
         await receivers.get(panel)!({ message: 'widget/loaded', generation });
-        assert.strictEqual(statusVisible, false, 'Readiness after the timeout must still dismiss progress');
+        assert.strictEqual(
+            statusVisible,
+            false,
+            'Readiness after the timeout must still dismiss progress',
+        );
         assert.strictEqual(clock.countTimers(), 0);
         await navigate(panel, 'back');
         clock.tick(5000);
@@ -1081,16 +1362,25 @@ suite('Session-aware HTML widget Viewer', () => {
         const panel = panels[0];
         const html = panel.webview.html;
         clock.tick(9999);
-        assert.strictEqual(loadingStatus.text, '$(loading~spin) HTML Viewer: Still loading. Please wait.');
+        assert.strictEqual(
+            loadingStatus.text,
+            '$(loading~spin) HTML Viewer: Still loading. Please wait.',
+        );
         clock.tick(1);
-        assert.strictEqual(loadingStatus.text, 'HTML Viewer: Load not confirmed. Please wait or retry.');
+        assert.strictEqual(
+            loadingStatus.text,
+            'HTML Viewer: Load not confirmed. Please wait or retry.',
+        );
         assert.strictEqual(loadingStatus.command, undefined);
         assert.strictEqual(statusVisible, true);
         assert.strictEqual(panel.webview.html, html);
         assert.strictEqual(disabled(panel, 'remove'), false);
         clock.tick(60000);
         assert.strictEqual(clock.countTimers(), 0);
-        assert.strictEqual(loadingStatus.text, 'HTML Viewer: Load not confirmed. Please wait or retry.');
+        assert.strictEqual(
+            loadingStatus.text,
+            'HTML Viewer: Load not confirmed. Please wait or retry.',
+        );
         const generation = Number(/data-generation="(\d+)"/.exec(html)?.[1]);
         await receivers.get(panel)!({ message: 'widget/loaded', generation });
         assert.strictEqual(statusVisible, false);
@@ -1136,9 +1426,20 @@ suite('Session-aware HTML widget Viewer', () => {
             const pending = show('/tmp/b.html', source, 'B');
             clock.tick(preparationTime);
             assert.strictEqual(panels[0].webview.html, previous);
-            assert.ok((['back', 'forward', 'remove'] as const).every(button => disabled(panels[0], button)));
-            assert.strictEqual(loadingStatus.text, '$(loading~spin) HTML Viewer: Loading HTML output…');
-            assert.strictEqual(clock.countTimers(), 0, 'Preparation must not start the browser timeout');
+            assert.ok(
+                (['back', 'forward', 'remove'] as const).every((button) =>
+                    disabled(panels[0], button),
+                ),
+            );
+            assert.strictEqual(
+                loadingStatus.text,
+                '$(loading~spin) HTML Viewer: Loading HTML output…',
+            );
+            assert.strictEqual(
+                clock.countTimers(),
+                0,
+                'Preparation must not start the browser timeout',
+            );
             await navigate(panels[0], 'back');
             await remove(panels[0]);
             assert.strictEqual(position(panels[0]), '2 / 2');
@@ -1146,10 +1447,17 @@ suite('Session-aware HTML widget Viewer', () => {
             await pending;
             assert.strictEqual(outputTitle(panels[0]), 'B');
             clock.tick(4999);
-            assert.ok((['back', 'forward', 'remove'] as const).every(button => disabled(panels[0], button)));
+            assert.ok(
+                (['back', 'forward', 'remove'] as const).every((button) =>
+                    disabled(panels[0], button),
+                ),
+            );
             clock.tick(1);
             assert.strictEqual(disabled(panels[0], 'back'), false);
-            assert.strictEqual(loadingStatus.text, '$(loading~spin) HTML Viewer: Still loading. Please wait.');
+            assert.strictEqual(
+                loadingStatus.text,
+                '$(loading~spin) HTML Viewer: Still loading. Please wait.',
+            );
             autoLoad = true;
             await navigate(panels[0], 'back');
             assert.strictEqual(outputTitle(panels[0]), 'A');
@@ -1190,7 +1498,10 @@ suite('Session-aware HTML widget Viewer', () => {
         assert.strictEqual(statusVisible, false);
         assert.strictEqual(clock.countTimers(), 0);
         read.onCall(2).rejects(new Error('unowned file failure'));
-        await assert.rejects(showWebView('/tmp/unowned.html', 'Unowned', 'Two'), /unowned file failure/);
+        await assert.rejects(
+            showWebView('/tmp/unowned.html', 'Unowned', 'Two'),
+            /unowned file failure/,
+        );
         assert.strictEqual(statusVisible, false);
         assert.strictEqual(clock.countTimers(), 0);
     });
@@ -1215,10 +1526,17 @@ suite('Session-aware HTML widget Viewer', () => {
         await show('/tmp/b.html', source, 'B');
         autoLoad = false;
         await navigate(panels[0], 'back');
-        const previousGeneration = Number(/data-generation="(\d+)"/.exec(panels[0].webview.html)?.[1]);
+        const previousGeneration = Number(
+            /data-generation="(\d+)"/.exec(panels[0].webview.html)?.[1],
+        );
         await show('/tmp/c.html', source, 'C');
-        await receivers.get(panels[0])!({ message: 'widget/loaded', generation: previousGeneration });
-        assert.ok((['back', 'forward', 'remove'] as const).every(button => disabled(panels[0], button)));
+        await receivers.get(panels[0])!({
+            message: 'widget/loaded',
+            generation: previousGeneration,
+        });
+        assert.ok(
+            (['back', 'forward', 'remove'] as const).every((button) => disabled(panels[0], button)),
+        );
         await navigate(panels[0], 'back');
         assert.strictEqual(outputTitle(panels[0]), 'C');
         const generation = Number(/data-generation="(\d+)"/.exec(panels[0].webview.html)?.[1]);
@@ -1270,7 +1588,7 @@ suite('Session-aware HTML widget Viewer', () => {
     test('unowned output disables history and Info actions without changing its title', async () => {
         await showWebView('/tmp/unowned.html', 'Unowned', 'Two');
         activate(panels[0]);
-        assert.ok([...contexts.values()].every(value => value === false));
+        assert.ok([...contexts.values()].every((value) => value === false));
         assert.strictEqual(await info(panels[0]), '');
         sinon.assert.notCalled(information);
         const html = panels[0].webview.html;
@@ -1279,32 +1597,70 @@ suite('Session-aware HTML widget Viewer', () => {
     });
 
     test('native toolbar contributes four HTML-specific commands with distinct icons and ordering', () => {
-        const manifest = JSON.parse(readFileSync(path.resolve(__dirname, '../../../package.json'), 'utf8')) as {
+        const manifest = JSON.parse(
+            readFileSync(path.resolve(__dirname, '../../../package.json'), 'utf8'),
+        ) as {
             contributes: {
                 menus: { 'editor/title': Array<{ command?: string; when: string; group: string }> };
                 commands: Array<{ command: string; title: string; icon: string }>;
             };
         };
-        const entries = manifest.contributes.menus['editor/title'].filter(item => item.command?.startsWith('r.htmlViewer.'));
-        assert.deepStrictEqual(entries.map(item => item.command),
-            ['r.htmlViewer.back', 'r.htmlViewer.forward', 'r.htmlViewer.remove', 'r.htmlViewer.info']);
-        assert.strictEqual(manifest.contributes.commands.find(command => command.command === 'r.htmlViewer.info')?.title, 'Toggle Session Information in Tab Title');
+        const entries = manifest.contributes.menus['editor/title'].filter((item) =>
+            item.command?.startsWith('r.htmlViewer.'),
+        );
+        assert.deepStrictEqual(
+            entries.map((item) => item.command),
+            [
+                'r.htmlViewer.back',
+                'r.htmlViewer.forward',
+                'r.htmlViewer.remove',
+                'r.htmlViewer.info',
+            ],
+        );
+        assert.strictEqual(
+            manifest.contributes.commands.find((command) => command.command === 'r.htmlViewer.info')
+                ?.title,
+            'Toggle Session Information in Tab Title',
+        );
         for (const [index, item] of entries.entries()) {
             assert.strictEqual(item.when, "activeWebviewPanelId == 'r.htmlViewer'");
-            assert.strictEqual(item.group, index < 2 ? `navigation@${index + 1}` : `htmlViewer@${index - 1}`);
-            const command = manifest.contributes.commands.find(command => command.command === item.command)!;
-            if (item.command !== 'r.htmlViewer.info') { assert.ok(command.title.includes('HTML')); }
-            assert.ok(['$(arrow-circle-left)', '$(arrow-circle-right)', '$(trash)', '$(info)'].includes(command.icon));
+            assert.strictEqual(
+                item.group,
+                index < 2 ? `navigation@${index + 1}` : `htmlViewer@${index - 1}`,
+            );
+            const command = manifest.contributes.commands.find(
+                (command) => command.command === item.command,
+            )!;
+            if (item.command !== 'r.htmlViewer.info') {
+                assert.ok(command.title.includes('HTML'));
+            }
+            assert.ok(
+                ['$(arrow-circle-left)', '$(arrow-circle-right)', '$(trash)', '$(info)'].includes(
+                    command.icon,
+                ),
+            );
         }
     });
 
     test('history is bounded to the latest 50 outputs', async () => {
         const source = owner('html-history-limit');
-        for (let i = 0; i < 51; i++) { await show(`/tmp/widget-${i}/index.html`, source, `Widget ${i}`); }
+        for (let i = 0; i < 51; i++) {
+            await show(`/tmp/widget-${i}/index.html`, source, `Widget ${i}`);
+        }
         assert.strictEqual(position(panels[0]), '50 / 50');
-        assert.ok(!panels[0].webview.options.localResourceRoots?.some(root => root.fsPath === vscode.Uri.file('/tmp/widget-0').fsPath));
-        assert.strictEqual(panels[0].webview.options.localResourceRoots?.length, 51, 'Only 50 output directories and viewer assets remain');
-        for (let i = 0; i < 49; i++) { await navigate(panels[0], 'back'); }
+        assert.ok(
+            !panels[0].webview.options.localResourceRoots?.some(
+                (root) => root.fsPath === vscode.Uri.file('/tmp/widget-0').fsPath,
+            ),
+        );
+        assert.strictEqual(
+            panels[0].webview.options.localResourceRoots?.length,
+            51,
+            'Only 50 output directories and viewer assets remain',
+        );
+        for (let i = 0; i < 49; i++) {
+            await navigate(panels[0], 'back');
+        }
         assert.strictEqual(outputTitle(panels[0]), 'Widget 1');
         assert.ok(disabled(panels[0], 'back'));
     });

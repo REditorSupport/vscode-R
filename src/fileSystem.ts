@@ -3,7 +3,10 @@ import type { PathLike } from 'node:fs';
 
 export async function pathExists(path: PathLike): Promise<boolean> {
     // Match fs-extra: an inaccessible path is treated as absent.
-    return access(path).then(() => true, () => false);
+    return access(path).then(
+        () => true,
+        () => false,
+    );
 }
 
 export async function readJson(path: PathLike): Promise<unknown> {

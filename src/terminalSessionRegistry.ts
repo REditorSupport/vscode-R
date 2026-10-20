@@ -17,17 +17,27 @@ export class TerminalSessionRegistry<Session, Terminal extends object> {
         private readonly isOpen: (terminal: Terminal) => boolean,
     ) {}
 
-    isClosed(terminal: Terminal): boolean { return this.closed.has(terminal); }
+    isClosed(terminal: Terminal): boolean {
+        return this.closed.has(terminal);
+    }
 
-    isLive(terminal: Terminal): boolean { return !this.isClosed(terminal) && this.isOpen(terminal); }
+    isLive(terminal: Terminal): boolean {
+        return !this.isClosed(terminal) && this.isOpen(terminal);
+    }
 
-    associationFor(terminal: Terminal | undefined): TerminalAssociation<Session, Terminal> | undefined {
-        if (!terminal || !this.isLive(terminal)) { return undefined; }
+    associationFor(
+        terminal: Terminal | undefined,
+    ): TerminalAssociation<Session, Terminal> | undefined {
+        if (!terminal || !this.isLive(terminal)) {
+            return undefined;
+        }
         const association = this.byTerminal.get(terminal);
         return association && this.isConnected(association.session) ? association : undefined;
     }
 
-    ownerOf(terminal: Terminal | undefined): Session | undefined { return this.associationFor(terminal)?.session; }
+    ownerOf(terminal: Terminal | undefined): Session | undefined {
+        return this.associationFor(terminal)?.session;
+    }
 
     forSession(session: Session): TerminalAssociation<Session, Terminal> | undefined {
         const association = this.bySession.get(session);
@@ -35,8 +45,10 @@ export class TerminalSessionRegistry<Session, Terminal extends object> {
     }
 
     isCurrent(association: TerminalAssociation<Session, Terminal>): boolean {
-        return this.associationFor(association.terminal) === association
-            && this.bySession.get(association.session) === association;
+        return (
+            this.associationFor(association.terminal) === association &&
+            this.bySession.get(association.session) === association
+        );
     }
 
     /** A native PID lookup may commit only if ownership did not change while it waited. */
@@ -46,35 +58,52 @@ export class TerminalSessionRegistry<Session, Terminal extends object> {
     }
 
     bindExplicit(terminal: Terminal, session: Session): boolean {
-        if (!this.isLive(terminal) || !this.isConnected(session)) { return false; }
+        if (!this.isLive(terminal) || !this.isConnected(session)) {
+            return false;
+        }
         const current = this.associationFor(terminal);
-        if (current?.kind === 'explicit' && current.session === session) { return true; }
+        if (current?.kind === 'explicit' && current.session === session) {
+            return true;
+        }
         this.set(terminal, session, 'explicit');
         return true;
     }
 
     attachNative(terminal: Terminal, session: Session): boolean {
-        if (!this.isLive(terminal) || !this.isConnected(session)
-            || this.associationFor(terminal)?.kind === 'explicit'
-            || this.forSession(session)?.kind === 'explicit') { return false; }
+        if (
+            !this.isLive(terminal) ||
+            !this.isConnected(session) ||
+            this.associationFor(terminal)?.kind === 'explicit' ||
+            this.forSession(session)?.kind === 'explicit'
+        ) {
+            return false;
+        }
         this.set(terminal, session, 'native');
         return true;
     }
 
     releaseSession(session: Session): void {
         const association = this.bySession.get(session);
-        if (association) { this.remove(association.terminal); }
+        if (association) {
+            this.remove(association.terminal);
+        }
     }
 
     closeTerminal(terminal: Terminal): void {
-        if (this.isClosed(terminal)) { return; }
+        if (this.isClosed(terminal)) {
+            return;
+        }
         this.closed.add(terminal);
         this.remove(terminal);
     }
 
     onDidChange(listener: (terminal: Terminal) => void): { dispose(): void } {
         this.listeners.add(listener);
-        return { dispose: () => { this.listeners.delete(listener); } };
+        return {
+            dispose: () => {
+                this.listeners.delete(listener);
+            },
+        };
     }
 
     private set(terminal: Terminal, session: Session, kind: 'native' | 'explicit'): void {
@@ -85,7 +114,9 @@ export class TerminalSessionRegistry<Session, Terminal extends object> {
             this.byTerminal.delete(previous.terminal);
             changed.add(previous.terminal);
         }
-        if (displaced) { this.bySession.delete(displaced.session); }
+        if (displaced) {
+            this.bySession.delete(displaced.session);
+        }
         const association = { terminal, session, kind };
         this.byTerminal.set(terminal, association);
         this.bySession.set(session, association);
@@ -96,7 +127,9 @@ export class TerminalSessionRegistry<Session, Terminal extends object> {
     private remove(terminal: Terminal): void {
         const association = this.byTerminal.get(terminal);
         this.byTerminal.delete(terminal);
-        if (association) { this.bySession.delete(association.session); }
+        if (association) {
+            this.bySession.delete(association.session);
+        }
         this.changed(terminal);
     }
 
@@ -106,7 +139,9 @@ export class TerminalSessionRegistry<Session, Terminal extends object> {
             this.revisions.set(terminal, (this.revisions.get(terminal) ?? 0) + 1);
         }
         for (const terminal of terminals) {
-            for (const listener of this.listeners) { listener(terminal); }
+            for (const listener of this.listeners) {
+                listener(terminal);
+            }
         }
     }
 }

@@ -8,8 +8,12 @@ import { nodeEnvironment, prepareNodeRuntime } from '../../interactive/launcher'
 
 suite('Interactive VS Code host runtime', () => {
     let root: string;
-    setup(() => { root = fs.mkdtempSync(path.join(os.tmpdir(), 'r-host-node-runtime-')); });
-    teardown(() => { fs.rmSync(root, { recursive: true, force: true }); });
+    setup(() => {
+        root = fs.mkdtempSync(path.join(os.tmpdir(), 'r-host-node-runtime-'));
+    });
+    teardown(() => {
+        fs.rmSync(root, { recursive: true, force: true });
+    });
 
     test('prepares and launches the actual host runtime with no node on PATH', async () => {
         // This case must run in the desktop Extension Host, not standalone Node.
@@ -21,7 +25,9 @@ suite('Interactive VS Code host runtime', () => {
             .prepareNodeRuntime(process.cwd()).then(runtime => process.stdout.write(JSON.stringify(runtime)))
             .catch(error => { console.error(error); process.exitCode = 1; });`;
         const result = await promisify(execFile)(runtime.executable, ['-e', script], {
-            cwd: root, env: nodeEnvironment(runtime, { ...process.env, PATH: root }), timeout: 10000,
+            cwd: root,
+            env: nodeEnvironment(runtime, { ...process.env, PATH: root }),
+            timeout: 10000,
         });
         assert.deepStrictEqual(JSON.parse(result.stdout), runtime);
     });
