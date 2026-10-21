@@ -21,6 +21,7 @@ import {
     sessionLabel,
 } from './protocol';
 import { searchHistory } from './history';
+import { normalizeJdvDisplay } from './jdvTable';
 
 interface Client {
     socket: net.Socket;
@@ -776,6 +777,8 @@ export class SessionAgent {
     }
 
     private display(data: Record<string, unknown>, executionId?: string): void {
+        // A jdv handle's descriptor and first page become the renderer's table or list data.
+        data = normalizeJdvDisplay(data);
         const display: Record<string, unknown> = {
             ...data,
             displayId: typeof data.displayId === 'string' ? data.displayId : randomUUID(),
@@ -795,6 +798,15 @@ export class SessionAgent {
             delete display.data;
         }
         if (Buffer.byteLength(JSON.stringify(display)) > 2 * 1024 * 1024) {
+            if (typeof data.handleId === 'string') {
+                void this.backend
+                    .inspect({
+                        method: 'jdv_handle_close',
+                        params: { handle_id: data.handleId },
+                        timeout: 5000,
+                    })
+                    .catch(() => undefined);
+            }
             this.event(
                 'truncated',
                 {

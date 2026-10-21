@@ -1,6 +1,8 @@
 /// <reference lib="dom" />
 
 import { viewerSessionStyle } from './viewerSession';
+import { getFollowScript } from './viewerFollow';
+import type { JdvTracking } from './jdvAdapter';
 
 export interface ListViewNavigation {
     title: string;
@@ -302,6 +304,8 @@ export function getListViewerScript(
         path: [],
         breadcrumbs: [{ label: '', path: [] }],
     },
+    refreshable = false,
+    tracking?: JdvTracking,
 ): string {
     return `
     const vscode = acquireVsCodeApi();
@@ -319,6 +323,35 @@ export function getListViewerScript(
         const message = event.data;
         if (['listview/page', 'listview/navigation'].includes(message.message) && message.documentGeneration === documentGeneration) viewer.reply(message);
     });
+    ${
+        refreshable
+            ? `
+    const refreshButton = document.getElementById('refresh');
+    refreshButton.addEventListener('click', () => {
+        refreshButton.disabled = true;
+        document.getElementById('navigation-status').textContent = '';
+        vscode.postMessage({ message: 'listview/refresh', documentGeneration });
+    });
+    // A successful refresh replaces this document, so only failures arrive.
+    window.addEventListener('message', event => {
+        const message = event.data;
+        if (message && message.message === 'viewer/refreshFailed' && message.documentGeneration === documentGeneration) {
+            refreshButton.disabled = false;
+            document.getElementById('navigation-status').textContent = message.error;
+        }
+    });`
+            : ''
+    }
+    ${
+        tracking
+            ? getFollowScript(
+                  tracking,
+                  'follow',
+                  "document.getElementById('navigation-status').textContent = '';",
+                  "document.getElementById('navigation-status').textContent = message.error;",
+              )
+            : ''
+    }
     `;
 }
 
@@ -335,7 +368,11 @@ export const listViewerStyle = `
     }
     .r-list-viewer .back { gap: 4px; padding: 4px 6px; flex-shrink: 0; border-radius: 3px; }
     .r-list-viewer .back:disabled { opacity: 0.4; cursor: default; background: transparent; }
-    .r-list-viewer .reset { gap: 4px; padding: 4px 6px; flex-shrink: 0; border-radius: 3px; }
+    .r-list-viewer .reset, .r-list-viewer .refresh { gap: 4px; padding: 4px 6px; flex-shrink: 0; border-radius: 3px; }
+    .r-list-viewer .follow { gap: 4px; padding: 4px 6px; flex-shrink: 0; border-radius: 3px; }
+    .r-list-viewer .follow[aria-pressed="true"] { background: var(--vscode-toolbar-activeBackground, var(--vscode-button-secondaryBackground)); }
+    .r-list-viewer .follow:disabled { opacity: 0.4; cursor: default; background: transparent; }
+    .r-list-viewer .refresh:disabled { opacity: 0.4; cursor: default; background: transparent; }
     ${viewerSessionStyle}
     .r-list-viewer .viewer-session { margin-left: auto; }
     .r-list-viewer .codicon { flex-shrink: 0; }

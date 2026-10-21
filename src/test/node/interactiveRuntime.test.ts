@@ -22,6 +22,14 @@ import { queryTablePage, TableColumn, tableSchema } from '../../interactive/tabl
 import { AssetStorageStats, readAsset } from '../../interactive/assets';
 import { assertSvgTextVisible } from '../svgAssertions';
 import { rString } from '../../interactive/backends/rCode';
+import { JdvHost, JdvPeer } from '../../jdvTransport';
+import { JsonObject } from '../../jdvAdapter';
+import {
+    createListAdapter,
+    isJdvOutput,
+    listRequest,
+    queryJdvTablePage,
+} from '../../interactive/jdvTable';
 
 const run = promisify(execFile);
 const delay = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
@@ -136,6 +144,129 @@ const delay = (ms: number): Promise<void> => new Promise((resolve) => setTimeout
             .map((event) => event.data.text)
             .join('');
     }
+
+    /** The dataview registry serves inline previews when jdv is not used (or not installed). */
+    const legacyViewerTest = (name: string, body: (this: Mocha.Context) => Promise<void>): void => {
+        test(name, async function () {
+            await finished(await submit('options(sess.dataviewer = "sess")'));
+            try {
+                await body.call(this);
+            } finally {
+                await finished(await submit('options(sess.dataviewer = NULL)')).catch(
+                    () => undefined,
+                );
+            }
+        });
+    };
+
+    test('opens jdv from an Interactive cell and serves a page while R is idle', async function () {
+        const availability = await run('Rscript', [
+            '--vanilla',
+            '-e',
+            "cat(requireNamespace('jdv', quietly=TRUE))",
+        ]);
+        if (availability.stdout.trim() !== 'TRUE') {
+            this.skip();
+            return;
+        }
+
+        let resolveOpen!: (value: { peer: JdvPeer; params: JsonObject }) => void;
+        let rejectOpen!: (reason: Error) => void;
+        const opened = new Promise<{ peer: JdvPeer; params: JsonObject }>((resolve, reject) => {
+            resolveOpen = resolve;
+            rejectOpen = reject;
+        });
+        const host = await JdvHost.create({
+            viewOpen: (peer, params) => resolveOpen({ peer, params }),
+            viewClosed: () => undefined,
+            viewUpdateFailed: () => undefined,
+            viewTracking: () => undefined,
+            disconnected: (_peer, reason) => rejectOpen(new Error(reason)),
+        });
+        const onEvent = (event: SessionEvent): void => {
+            if (event.type !== 'clientRequest' || event.data.method !== 'jdv/address') {
+                return;
+            }
+            void client
+                .request('clientReply', {
+                    id: event.data.id,
+                    result: { address: host.address },
+                })
+                .catch((error) =>
+                    rejectOpen(error instanceof Error ? error : new Error(String(error))),
+                );
+        };
+        client.on('event', onEvent);
+        try {
+            // Repeated strings keep the R fixture small while its encoded page exceeds the byte budget.
+            const id = await submit(
+                'utils::View(data.frame(a = 1:300, b = rep(letters, length.out = 300), c = rep(strrep("x", 12000), 300), d = rep(strrep("y", 12000), 300)), "interactive jdv test")',
+            );
+            assert.strictEqual((await finished(id)).state, 'success');
+            const { peer, params } = await Promise.race([
+                opened,
+                new Promise<never>((_resolve, reject) =>
+                    setTimeout(
+                        () => reject(new Error('Timed out waiting for jdv view/open')),
+                        10000,
+                    ),
+                ),
+            ]);
+            assert.strictEqual(params.kind, 'grid');
+            assert.strictEqual(params.access, 'random');
+            const result = (await peer.request('grid/rows', {
+                view: params.view,
+                generation: params.generation,
+                offset: 0,
+                limit: 2,
+            })) as JsonObject;
+            const data = result.data as JsonObject;
+            assert.deepStrictEqual(data.source_row, [0, 1]);
+            assert.strictEqual(result.total, 300);
+            const selected = (await peer.request('grid/rows', {
+                view: params.view,
+                generation: params.generation,
+                offset: 0,
+                limit: 2,
+                cols: [1],
+            })) as JsonObject;
+            const selectedData = selected.data as {
+                source_row: number[];
+                columns: { schema: { position: number }; data: { values: unknown[] } }[];
+            };
+            assert.deepStrictEqual(selectedData.source_row, [0, 1]);
+            assert.deepStrictEqual(
+                selectedData.columns.map((column) => column.schema.position),
+                [1],
+            );
+            assert.deepStrictEqual(selectedData.columns[0].data.values, ['a', 'b']);
+            const shortened = (await peer.request('grid/rows', {
+                view: params.view,
+                generation: params.generation,
+                offset: 0,
+                limit: 300,
+                cols: [2, 3],
+            })) as JsonObject;
+            const shortenedData = shortened.data as typeof selectedData;
+            assert.strictEqual(shortened.total, 300);
+            assert.ok(shortenedData.source_row.length > 0 && shortenedData.source_row.length < 300);
+            assert.deepStrictEqual(
+                shortenedData.source_row,
+                Array.from({ length: shortenedData.source_row.length }, (_, index) => index),
+            );
+            assert.deepStrictEqual(
+                shortenedData.columns.map((column) => column.schema.position),
+                [2, 3],
+            );
+            for (const [index, column] of shortenedData.columns.entries()) {
+                assert.strictEqual(column.data.values.length, shortenedData.source_row.length);
+                assert.strictEqual(column.data.values[0], (index === 0 ? 'x' : 'y').repeat(12000));
+            }
+        } finally {
+            client.off('event', onEvent);
+            host.dispose();
+        }
+    });
 
     test('streams output before completion and keeps one R environment', async () => {
         const id = await submit(
@@ -441,135 +572,571 @@ sess::display("display-${cell}", "text/plain"); cat("stderr-${cell}\\n", file=st
         }
     });
 
-    test('data inspection preserves random draws and reproducible resampling across cells', async () => {
-        const first = await submit(`set.seed(2026)
-expected <- replicate(100, mean(sample(mtcars$mpg, replace=TRUE)))
-set.seed(2026)
-head(mtcars)`);
-        assert.strictEqual((await finished(first)).state, 'success');
-        const second = await submit(`View(mtcars)
-sess::display(head(iris))
-actual <- replicate(100, mean(sample(mtcars$mpg, replace=TRUE)))
-stopifnot(identical(actual, expected))`);
-        assert.strictEqual((await finished(second)).state, 'success');
-        assert.strictEqual(
-            events.filter((event) => event.type === 'display' && event.data.kind === 'table')
-                .length,
-            3,
-        );
+    const jdvAvailable = async (): Promise<boolean> =>
+        (
+            await run('Rscript', ['--vanilla', '-e', "cat(requireNamespace('jdv', quietly=TRUE))"])
+        ).stdout.trim() === 'TRUE';
+    const inspect = (request: {
+        method: string;
+        params: Record<string, unknown>;
+    }): Promise<Record<string, unknown>> => client.request('inspect', request);
+
+    test('jdv Arrow views send display-only totals for sized sources', async function () {
+        if (!(await jdvAvailable())) {
+            this.skip();
+            return;
+        }
+        const available = (
+            await run('Rscript', [
+                '--vanilla',
+                '-e',
+                "cat(requireNamespace('nanoarrow', quietly=TRUE), requireNamespace('arrow', quietly=TRUE))",
+            ])
+        ).stdout
+            .trim()
+            .split(/\s+/);
+        if (available[0] !== 'TRUE') {
+            this.skip();
+            return;
+        }
+        const sized = available[1] === 'TRUE';
+        const opened: { peer: JdvPeer; params: JsonObject }[] = [];
+        const host = await JdvHost.create({
+            viewOpen: (peer, params) => opened.push({ peer, params }),
+            viewClosed: () => undefined,
+            viewUpdateFailed: () => undefined,
+            viewTracking: () => undefined,
+            disconnected: () => undefined,
+        });
+        const onEvent = (event: SessionEvent): void => {
+            if (event.type === 'clientRequest' && event.data.method === 'jdv/address') {
+                void client.request('clientReply', {
+                    id: event.data.id,
+                    result: { address: host.address },
+                });
+            }
+        };
+        client.on('event', onEvent);
+        try {
+            const source = sized
+                ? 'arrow::Table$create(data.frame(a=1:3))'
+                : 'nanoarrow::as_nanoarrow_array_stream(data.frame(a=1:3))';
+            const id = await submit(`utils::View(${source}, "Arrow count test")`);
+            assert.strictEqual((await finished(id)).state, 'success');
+            await until(() => opened.length > 0);
+            const { peer, params } = opened[0];
+            assert.strictEqual(params.access, 'sequential');
+            assert.strictEqual(params.nrow, null);
+            const hints = events.filter(
+                (event) => event.type === 'notification' && event.data.method === 'jdv/rowCount',
+            );
+            assert.strictEqual(hints.length, sized ? 1 : 0);
+            if (sized) {
+                assert.deepStrictEqual(hints[0].data.params, {
+                    view: params.view,
+                    generation: params.generation,
+                    nrow: 3,
+                    address: host.address,
+                });
+            }
+            const page = await peer.requestWithBody('stream/next', {
+                view: params.view,
+                generation: params.generation,
+                max_rows: 2,
+            });
+            assert.strictEqual((page.result as JsonObject).rows_seen, 2);
+            assert.strictEqual((page.result as JsonObject).done, false);
+            assert.ok(page.body);
+        } finally {
+            client.off('event', onEvent);
+            host.dispose();
+        }
     });
 
-    test('table pages retain their original data after reference-based cleaning and schema changes', async function () {
-        if (
-            !(
-                await run('Rscript', ['-e', 'cat(requireNamespace("data.table", quietly=TRUE))'])
-            ).stdout.includes('TRUE')
-        ) {
+    test('inline tables page, sort and filter through one jdv handle per output', async function () {
+        if (!(await jdvAvailable())) {
             this.skip();
+            return;
         }
-        const id = await submit('dt <- data.table::data.table(id=1:50, value=1:50); dt');
+        const id = await submit(
+            'tbl <- data.frame(id=1:100, name=rep(c("a", "b"), 50), x=seq(0.5, 50, by=0.5)); tbl',
+        );
         assert.strictEqual((await finished(id)).state, 'success');
         const table = events.find(
             (event) => event.executionId === id && event.data.kind === 'table',
         );
         assert.ok(table);
-        await finished(
-            await submit(
-                'dt[, value := value * 100]; data.table::setnames(dt, "value", "changed"); data.table::setorder(dt, -id)',
-            ),
-        );
-        const page = await client.request<{ rows: Record<string, number>[] }>('inspect', {
-            method: 'dataview_page',
-            params: {
-                view_id: table.data.viewId,
-                startRow: 20,
-                endRow: 40,
-            },
-        });
+        assert.ok(isJdvOutput(table.data));
+        assert.strictEqual(table.data.fullViewId, undefined);
+        assert.strictEqual(table.data.totalRows, 100);
+        assert.strictEqual(table.data.sourceRows, 100);
+        assert.strictEqual((table.data.rows as unknown[]).length, 20);
         assert.deepStrictEqual(
-            page.rows.map((row) => row['2']),
-            Array.from({ length: 20 }, (_, i) => i + 21),
+            (table.data.columns as { field: string }[]).map((column) => column.field),
+            ['0', '1', '2', '3'],
         );
-        const filtered = await client.request<{ rows: Record<string, number>[] }>('inspect', {
-            method: 'dataview_page',
-            params: {
-                view_id: table.data.viewId,
-                startRow: 0,
-                endRow: 20,
-                filterModel: { '2': { type: 'greaterThan', filter: 48 } },
+        assert.match(String(table.data.printedText), /name/);
+
+        const page = await queryJdvTablePage(table.data, { start: 40, size: 20 }, inspect);
+        assert.strictEqual(page.startRow, 40);
+        assert.deepStrictEqual(
+            (page.rows as Record<string, string>[]).map((row) => row['1']).slice(0, 2),
+            ['41', '42'],
+        );
+        assert.strictEqual((page.rows as Record<string, string>[])[0]['0'], '41');
+
+        // Sorting and filtering happen in R and report the filtered count.
+        const filtered = await queryJdvTablePage(
+            table.data,
+            {
+                start: 0,
+                size: 20,
                 sortModel: [{ colId: '1', sort: 'desc' }],
+                filterModel: {
+                    '2': { type: 'equals', filter: 'a' },
+                    '1': { type: 'greaterThan', filter: '90' },
+                },
             },
-        });
-        assert.deepStrictEqual(
-            filtered.rows.map((row) => row['2']),
-            [50, 49],
+            inspect,
         );
-        const current = await submit('stopifnot(names(dt)[2] == "changed", dt$changed[1] == 5000)');
-        assert.strictEqual((await finished(current)).state, 'success');
+        assert.strictEqual(filtered.totalRows, 5);
+        assert.deepStrictEqual(
+            (filtered.rows as Record<string, string>[]).map((row) => row['1']),
+            ['99', '97', '95', '93', '91'],
+        );
+        // Row labels show the original row after sorting.
+        assert.strictEqual((filtered.rows as Record<string, string>[])[0]['0'], '99');
+
+        // Empty strings and NA are separate filters.
+        const blankId = await submit(
+            'blanks <- data.frame(s=c("a", "", NA, "b"), stringsAsFactors=FALSE); blanks',
+        );
+        assert.strictEqual((await finished(blankId)).state, 'success');
+        const blanks = events.find(
+            (event) => event.executionId === blankId && event.data.kind === 'table',
+        );
+        assert.ok(blanks);
+        for (const [type, expected] of [
+            ['jdvIsEmpty', 1],
+            ['jdvNotEmpty', 2],
+            ['jdvIsNa', 1],
+            ['jdvNotNa', 3],
+        ] as const) {
+            const result = await queryJdvTablePage(
+                blanks.data,
+                { start: 0, size: 20, filterModel: { '1': { type } } },
+                inspect,
+            );
+            assert.strictEqual(result.totalRows, expected, type);
+        }
+
+        const flagsId = await submit('flags <- data.frame(flag=c(TRUE, FALSE, NA)); flags');
+        assert.strictEqual((await finished(flagsId)).state, 'success');
+        const flags = events.find(
+            (event) => event.executionId === flagsId && event.data.kind === 'table',
+        );
+        assert.ok(flags);
+        for (const [type, expected] of [
+            ['jdvIsNa', 1],
+            ['jdvNotNa', 2],
+            ['true', 1],
+        ] as const) {
+            const result = await queryJdvTablePage(
+                flags.data,
+                { start: 0, size: 20, filterModel: { '1': { type } } },
+                inspect,
+            );
+            assert.strictEqual(result.totalRows, expected, type);
+        }
+
+        // A page past the end is clamped to the last page.
+        const clamped = await queryJdvTablePage(table.data, { start: 400, size: 20 }, inspect);
+        assert.strictEqual(clamped.startRow, 80);
+
+        // The handle outlives reconnects and is released on request.
+        client.close();
+        await client.connect();
+        await client.subscribe(0);
+        const restored = (await client.snapshot()).events.find((event) => event.seq === table.seq);
+        assert.strictEqual(restored?.data.handleId, table.data.handleId);
+        await inspect({ method: 'jdv_handle_close', params: { handle_id: table.data.handleId } });
+        await assert.rejects(
+            queryJdvTablePage(table.data, { start: 0, size: 20 }, inspect),
+            /no longer available/,
+        );
     });
 
-    test('unclassed lists retain printable previews and lazy pages across reconnects', async () => {
+    test('inline jdv wide tables survive the event limit and page without gaps', async function () {
+        if (!(await jdvAvailable())) {
+            this.skip();
+            return;
+        }
         const id = await submit(
-            'x <- list(nested=list(value=c(1,2)), table=data.frame(id=1:2), "λ <tag>"); x',
+            'wide <- data.frame(id = 1:150, text = rep(strrep("a", 100000), 150)); wide',
+        );
+        assert.strictEqual((await finished(id)).state, 'success');
+        const table = events.find(
+            (event) => event.executionId === id && event.data.kind === 'table',
+        );
+        assert.ok(table);
+        assert.ok(isJdvOutput(table.data));
+        assert.equal(
+            events.some((event) => event.executionId === id && event.type === 'truncated'),
+            false,
+        );
+        assert.ok(Buffer.byteLength(JSON.stringify(table.data)) < 2 * 1024 * 1024);
+        assert.equal(table.data.previewPartial, true);
+        assert.ok((table.data.rows as unknown[]).length < 20);
+        for (const size of [20, 100]) {
+            const ids: string[] = [];
+            for (let start = 0; start < 150; start += size) {
+                const page = await queryJdvTablePage(table.data, { start, size }, inspect);
+                assert.equal(page.startRow, start);
+                ids.push(...(page.rows as Record<string, string>[]).map((row) => row['1']));
+            }
+            assert.deepEqual(
+                ids,
+                Array.from({ length: 150 }, (_, i) => String(i + 1)),
+            );
+        }
+    });
+
+    test('inline jdv tables bound a huge table to its first page', async function () {
+        if (!(await jdvAvailable())) {
+            this.skip();
+            return;
+        }
+        const id = await submit(`n <- 832976871L
+huge <- structure(rep(list(seq_len(n)), 23L), names=paste0("x", 1:23),
+                  class="data.frame", row.names=c(NA_integer_, -n))
+huge`);
+        assert.strictEqual((await finished(id)).state, 'success');
+        const table = events.find(
+            (event) => event.executionId === id && event.data.kind === 'table',
+        );
+        assert.ok(table);
+        assert.ok(isJdvOutput(table.data));
+        assert.strictEqual(table.data.totalRows, 832976871);
+        assert.strictEqual(table.data.sourceRows, 832976871);
+        assert.match(String(table.data.printedText), /first 1,000 of 832,976,871/);
+        const last = await queryJdvTablePage(table.data, { start: 832976860, size: 20 }, inspect);
+        assert.strictEqual(last.startRow, 832976860);
+        assert.strictEqual((last.rows as unknown[]).length, 11);
+        assert.strictEqual((last.rows as Record<string, string>[])[10]['23'], '832976871');
+    });
+
+    test('inline lists explore typed paths through one jdv handle', async function () {
+        if (!(await jdvAvailable())) {
+            this.skip();
+            return;
+        }
+        const id = await submit(
+            'lst <- list(nested=list(value=c(1,2)), table=data.frame(id=1:2), "λ <tag>"); lst',
         );
         assert.strictEqual((await finished(id)).state, 'success');
         const output = events.find(
             (event) => event.executionId === id && event.data.kind === 'list',
         );
         assert.ok(output);
+        assert.ok(isJdvOutput(output.data));
         const children = output.data.children as { label: string; has_children: boolean }[];
         assert.deepStrictEqual(
             children.map((child) => child.label),
-            ['$ nested', '$ table', '[[3]]'],
+            ['nested', 'table', '[[3]]'],
         );
         assert.strictEqual(children[0].has_children, true);
         assert.match(String(output.data.printedText), /\$nested\$value/);
-        assert.ok(
-            !text(id).includes('$nested'),
-            'The rich list replaces automatic console printing',
-        );
-        const expected = await submit('print(x)');
-        await finished(expected);
-        assert.strictEqual(output.data.printedText, text(expected));
-        await finished(await submit('x$nested$value <- 99; invisible(NULL)'));
-        const page = await client.request<{ children: { str: string }[] }>('inspect', {
-            method: 'workspace_children',
-            params: {
-                view_id: output.data.viewId,
-                path: [1],
-                start: 1,
-            },
-        });
-        assert.match(page.children[0].str, /1/);
-        assert.ok(!page.children[0].str.includes('99'));
-        const explicit = await submit(
-            'sess::display(list()); View(list(a=1)); structure(list(a=2), class="custom_list")',
-        );
-        assert.strictEqual((await finished(explicit)).state, 'success');
-        assert.strictEqual(
-            events.filter((event) => event.executionId === explicit && event.data.kind === 'list')
-                .length,
-            2,
-        );
-        assert.match(text(explicit), /custom_list/);
-        const large = await submit('as.list(seq_len(501))');
-        await finished(large);
-        const largeList = events.find(
-            (event) => event.executionId === large && event.data.kind === 'list',
-        );
-        assert.ok(largeList);
-        assert.strictEqual((largeList.data.children as unknown[]).length, 500);
-        assert.strictEqual(largeList.data.next_start, 501);
-        client.close();
-        await client.connect();
-        await client.subscribe(0);
-        assert.deepStrictEqual(
-            (await client.snapshot()).events.find((event) => event.seq === output.seq)?.data,
+
+        const adapter = await createListAdapter(output.data, inspect);
+        const nested = await listRequest(
+            adapter,
             output.data,
+            { action: 'listItem', path: [], index: 1 },
+            inspect,
         );
+        assert.deepStrictEqual(
+            (nested.result as { navigation: { path: number[] } }).navigation.path,
+            [1],
+        );
+        const page = await listRequest(
+            adapter,
+            output.data,
+            { action: 'listPage', path: [1], start: 1 },
+            inspect,
+        );
+        assert.strictEqual(
+            (page.result as { children: { label: string }[] }).children[0].label,
+            'value',
+        );
+        // A table inside a list is opened in the Data Viewer rather than navigated into.
+        const table = await listRequest(
+            adapter,
+            output.data,
+            { action: 'listItem', path: [], index: 2 },
+            inspect,
+        );
+        assert.deepStrictEqual(table.open, {
+            path: [{ type: 'index', index: 2 }],
+            title: 'List$table',
+        });
     });
 
-    test('nested table viewers from separate list cells stay independent', async () => {
+    test('opens an inline table and a list item in the Data Viewer through jdv', async function () {
+        if (!(await jdvAvailable())) {
+            this.skip();
+            return;
+        }
+        const opened: JsonObject[] = [];
+        const host = await JdvHost.create({
+            viewOpen: (_peer, params) => {
+                opened.push(params);
+            },
+            viewClosed: () => undefined,
+            viewUpdateFailed: () => undefined,
+            viewTracking: () => undefined,
+            disconnected: () => undefined,
+        });
+        try {
+            const id = await submit('opened <- list(a=1, df=data.frame(z=1:3)); opened');
+            assert.strictEqual((await finished(id)).state, 'success');
+            const output = events.find(
+                (event) => event.executionId === id && event.data.kind === 'list',
+            );
+            assert.ok(output);
+            const viewer = await inspect({
+                method: 'jdv_open_viewer',
+                params: {
+                    handle_id: output.data.handleId,
+                    path: [{ type: 'index', index: 2 }],
+                    title: 'Cell: List$df',
+                    address: host.address,
+                },
+            });
+            assert.strictEqual(viewer as unknown, true);
+            const deadline = Date.now() + 10000;
+            while (opened.length === 0 && Date.now() < deadline) {
+                await delay(25);
+            }
+            assert.strictEqual(opened[0]?.kind, 'grid');
+            assert.strictEqual(opened[0]?.title, 'Cell: List$df');
+            assert.strictEqual(opened[0]?.nrow, 3);
+        } finally {
+            host.dispose();
+        }
+    });
+
+    test('opens nested and root jdv handles without dispatching list subsetting methods', async function () {
+        if (!(await jdvAvailable())) {
+            this.skip();
+            return;
+        }
+        const opened: JsonObject[] = [];
+        const host = await JdvHost.create({
+            viewOpen: (_peer, params) => {
+                opened.push(params);
+            },
+            viewClosed: () => undefined,
+            viewUpdateFailed: () => undefined,
+            viewTracking: () => undefined,
+            disconnected: () => undefined,
+        });
+        try {
+            const id = await submit(
+                '`[[.review_list` <- function(x, i, ...) stop("review_list [[ called"); review <- structure(list(table=data.frame(z=1:3)), class="review_list"); outer <- list(review=review); outer',
+            );
+            assert.strictEqual((await finished(id)).state, 'success');
+            const output = events.find(
+                (event) => event.executionId === id && event.data.kind === 'list',
+            );
+            assert.ok(output);
+            assert.ok(isJdvOutput(output.data));
+
+            const nested = await inspect({
+                method: 'jdv_open_viewer',
+                params: {
+                    handle_id: output.data.handleId,
+                    path: [
+                        { type: 'index', index: 1 },
+                        { type: 'index', index: 1 },
+                    ],
+                    title: 'Cell: List$review$table',
+                    address: host.address,
+                },
+            });
+            assert.strictEqual(nested as unknown, true);
+            const deadline = Date.now() + 10000;
+            while (opened.length === 0 && Date.now() < deadline) {
+                await delay(25);
+            }
+            assert.strictEqual(opened[0]?.kind, 'grid');
+            assert.strictEqual(opened[0]?.title, 'Cell: List$review$table');
+            assert.strictEqual(opened[0]?.nrow, 3);
+
+            const root = await inspect({
+                method: 'jdv_open_viewer',
+                params: {
+                    handle_id: output.data.handleId,
+                    path: [],
+                    title: 'Interactive root',
+                    address: host.address,
+                },
+            });
+            assert.strictEqual(root as unknown, true);
+            const rootDeadline = Date.now() + 10000;
+            while (opened.length < 2 && Date.now() < rootDeadline) {
+                await delay(25);
+            }
+            assert.strictEqual(opened[1]?.kind, 'tree');
+            assert.strictEqual(opened[1]?.title, 'Interactive root');
+        } finally {
+            host.dispose();
+        }
+    });
+
+    legacyViewerTest(
+        'data inspection preserves random draws and reproducible resampling across cells',
+        async () => {
+            const first = await submit(`set.seed(2026)
+expected <- replicate(100, mean(sample(mtcars$mpg, replace=TRUE)))
+set.seed(2026)
+head(mtcars)`);
+            assert.strictEqual((await finished(first)).state, 'success');
+            const second = await submit(`View(mtcars)
+sess::display(head(iris))
+actual <- replicate(100, mean(sample(mtcars$mpg, replace=TRUE)))
+stopifnot(identical(actual, expected))`);
+            assert.strictEqual((await finished(second)).state, 'success');
+            assert.strictEqual(
+                events.filter((event) => event.type === 'display' && event.data.kind === 'table')
+                    .length,
+                3,
+            );
+        },
+    );
+
+    legacyViewerTest(
+        'table pages retain their original data after reference-based cleaning and schema changes',
+        async function () {
+            if (
+                !(
+                    await run('Rscript', [
+                        '-e',
+                        'cat(requireNamespace("data.table", quietly=TRUE))',
+                    ])
+                ).stdout.includes('TRUE')
+            ) {
+                this.skip();
+            }
+            const id = await submit('dt <- data.table::data.table(id=1:50, value=1:50); dt');
+            assert.strictEqual((await finished(id)).state, 'success');
+            const table = events.find(
+                (event) => event.executionId === id && event.data.kind === 'table',
+            );
+            assert.ok(table);
+            await finished(
+                await submit(
+                    'dt[, value := value * 100]; data.table::setnames(dt, "value", "changed"); data.table::setorder(dt, -id)',
+                ),
+            );
+            const page = await client.request<{ rows: Record<string, number>[] }>('inspect', {
+                method: 'dataview_page',
+                params: {
+                    view_id: table.data.viewId,
+                    startRow: 20,
+                    endRow: 40,
+                },
+            });
+            assert.deepStrictEqual(
+                page.rows.map((row) => row['2']),
+                Array.from({ length: 20 }, (_, i) => i + 21),
+            );
+            const filtered = await client.request<{ rows: Record<string, number>[] }>('inspect', {
+                method: 'dataview_page',
+                params: {
+                    view_id: table.data.viewId,
+                    startRow: 0,
+                    endRow: 20,
+                    filterModel: { '2': { type: 'greaterThan', filter: 48 } },
+                    sortModel: [{ colId: '1', sort: 'desc' }],
+                },
+            });
+            assert.deepStrictEqual(
+                filtered.rows.map((row) => row['2']),
+                [50, 49],
+            );
+            const current = await submit(
+                'stopifnot(names(dt)[2] == "changed", dt$changed[1] == 5000)',
+            );
+            assert.strictEqual((await finished(current)).state, 'success');
+        },
+    );
+
+    legacyViewerTest(
+        'unclassed lists retain printable previews and lazy pages across reconnects',
+        async () => {
+            const id = await submit(
+                'x <- list(nested=list(value=c(1,2)), table=data.frame(id=1:2), "λ <tag>"); x',
+            );
+            assert.strictEqual((await finished(id)).state, 'success');
+            const output = events.find(
+                (event) => event.executionId === id && event.data.kind === 'list',
+            );
+            assert.ok(output);
+            const children = output.data.children as { label: string; has_children: boolean }[];
+            assert.deepStrictEqual(
+                children.map((child) => child.label),
+                ['$ nested', '$ table', '[[3]]'],
+            );
+            assert.strictEqual(children[0].has_children, true);
+            assert.match(String(output.data.printedText), /\$nested\$value/);
+            assert.ok(
+                !text(id).includes('$nested'),
+                'The rich list replaces automatic console printing',
+            );
+            const expected = await submit('print(x)');
+            await finished(expected);
+            assert.strictEqual(output.data.printedText, text(expected));
+            await finished(await submit('x$nested$value <- 99; invisible(NULL)'));
+            const page = await client.request<{ children: { str: string }[] }>('inspect', {
+                method: 'workspace_children',
+                params: {
+                    view_id: output.data.viewId,
+                    path: [1],
+                    start: 1,
+                },
+            });
+            assert.match(page.children[0].str, /1/);
+            assert.ok(!page.children[0].str.includes('99'));
+            const explicit = await submit(
+                'sess::display(list()); View(list(a=1)); structure(list(a=2), class="custom_list")',
+            );
+            assert.strictEqual((await finished(explicit)).state, 'success');
+            assert.strictEqual(
+                events.filter(
+                    (event) => event.executionId === explicit && event.data.kind === 'list',
+                ).length,
+                2,
+            );
+            assert.match(text(explicit), /custom_list/);
+            const large = await submit('as.list(seq_len(501))');
+            await finished(large);
+            const largeList = events.find(
+                (event) => event.executionId === large && event.data.kind === 'list',
+            );
+            assert.ok(largeList);
+            assert.strictEqual((largeList.data.children as unknown[]).length, 500);
+            assert.strictEqual(largeList.data.next_start, 501);
+            client.close();
+            await client.connect();
+            await client.subscribe(0);
+            assert.deepStrictEqual(
+                (await client.snapshot()).events.find((event) => event.seq === output.seq)?.data,
+                output.data,
+            );
+        },
+    );
+
+    legacyViewerTest('nested table viewers from separate list cells stay independent', async () => {
         const lists: SessionEvent[] = [];
         for (const value of [11, 21]) {
             const id = await submit(
@@ -638,177 +1205,200 @@ stopifnot(identical(actual, expected))`);
         );
     });
 
-    test('huge tables keep bounded snapshots and page the full data without materializing it', async () => {
-        const id = await submit(`n <- 832976871L
+    legacyViewerTest(
+        'huge tables keep bounded snapshots and page the full data without materializing it',
+        async () => {
+            const id = await submit(`n <- 832976871L
 huge <- structure(rep(list(seq_len(n)), 23L), names=paste0("x", 1:23),
                   class="data.frame", row.names=c(NA_integer_, -n))
 huge`);
-        assert.strictEqual((await finished(id)).state, 'success');
-        const table = events.find(
-            (event) => event.executionId === id && event.data.kind === 'table',
-        );
-        assert.ok(table);
-        assert.strictEqual(table.data.totalRows, 1000);
-        assert.strictEqual(table.data.sourceRows, 832976871);
-        assert.notStrictEqual(table.data.fullViewId, table.data.viewId);
-        assert.match(String(table.data.printedText), /first 1,000 of 832,976,871/);
-        const last = await client.request<{ rows: Record<string, number>[]; totalRows: number }>(
-            'inspect',
-            {
+            assert.strictEqual((await finished(id)).state, 'success');
+            const table = events.find(
+                (event) => event.executionId === id && event.data.kind === 'table',
+            );
+            assert.ok(table);
+            assert.strictEqual(table.data.totalRows, 1000);
+            assert.strictEqual(table.data.sourceRows, 832976871);
+            assert.notStrictEqual(table.data.fullViewId, table.data.viewId);
+            assert.match(String(table.data.printedText), /first 1,000 of 832,976,871/);
+            const last = await client.request<{
+                rows: Record<string, number>[];
+                totalRows: number;
+            }>('inspect', {
                 method: 'dataview_page',
                 params: {
                     view_id: table.data.fullViewId,
                     startRow: 832976870,
                     endRow: 832976871,
                 },
-            },
-        );
-        assert.strictEqual(last.totalRows, 832976871);
-        assert.strictEqual(last.rows[0]['23'], 832976871);
-        const inline = await queryTablePage(
-            table.data,
-            { start: 832976860, live: true, refresh: true },
-            (request) => client.request('inspect', request),
-        );
-        assert.strictEqual(inline.startRow, 832976860);
-        assert.strictEqual((inline.rows as unknown[]).length, 11);
-        assert.strictEqual((inline.rows as Record<string, number>[])[10]['23'], 832976871);
-        client.close();
-        await client.connect();
-        await client.subscribe(0);
-        const restored = (await client.snapshot()).events.find((event) => event.seq === table.seq);
-        assert.strictEqual(restored?.data.fullViewId, table.data.fullViewId);
-        assert.strictEqual(restored?.data.sourceRows, table.data.sourceRows);
-    });
+            });
+            assert.strictEqual(last.totalRows, 832976871);
+            assert.strictEqual(last.rows[0]['23'], 832976871);
+            const inline = await queryTablePage(
+                table.data,
+                { start: 832976860, live: true, refresh: true },
+                (request) => client.request('inspect', request),
+            );
+            assert.strictEqual(inline.startRow, 832976860);
+            assert.strictEqual((inline.rows as unknown[]).length, 11);
+            assert.strictEqual((inline.rows as Record<string, number>[])[10]['23'], 832976871);
+            client.close();
+            await client.connect();
+            await client.subscribe(0);
+            const restored = (await client.snapshot()).events.find(
+                (event) => event.seq === table.seq,
+            );
+            assert.strictEqual(restored?.data.fullViewId, table.data.fullViewId);
+            assert.strictEqual(restored?.data.sourceRows, table.data.sourceRows);
+        },
+    );
 
-    test('large data.table snapshots stay stable while full-view queries refresh after reference edits', async function () {
-        if (
-            !(
-                await run('Rscript', ['-e', 'cat(requireNamespace("data.table", quietly=TRUE))'])
-            ).stdout.includes('TRUE')
-        ) {
-            this.skip();
-        }
-        const id = await submit('dt <- data.table::data.table(id=1:2000, value=1:2000); dt');
-        assert.strictEqual((await finished(id)).state, 'success');
-        const table = events.find(
-            (event) => event.executionId === id && event.data.kind === 'table',
-        );
-        assert.ok(table);
-        const query = {
-            method: 'dataview_page',
-            params: {
-                view_id: table.data.fullViewId,
-                startRow: 0,
-                endRow: 2,
-                sortModel: [{ colId: '2', sort: 'desc' }],
-            },
-        };
-        const before = await client.request<{ rows: Record<string, number>[] }>('inspect', query);
-        assert.deepStrictEqual(
-            before.rows.map((row) => row['2']),
-            [2000, 1999],
-        );
-        await finished(
-            await submit(
-                'data.table::set(dt, j="value", value=-seq_len(2000L)); stop("after mutation")',
-            ),
-        );
-        const after = await client.request<{ rows: Record<string, number>[] }>('inspect', query);
-        assert.deepStrictEqual(
-            after.rows.map((row) => row['2']),
-            [-1, -2],
-        );
-        await finished(await submit('data.table::setnames(dt, "value", "changed")'));
-        await assert.rejects(client.request('inspect', query), /Reopen Data viewer/);
-        await client.request('inspect', {
-            method: 'dataview_init',
-            params: { view_id: table.data.fullViewId },
-        });
-        const refreshed = await client.request<{ rows: Record<string, number>[] }>(
-            'inspect',
-            query,
-        );
-        assert.deepStrictEqual(
-            refreshed.rows.map((row) => row['2']),
-            [-1, -2],
-        );
-        const saved = await client.request<{ rows: Record<string, number>[]; totalRows: number }>(
-            'inspect',
-            {
+    legacyViewerTest(
+        'large data.table snapshots stay stable while full-view queries refresh after reference edits',
+        async function () {
+            if (
+                !(
+                    await run('Rscript', [
+                        '-e',
+                        'cat(requireNamespace("data.table", quietly=TRUE))',
+                    ])
+                ).stdout.includes('TRUE')
+            ) {
+                this.skip();
+            }
+            const id = await submit('dt <- data.table::data.table(id=1:2000, value=1:2000); dt');
+            assert.strictEqual((await finished(id)).state, 'success');
+            const table = events.find(
+                (event) => event.executionId === id && event.data.kind === 'table',
+            );
+            assert.ok(table);
+            const query = {
+                method: 'dataview_page',
+                params: {
+                    view_id: table.data.fullViewId,
+                    startRow: 0,
+                    endRow: 2,
+                    sortModel: [{ colId: '2', sort: 'desc' }],
+                },
+            };
+            const before = await client.request<{ rows: Record<string, number>[] }>(
+                'inspect',
+                query,
+            );
+            assert.deepStrictEqual(
+                before.rows.map((row) => row['2']),
+                [2000, 1999],
+            );
+            await finished(
+                await submit(
+                    'data.table::set(dt, j="value", value=-seq_len(2000L)); stop("after mutation")',
+                ),
+            );
+            const after = await client.request<{ rows: Record<string, number>[] }>(
+                'inspect',
+                query,
+            );
+            assert.deepStrictEqual(
+                after.rows.map((row) => row['2']),
+                [-1, -2],
+            );
+            await finished(await submit('data.table::setnames(dt, "value", "changed")'));
+            await assert.rejects(client.request('inspect', query), /Reopen Data viewer/);
+            await client.request('inspect', {
+                method: 'dataview_init',
+                params: { view_id: table.data.fullViewId },
+            });
+            const refreshed = await client.request<{ rows: Record<string, number>[] }>(
+                'inspect',
+                query,
+            );
+            assert.deepStrictEqual(
+                refreshed.rows.map((row) => row['2']),
+                [-1, -2],
+            );
+            const saved = await client.request<{
+                rows: Record<string, number>[];
+                totalRows: number;
+            }>('inspect', {
                 method: 'dataview_page',
                 params: {
                     view_id: table.data.viewId,
                     startRow: 980,
                     endRow: 1020,
                 },
-            },
-        );
-        assert.strictEqual(saved.totalRows, 1000);
-        assert.strictEqual(saved.rows.length, 20);
-        assert.strictEqual(saved.rows[19]['2'], 1000);
-    });
+            });
+            assert.strictEqual(saved.totalRows, 1000);
+            assert.strictEqual(saved.rows.length, 20);
+            assert.strictEqual(saved.rows[19]['2'], 1000);
+        },
+    );
 
-    test('inline full-table queries sort, filter, widen pages and recover after schema edits', async function () {
-        if (
-            !(
-                await run('Rscript', ['-e', 'cat(requireNamespace("data.table", quietly=TRUE))'])
-            ).stdout.includes('TRUE')
-        ) {
-            this.skip();
-        }
-        const id = await submit(
-            'dt <- data.table::data.table(id=1:2000, name=rep(c("a", "b"), 1000), date=as.Date("2026-01-01")+0:1999, flag=rep(c(TRUE, FALSE),1000)); dt',
-        );
-        assert.strictEqual((await finished(id)).state, 'success');
-        const table = events.find(
-            (event) => event.executionId === id && event.data.kind === 'table',
-        );
-        assert.ok(table);
-        const schema = tableSchema(table.data.columns as TableColumn[]);
-        const inspect = (request: {
-            method: string;
-            params: Record<string, unknown>;
-        }): Promise<Record<string, unknown>> => client.request('inspect', request);
-        const filters = {
-            '2': { type: 'equals', filter: 'a' },
-            '4': { type: 'true' },
-            '3': { type: 'greaterThan', filter: '2026-01-01' },
-        };
-        const query = {
-            start: 0,
-            size: 50,
-            refresh: true,
-            schema,
-            sortModel: [{ colId: '1', sort: 'desc' }],
-            filterModel: filters,
-        };
-        const result = await queryTablePage(table.data, query, inspect);
-        assert.strictEqual(
-            result.queryReset,
-            false,
-            JSON.stringify({ schema, columns: result.columns }),
-        );
-        assert.strictEqual(result.totalRows, 999);
-        assert.strictEqual((result.rows as unknown[]).length, 50);
-        assert.strictEqual((result.rows as Record<string, number>[])[0]['1'], 1999);
-        const finalPage = await queryTablePage(
-            table.data,
-            { ...query, refresh: false, live: true, start: 950 },
-            inspect,
-        );
-        assert.strictEqual((finalPage.rows as unknown[]).length, 49);
-        assert.strictEqual((finalPage.rows as Record<string, number>[])[48]['1'], 3);
-        await finished(await submit('data.table::setnames(dt, "id", "renamed")'));
-        const refreshed = await queryTablePage(table.data, query, inspect);
-        assert.strictEqual(refreshed.queryReset, true);
-        assert.strictEqual(refreshed.totalRows, 2000);
-        assert.strictEqual((refreshed.columns as TableColumn[])[1].headerName, 'renamed');
-        const saved = await queryTablePage(table.data, { start: 0 }, inspect);
-        assert.strictEqual(saved.live, false);
-        assert.strictEqual((saved.columns as TableColumn[])[1].headerName, 'id');
-        assert.strictEqual((saved.rows as Record<string, number>[])[0]['1'], 1);
-    });
+    legacyViewerTest(
+        'inline full-table queries sort, filter, widen pages and recover after schema edits',
+        async function () {
+            if (
+                !(
+                    await run('Rscript', [
+                        '-e',
+                        'cat(requireNamespace("data.table", quietly=TRUE))',
+                    ])
+                ).stdout.includes('TRUE')
+            ) {
+                this.skip();
+            }
+            const id = await submit(
+                'dt <- data.table::data.table(id=1:2000, name=rep(c("a", "b"), 1000), date=as.Date("2026-01-01")+0:1999, flag=rep(c(TRUE, FALSE),1000)); dt',
+            );
+            assert.strictEqual((await finished(id)).state, 'success');
+            const table = events.find(
+                (event) => event.executionId === id && event.data.kind === 'table',
+            );
+            assert.ok(table);
+            const schema = tableSchema(table.data.columns as TableColumn[]);
+            const inspect = (request: {
+                method: string;
+                params: Record<string, unknown>;
+            }): Promise<Record<string, unknown>> => client.request('inspect', request);
+            const filters = {
+                '2': { type: 'equals', filter: 'a' },
+                '4': { type: 'true' },
+                '3': { type: 'greaterThan', filter: '2026-01-01' },
+            };
+            const query = {
+                start: 0,
+                size: 50,
+                refresh: true,
+                schema,
+                sortModel: [{ colId: '1', sort: 'desc' }],
+                filterModel: filters,
+            };
+            const result = await queryTablePage(table.data, query, inspect);
+            assert.strictEqual(
+                result.queryReset,
+                false,
+                JSON.stringify({ schema, columns: result.columns }),
+            );
+            assert.strictEqual(result.totalRows, 999);
+            assert.strictEqual((result.rows as unknown[]).length, 50);
+            assert.strictEqual((result.rows as Record<string, number>[])[0]['1'], 1999);
+            const finalPage = await queryTablePage(
+                table.data,
+                { ...query, refresh: false, live: true, start: 950 },
+                inspect,
+            );
+            assert.strictEqual((finalPage.rows as unknown[]).length, 49);
+            assert.strictEqual((finalPage.rows as Record<string, number>[])[48]['1'], 3);
+            await finished(await submit('data.table::setnames(dt, "id", "renamed")'));
+            const refreshed = await queryTablePage(table.data, query, inspect);
+            assert.strictEqual(refreshed.queryReset, true);
+            assert.strictEqual(refreshed.totalRows, 2000);
+            assert.strictEqual((refreshed.columns as TableColumn[])[1].headerName, 'renamed');
+            const saved = await queryTablePage(table.data, { start: 0 }, inspect);
+            assert.strictEqual(saved.live, false);
+            assert.strictEqual((saved.columns as TableColumn[])[1].headerName, 'id');
+            assert.strictEqual((saved.rows as Record<string, number>[])[0]['1'], 1);
+        },
+    );
 
     test('data.table reference assignments stay quiet while explicit results and display remain visible', async function () {
         if (
@@ -917,7 +1507,7 @@ dt`);
         );
     });
 
-    test('retains rich tables, plot assets, and structured errors', async () => {
+    legacyViewerTest('retains rich tables, plot assets, and structured errors', async () => {
         const id = await submit(
             'plot(1:3); data.frame(x=1:3, label=c("a", "b", "c")); stop("expected error")',
         );
@@ -998,54 +1588,69 @@ dt`);
         );
     });
 
-    test('retains R numeric formatting in previews and pages while preserving raw precision', async () => {
-        const id = await submit(
-            'options(digits=7, scipen=0, OutDec="."); numeric_table <- data.frame(price_per_carat=rep(c(326/0.23, 326/0.21, 1400), 8)); numeric_table',
-        );
-        assert.strictEqual((await finished(id)).state, 'success');
-        const table = events.find(
-            (event) =>
-                event.executionId === id && event.type === 'display' && event.data.kind === 'table',
-        );
-        assert.ok(table);
-        const labels = table.data.formattedColumns as Record<string, string[]>;
-        assert.deepStrictEqual(labels['1'].slice(0, 3), ['1417.391', '1552.381', '1400.000']);
-        assert.strictEqual(labels['1'].length, 20);
-        const first = (table.data.rows as Record<string, number>[])[0]['1'];
-        assert.ok(Math.abs(first - 326 / 0.23) < 1e-10);
-        const page = await client.request<{
-            rows: Record<string, number>[];
-            formattedColumns: Record<string, string[]>;
-        }>('inspect', {
-            method: 'dataview_page',
-            params: { view_id: table.data.viewId, startRow: 20, endRow: 24, formatNumbers: true },
-        });
-        assert.deepStrictEqual(page.formattedColumns['1'], [
-            '1400.000',
-            '1417.391',
-            '1552.381',
-            '1400.000',
-        ]);
-        assert.strictEqual(page.rows[1]['1'], first);
-        await finished(await submit('options(digits=4, scipen=999, OutDec=",")'));
-        const localized = await client.request<{ formattedColumns: Record<string, string[]> }>(
-            'inspect',
-            {
+    legacyViewerTest(
+        'retains R numeric formatting in previews and pages while preserving raw precision',
+        async () => {
+            const id = await submit(
+                'options(digits=7, scipen=0, OutDec="."); numeric_table <- data.frame(price_per_carat=rep(c(326/0.23, 326/0.21, 1400), 8)); numeric_table',
+            );
+            assert.strictEqual((await finished(id)).state, 'success');
+            const table = events.find(
+                (event) =>
+                    event.executionId === id &&
+                    event.type === 'display' &&
+                    event.data.kind === 'table',
+            );
+            assert.ok(table);
+            const labels = table.data.formattedColumns as Record<string, string[]>;
+            assert.deepStrictEqual(labels['1'].slice(0, 3), ['1417.391', '1552.381', '1400.000']);
+            assert.strictEqual(labels['1'].length, 20);
+            const first = (table.data.rows as Record<string, number>[])[0]['1'];
+            assert.ok(Math.abs(first - 326 / 0.23) < 1e-10);
+            const page = await client.request<{
+                rows: Record<string, number>[];
+                formattedColumns: Record<string, string[]>;
+            }>('inspect', {
                 method: 'dataview_page',
-                params: { view_id: table.data.viewId, startRow: 1, endRow: 2, formatNumbers: true },
-            },
-        );
-        assert.deepStrictEqual(localized.formattedColumns['1'], ['1552']);
-        const formatted = await submit('data.frame(value = 1.23456789)');
-        await finished(formatted);
-        const display = events.find(
-            (event) => event.executionId === formatted && event.data.kind === 'table',
-        );
-        assert.ok(display);
-        assert.deepStrictEqual(display.data.formattedColumns, { '1': ['1,235'] });
-        const saved = (await client.snapshot()).events.find((event) => event.seq === table.seq);
-        assert.deepStrictEqual(saved?.data.formattedColumns, labels);
-    });
+                params: {
+                    view_id: table.data.viewId,
+                    startRow: 20,
+                    endRow: 24,
+                    formatNumbers: true,
+                },
+            });
+            assert.deepStrictEqual(page.formattedColumns['1'], [
+                '1400.000',
+                '1417.391',
+                '1552.381',
+                '1400.000',
+            ]);
+            assert.strictEqual(page.rows[1]['1'], first);
+            await finished(await submit('options(digits=4, scipen=999, OutDec=",")'));
+            const localized = await client.request<{ formattedColumns: Record<string, string[]> }>(
+                'inspect',
+                {
+                    method: 'dataview_page',
+                    params: {
+                        view_id: table.data.viewId,
+                        startRow: 1,
+                        endRow: 2,
+                        formatNumbers: true,
+                    },
+                },
+            );
+            assert.deepStrictEqual(localized.formattedColumns['1'], ['1552']);
+            const formatted = await submit('data.frame(value = 1.23456789)');
+            await finished(formatted);
+            const display = events.find(
+                (event) => event.executionId === formatted && event.data.kind === 'table',
+            );
+            assert.ok(display);
+            assert.deepStrictEqual(display.data.formattedColumns, { '1': ['1,235'] });
+            const saved = (await client.snapshot()).events.find((event) => event.seq === table.seq);
+            assert.deepStrictEqual(saved?.data.formattedColumns, labels);
+        },
+    );
 
     test('bounds large Unicode output without corrupting it or disconnecting R', async () => {
         const id = await submit('cat(strrep("λ🙂", 900000))');

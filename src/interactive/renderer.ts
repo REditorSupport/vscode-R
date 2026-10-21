@@ -198,7 +198,7 @@ export function activate(context: RendererContext): {
                     () => send(item, data, 'table'),
                     'Data viewer',
                 );
-                if (data.fullViewId) {
+                if (data.fullViewId || data.handleId) {
                     open.title =
                         'Open the full table without copying it. Reference edits may appear here; reopen to refresh. Sorting and filtering scan the full data.';
                 }

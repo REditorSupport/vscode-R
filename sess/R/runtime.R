@@ -16,6 +16,8 @@
 }
 
 .runtime_clear_viewer_state <- function() {
+  try(.interactive_handle_close_all(), silent = TRUE)
+  .jdv_release()
   # Open dataviews and title-to-id mappings belong to one runtime connection.
   # Keep an empty registry available, but never restore data from a prior run.
   .sess_env$dataviews <- list()

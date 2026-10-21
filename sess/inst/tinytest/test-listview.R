@@ -1,3 +1,6 @@
+# These tests cover the sess data viewer; keep it when jdv is installed.
+options(sess.dataviewer = "sess")
+
 # Expanding and opening descendants keeps one list/table viewer per root object.
 local({
   runtime <- sess:::.sess_env

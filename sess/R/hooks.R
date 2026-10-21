@@ -74,11 +74,9 @@ runtime_start <- function(use_rstudioapi = TRUE,
       owner <- as.character(expression)
     }
     force(title)
-
-    if (is.null(.sess_env$view_owner) && isTRUE(.sess_env$interactive_connected) &&
-          .interactive_rich_value(x)) {
-      return(invisible(NULL))
-    }
+    # Resolve the variable behind View(<symbol>) before x is forced, so jdv can
+    # follow it. The lookup starts at the caller, never at this function's frame.
+    tracked_binding <- .jdv_track_binding(original_expression, parent.frame())
 
     view_type <- if (dataview_is_table(x)) {
       "table"
@@ -88,6 +86,16 @@ runtime_start <- function(use_rstudioapi = TRUE,
       "object"
     }
     title_key <- paste(as.character(title), collapse = "\n")
+    if ((view_type %in% c("table", "list") || .jdv_is_arrow(x)) &&
+          .jdv_show(x, title_key, tracked_binding)) {
+      return(invisible(NULL))
+    }
+    # Explicit View() in Interactive should open the normal data viewer when
+    # jdv is available. Inline rich output remains the fallback when it is not.
+    if (is.null(.sess_env$view_owner) && isTRUE(.sess_env$interactive_connected) &&
+          .interactive_rich_value(x)) {
+      return(invisible(NULL))
+    }
     owner <- owner %||% title_key
     registry_key <- paste0(view_type, ":", owner)
     dataview_registry <- .sess_env$dataview_registry

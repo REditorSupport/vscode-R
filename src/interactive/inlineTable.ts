@@ -4,7 +4,7 @@ import { tableColumnAlignment, tableDisplayValue, tableSnapshotSummary } from '.
 import {
     columnOperators,
     filterNeedsValue,
-    filterOperators,
+    filterOperatorLabel,
     TableColumn,
     TableFilters,
     tableSchema,
@@ -65,7 +65,7 @@ export function createInlineTable(
     let error = '';
     const available =
         original.connected !== false && original.archived !== true && original.running !== false;
-    const hasFull = !!original.fullViewId;
+    const hasFull = !!original.fullViewId || !!original.handleId;
     const columns = (): TableColumn[] => (state.data.columns ?? []) as TableColumn[];
     const count = (): number =>
         !state.live && hasFull && !state.sort.length && !Object.keys(state.filters).length
@@ -200,7 +200,7 @@ export function createInlineTable(
             if (!active) {
                 return;
             }
-            // Restoring saved output is local, and invalidates even an in-flight reply.
+            // Reset invalidates in-flight replies; a partial saved preview is refilled.
             pending = undefined;
             state = initial();
             error = '';
@@ -208,6 +208,7 @@ export function createInlineTable(
             draw();
             buildFilters(true);
             update();
+            completePreview();
             tableHost.scrollLeft = 0;
             tableHost.scrollTop = 0;
         },
@@ -361,7 +362,7 @@ export function createInlineTable(
         operator.replaceChildren();
         if (column) {
             for (const op of columnOperators(column)) {
-                operator.add(new Option(filterOperators[op as keyof typeof filterOperators], op));
+                operator.add(new Option(filterOperatorLabel(op), op));
             }
         }
         const filter = state.filters[filterColumn.value];
@@ -428,11 +429,12 @@ export function createInlineTable(
         updateOperators(!resetDraft && filterColumn.value === selected);
         chips.replaceChildren();
         for (const [field, filter] of Object.entries(state.filters)) {
-            const name = columns().find((column) => column.field === field)?.headerName ?? field;
+            const column = columns().find((column) => column.field === field);
+            const name = column?.headerName ?? field;
             const remove = document.createElement('button');
             remove.type = 'button';
             remove.className = 'r-interactive-button';
-            remove.textContent = `${name} ${filterOperators[filter.type as keyof typeof filterOperators]} ${filter.filter ?? ''} ×`;
+            remove.textContent = `${name} ${filterOperatorLabel(filter.type)} ${filter.filter ?? ''} ×`;
             remove.setAttribute('aria-label', `Remove filter for ${name}`);
             remove.onclick = () => {
                 const filters = { ...state.filters };
@@ -499,9 +501,15 @@ export function createInlineTable(
                   ? `${tableSnapshotSummary(original)}. Browse beyond these rows, sort or filter to retrieve live data.`
                   : '';
     }
+    function completePreview(): void {
+        if (available && !state.live && state.data.previewPartial === true) {
+            request(0);
+        }
+    }
     draw();
     buildFilters();
     update();
+    completePreview();
     return {
         setTextMode(text) {
             textMode = text;

@@ -19,7 +19,10 @@ export type InspectionMethod =
     | 'completion'
     | 'dataview_init'
     | 'dataview_page'
-    | 'dataview_dispose';
+    | 'dataview_dispose'
+    | 'jdv_handle_request'
+    | 'jdv_handle_close'
+    | 'jdv_open_viewer';
 export interface InspectionRequest {
     method: InspectionMethod;
     params: Record<string, unknown>;
@@ -91,6 +94,9 @@ export function inspectionMethod(value: unknown): InspectionMethod {
             'dataview_init',
             'dataview_page',
             'dataview_dispose',
+            'jdv_handle_request',
+            'jdv_handle_close',
+            'jdv_open_viewer',
         ].includes(String(value))
     ) {
         throw new Error('Unsupported inspection method');

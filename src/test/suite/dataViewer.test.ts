@@ -9,6 +9,7 @@ import type {
     ITextFilterParams,
 } from 'ag-grid-community';
 import { getDataViewerScript } from '../../dataViewer';
+import { gridColumnDefs, parseDescriptor } from '../../jdvAdapter';
 
 interface SavedViewer {
     schema: string;
@@ -245,6 +246,8 @@ suite('Data viewer', () => {
         assert.strictEqual(defs[3].cellDataType, 'dateString');
         assert.strictEqual(defs[4].cellDataType, 'dateTimeString');
         assert.strictEqual(defs[4].filter, 'agDateColumnFilter');
+        assert.strictEqual((defs[3].filterParams as { includeTime: boolean }).includeTime, false);
+        assert.strictEqual((defs[4].filterParams as { includeTime: boolean }).includeTime, true);
         assert.strictEqual(defs[5].cellDataType, 'boolean');
         assert.strictEqual(defs[6].cellDataType, 'bigint');
         assert.strictEqual(defs[6].filter, 'agBigIntColumnFilter');
@@ -252,6 +255,52 @@ suite('Data viewer', () => {
         assert.strictEqual(defs[7].sortable, false);
         assert.strictEqual(defs[0].pinned, 'left');
         assert.strictEqual(defs[0].lockVisible, true);
+    });
+
+    test('keeps sequential Arrow numeric display strings precise and right aligned', () => {
+        const descriptor = parseDescriptor({
+            view: 'arrow-1',
+            generation: 1,
+            kind: 'grid',
+            access: 'sequential',
+            encoding: 'arrow-ipc',
+            capabilities: { next: true },
+            nrow: null,
+            ncol: 1,
+            max_page_rows: 100,
+            columns: [
+                {
+                    position: 0,
+                    name: 'precise',
+                    type: 'g',
+                    unsupported: null,
+                    sortable: false,
+                    filterable: false,
+                },
+            ],
+        });
+        const arrowColumns = gridColumnDefs(descriptor) as unknown as ColDef[];
+        const viewer = viewerScript().script;
+        viewer.prepareViewerColumns(arrowColumns);
+        assert.strictEqual(arrowColumns[1].type, 'numericColumn');
+        assert.strictEqual(arrowColumns[1].cellDataType, false);
+
+        const displayValues = [
+            '3.141592653589793238462643383279',
+            '123456789012345678901234567890',
+        ];
+        const rows = viewer.prepareViewerRows(
+            displayValues.map((value) => ({ '1': value })),
+            [],
+        );
+        assert.deepStrictEqual(
+            rows.map((row) => row['1']),
+            displayValues,
+        );
+
+        const legacyNumeric: ColDef[] = [{ field: '2', type: 'numericColumn' }];
+        viewer.prepareViewerColumns(legacyNumeric);
+        assert.strictEqual(legacyNumeric[0].cellDataType, 'number');
     });
 
     test('keeps integer64 precision and missing values when loading rows', () => {
@@ -340,6 +389,119 @@ suite('Data viewer', () => {
             );
             assert.strictEqual(options.pagination, pageSize > 0);
         }
+    });
+
+    test('jdv columns offer only jdv operators and keep display text', () => {
+        const viewer = viewerScript();
+        const jdvColumns = [
+            {
+                field: '1',
+                headerName: 'n',
+                type: 'numericColumn',
+                filter: 'agNumberColumnFilter',
+                jdv: { filterOptions: ['equals', 'inRange'], naOptions: true, units: 'hours' },
+            },
+            {
+                field: '2',
+                headerName: 'i',
+                type: 'bigintColumn',
+                filter: 'agBigIntColumnFilter',
+                jdv: { filterOptions: ['equals'], naOptions: false },
+            },
+            {
+                field: '3',
+                headerName: 'd',
+                type: 'dateColumn',
+                filter: 'agDateColumnFilter',
+                jdv: { filterOptions: [], naOptions: true },
+            },
+            {
+                field: '4',
+                headerName: 'dt',
+                type: 'datetimeColumn',
+                filter: 'agDateColumnFilter',
+                jdv: { filterOptions: ['equals', 'inRange'], naOptions: true },
+            },
+            {
+                field: '5',
+                headerName: 's',
+                filter: 'agTextColumnFilter',
+                jdv: { filterOptions: ['contains', 'jdvIsEmpty', 'jdvNotEmpty'], naOptions: true },
+            },
+        ] as (ColDef & { jdv?: unknown })[];
+        const bigintFields = viewer.script.prepareViewerColumns(jdvColumns);
+        assert.strictEqual(bigintFields.length, 0);
+        // Arrays created inside the vm context have a different prototype.
+        const options = (column: ColDef) =>
+            Array.from(
+                (column.filterParams as { filterOptions: (string | { displayKey: string })[] })
+                    .filterOptions,
+                (option) => (typeof option === 'string' ? option : option.displayKey),
+            );
+        assert.deepStrictEqual(options(jdvColumns[0]), [
+            'equals',
+            'inRange',
+            'jdvIsNa',
+            'jdvNotNa',
+        ]);
+        assert.deepStrictEqual(options(jdvColumns[1]), ['equals']);
+        assert.deepStrictEqual(options(jdvColumns[2]), ['jdvIsNa', 'jdvNotNa']);
+        assert.deepStrictEqual(options(jdvColumns[4]), [
+            'contains',
+            'jdvIsEmpty',
+            'jdvNotEmpty',
+            'jdvIsNa',
+            'jdvNotNa',
+        ]);
+        assert.strictEqual(
+            (jdvColumns[0].filterParams as { inRangeInclusive: boolean }).inRangeInclusive,
+            true,
+        );
+        assert.strictEqual(
+            (jdvColumns[0].filterParams as { filterPlaceholder: string }).filterPlaceholder,
+            'Value (hours)',
+        );
+        assert.strictEqual(
+            (jdvColumns[2].filterParams as { browserDatePicker: boolean }).browserDatePicker,
+            true,
+        );
+        assert.strictEqual(
+            (jdvColumns[2].filterParams as { includeTime: boolean }).includeTime,
+            false,
+        );
+        assert.strictEqual(
+            (jdvColumns[3].filterParams as { includeTime: boolean }).includeTime,
+            true,
+        );
+        for (const column of jdvColumns) {
+            assert.strictEqual(column.cellDataType, undefined);
+            assert.strictEqual(column.jdv, undefined);
+        }
+    });
+
+    test('drillable jdv cells get an opening control only when they have a source row', () => {
+        const viewer = viewerScript();
+        const columns = [
+            { field: '1', headerName: 'x', jdvDrill: 3 },
+            { field: '2', headerName: 'y' },
+        ] as (ColDef & { jdvDrill?: number })[];
+        viewer.script.prepareViewerColumns(columns);
+        assert.strictEqual(columns[0].jdvDrill, undefined);
+        assert.strictEqual((columns[0].context as { drillColumn: number }).drillColumn, 3);
+        const select = (column: ColDef, data: unknown, value: unknown) =>
+            (
+                column.cellRendererSelector as (
+                    params: unknown,
+                ) => { component: unknown } | undefined
+            )({ data, value });
+        const drill = select(columns[0], { __sourceRow: 7 }, '1 item');
+        assert.strictEqual(typeof drill?.component, 'function');
+        assert.strictEqual(
+            select(columns[0], { __sourceRow: 7 }, null)?.component !== drill?.component,
+            true,
+        );
+        assert.strictEqual(select(columns[0], {}, '1 item'), undefined);
+        assert.strictEqual(select(columns[1], { __sourceRow: 7 }, 'v'), undefined);
     });
 
     test('high contrast light uses the light grid theme', () => {

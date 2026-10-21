@@ -7,6 +7,8 @@ export interface TableColumn {
     type?: unknown;
     sortable?: boolean;
     filter?: unknown;
+    /** jdv columns list the operators their type supports. */
+    jdv?: { filterOptions: string[] };
 }
 export interface TableSort {
     colId: string;
@@ -30,10 +32,25 @@ export const filterOperators = {
     endsWith: 'ends with',
     blank: 'is blank',
     notBlank: 'is not blank',
-    true: 'is true',
-    false: 'is false',
+    jdvIsEmpty: 'is empty',
+    jdvNotEmpty: 'is not empty',
+    jdvIsNa: 'is NA',
+    jdvNotNa: 'is not NA',
+    true: 'is TRUE',
+    false: 'is FALSE',
 };
+export function filterOperatorLabel(type: string): string {
+    return filterOperators[type as keyof typeof filterOperators] ?? type;
+}
 export function columnOperators(column: TableColumn): string[] {
+    // An inline filter is one condition, so the range operator is not offered.
+    if (column.jdv) {
+        return [
+            ...column.jdv.filterOptions.filter((option) => option !== 'inRange'),
+            'jdvIsNa',
+            'jdvNotNa',
+        ];
+    }
     if (column.type === 'booleanColumn') {
         return ['true', 'false', 'blank', 'notBlank'];
     }
@@ -62,7 +79,16 @@ export function columnOperators(column: TableColumn): string[] {
           ];
 }
 export const filterNeedsValue = (type: string): boolean =>
-    !['blank', 'notBlank', 'true', 'false'].includes(type);
+    ![
+        'blank',
+        'notBlank',
+        'jdvIsEmpty',
+        'jdvNotEmpty',
+        'jdvIsNa',
+        'jdvNotNa',
+        'true',
+        'false',
+    ].includes(type);
 // Slicing can turn automatic row numbers into explicit character row names.
 // The synthetic index is never sorted/filtered and is not part of the data schema.
 export const tableSchema = (columns: TableColumn[]): unknown[][] =>

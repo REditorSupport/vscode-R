@@ -40,6 +40,7 @@ import {
 } from './notebook';
 import { setInteractiveExecutor } from './executionTarget';
 import * as session from '../session';
+import { applyJdvRowCount, disposeJdvHost, getJdvAddress } from '../jdvViewer';
 import * as util from '../util';
 import type { ListViewNavigation } from '../listViewer';
 import { escapeXml } from './plotSvg';
@@ -51,6 +52,9 @@ import { readExecutionRecords, readPreviousJournal } from './journal';
 import { sessionAge, sessionPresentation } from './sessionPresentation';
 import { runningSessions, stopSession } from './sessionLifecycle';
 import { InteractiveInputFeatures } from './inputFeatures';
+import { createListAdapter, isJdvOutput, listRequest, queryJdvTablePage } from './jdvTable';
+import type { TreeAdapter } from '../jdvAdapter';
+import { acquireInteractiveJdvAddress, disposeInteractiveJdvHostOnControlLoss } from './jdvAddress';
 
 interface InteractiveView {
     client: AgentClient;
@@ -84,6 +88,10 @@ interface SessionChoice extends vscode.QuickPickItem {
 interface SavedConnection {
     id: string;
     notebookUri?: string;
+}
+
+function interactiveJdvHostKey(id: string, generation: string): string {
+    return `interactive:${id}:${generation}`;
 }
 
 export class InteractiveManager
@@ -721,19 +729,29 @@ export class InteractiveManager
             if (view.disposed) {
                 return;
             }
+            const handles: string[] = [];
             await view.outputQueue.pause();
             try {
                 const edits: vscode.NotebookEdit[] = [];
                 for (const cell of view.notebook.getCells().slice().reverse()) {
                     const id = cell.metadata.rExecutionId as string | undefined;
-                    const record =
-                        id &&
-                        this.transcriptCells(view).find((cell) => cell.record.id === id)?.record;
+                    const transcript = id
+                        ? this.transcriptCells(view).find((cell) => cell.record.id === id)
+                        : undefined;
+                    const record = transcript?.record;
                     if (
                         record &&
                         !view.executions.has(record.id) &&
                         !['queued', 'running', 'unknown'].includes(record.state)
                     ) {
+                        // Cleared outputs release their jdv handles in R.
+                        if (transcript?.generation === view.model.generation) {
+                            for (const output of transcript.outputs) {
+                                if (output.type === 'display' && isJdvOutput(output.data)) {
+                                    handles.push(String(output.data.handleId));
+                                }
+                            }
+                        }
                         view.hidden.add(record.id);
                         const adjacent = edits.at(-1);
                         if (adjacent?.range.start === cell.index + 1) {
@@ -754,6 +772,16 @@ export class InteractiveManager
                 await vscode.workspace.applyEdit(edit);
             } finally {
                 view.outputQueue.resume();
+            }
+            if (!['exited', 'stopping'].includes(view.client.manifest.status)) {
+                for (const handle of handles) {
+                    await view.client
+                        .request('inspect', {
+                            method: 'jdv_handle_close',
+                            params: { handle_id: handle },
+                        })
+                        .catch(() => undefined);
+                }
             }
         });
         await view.chain;
@@ -1623,6 +1651,8 @@ export class InteractiveManager
     }
 
     private listen(view: InteractiveView, client: AgentClient): void {
+        const hostKey = interactiveJdvHostKey(client.manifest.id, client.manifest.generation);
+        let hadControl = client.control;
         client.on('event', (event: SessionEvent) => {
             if (view.client !== client) {
                 return;
@@ -1632,12 +1662,20 @@ export class InteractiveManager
                 .catch((error) => this.report(error));
         });
         client.on('activity', () => {
-            if (view.client === client) {
-                this.updateStatus();
-                this.changes.fire(undefined);
+            if (view.client !== client) {
+                return;
             }
+            const hasControl = client.control;
+            disposeInteractiveJdvHostOnControlLoss(hadControl, hasControl, () =>
+                disposeJdvHost(hostKey),
+            );
+            hadControl = hasControl;
+            this.updateStatus();
+            this.changes.fire(undefined);
         });
         client.on('disconnect', () => {
+            disposeJdvHost(hostKey);
+            hadControl = false;
             if (view.client !== client || view.restarting) {
                 return;
             }
@@ -1963,6 +2001,11 @@ export class InteractiveManager
             view.target.pid = typeof event.data.rPid === 'number' ? String(event.data.rPid) : '';
             view.target.rVer = typeof event.data.rVersion === 'string' ? event.data.rVersion : '';
             this.refresh();
+            if (event.data.status === 'exited') {
+                disposeJdvHost(
+                    interactiveJdvHostKey(view.client.manifest.id, view.client.manifest.generation),
+                );
+            }
             if (event.data.status === 'exited' && !view.restarting) {
                 await this.sessionNotice(view, 'stopped');
                 for (const cell of this.transcriptCells(view)) {
@@ -2025,6 +2068,9 @@ export class InteractiveManager
             }
         } else if (event.type === 'notification') {
             const params = object(event.data.params ?? {});
+            if (event.data.method === 'jdv/rowCount') {
+                applyJdvRowCount(view.target.sessionId, params);
+            }
             if (event.data.method === 'help') {
                 await session.showHelpNotification(params);
             }
@@ -2444,12 +2490,82 @@ export class InteractiveManager
         const client = view.client;
         const params = object(data.params ?? {});
         try {
-            const result = await session.handleEditorRequest(String(data.method), params);
+            let result: unknown;
+            if (data.method === 'jdv/address') {
+                result = { address: await this.jdvAddress(view) };
+            } else {
+                result = await session.handleEditorRequest(String(data.method), params);
+            }
             await client.request('clientReply', { id: data.id, result });
         } catch (error) {
             await client
                 .request('clientReply', { id: data.id, error: String(error) })
                 .catch(() => undefined);
+        }
+    }
+
+    /** The session-scoped jdv listener address, created on first use. */
+    private jdvAddress(view: InteractiveView): Promise<string> {
+        const client = view.client;
+        const sessionId = view.target.sessionId;
+        const generation = view.model.generation;
+        const manifestGeneration = client.manifest.generation;
+        return acquireInteractiveJdvAddress({
+            sessionId,
+            hostKey: interactiveJdvHostKey(client.manifest.id, manifestGeneration),
+            canConnect: () =>
+                client.control &&
+                !view.target.processExited &&
+                !['stopping', 'exited'].includes(client.manifest.status),
+            isCurrent: () =>
+                !view.disposed &&
+                view.client === client &&
+                !view.restarting &&
+                view.target.sessionId === sessionId &&
+                view.model.generation === generation &&
+                client.manifest.generation === manifestGeneration,
+            getAddress: getJdvAddress,
+            disposeHost: disposeJdvHost,
+        });
+    }
+
+    /** Positional-path bookkeeping of an inline list, rebuilt from its handle when missing. */
+    private readonly listAdapters = new Map<string, TreeAdapter>();
+
+    private async listAdapter(
+        view: InteractiveView,
+        data: Record<string, unknown>,
+    ): Promise<TreeAdapter> {
+        const key = `${view.client.manifest.id}:${view.model.generation}:${String(data.handleId)}`;
+        let adapter = this.listAdapters.get(key);
+        if (!adapter) {
+            adapter = await createListAdapter(data, (request) =>
+                view.client.request('inspect', request),
+            );
+            this.listAdapters.set(key, adapter);
+            while (this.listAdapters.size > 64) {
+                this.listAdapters.delete(this.listAdapters.keys().next().value as string);
+            }
+        }
+        return adapter;
+    }
+
+    /** Register the output's value (or one item of it) with jdv so the Data Viewer panel shows it. */
+    private async openHandleViewer(
+        view: InteractiveView,
+        data: Record<string, unknown>,
+        path: unknown[],
+        title: string,
+    ): Promise<void> {
+        // R cannot wait for a reply to its own request while answering this inspection,
+        // so the listener address is handed over instead of being requested.
+        const address = await this.jdvAddress(view);
+        const opened = await view.client.request<boolean>('inspect', {
+            method: 'jdv_open_viewer',
+            params: { handle_id: data.handleId, path, title, address },
+        });
+        if (opened !== true) {
+            throw new Error('Unable to open the Data Viewer. Check the R session and try again.');
         }
     }
 
@@ -2550,6 +2666,15 @@ export class InteractiveManager
                     if (data.kind !== 'table') {
                         return;
                     }
+                    if (isJdvOutput(data)) {
+                        await this.openHandleViewer(
+                            view,
+                            data,
+                            [],
+                            `Cell ${owner.record.order}: table`,
+                        );
+                        break;
+                    }
                     await session.showDataView(
                         'table',
                         'json',
@@ -2565,8 +2690,10 @@ export class InteractiveManager
                     if (data.kind !== 'table') {
                         return;
                     }
-                    result = await queryTablePage(data, message, (request) =>
-                        view.client.request('inspect', request),
+                    result = await (isJdvOutput(data) ? queryJdvTablePage : queryTablePage)(
+                        data,
+                        message,
+                        (request) => view.client.request('inspect', request),
                     );
                     break;
                 }
@@ -2583,6 +2710,25 @@ export class InteractiveManager
                         !listPath.every((index) => Number.isSafeInteger(index) && index > 0)
                     ) {
                         throw new Error('Invalid list path');
+                    }
+                    if (isJdvOutput(data)) {
+                        const adapter = await this.listAdapter(view, data);
+                        const outcome = await listRequest(
+                            adapter,
+                            data,
+                            { ...message, path: listPath },
+                            (request) => view.client.request('inspect', request),
+                        );
+                        if (outcome.open) {
+                            await this.openHandleViewer(
+                                view,
+                                data,
+                                outcome.open.path,
+                                `Cell ${owner.record.order}: ${outcome.open.title}`,
+                            );
+                        }
+                        result = outcome.result;
+                        break;
                     }
                     const params = { view_id: data.viewId, path: listPath };
                     if (message.action === 'listPage') {
@@ -3055,6 +3201,9 @@ export class InteractiveManager
             if (answer !== 'Restart Session' || view.disposed) {
                 return;
             }
+            disposeJdvHost(
+                interactiveJdvHostKey(view.client.manifest.id, view.client.manifest.generation),
+            );
             const storage = path.join(this.root, view.client.manifest.id);
             let config = JSON.parse(
                 fs.readFileSync(path.join(storage, 'config.json'), 'utf8'),
@@ -3405,6 +3554,9 @@ export class InteractiveManager
         view.disposed = true;
         view.outputQueue.dispose();
         clearTimeout(view.reconnectTimer);
+        disposeJdvHost(
+            interactiveJdvHostKey(view.client.manifest.id, view.client.manifest.generation),
+        );
         view.client.close();
         for (const { task } of view.executions.values()) {
             task.end(undefined);

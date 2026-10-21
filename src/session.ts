@@ -42,6 +42,9 @@ import type {
 import { showWebView } from './webViewer';
 import { getListViewerScript, listViewerStyle, ListViewNavigation } from './listViewer';
 import { getDataViewerScript, getDataViewerStyle, getDataViewerToolbarHtml } from './dataViewer';
+import { applyJdvRowCount, disposeJdvHost, getJdvAddress } from './jdvViewer';
+import { getFollowScript } from './viewerFollow';
+import type { JdvTracking } from './jdvAdapter';
 import {
     getDataViewerColumnPanelHtml,
     getDataViewerColumnPanelScript,
@@ -711,6 +714,11 @@ const dynamicDataViewPanels = new Map<string, vscode.WebviewPanel>();
 const dynamicDataViewStateGenerations = new WeakMap<vscode.WebviewPanel, number>();
 const documentGenerations = new WeakMap<Webview, number>();
 let documentGenerationRevision = 0;
+
+/** The generation of the HTML document currently loaded in a viewer webview. */
+export function getDocumentGeneration(webview: Webview): number | undefined {
+    return documentGenerations.get(webview);
+}
 
 function escapeHtml(text: string): string {
     const map: Record<string, string> = {
@@ -1563,6 +1571,11 @@ function asRStringLiteral(value: string): string {
     return `"${escaped}"`;
 }
 
+/** Whether the data viewer should follow the variable passed to View(); on unless disabled. */
+export function trackVariablesSetting(resource?: vscode.Uri): boolean {
+    return config(resource).get<boolean>('session.viewers.trackVariables') !== false;
+}
+
 function getAttachSessionScriptPath(pipePath: string): string {
     const scriptBase = path.basename(pipePath).replace(/[^a-zA-Z0-9_.-]/g, '_') || 'attach_session';
     return path.join(extensionContext.globalStorageUri.fsPath, 'tmp', 'attach', `${scriptBase}.R`);
@@ -1597,7 +1610,7 @@ function buildAttachSessionScript(
               ]),
         '  source(startup_helper, local = TRUE)',
         '  source(attach_helper, local = TRUE)',
-        `  vscode_r_attach_sess(endpoint, sess_src, managed_root, consent_dir, source_helper, installer_helper, ${asRStringLiteral(backend)}, use_rstudioapi = ${config().get<boolean>('session.emulateRStudioAPI') ? 'TRUE' : 'FALSE'}${attachment ? `, attachment_id = ${asRStringLiteral(attachment.attachmentId)}, auto_activate = ${attachment.autoActivate ? 'TRUE' : 'FALSE'}` : ''})`,
+        `  vscode_r_attach_sess(endpoint, sess_src, managed_root, consent_dir, source_helper, installer_helper, ${asRStringLiteral(backend)}, use_rstudioapi = ${config().get<boolean>('session.emulateRStudioAPI') ? 'TRUE' : 'FALSE'}, track_variables = ${trackVariablesSetting() ? 'TRUE' : 'FALSE'}${attachment ? `, attachment_id = ${asRStringLiteral(attachment.attachmentId)}, auto_activate = ${attachment.autoActivate ? 'TRUE' : 'FALSE'}` : ''})`,
         '    })',
         '    invisible(isTRUE(attached))',
         '  }, error = function(error) {',
@@ -2587,7 +2600,10 @@ function getViewerSessionHtml(sessionId: string | null): string {
     return getViewerSessionContext(sessionId)?.getHtml() ?? '';
 }
 
-function attachViewerSessionBridge(panel: vscode.WebviewPanel, sessionId: string | null): void {
+export function attachViewerSessionBridge(
+    panel: vscode.WebviewPanel,
+    sessionId: string | null,
+): void {
     getViewerSessionContext(sessionId)?.attach(panel);
 }
 
@@ -2612,6 +2628,8 @@ export async function getTableHtml(
     file: string | undefined,
     title: string,
     sessionId: string | null = null,
+    refreshable = false,
+    tracking?: JdvTracking,
 ): Promise<string> {
     const sessionHtml = getViewerSessionHtml(sessionId);
     const codicons = webview.asWebviewUri(Uri.file(path.join(resDir, 'codicon.css'))).toString();
@@ -2808,11 +2826,24 @@ export async function getTableHtml(
     let filteredRows = 0;
     let totalRows = 0;
     let isFiltered = false;
+    let sequentialKnownTotal;
+    let sequentialProgress;
     let verticalScrollbar;
     let scrollbarPositionAttached = false;
     let scrollbarPressed = false;
     const LONG_FETCH_DELAY_MS = 2000;
     const rowNumberFormatter = new Intl.NumberFormat();
+    function renderSequentialRowCount() {
+        if (sequentialProgress) {
+            const { loadedRows, totalRows, notice } = sequentialProgress;
+            const complete = Number.isFinite(totalRows);
+            const rowCount = document.querySelector('#viewerRowCount');
+            rowCount.textContent = formatSequentialRowCount(
+                complete ? totalRows : loadedRows, sequentialKnownTotal, complete
+            );
+            rowCount.title = notice || '';
+        }
+    }
     function clearLongFetchTimer() {
         if (longFetchTimer) {
             clearTimeout(longFetchTimer);
@@ -2994,6 +3025,11 @@ export async function getTableHtml(
 
     window.addEventListener('message', (event) => {
         const data = event.data;
+        if (data?.message === 'dataview/rowCount' && data.documentGeneration === documentGeneration) {
+            sequentialKnownTotal = data.knownTotal;
+            renderSequentialRowCount();
+            return;
+        }
         if (!data || data.message !== 'dataview/response' ||
             data.documentGeneration !== documentGeneration) {
             return;
@@ -3036,10 +3072,30 @@ export async function getTableHtml(
             const info = document.createElement('span');
             info.textContent = 'Full data';
             info.title = 'This view retains the full object without a copy. Reference edits may appear here. Reopen from the cell to refresh after edits. Sorting and filtering scan the full data.';
-            document.querySelector('#viewerControls').append(info);
+            document.querySelector('#viewerInfo').prepend(info);
+        }
+        if (init.sequential) {
+            viewerMissingText = 'null';
+            sequentialProgress = { loadedRows: 0, totalRows: null };
+            sequentialKnownTotal ??= init.knownTotal;
+            const info = document.createElement('span');
+            info.textContent = 'Arrow stream';
+            info.title = 'Rows are read from the Arrow stream as you scroll. Sorting and filtering are not available.';
+            document.querySelector('#viewerInfo').prepend(info);
         }
         const bigintFields = prepareViewerColumns(columns);
         updateViewerRowCount(filteredRows, totalRows);
+        let sequentialTooltips = init.headerTooltips;
+        if (init.sequential) {
+            renderSequentialRowCount();
+            // Types are named from the descriptor until a decoded page gives the full type.
+            for (const column of columns) {
+                const descriptorTooltip = column.headerTooltip;
+                if (typeof descriptorTooltip === 'string') {
+                    column.headerTooltip = () => sequentialTooltips?.[column.field] ?? descriptorTooltip;
+                }
+            }
+        }
         const rowIndexColumn = columns.find(column => column.field === '0');
         if (rowIndexColumn) {
             rowIndexColumn.headerValueGetter = () => isFiltered
@@ -3058,12 +3114,29 @@ export async function getTableHtml(
                         endRow: params.endRow,
                         sortModel: params.sortModel,
                         filterModel: params.filterModel,
+                        // Fetch only displayed columns; wide tables otherwise cost R a lot per block.
+                        columns: params.api.getAllDisplayedColumns()
+                            .map(column => column.getColDef().field)
+                            .filter(field => field !== '0'),
                     });
-                    filteredRows = result.totalRows;
-                    totalRows = result.totalUnfiltered;
-                    isFiltered = Object.keys(params.filterModel || {}).length > 0;
+                    const nextFilteredRows = Number.isFinite(result.totalRows) ? result.totalRows : result.loadedRows;
+                    const nextTotalRows = Number.isFinite(result.totalUnfiltered) ? result.totalUnfiltered : result.loadedRows;
+                    const nextIsFiltered = Object.keys(params.filterModel || {}).length > 0;
+                    const headerNeedsRefresh = filteredRows !== nextFilteredRows ||
+                        totalRows !== nextTotalRows || isFiltered !== nextIsFiltered;
+                    filteredRows = nextFilteredRows;
+                    totalRows = nextTotalRows;
+                    isFiltered = nextIsFiltered;
                     updateViewerRowCount(filteredRows, totalRows);
-                    gridApi?.refreshHeader();
+                    if (init.sequential) {
+                        sequentialKnownTotal ??= result.knownTotal;
+                        sequentialTooltips ??= result.headerTooltips;
+                        sequentialProgress = result;
+                        renderSequentialRowCount();
+                    }
+                    if (headerNeedsRefresh) {
+                        gridApi?.refreshHeader();
+                    }
                     updateScrollPosition();
                     const resolvedLastRow = Number.isFinite(result.totalRows) ? result.totalRows : result.lastRow;
                     const rows = prepareViewerRows(result.rows || [], bigintFields);
@@ -3087,6 +3160,12 @@ export async function getTableHtml(
             onPaginationChanged: updateScrollPosition,
             onGridSizeChanged: updateFetchStatusPosition,
             onDisplayedColumnsChanged: updateFetchStatusPosition,
+            onColumnVisible: function(event) {
+                // Cached rows lack columns that were hidden when they were fetched.
+                if (!init.sequential && (event.columns || []).some(column => column.isVisible())) {
+                    event.api.purgeInfiniteCache();
+                }
+            },
             onFirstDataRendered: function() {
                 updateFetchStatusPosition();
                 attachScrollbarPositionIndicator();
@@ -3098,6 +3177,10 @@ export async function getTableHtml(
             console.log('[dataview] Creating grid with options:', gridOptions);
             gridApi = window.agGrid.createGrid(gridDiv, gridOptions);
             initializeViewerToolbar();
+            if (init.sequential) {
+                // Arrow streams are read forward only; jdv offers no sorting or filtering.
+                document.querySelector('#viewerFilters').disabled = true;
+            }
             console.log('[dataview] Grid created successfully');
             updateFetchStatusPosition();
         } catch (e) {
@@ -3111,6 +3194,43 @@ export async function getTableHtml(
         const retryBtn = document.querySelector('#fetchRetryBtn');
         if (retryBtn) {
             retryBtn.addEventListener('click', retryCurrentPage);
+        }
+
+        window.addEventListener('message', (event) => {
+            const data = event.data;
+            if (data && data.message === 'viewer/openFailed' &&
+                data.documentGeneration === documentGeneration) {
+                setFetchStatus('error', data.error || 'Unable to open this cell.', false);
+            }
+        });
+
+        const refreshBtn = document.querySelector('#viewerRefresh');
+        if (refreshBtn) {
+            refreshBtn.addEventListener('click', () => {
+                refreshBtn.disabled = true;
+                setFetchStatus('loading', 'Refreshing...', false);
+                vscode.postMessage({ message: 'dataview/refresh', documentGeneration });
+            });
+            // A successful refresh replaces this document, so only failures arrive.
+            window.addEventListener('message', (event) => {
+                const data = event.data;
+                if (data && data.message === 'viewer/refreshFailed' &&
+                    data.documentGeneration === documentGeneration) {
+                    refreshBtn.disabled = false;
+                    setFetchStatus('error', data.error || 'Unable to refresh.', false);
+                }
+            });
+        }
+
+        ${
+            tracking
+                ? getFollowScript(
+                      tracking,
+                      'viewerFollow',
+                      '',
+                      "setFetchStatus('error', message.error || 'Unable to change following.', false);",
+                  )
+                : ''
         }
 
         updateTheme();
@@ -3133,7 +3253,7 @@ export async function getTableHtml(
     </script>
 </head>
 <body>
-    ${getDataViewerToolbarHtml(sessionHtml)}
+    ${getDataViewerToolbarHtml(sessionHtml, refreshable, tracking !== undefined)}
     <div id="gridContainer">
         <div id="myGrid" style="height: 100%;"></div>
         ${getDataViewerColumnPanelHtml()}
@@ -3320,6 +3440,8 @@ export function getListHtml(
     title: string,
     navigation?: ListViewNavigation,
     sessionId: string | null = null,
+    refreshable = false,
+    tracking?: JdvTracking,
 ): string {
     const documentGeneration = ++documentGenerationRevision;
     documentGenerations.set(webview, documentGeneration);
@@ -3353,6 +3475,8 @@ export function getListHtml(
         <button id="back" class="back" title="Back" aria-label="Back" disabled><span class="codicon codicon-arrow-left" aria-hidden="true"></span>Back</button>
         <nav id="breadcrumbs" class="breadcrumbs" aria-label="Object path"></nav>
         <button id="reset" class="reset" title="Reset to initial view" aria-label="Reset to initial view"><span class="codicon codicon-discard" aria-hidden="true"></span>Reset</button>
+        ${refreshable ? '<button id="refresh" class="refresh" title="Rebuild this view from the current value of the R object" aria-label="Refresh"><span class="codicon codicon-refresh" aria-hidden="true"></span>Refresh</button>' : ''}
+        ${tracking ? '<button id="follow" class="follow" aria-pressed="false" aria-label="Follow"><span class="codicon codicon-eye" aria-hidden="true"></span>Follow</button>' : ''}
         ${getViewerSessionHtml(sessionId)}
     </div>
     <div id="navigation-status" class="navigation-status" role="status"></div>
@@ -3365,6 +3489,8 @@ export function getListHtml(
             path: [],
             breadcrumbs: [{ label: title, path: [] }],
         },
+        refreshable,
+        tracking,
     )}
     ${getViewerSessionScript()}
     </script>
@@ -3919,6 +4045,10 @@ async function handleNotification(message: Record<string, unknown>, socket: IpcS
             }
             break;
         }
+        case 'jdv/rowCount': {
+            applyJdvRowCount(socket._sessionId ?? null, params);
+            break;
+        }
         case 'plot_updated': {
             void updatePlot();
             break;
@@ -3968,6 +4098,15 @@ async function handleRequest(message: Record<string, unknown>, socket?: IpcSocke
 
         try {
             switch (method) {
+                case 'jdv/address': {
+                    // The per-session jdv transport; sess connects jdv to it when View() is used.
+                    const owner = sessions.get(socket?._sessionId ?? '');
+                    if (!owner) {
+                        throw new Error('The jdv transport requires an attached session');
+                    }
+                    result = { address: await getJdvAddress(owner.sessionId) };
+                    break;
+                }
                 case 'rstudioapi/active_editor_context':
                     result = rstudioapi.activeEditorContext();
                     break;
@@ -4071,6 +4210,7 @@ export async function cleanupSession(sessionId: string, closingSocket?: IpcSocke
         return;
     }
     sessions.delete(sessionId);
+    disposeJdvHost(sessionId);
     terminalRegistry.releaseSession(session);
     const disconnected = invalidateSessionConnection(session);
     if (pipeClient === session.socket) {

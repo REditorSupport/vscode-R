@@ -52,7 +52,9 @@ invisible(local({
         plot_backend <- Sys.getenv("SESS_PLOT_BACKEND", "auto")
         connect <- get("connect", envir = ns, inherits = FALSE)
         use_rstudioapi <- as.logical(Sys.getenv("SESS_RSTUDIOAPI", "TRUE"))
-        result <- connect(use_rstudioapi = use_rstudioapi, plot_backend = plot_backend)
+        track_variables <- as.logical(Sys.getenv("SESS_TRACK_VARIABLES", "TRUE"))
+        result <- connect(use_rstudioapi = use_rstudioapi, plot_backend = plot_backend,
+                          track_variables = track_variables)
         isTRUE(result)
     }
 
