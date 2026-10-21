@@ -3075,6 +3075,7 @@ export async function getTableHtml(
             document.querySelector('#viewerInfo').prepend(info);
         }
         if (init.sequential) {
+            viewerMissingText = 'null';
             sequentialProgress = { loadedRows: 0, totalRows: null };
             sequentialKnownTotal ??= init.knownTotal;
             const info = document.createElement('span');

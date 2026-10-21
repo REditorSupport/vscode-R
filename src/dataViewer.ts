@@ -82,11 +82,13 @@ export function getDataViewerScript(): string {
     let viewerInitialState;
     let viewerDefaultPageSize;
     let viewerSizingMode = 'fit';
+    // Arrow views call a missing value null, as Arrow does.
+    let viewerMissingText = 'NA';
     const emptyCellRenderer = () => '';
     const naCellRenderer = () => {
         const element = document.createElement('span');
         element.className = 'dataview-na';
-        element.textContent = 'NA';
+        element.textContent = viewerMissingText;
         return element;
     };
     // A drillable jdv cell shows its text and a button that opens the cell as a child view.
