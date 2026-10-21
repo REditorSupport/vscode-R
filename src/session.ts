@@ -3084,8 +3084,16 @@ export async function getTableHtml(
         }
         const bigintFields = prepareViewerColumns(columns);
         updateViewerRowCount(filteredRows, totalRows);
+        let sequentialTooltips = init.headerTooltips;
         if (init.sequential) {
             renderSequentialRowCount();
+            // Types are named from the descriptor until a decoded page gives the full type.
+            for (const column of columns) {
+                const descriptorTooltip = column.headerTooltip;
+                if (typeof descriptorTooltip === 'string') {
+                    column.headerTooltip = () => sequentialTooltips?.[column.field] ?? descriptorTooltip;
+                }
+            }
         }
         const rowIndexColumn = columns.find(column => column.field === '0');
         if (rowIndexColumn) {
@@ -3121,6 +3129,7 @@ export async function getTableHtml(
                     updateViewerRowCount(filteredRows, totalRows);
                     if (init.sequential) {
                         sequentialKnownTotal ??= result.knownTotal;
+                        sequentialTooltips ??= result.headerTooltips;
                         sequentialProgress = result;
                         renderSequentialRowCount();
                     }

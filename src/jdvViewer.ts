@@ -448,6 +448,7 @@ async function handleMessage(
                         totalRows: 0,
                         sequential: true,
                         knownTotal: state.knownTotal,
+                        headerTooltips: state.stream.headerTooltips,
                     });
                 } else if (message.action === 'page') {
                     reply(true, await fetchSequentialPage(state, state.stream, message));
@@ -666,6 +667,7 @@ async function fetchSequentialPage(
         knownTotal: state.knownTotal,
         done: stream.done,
         unavailableBefore: stream.unavailableBefore,
+        headerTooltips: stream.headerTooltips,
         notice: state.closed,
     };
 }

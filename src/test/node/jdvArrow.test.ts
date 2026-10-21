@@ -1,14 +1,37 @@
 import * as assert from 'node:assert/strict';
 import * as net from 'node:net';
-import { tableFromArrays, tableToIPC } from 'apache-arrow';
+import {
+    DataType,
+    Decimal,
+    Dictionary,
+    Field,
+    FixedSizeList,
+    Int8,
+    Int32,
+    List,
+    Map_,
+    Struct,
+    TimestampMicrosecond,
+    Uint64,
+    Utf8,
+    tableFromArrays,
+    tableToIPC,
+} from 'apache-arrow';
 import {
     JdvDescriptor,
     JdvRequestError,
     JsonObject,
+    arrowFormatLabel,
     gridColumnDefs,
     parseDescriptor,
 } from '../../jdvAdapter';
-import { SequentialStream, UNAVAILABLE_TEXT, formatScaled, formatTimestamp } from '../../jdvArrow';
+import {
+    SequentialStream,
+    UNAVAILABLE_TEXT,
+    arrowTypeLabel,
+    formatScaled,
+    formatTimestamp,
+} from '../../jdvArrow';
 import { JdvHost, JdvPeer } from '../../jdvTransport';
 
 const descriptor: JdvDescriptor = parseDescriptor({
@@ -116,7 +139,69 @@ suite('jdv Arrow views', () => {
         );
         assert.equal(columns[1].cellDataType, false);
         assert.equal(columns[2].cellDataType, undefined);
+        assert.equal(columns[1].headerTooltip, 'a, Arrow type: int32');
         assert.match(columns[3].headerTooltip ?? '', /unsupported: not supported/);
+    });
+
+    test('names Arrow format strings', () => {
+        const formats: [string, string][] = [
+            ['l', 'int64'],
+            ['u', 'string'],
+            ['vu', 'string_view'],
+            ['tdD', 'date32[day]'],
+            ['tsu:UTC', 'timestamp[us, tz=UTC]'],
+            ['tsn:', 'timestamp[ns]'],
+            ['d:10,2', 'decimal128(10, 2)'],
+            ['d:40,-3,256', 'decimal256(40, -3)'],
+            ['w:16', 'fixed_size_binary[16]'],
+            ['+w:2', 'fixed_size_list[2]'],
+            ['+l', 'list'],
+            ['+ud:0,1', 'dense_union'],
+            ['?', '?'],
+        ];
+        for (const [format, label] of formats) {
+            assert.equal(arrowFormatLabel(format), label, format);
+        }
+    });
+
+    test('names decoded Arrow types with their children', () => {
+        const label = (type: DataType) =>
+            arrowTypeLabel(type as unknown as Parameters<typeof arrowTypeLabel>[0]);
+        assert.equal(label(new Uint64()), 'uint64');
+        assert.equal(label(new TimestampMicrosecond('Asia/Tokyo')), 'timestamp[us, tz=Asia/Tokyo]');
+        assert.equal(label(new Decimal(2, 10, 128)), 'decimal128(10, 2)');
+        assert.equal(
+            label(new Dictionary(new Utf8(), new Int8())),
+            'dictionary<values=string, indices=int8>',
+        );
+        assert.equal(label(new List(new Field('item', new Int32()))), 'list<int32>');
+        assert.equal(
+            label(new FixedSizeList(3, new Field('item', new Int32()))),
+            'fixed_size_list<int32>[3]',
+        );
+        assert.equal(
+            label(
+                new Struct([
+                    new Field('x', new Int32()),
+                    new Field('y', new List(new Field('item', new Utf8()))),
+                ]),
+            ),
+            'struct<x: int32, y: list<string>>',
+        );
+        assert.equal(
+            label(
+                new Map_(
+                    new Field(
+                        'entries',
+                        new Struct<{ key: Utf8; value: Int32 }>([
+                            new Field('key', new Utf8()),
+                            new Field('value', new Int32()),
+                        ]),
+                    ),
+                ),
+            ),
+            'map<string, int32>',
+        );
     });
 
     test('reads the stream forward and serves blocks from received pages', async () => {
@@ -125,10 +210,17 @@ suite('jdv Arrow views', () => {
         await stream.ensure(5);
         assert.equal(stream.rowsSeen, 10);
         assert.equal(source.calls(), 1);
+        assert.equal(stream.headerTooltips, undefined);
         assert.deepEqual(stream.rows(0, 2), [
             { '0': '1', '1': '1', '2': null, '3': '<unsupported: not supported>' },
             { '0': '2', '1': '2', '2': 's2', '3': '<unsupported: not supported>' },
         ]);
+        // The decoded page names each supported column's full type; tableFromArrays()
+        // dictionary-encodes strings, which the descriptor format cannot show.
+        assert.deepEqual(stream.headerTooltips, {
+            '1': 'a, Arrow type: int32',
+            '2': 's, Arrow type: dictionary<values=string, indices=int32>',
+        });
         // Concurrent requests share one stream/next at a time.
         await Promise.all([stream.ensure(15), stream.ensure(20)]);
         assert.equal(stream.rowsSeen, 20);

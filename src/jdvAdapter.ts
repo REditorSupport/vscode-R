@@ -292,6 +292,82 @@ function columnTooltip(column: JdvColumnSchema): string {
 
 const ARROW_NUMERIC_FORMATS = new Set(['c', 'C', 's', 'S', 'i', 'I', 'l', 'L', 'e', 'f', 'g']);
 
+export function arrowTypeTooltip(name: string, type: string): string {
+    return `${name}, Arrow type: ${type}`;
+}
+
+const ARROW_FORMAT_NAMES: Record<string, string> = {
+    n: 'null',
+    b: 'bool',
+    c: 'int8',
+    C: 'uint8',
+    s: 'int16',
+    S: 'uint16',
+    i: 'int32',
+    I: 'uint32',
+    l: 'int64',
+    L: 'uint64',
+    e: 'float16',
+    f: 'float32',
+    g: 'float64',
+    z: 'binary',
+    Z: 'large_binary',
+    vz: 'binary_view',
+    u: 'string',
+    U: 'large_string',
+    vu: 'string_view',
+    tdD: 'date32[day]',
+    tdm: 'date64[ms]',
+    tts: 'time32[s]',
+    ttm: 'time32[ms]',
+    ttu: 'time64[us]',
+    ttn: 'time64[ns]',
+    tDs: 'duration[s]',
+    tDm: 'duration[ms]',
+    tDu: 'duration[us]',
+    tDn: 'duration[ns]',
+    tiM: 'month_interval',
+    tiD: 'day_time_interval',
+    tin: 'month_day_nano_interval',
+    '+l': 'list',
+    '+L': 'large_list',
+    '+vl': 'list_view',
+    '+vL': 'large_list_view',
+    '+s': 'struct',
+    '+m': 'map',
+    '+r': 'run_end_encoded',
+};
+
+/**
+ * Readable name of an Arrow C data interface format string, in the style of
+ * pyarrow's type names. The format omits child types, and a dictionary column
+ * reports its index type; `arrowTypeLabel()` gives the full type once a page
+ * has been decoded.
+ */
+export function arrowFormatLabel(format: string): string {
+    const named = ARROW_FORMAT_NAMES[format];
+    if (named) {
+        return named;
+    }
+    let match = /^ts([smun]):(.*)$/.exec(format);
+    if (match) {
+        return `timestamp[${match[1] === 's' ? 's' : match[1] + 's'}${match[2] ? `, tz=${match[2]}` : ''}]`;
+    }
+    match = /^d:(\d+),(-?\d+)(?:,(\d+))?$/.exec(format);
+    if (match) {
+        return `decimal${match[3] ?? '128'}(${match[1]}, ${match[2]})`;
+    }
+    match = /^(\+?)w:(\d+)$/.exec(format);
+    if (match) {
+        return `${match[1] ? 'fixed_size_list' : 'fixed_size_binary'}[${match[2]}]`;
+    }
+    match = /^\+u([ds]):/.exec(format);
+    if (match) {
+        return match[1] === 'd' ? 'dense_union' : 'sparse_union';
+    }
+    return format;
+}
+
 function rowLabelColumn(): GridColumnDef {
     return {
         headerName: '',
@@ -320,7 +396,7 @@ function sequentialColumnDefs(descriptor: JdvDescriptor): GridColumnDef[] {
             headerName: column.name,
             headerTooltip: column.unsupported
                 ? `${column.name}, unsupported: ${column.unsupported}`
-                : `${column.name}, Arrow format: ${column.type}`,
+                : arrowTypeTooltip(column.name, arrowFormatLabel(column.type)),
             field: String(column.position + 1),
             type: numeric ? 'numericColumn' : 'textColumn',
             ...(numeric ? { cellDataType: false } : {}),
