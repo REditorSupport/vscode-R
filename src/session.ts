@@ -3072,7 +3072,7 @@ export async function getTableHtml(
             const info = document.createElement('span');
             info.textContent = 'Full data';
             info.title = 'This view retains the full object without a copy. Reference edits may appear here. Reopen from the cell to refresh after edits. Sorting and filtering scan the full data.';
-            document.querySelector('#viewerControls').append(info);
+            document.querySelector('#viewerInfo').prepend(info);
         }
         if (init.sequential) {
             sequentialProgress = { loadedRows: 0, totalRows: null };
@@ -3080,7 +3080,7 @@ export async function getTableHtml(
             const info = document.createElement('span');
             info.textContent = 'Arrow stream';
             info.title = 'Rows are read from the Arrow stream as you scroll. Sorting and filtering are not available.';
-            document.querySelector('#viewerControls').append(info);
+            document.querySelector('#viewerInfo').prepend(info);
         }
         const bigintFields = prepareViewerColumns(columns);
         updateViewerRowCount(filteredRows, totalRows);
