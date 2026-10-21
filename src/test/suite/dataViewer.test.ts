@@ -1,6 +1,6 @@
 import * as assert from 'assert';
 import * as vm from 'vm';
-import type { ColDef, ColumnState, GridOptions, GridState } from 'ag-grid-community';
+import type { ColDef, ColumnState, GridOptions, GridState, IFilterOptionDef, ITextFilterParams } from 'ag-grid-community';
 import { getDataViewerScript } from '../../dataViewer';
 
 interface SavedViewer {
@@ -263,6 +263,43 @@ suite('Data viewer', () => {
         assert.strictEqual(rows[0]['2'], '001');
         assert.strictEqual(rows[1]['2'], '');
     });
+
+    test('logical filters offer Reset and Apply with the original labels and a built-in Blank option', () => {
+        const script = viewerScript().script;
+        const defs: ColDef[] = [{ field: '1', type: 'booleanColumn' }];
+        script.prepareViewerColumns(defs);
+        const params = defs[0].filterParams as ITextFilterParams;
+        assert.deepStrictEqual(Array.from(params.buttons ?? []), ['reset', 'apply']);
+        assert.deepStrictEqual(Array.from(params.filterOptions ?? [], option =>
+            typeof option === 'string' ? option : option.displayKey
+        ), ['empty', 'true', 'false', 'blank']);
+        assert.deepStrictEqual(Array.from(params.filterOptions ?? [], option =>
+            typeof option === 'string' ? option : option.displayName
+        ), ['empty', 'True', 'False', 'blank']);
+        // Preserve AG Grid's "Choose one" and "Blank" labels.
+        assert.strictEqual(script.getViewerGridOptions(500).localeText?.empty, undefined);
+        assert.strictEqual(script.getViewerGridOptions(500).localeText?.blank, undefined);
+    });
+
+    for (const [key, expected] of [['true', true], ['false', false]] as const) {
+        test(`logical ${key} filter matches only its value, excluding NA`, () => {
+            const script = viewerScript().script;
+            const defs: ColDef[] = [{ field: '1', type: 'booleanColumn' }];
+            script.prepareViewerColumns(defs);
+            const params = defs[0].filterParams as ITextFilterParams;
+            const option = params.filterOptions?.find((candidate): candidate is IFilterOptionDef =>
+                typeof candidate !== 'string' && candidate.displayKey === key
+            );
+            assert.ok(option?.predicate);
+            assert.strictEqual(option.numberOfInputs, 0);
+            const predicate = option.predicate;
+            const rows = script.prepareViewerRows(
+                [true, false, null, undefined].map(value => ({ '1': value })), []
+            );
+            assert.deepStrictEqual(rows.filter(row => Reflect.apply(predicate, undefined, [[], row['1']]))
+                .map(row => row['1']), [expected]);
+        });
+    }
 
     test('page-size choices are positive, sorted and unique, including restored sizes', () => {
         for (const pageSize of [0, 20, 50, 75, 500]) {
