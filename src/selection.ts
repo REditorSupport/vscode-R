@@ -282,7 +282,7 @@ export function extendSelection(
         }
 
         if (isEndOfCodeLine) {
-            if (unmatched[lookingForward ? 1 : 0].length === 0) {
+            if (unmatched[lookingForward ? 1 : 0].length === 0 && quoteChar === '') {
                 // We have found everything we need to in this direction. Continue looking in the other direction.
                 flagsFinish[lookingForward ? 1 : 0] = true;
                 lookingForward = !lookingForward;
