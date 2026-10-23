@@ -2621,7 +2621,7 @@
     "@types/sinon": "^10.0.20",
     "@types/vscode": "~1.94.0",
     "@types/winreg": "^1.2.36",
-    "@vscode/test-cli": "^0.0.12",
+    "@vscode/test-cli": "^0.0.15",
     "@vscode/test-electron": "^3.1.0",
     "@vscode/vsce": "^3.6.0",
     "esbuild": "^0.28.1",
@@ -2633,7 +2633,7 @@
     "sinon": "^15.2.0",
     "typescript": "~7.0.2",
     "oxlint": "^1.88.0",
-    "oxlint-tsgolint": "~7.0.2003"
+    "oxlint-tsgolint": "~7.0.2004"
   },
   "dependencies": {
     "@vscode/codicons": "0.0.46-24",
