@@ -2,8 +2,7 @@
 import * as vscode from 'vscode';
 
 import * as session from './session';
-import { extendSelection } from './selection';
-import { cleanLine } from './lineCache';
+import { PipelineSourceCache } from './pipelineCompletion';
 import { globalRHelp } from './extension';
 import { config } from './util';
 import { getChunks } from './rmarkdown';
@@ -213,6 +212,8 @@ export class StaticCompletionItemProvider implements vscode.CompletionItemProvid
 }
 
 export class LiveCompletionItemProvider implements vscode.CompletionItemProvider {
+    private readonly pipelineSources = new WeakMap<vscode.TextDocument, PipelineSourceCache>();
+
     async provideCompletionItems(
         document: vscode.TextDocument,
         position: vscode.Position,
@@ -225,6 +226,7 @@ export class LiveCompletionItemProvider implements vscode.CompletionItemProvider
             return items;
         }
 
+        let codeStartLine = 0;
         if (document.languageId === 'rmd') {
             const chunks = getChunks(document);
             const chunk = chunks.find(
@@ -236,6 +238,7 @@ export class LiveCompletionItemProvider implements vscode.CompletionItemProvider
             if (!chunk) {
                 return items;
             }
+            codeStartLine = chunk.startLine + 1;
         }
 
         const trigger = completionContext.triggerCharacter;
@@ -313,10 +316,24 @@ export class LiveCompletionItemProvider implements vscode.CompletionItemProvider
         }
 
         if (trigger === undefined || trigger === '(' || trigger === ',') {
-            items.push(...getPipelineCompletionItems(document, position, token, activeSession));
+            let cache = this.pipelineSources.get(document);
+            if (!cache) {
+                cache = new PipelineSourceCache();
+                this.pipelineSources.set(document, cache);
+            }
+            items.push(
+                ...(await getPipelineCompletionItems(
+                    document,
+                    position,
+                    token,
+                    activeSession,
+                    codeStartLine,
+                    cache,
+                )),
+            );
         }
 
-        return items;
+        return token.isCancellationRequested ? [] : items;
     }
 }
 
@@ -424,51 +441,26 @@ function getBracketCompletionItems(
     return items;
 }
 
-function getPipelineCompletionItems(
+async function getPipelineCompletionItems(
     document: vscode.TextDocument,
     position: vscode.Position,
     token: vscode.CancellationToken,
     activeSession: session.Session,
-): vscode.CompletionItem[] {
+    startLine: number,
+    cache: PipelineSourceCache,
+): Promise<vscode.CompletionItem[]> {
     const items: vscode.CompletionItem[] = [];
-    const range = extendSelection(
-        position.line,
-        (x) => document.lineAt(x).text,
-        document.lineCount,
-    );
-    let symbol: string | undefined = undefined;
-
-    for (let i = range.startLine; i <= range.endLine; i++) {
-        if (token.isCancellationRequested) {
-            break;
-        }
-
-        const line = document.lineAt(i);
-        if (line.isEmptyOrWhitespace) {
-            continue;
-        }
-
-        const cleanedLine = cleanLine(line.text);
-        if (cleanedLine.length === 0) {
-            continue;
-        }
-
-        const pipeSymbolIndex = line.text.search(/([\w_.]+)\s*(%.+%|\|>)/);
-        if (pipeSymbolIndex < 0) {
-            break;
-        }
-
-        const symbolPosition = new vscode.Position(i, pipeSymbolIndex);
-        const symbolRange = document.getWordRangeAtPosition(symbolPosition);
-
-        if (symbolRange !== undefined) {
-            symbol = document.getText(symbolRange);
-        }
-
-        break;
+    if (token.isCancellationRequested) {
+        return items;
     }
+    const version = document.version;
+    const text = document.getText(new vscode.Range(new vscode.Position(startLine, 0), position));
+    const symbol = await cache.resolve(
+        text,
+        () => token.isCancellationRequested || document.version !== version,
+    );
 
-    if (!token.isCancellationRequested && symbol !== undefined) {
+    if (!token.isCancellationRequested && document.version === version && symbol !== undefined) {
         const obj = activeSession.workspaceData.globalenv[symbol];
         if (obj !== undefined && obj.names !== undefined) {
             const doc = new vscode.MarkdownString('Element of `' + symbol + '`');
