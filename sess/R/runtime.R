@@ -17,7 +17,11 @@
 
 .runtime_clear_viewer_state <- function() {
   # Open dataviews and title-to-id mappings belong to one runtime connection.
-  # Keep an empty registry available, but never restore data from a prior run.
+  # Release readers and disk caches before dropping their owning states.
+  for (view in .sess_env$dataviews) {
+    dataview_arrow_result_cache_cleanup(view)
+    dataview_dbi_result_cache_cleanup(view)
+  }
   .sess_env$dataviews <- list()
   .sess_env$dataview_registry <- new.env(parent = emptyenv())
   invisible(NULL)

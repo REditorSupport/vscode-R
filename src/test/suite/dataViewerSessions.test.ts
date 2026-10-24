@@ -5,6 +5,8 @@ import * as os from 'os';
 import * as path from 'path';
 import * as sinon from 'sinon';
 import * as vscode from 'vscode';
+import * as vm from 'vm';
+import type { GridApi, GridOptions, IDatasource } from 'ag-grid-community';
 import * as extension from '../../extension';
 import * as session from '../../session';
 import * as util from '../../util';
@@ -31,7 +33,13 @@ interface Client {
 interface Panel {
     panel: vscode.WebviewPanel;
     receive: (message: unknown) => Promise<void>;
-    replies: Array<{ ok?: boolean; error?: string; message?: string; text?: string }>;
+    replies: Array<{
+        ok?: boolean;
+        error?: string;
+        message?: string;
+        text?: string;
+        result?: unknown;
+    }>;
 }
 
 async function waitFor(condition: () => boolean): Promise<void> {
@@ -182,7 +190,12 @@ suite('Viewer session ownership', () => {
                         result = { columns: [], totalRows: 1 };
                         break;
                     case 'dataview_page':
-                        result = { rows: [{ owner: id }], totalRows: 1, totalUnfiltered: 1 };
+                        result = {
+                            rows: [{ owner: id }],
+                            totalRows: 1,
+                            totalUnfiltered: 1,
+                            lastRow: 1,
+                        };
                         break;
                     case 'workspace_children':
                         result = { children: [], next_start: null };
@@ -425,6 +438,129 @@ suite('Viewer session ownership', () => {
 
     const viewerRequests = (client: Client) =>
         client.requests.filter((request) => request.method !== 'workspace');
+
+    test('lazy row counts use fetched rows until EOF, while known counts stay exact', async () => {
+        const webview = { asWebviewUri: (uri: vscode.Uri) => uri } as vscode.Webview;
+        const html = await session.getTableHtml(webview, undefined, 'lazy counts');
+        const script = /<script>([\s\S]*?)<\/script>/.exec(html)![1];
+        for (const initialTotal of [undefined, 0, 10, 12010]) {
+            const count = { textContent: '' };
+            const element = {
+                textContent: '',
+                dataset: {},
+                classList: { add() {}, remove() {}, toggle() {} },
+            };
+            let datasource!: IDatasource;
+            let reply: Record<string, unknown> = {};
+            const listeners: Record<string, (event: { data: unknown }) => void> = {};
+            const context = vm.createContext({
+                console,
+                setTimeout,
+                clearTimeout,
+                document: {
+                    body: { classList: { contains: () => false } },
+                    addEventListener() {},
+                    querySelector: (selector: string) =>
+                        selector === '#viewerRowCount' ? count : element,
+                },
+                acquireVsCodeApi: () => ({
+                    postMessage: (message: {
+                        action: string;
+                        documentGeneration: number;
+                        requestId: number;
+                    }) => {
+                        queueMicrotask(() =>
+                            listeners.message({
+                                data: {
+                                    message: 'dataview/response',
+                                    documentGeneration: message.documentGeneration,
+                                    requestId: message.requestId,
+                                    ok: true,
+                                    result:
+                                        message.action === 'init'
+                                            ? { columns: [], totalRows: initialTotal }
+                                            : reply,
+                                },
+                            }),
+                        );
+                    },
+                }),
+                window: {
+                    addEventListener: (
+                        event: string,
+                        listener: (event: { data: unknown }) => void,
+                    ) => {
+                        listeners[event] = listener;
+                    },
+                    agGrid: {
+                        themeBalham: { withPart: () => ({}) },
+                        createGrid: (_element: unknown, options: GridOptions) => {
+                            datasource = options.datasource!;
+                            return { refreshHeader() {} };
+                        },
+                    },
+                },
+            });
+            vm.runInContext(script, context);
+            // Layout and toolbar wiring are covered separately; exercise the
+            // real initialization, page responses and row-count rendering.
+            context.initializeViewerToolbar = sandbox.stub();
+            context.updateFetchStatusPosition = sandbox.stub();
+            await vm.runInContext('initialize()', context);
+            const format = new Intl.NumberFormat();
+            assert.strictEqual(
+                count.textContent,
+                initialTotal === undefined ? '' : `${format.format(initialTotal)} rows`,
+            );
+            const results =
+                initialTotal === undefined
+                    ? [
+                          { rows: [{ '0': 1 }], lastRow: -1, fetchedRows: 5000 },
+                          { rows: [{ '0': 5001 }], lastRow: -1, fetchedRows: 10000 },
+                          { rows: [{ '0': 1 }], lastRow: -1, fetchedRows: 10000 }, // Backward scroll.
+                          {
+                              rows: [{ '0': 12001 }],
+                              lastRow: 12010,
+                              totalRows: 12010,
+                              totalUnfiltered: 12010,
+                          },
+                          { rows: [{ '0': 1 }], lastRow: 3, totalRows: 3, totalUnfiltered: 12010 },
+                          { rows: [], lastRow: 0, totalRows: 0, totalUnfiltered: 0 },
+                      ]
+                    : [
+                          {
+                              rows: [],
+                              lastRow: initialTotal,
+                              totalRows: initialTotal,
+                              totalUnfiltered: initialTotal,
+                          },
+                      ];
+            for (reply of results) {
+                const success = sandbox.spy();
+                await Promise.resolve(
+                    datasource.getRows({
+                        startRow: 0,
+                        endRow: 500,
+                        sortModel: [],
+                        filterModel:
+                            reply.totalRows === 3 ? { '1': { type: 'equals', filter: 1 } } : {},
+                        successCallback: success,
+                        failCallback: () => assert.fail('Page request failed'),
+                        context: {},
+                        api: {} as GridApi,
+                    }),
+                );
+                sinon.assert.calledWithExactly(success, reply.rows, reply.lastRow);
+                const expected =
+                    reply.lastRow === -1
+                        ? `${format.format(Number(reply.fetchedRows))}+ rows`
+                        : reply.totalRows === 3
+                          ? `3 of ${format.format(12010)} rows`
+                          : `${format.format(Number(reply.totalRows))} rows`;
+                assert.strictEqual(count.textContent, expected);
+            }
+        }
+    });
 
     test('viewer info icons keep their source version and PID while another session is active', async () => {
         const statusBar = { text: '', show: sandbox.stub() } as unknown as vscode.StatusBarItem;
@@ -807,6 +943,49 @@ suite('Viewer session ownership', () => {
         assert.strictEqual(viewerRequests(a).length, 5);
         await open(a, 'list', aList);
         await open(a, 'table', aTable);
+    });
+
+    test('viewer bridge accepts unknown lazy totals and rejects invalid fetched counts', async () => {
+        const request = sandbox.stub().resolves({ columns: [], columnProjection: true });
+        const owner = session.registerSessionTransport('lazy-viewer', 'host', '/tmp', request);
+        try {
+            await session.showDataView(
+                'table',
+                'json',
+                'lazy',
+                '',
+                'Two',
+                'lazy-table',
+                undefined,
+                owner.sessionId,
+            );
+            const panel = panels[0];
+            await send(panel, { message: 'dataview/request', action: 'init' });
+            assert.strictEqual(panel.replies.at(-1)?.ok, true);
+            for (const result of [
+                { rows: [{ '0': 1 }], lastRow: -1, fetchedRows: 5000 },
+                { rows: [], lastRow: 0, totalRows: 0, totalUnfiltered: 0 },
+                { rows: [{ '0': 1 }], lastRow: 10, totalRows: 10, totalUnfiltered: 10 },
+            ]) {
+                request.resolves(result);
+                await send(panel, {
+                    message: 'dataview/request',
+                    action: 'page',
+                    startRow: 0,
+                    endRow: 500,
+                });
+                assert.strictEqual(panel.replies.at(-1)?.ok, true);
+                assert.deepStrictEqual(panel.replies.at(-1)?.result, result);
+            }
+            for (const fetchedRows of [undefined, null, -1, NaN, 1.5, '5000']) {
+                request.resolves({ rows: [], lastRow: -1, fetchedRows });
+                await send(panel, { message: 'dataview/request', action: 'page' });
+                assert.strictEqual(panel.replies.at(-1)?.ok, false);
+                assert.match(panel.replies.at(-1)?.error ?? '', /Invalid dataview_page response/);
+            }
+        } finally {
+            session.unregisterSessionTransport(owner);
+        }
     });
 
     test('Interactive viewers retain transcript tables and dispose standalone list state', async () => {

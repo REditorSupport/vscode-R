@@ -103,7 +103,23 @@ runtime_start <- function(use_rstudioapi = TRUE,
     }
 
     if (view_type == "table") {
-      registration <- dataview_register(x, view_id = view_id)
+      total_rows <- NULL
+      workspace_dimensions <- .sess_env$workspace_dimensions
+      if (inherits(x, "arrow_dplyr_query") &&
+            !is.null(workspace_dimensions) &&
+            exists(title_key, envir = workspace_dimensions, inherits = FALSE)) {
+        workspace_dimension <- get(
+          title_key, envir = workspace_dimensions, inherits = FALSE
+        )
+        if (identical(workspace_dimension$object, x) &&
+              length(workspace_dimension$dim)) {
+          total_rows <- workspace_dimension$dim[[1L]]
+        }
+      }
+
+      registration <- dataview_register(
+        x, view_id = view_id, total_rows = total_rows
+      )
 
       notify_client("dataview", list(
         title = title,

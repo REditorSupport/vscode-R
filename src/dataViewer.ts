@@ -93,6 +93,9 @@ export function getDataViewerScript(): string {
         const saved = vscode.getState?.();
         viewerInitialState = saved?.schema === viewerSchema ? saved.gridState : undefined;
         viewerFloatingFilters = saved?.schema === viewerSchema && saved.floatingFilters === true;
+        if (!columns.some(column => column.field !== '0' && column.filter !== false)) {
+            viewerFloatingFilters = false;
+        }
         viewerSizingMode = saved?.schema === viewerSchema && saved.sizingMode === 'content' ? 'content' : 'fit';
         if (viewerInitialState && !saved.sizingMode) {
             // Older views saved fixed content widths. Let the new default flex
@@ -110,12 +113,16 @@ export function getDataViewerScript(): string {
             };
             if (column.type === 'dateColumn' || column.type === 'datetimeColumn') {
                 column.cellDataType = column.type === 'dateColumn' ? 'dateString' : 'dateTimeString';
-                column.filter = 'agDateColumnFilter';
-                column.filterParams = { browserDatePicker: true };
+                if (column.filter !== false) {
+                    column.filter = 'agDateColumnFilter';
+                    column.filterParams = { browserDatePicker: true };
+                }
                 column.initialWidth = 200;
             } else if (column.type === 'bigintColumn') {
                 column.cellDataType = 'bigint';
-                column.filter = 'agBigIntColumnFilter';
+                if (column.filter !== false) {
+                    column.filter = 'agBigIntColumnFilter';
+                }
                 bigintFields.push(column.field);
             } else if (column.type === 'numericColumn') {
                 column.cellDataType = 'number';
@@ -226,8 +233,10 @@ export function getDataViewerScript(): string {
 
     function updateViewerRowCount(filtered, total) {
         const format = value => new Intl.NumberFormat().format(value);
-        document.querySelector('#viewerRowCount').textContent = filtered === total
-            ? format(total) + ' rows' : format(filtered) + ' of ' + format(total) + ' rows';
+        document.querySelector('#viewerRowCount').textContent = !Number.isFinite(total)
+            ? format(filtered) + '+ rows'
+            : filtered === total
+                ? format(total) + ' rows' : format(filtered) + ' of ' + format(total) + ' rows';
     }
 
     function updateViewerSizingButtons() {
@@ -253,12 +262,16 @@ export function getDataViewerScript(): string {
     function initializeViewerToolbar() {
         const filters = document.querySelector('#viewerFilters');
         const clear = document.querySelector('#viewerClearFilters');
+        const filterable = gridApi.getColumns().some(column =>
+            column.getColId() !== '0' && column.getColDef().filter !== false
+        );
+        filters.disabled = !filterable;
         const updateFilters = () => {
-            filters.setAttribute('aria-pressed', String(viewerFloatingFilters));
-            clear.disabled = Object.keys(gridApi.getFilterModel()).length === 0;
+            filters.setAttribute('aria-pressed', String(filterable && viewerFloatingFilters));
+            clear.disabled = !filterable || Object.keys(gridApi.getFilterModel()).length === 0;
         };
         const setFloatingFilters = visible => {
-            viewerFloatingFilters = visible;
+            viewerFloatingFilters = filterable && visible;
             gridApi.setGridOption('defaultColDef', {
                 ...gridApi.getGridOption('defaultColDef'), floatingFilter: visible
             });

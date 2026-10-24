@@ -24,6 +24,9 @@ local({
   sess:::handle_dataview_init(list(view_id = view))
   sess:::handle_dataview_page(list(view_id = view, startRow = 20L, endRow = 40L))
   expect_identical(.Random.seed, before)
-  sess:::handle_dataview_dispose(list(view_id = view))
+  sess:::handle_dataview_dispose(list(
+    view_id = view,
+    state_generation = sess:::dataview_get_state(view)$state_generation
+  ))
   expect_identical(.Random.seed, before)
 })
