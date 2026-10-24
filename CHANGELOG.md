@@ -6,14 +6,9 @@
 
 - Accepting a function or method completion that inserts parentheses now opens signature help, respecting `editor.parameterHints.enabled`. (#1878)
 - Fixed session column completion in grouped and nested pipelines, including native R pipes and magrittr pipes. (#1901)
-- Added an explicit **Apply** button and **Blank** option for filtering logical columns in the data viewer, including missing (`NA`) values. (@Fred-Wu)
-- Preserved R Interactive plots during incremental output updates and reused retained plot assets on refresh. (#1888)
+- Added an explicit **Apply** button and **Blank** option for filtering logical columns in the data viewer, including missing (`NA`) values.
+- Fixed R Interactive plots disappearing during incremental output updates. (#1888)
 - R Interactive execution timing now includes final output delivery and is retained across reconnects. (#1888)
-
-### Internals and development
-
-- Updated runtime and development dependencies and GitHub Actions, and enabled Dependabot version updates for pnpm dependencies. (#1880, #1881, #1882, #1887, #1889, #1890, #1892, #1893, #1894, #1895, #1896, #1897, #1900)
-- Adopted Oxfmt for TypeScript formatting and added a formatting check to CI. (#1825)
 
 **Full Changelog**: <https://github.com/REditorSupport/vscode-R/compare/v3.2.0...v3.2.1>
 
