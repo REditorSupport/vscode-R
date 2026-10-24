@@ -264,9 +264,7 @@ export class HttpgdClient {
     }
 
     private openWebSocket(): void {
-        // TODO: Remove this missing-WebSocket compatibility path when the minimum
-        // extension host provides Node 22. Keep polling for connection failures.
-        if (typeof globalThis.WebSocket !== 'function' || !this.controller || this.socket) {
+        if (!this.controller || this.socket) {
             return;
         }
         this.retryAt = Date.now() + this.retryInterval;

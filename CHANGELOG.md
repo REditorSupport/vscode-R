@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Compatibility and upgrade notes
+
+- Raised the minimum supported VS Code version to **1.101.0** (Node.js 22). (#1850)
+
 ## 3.2.1 - 2026-10-24
 
 ### Improvements and bug fixes
@@ -257,7 +263,7 @@ same user/workspace scope).
 
 ### Features
 
-* feat: change default of r.lsp.multiServer to false
+- feat: change default of r.lsp.multiServer to false
 
 **Full Changelog**: <https://github.com/REditorSupport/vscode-R/compare/v2.8.7...v2.8.8>
 
@@ -265,16 +271,16 @@ same user/workspace scope).
 
 ### Bug Fixes
 
-* fix: correct r.term and r.path setting names in error message
+- fix: correct r.term and r.path setting names in error message
 
 ### Features
 
-* feat: support multi-root workspaces in single-server mode
+- feat: support multi-root workspaces in single-server mode
 
 ### Other
 
-* Allow bracketedPaste on win32 platform ([#1631](https://github.com/REditorSupport/vscode-R/issues/1631))
-* feat: default to single language server for multi-root workspaces ([#1682](https://github.com/REditorSupport/vscode-R/issues/1682))
+- Allow bracketedPaste on win32 platform ([#1631](https://github.com/REditorSupport/vscode-R/issues/1631))
+- feat: default to single language server for multi-root workspaces ([#1682](https://github.com/REditorSupport/vscode-R/issues/1682))
 
 **Full Changelog**: <https://github.com/REditorSupport/vscode-R/compare/v2.8.6...v2.8.7>
 
@@ -282,13 +288,13 @@ same user/workspace scope).
 
 ### Other
 
-* Syntax update and bump to 2.8.6 ([#1605](https://github.com/REditorSupport/vscode-R/issues/1605))
-* Show sidebar icon only when extension is active ([#1579](https://github.com/REditorSupport/vscode-R/issues/1579))
-* Move R and R markdown syntaxes to vscode-R-syntax ([#1606](https://github.com/REditorSupport/vscode-R/issues/1606))
+- Syntax update and bump to 2.8.6 ([#1605](https://github.com/REditorSupport/vscode-R/issues/1605))
+- Show sidebar icon only when extension is active ([#1579](https://github.com/REditorSupport/vscode-R/issues/1579))
+- Move R and R markdown syntaxes to vscode-R-syntax ([#1606](https://github.com/REditorSupport/vscode-R/issues/1606))
 
 ### Refactor
 
-* refactor: restructure files ([#1613](https://github.com/REditorSupport/vscode-R/issues/1613))
+- refactor: restructure files ([#1613](https://github.com/REditorSupport/vscode-R/issues/1613))
 
 **Full Changelog**: <https://github.com/REditorSupport/vscode-R/compare/v2.8.5...v2.8.6>
 
