@@ -10,6 +10,27 @@ interface Expression {
     pipeline?: string | null;
 }
 
+interface ScanContext {
+    offset: number;
+    tokens: Token[];
+    brackets: { close: string; contentStart: number }[];
+    previous?: string;
+}
+
+interface ScanResult {
+    tokens?: Token[];
+    checkpoint: ScanContext;
+}
+
+const scanQuantum = 8192;
+const maxExpressionTokens = 4096;
+const emptyContext = (): ScanContext => ({ offset: 0, tokens: [], brackets: [] });
+const copyContext = (context: ScanContext): ScanContext => ({
+    ...context,
+    tokens: [...context.tokens],
+    brackets: context.brackets.map((bracket) => ({ ...bracket })),
+});
+
 const pipes = new Set(['|>', '%>%', '%<>%', '%T>%', '%$%']);
 const precedence = new Map([
     ['?', 1],
@@ -42,9 +63,29 @@ const precedence = new Map([
     [':::', 17],
 ]);
 
-function tokenize(text: string): Token[] | undefined {
-    const tokens: Token[] = [];
-    for (let i = 0; i < text.length;) {
+function binding(operator: string | undefined): number | undefined {
+    return operator?.startsWith('%') ? 12 : precedence.get(operator ?? '');
+}
+
+function* tokenize(
+    text: string,
+    initial = emptyContext(),
+    canceled = () => false,
+): Generator<void, ScanResult | undefined> {
+    const context = copyContext(initial);
+    const tokens = context.tokens;
+    let checkpoint = initial;
+    let nextYield = initial.offset + scanQuantum;
+    const unknown = () => ({ checkpoint });
+    for (let i = initial.offset; i < text.length;) {
+        if (i >= nextYield) {
+            yield;
+            nextYield = i + scanQuantum;
+        }
+        if (canceled()) {
+            return undefined;
+        }
+        const tokenStart = tokens.length;
         const rest = text.slice(i);
         const char = text[i];
         if (char === '\n') {
@@ -55,7 +96,7 @@ function tokenize(text: string): Token[] | undefined {
         } else if (char === '#') {
             const end = text.indexOf('\n', i);
             if (end < 0) {
-                return undefined;
+                return unknown();
             }
             i = end;
         } else {
@@ -65,7 +106,7 @@ function tokenize(text: string): Token[] | undefined {
                 const ending = close + raw[2] + raw[1];
                 const end = text.indexOf(ending, i + raw[0].length);
                 if (end < 0) {
-                    return undefined;
+                    return unknown();
                 }
                 tokens.push({ text: 'literal' });
                 i = end + ending.length;
@@ -73,6 +114,13 @@ function tokenize(text: string): Token[] | undefined {
                 let end = i + 1;
                 let symbol = '';
                 while (end < text.length && text[end] !== char) {
+                    if (end >= nextYield) {
+                        yield;
+                        nextYield = end + scanQuantum;
+                        if (canceled()) {
+                            return undefined;
+                        }
+                    }
                     if (text[end] === '\\') {
                         end++;
                         const escaped = text[end];
@@ -93,14 +141,14 @@ function tokenize(text: string): Token[] | undefined {
                             const digits = encoded.slice(1).find((value) => value !== undefined)!;
                             const value = parseInt(digits, encoded[6] ? 8 : 16);
                             if (value === 0 || value > 0x10ffff) {
-                                return undefined;
+                                return unknown();
                             }
                             symbol += String.fromCodePoint(value);
                             end += encoded[0].length - 1;
                         } else if (escaped in escapes || ['\\', '`', '"', "'"].includes(escaped)) {
                             symbol += escapes[escaped] ?? escaped;
                         } else {
-                            return undefined;
+                            return unknown();
                         }
                     } else {
                         symbol += text[end];
@@ -108,7 +156,7 @@ function tokenize(text: string): Token[] | undefined {
                     end++;
                 }
                 if (end >= text.length) {
-                    return undefined;
+                    return unknown();
                 }
                 tokens.push(char === '`' ? { text: 'symbol', symbol } : { text: 'literal' });
                 i = end + 1;
@@ -132,8 +180,43 @@ function tokenize(text: string): Token[] | undefined {
                 }
             }
         }
+        if (tokens.length === tokenStart) {
+            continue;
+        }
+        const token = tokens[tokens.length - 1].text;
+        const close = { '(': ')', '[': ']', '[[': ']]', '{': '}' }[token];
+        if (close) {
+            context.brackets.push({ close, contentStart: tokens.length });
+        } else if ([')', ']', '}'].includes(token)) {
+            const bracket = context.brackets.at(-1);
+            if (token === ']' && bracket?.close === ']]') {
+                bracket.close = ']';
+            } else if (bracket?.close === token) {
+                context.brackets.pop();
+            }
+        }
+        const bracket = context.brackets.at(-1);
+        // Completed statements and earlier call arguments cannot supply the
+        // active pipeline. Retain their enclosing expression, not their contents.
+        const boundary =
+            token === ';' ||
+            token === ',' ||
+            (token === '\n' &&
+                binding(context.previous) === undefined &&
+                (!bracket || bracket.close === '}'));
+        if (token !== '\n') {
+            context.previous = token;
+        }
+        if (boundary) {
+            tokens.length = bracket?.contentStart ?? 0;
+            context.offset = i;
+            checkpoint = copyContext(context);
+        }
+        if (context.brackets.length > 128) {
+            return unknown();
+        }
     }
-    return tokens;
+    return { tokens, checkpoint };
 }
 
 /**
@@ -141,9 +224,24 @@ function tokenize(text: string): Token[] | undefined {
  * Only expression structure is inspected: calls, members and computed values
  * are never evaluated. Incomplete calls and grouping are expected while typing.
  */
-export function getPipelineSource(text: string): string | undefined {
-    const tokens = tokenize(text);
-    if (!tokens) {
+export function getPipelineSource(text: string, canceled = () => false): string | undefined {
+    if (canceled()) {
+        return undefined;
+    }
+    const scan = tokenize(text, emptyContext(), canceled);
+    let result = scan.next();
+    while (!result.done) {
+        result = scan.next();
+    }
+    return result.value?.tokens ? resolveTokens(result.value.tokens, canceled) : undefined;
+}
+
+function resolveTokens(tokens: Token[], canceled: () => boolean): string | undefined {
+    if (
+        canceled() ||
+        tokens.length > maxExpressionTokens ||
+        !tokens.some((token) => pipes.has(token.text))
+    ) {
         return undefined;
     }
     let index = 0;
@@ -154,12 +252,13 @@ export function getPipelineSource(text: string): string | undefined {
             index++;
         }
     };
-    const binding = (operator: string | undefined) =>
-        operator?.startsWith('%') ? 12 : precedence.get(operator ?? '');
 
     function sequence(close?: string, continuation = false): Expression {
         let result: Expression = {};
-        while (index < tokens!.length && current() !== close) {
+        while (index < tokens.length && current() !== close) {
+            if (canceled()) {
+                return { pipeline: null };
+            }
             if (current() === '\n' || current() === ';' || current() === ',') {
                 index++;
                 result = {};
@@ -176,13 +275,13 @@ export function getPipelineSource(text: string): string | undefined {
 
     function expression(minimum: number, continuation: boolean): Expression {
         // Bound recovery for malformed or deeply nested editor input.
-        if (++depth > 128) {
-            index = tokens!.length;
+        if (++depth > 128 || canceled()) {
+            index = tokens.length;
             depth--;
             return { pipeline: null };
         }
         skipNewlines();
-        const token = tokens![index++];
+        const token = tokens[index++];
         let left: Expression = {};
         if (token?.symbol !== undefined) {
             left.source = token.symbol;
@@ -201,13 +300,16 @@ export function getPipelineSource(text: string): string | undefined {
             left.source = undefined;
         }
 
-        while (index < tokens!.length) {
+        while (index < tokens.length) {
+            if (canceled()) {
+                return { pipeline: null };
+            }
             if (current() === '\n' && continuation) {
                 let next = index;
-                while (tokens![next]?.text === '\n') {
+                while (tokens[next]?.text === '\n') {
                     next++;
                 }
-                if (binding(tokens![next]?.text) !== undefined) {
+                if (binding(tokens[next]?.text) !== undefined) {
                     index = next;
                 }
             }
@@ -258,5 +360,43 @@ export function getPipelineSource(text: string): string | undefined {
         return left;
     }
 
-    return sequence().pipeline ?? undefined;
+    const source = sequence().pipeline;
+    return canceled() ? undefined : (source ?? undefined);
+}
+
+/**
+ * Cache only an unchanged lexical prefix and its enclosing pipeline context.
+ * Edits before that prefix or cursor moves into it restart the scan. The cold
+ * scan yields between chunks; source resolution is bounded to 4096 retained
+ * tokens and deliberately does not perform general R analysis or evaluation.
+ */
+export class PipelineSourceCache {
+    private prefix = '';
+    private checkpoint = emptyContext();
+    private request = 0;
+
+    async resolve(text: string, canceled = () => false): Promise<string | undefined> {
+        const request = ++this.request;
+        if (canceled()) {
+            return undefined;
+        }
+        const initial = text.startsWith(this.prefix) ? this.checkpoint : emptyContext();
+        const scan = tokenize(text, initial, canceled);
+        let result = scan.next();
+        while (!result.done) {
+            await new Promise<void>((resolve) => setImmediate(resolve));
+            if (canceled()) {
+                return undefined;
+            }
+            result = scan.next();
+        }
+        if (!result.value || canceled()) {
+            return undefined;
+        }
+        if (request === this.request) {
+            this.checkpoint = result.value.checkpoint;
+            this.prefix = text.slice(0, this.checkpoint.offset);
+        }
+        return result.value.tokens ? resolveTokens(result.value.tokens, canceled) : undefined;
+    }
 }

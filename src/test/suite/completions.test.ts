@@ -227,4 +227,45 @@ suite('Session pipeline completion', () => {
         assert.deepStrictEqual(items, []);
         sinon.assert.notCalled(request);
     });
+
+    test('cancellation can interrupt a large document completion', async () => {
+        const content = 'value <- mean(1:10)\n'.repeat(10000) + 'raw |> select(';
+        const document = await vscode.workspace.openTextDocument({ language: 'r', content });
+        const pending = new LiveCompletionItemProvider().provideCompletionItems(
+            document,
+            document.positionAt(content.length),
+            cancellation.token,
+            { triggerKind: vscode.CompletionTriggerKind.TriggerCharacter, triggerCharacter: '(' },
+        );
+        setImmediate(() => cancellation.cancel());
+        assert.deepStrictEqual(await pending, []);
+        assert.ok(cancellation.token.isCancellationRequested);
+        sinon.assert.notCalled(request);
+    });
+
+    test('a document edit during scanning suppresses stale pipeline columns', async () => {
+        const content = 'value <- mean(1:10)\n'.repeat(10000) + 'raw |> select(';
+        const realDocument = await vscode.workspace.openTextDocument({ language: 'r', content });
+        let version = 1;
+        const document = {
+            languageId: 'r',
+            uri: realDocument.uri,
+            get version() {
+                return version;
+            },
+            getText: (range?: vscode.Range) => realDocument.getText(range),
+        } as vscode.TextDocument;
+        const pending = new LiveCompletionItemProvider().provideCompletionItems(
+            document,
+            realDocument.positionAt(content.length),
+            cancellation.token,
+            { triggerKind: vscode.CompletionTriggerKind.TriggerCharacter, triggerCharacter: '(' },
+        );
+        setImmediate(() => {
+            version++;
+        });
+        assert.deepStrictEqual(await pending, []);
+        assert.strictEqual(version, 2);
+        sinon.assert.notCalled(request);
+    });
 });
