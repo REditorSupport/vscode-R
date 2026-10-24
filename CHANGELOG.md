@@ -1,8 +1,16 @@
 # Changelog
 
-## Unreleased
+## 3.2.1 - 2026-10-24
 
-- Accepting a function or method completion that inserts parentheses now opens signature help, respecting `editor.parameterHints.enabled`.
+### Improvements and bug fixes
+
+- Accepting a function or method completion that inserts parentheses now opens signature help, respecting `editor.parameterHints.enabled`. (#1878)
+- Fixed session column completion in grouped and nested pipelines, including native R pipes and magrittr pipes. (#1901)
+- Added an explicit **Apply** button and **Blank** option for filtering logical columns in the data viewer, including missing (`NA`) values.
+- Fixed R Interactive plots disappearing during incremental output updates. (#1888)
+- R Interactive execution timing now includes final output delivery and is retained across reconnects. (#1888)
+
+**Full Changelog**: <https://github.com/REditorSupport/vscode-R/compare/v3.2.0...v3.2.1>
 
 ## 3.2.0 - 2026-10-15
 
