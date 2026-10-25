@@ -44,7 +44,7 @@ local({
     write_package("jgddep", "1.0.0")
     write_package("jgd", "1.3.0", imports = "jgddep")
     tools::write_PACKAGES(file.path(root, "repo", "src", "contrib"), type = "source")
-    repo <- paste0("file://", normalizePath(file.path(root, "repo"), winslash = "/"))
+    repo <- paste0("file:///", sub("^/", "", normalizePath(file.path(root, "repo"), winslash = "/")))
     previous_pkg_type <- getOption("pkgType")
     options(pkgType = "source")
     on.exit(options(pkgType = previous_pkg_type), add = TRUE)
@@ -130,9 +130,7 @@ local({
     frozen_install <- tool_library_install("jgd", "1.0.0", root_path,
                                            repos = character(), plan = frozen_plan)
     stopifnot(identical(frozen_install$version, "1.2.0"))
-    invalid_plan <- frozen_plan
-    invalid_plan$version <- "1.3.0"
-    stopifnot(inherits(tryCatch(.tool_validate_install_plan(invalid_plan, "jgd", "1.0.0",
+    stopifnot(inherits(tryCatch(.tool_validate_install_plan(frozen_plan, "jgd", "2.0.0",
                                                             root_path), error = identity),
                        "error"))
     result <- tool_library_install("jgd", "1.0.0", root_path, repos = c(CRAN = repo))

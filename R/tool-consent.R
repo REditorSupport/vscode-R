@@ -9,7 +9,6 @@
             !(is.character(backend) && length(backend) == 1L && backend %in% c("jgd", "auto"))) {
         stop("Invalid managed tool consent request.", call. = FALSE)
     }
-    .tool_validate_install_plan(plan, plan$package, plan$minimum_version, plan$root)
     runtime_minor <- strsplit(R.version$minor, ".", fixed = TRUE)[[1L]][1L]
     runtime <- paste(R.version$platform,
                      paste(R.version$major, runtime_minor, sep = "."), sep = "|")

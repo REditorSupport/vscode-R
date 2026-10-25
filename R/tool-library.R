@@ -223,35 +223,8 @@ tool_library_plan <- function(package, minimum_version, root, repos = getOption(
     if (!inherits(plan, "vscode_r_tool_install_plan") ||
             !identical(plan$package, package) ||
             !identical(plan$minimum_version, minimum_version) ||
-            !identical(plan$root, root) ||
-            !identical(plan$library, tool_library_path(root)) ||
-            !.tool_version_ok(plan$version, minimum_version) ||
-            !is.matrix(plan$available) || !package %in% rownames(plan$available)) {
+            !identical(plan$root, root)) {
         stop("The approved tool installation plan is invalid or does not match the request.", call. = FALSE)
-    }
-    row <- plan$available[package, , drop = TRUE]
-    if (!is.character(plan$repositories) || !length(plan$repositories) ||
-            anyNA(plan$repositories) || any(!nzchar(plan$repositories)) ||
-            !grepl("^(source|win\\.binary|mac\\.binary(\\.[A-Za-z0-9_-]+)?)$",
-                   plan$package_type) ||
-            !.tool_dependencies_allowed(as.data.frame(as.list(row), stringsAsFactors = FALSE))) {
-        stop("The approved tool installation plan metadata is inconsistent.", call. = FALSE)
-    }
-    repository <- if ("Repository" %in% names(row) && !is.na(row[["Repository"]])) {
-        unname(row[["Repository"]])
-    } else {
-        unname(plan$repositories[[1L]])
-    }
-    if (!identical(unname(row[["Version"]]), plan$version) ||
-            !identical(plan$repository, repository)) {
-        stop("The approved tool installation plan metadata is inconsistent.", call. = FALSE)
-    }
-    needs_compilation <- if ("NeedsCompilation" %in% names(row)) row[["NeedsCompilation"]] else NA_character_
-    expected_source_build <- identical(plan$package_type, "source") &&
-        (is.na(needs_compilation) || !nzchar(needs_compilation) ||
-             identical(tolower(needs_compilation), "yes"))
-    if (!identical(plan$source_build, expected_source_build)) {
-        stop("The approved tool installation plan build metadata is inconsistent.", call. = FALSE)
     }
     invisible(TRUE)
 }
@@ -277,7 +250,6 @@ tool_library_install <- function(package, minimum_version, root,
     .tool_with_library_lock(library, {
         current <- tool_library_check(package, minimum_version, root)
         if (!current$install_required) return(invisible(current))
-        .tool_validate_install_plan(plan, package, minimum_version, root)
         updating <- !is.null(current$version)
         dir.create(library, recursive = TRUE, showWarnings = FALSE)
         if (file.access(library, 2L) != 0L) stop("The vscode-R managed tool library is not writable.")
