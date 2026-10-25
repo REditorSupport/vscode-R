@@ -1,5 +1,6 @@
 # Base-R coverage for the managed tool library. All packages are local fixtures.
 source("R/tool-library.R")
+source("R/tool-consent.R")
 
 local({
     root <- tempfile("tool-library-")
@@ -113,6 +114,27 @@ local({
     too_old <- tryCatch(tool_library_install("jgd", "1.3.0", root_path, repos = c(CRAN = repo)),
                         error = identity)
     stopifnot(inherits(too_old, "error"), !dir.exists(file.path(managed, "jgd")))
+    frozen_plan <- tool_library_plan("jgd", "1.0.0", root_path, repos = c(CRAN = repo))
+    stopifnot(identical(frozen_plan$version, "1.2.0"))
+    consent_lines <- .tool_consent_lines(frozen_plan, strrep("a", 32L), "auto")
+    stopifnot(identical(consent_lines[1:5],
+                        c("vscode-r-package-consent-v1", strrep("a", 32L),
+                          paste(R.version$platform,
+                                paste(R.version$major,
+                                      strsplit(R.version$minor, ".", fixed = TRUE)[[1L]][1L],
+                                      sep = "."), sep = "|"),
+                          "auto", "1")))
+    stopifnot(identical(consent_lines[6:11],
+                        c("jgd", "1.0.0", "1.2.0", frozen_plan$repository,
+                          frozen_plan$package_type, if (frozen_plan$source_build) "yes" else "no")))
+    frozen_install <- tool_library_install("jgd", "1.0.0", root_path,
+                                           repos = character(), plan = frozen_plan)
+    stopifnot(identical(frozen_install$version, "1.2.0"))
+    invalid_plan <- frozen_plan
+    invalid_plan$version <- "1.3.0"
+    stopifnot(inherits(tryCatch(.tool_validate_install_plan(invalid_plan, "jgd", "1.0.0",
+                                                            root_path), error = identity),
+                       "error"))
     result <- tool_library_install("jgd", "1.0.0", root_path, repos = c(CRAN = repo))
     stopifnot(identical(result$source, "managed"), identical(result$version, "1.2.0"))
     stopifnot(identical(.libPaths(), before))

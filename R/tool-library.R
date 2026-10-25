@@ -148,22 +148,20 @@ tool_library_check <- function(package, minimum_version, root) {
     invisible(TRUE)
 }
 
-# Install only after the caller has obtained consent. The repository is selected
-# by the R session; callers cannot supply package archives or arbitrary URLs.
-# Updating a shared library while another R process has loaded its package can
-# fail (notably on Windows) or damage files. No process-use registry is kept;
-# callers should close other R sessions using the package and retry on failure.
-tool_library_install <- function(package, minimum_version, root,
-                                 repos = getOption("repos"), timeout_seconds = 300) {
+# Resolve and validate a single allowed package against the configured R repositories.
+# The returned plan captures the repository result and package type for consent.
+tool_library_plan <- function(package, minimum_version, root, repos = getOption("repos")) {
     .tool_validate_request(package, minimum_version)
+    .tool_validate_root(root)
     initial <- tool_library_check(package, minimum_version, root)
-    if (!initial$install_required) return(invisible(initial))
+    if (!initial$install_required) return(NULL)
     if (!is.character(repos)) {
         stop("No R package repository is configured for the managed tool library.")
     }
     repositories <- repos[!is.na(repos) & nzchar(repos) & repos != "@CRAN@"]
     if (length(repositories) == 0L) stop("No usable R package repository is configured.")
     package_type <- getOption("pkgType")
+    if (identical(package_type, "binary")) package_type <- .Platform$pkgType
     package_types <- if (identical(package_type, "both")) {
         binary_type <- if (.Platform$OS.type == "windows") "win.binary" else .Platform$pkgType
         c(binary_type, "source")
@@ -171,7 +169,8 @@ tool_library_install <- function(package, minimum_version, root,
         package_type
     }
     candidates <- lapply(package_types, function(type) {
-        available <- tryCatch(utils::available.packages(repos = repositories, type = type),
+        available <- tryCatch(utils::available.packages(repos = repositories, type = type,
+                                                        fields = "NeedsCompilation"),
                               error = function(e) matrix(character(), nrow = 0L))
         list(type = type, available = available)
     })
@@ -191,25 +190,105 @@ tool_library_install <- function(package, minimum_version, root,
     package_type <- selected$type
     available <- selected$available
     row <- available[package, , drop = TRUE]
-    library <- initial$library
+    description <- as.data.frame(as.list(row), stringsAsFactors = FALSE)
+    if (!.tool_dependencies_allowed(description)) {
+        stop("Refusing to install ", package,
+             " because it has non-base package dependencies.")
+    }
+    selected_repositories <- repositories
+    repository <- if ("Repository" %in% names(row) && !is.na(row[["Repository"]])) {
+        unname(row[["Repository"]])
+    } else {
+        unname(repositories[[1L]])
+    }
+    needs_compilation <- if ("NeedsCompilation" %in% names(row)) row[["NeedsCompilation"]] else NA_character_
+    source_build <- identical(package_type, "source") &&
+        (is.na(needs_compilation) || !nzchar(needs_compilation) ||
+             identical(tolower(needs_compilation), "yes"))
+    structure(list(
+        package = package,
+        minimum_version = minimum_version,
+        version = unname(row[["Version"]]),
+        repository = repository,
+        package_type = package_type,
+        source_build = source_build,
+        repositories = selected_repositories,
+        available = available,
+        root = root,
+        library = initial$library
+    ), class = "vscode_r_tool_install_plan")
+}
+
+.tool_validate_install_plan <- function(plan, package, minimum_version, root) {
+    if (!inherits(plan, "vscode_r_tool_install_plan") ||
+            !identical(plan$package, package) ||
+            !identical(plan$minimum_version, minimum_version) ||
+            !identical(plan$root, root) ||
+            !identical(plan$library, tool_library_path(root)) ||
+            !.tool_version_ok(plan$version, minimum_version) ||
+            !is.matrix(plan$available) || !package %in% rownames(plan$available)) {
+        stop("The approved tool installation plan is invalid or does not match the request.", call. = FALSE)
+    }
+    row <- plan$available[package, , drop = TRUE]
+    if (!is.character(plan$repositories) || !length(plan$repositories) ||
+            anyNA(plan$repositories) || any(!nzchar(plan$repositories)) ||
+            !grepl("^(source|win\\.binary|mac\\.binary(\\.[A-Za-z0-9_-]+)?)$",
+                   plan$package_type) ||
+            !.tool_dependencies_allowed(as.data.frame(as.list(row), stringsAsFactors = FALSE))) {
+        stop("The approved tool installation plan metadata is inconsistent.", call. = FALSE)
+    }
+    repository <- if ("Repository" %in% names(row) && !is.na(row[["Repository"]])) {
+        unname(row[["Repository"]])
+    } else {
+        unname(plan$repositories[[1L]])
+    }
+    if (!identical(unname(row[["Version"]]), plan$version) ||
+            !identical(plan$repository, repository)) {
+        stop("The approved tool installation plan metadata is inconsistent.", call. = FALSE)
+    }
+    needs_compilation <- if ("NeedsCompilation" %in% names(row)) row[["NeedsCompilation"]] else NA_character_
+    expected_source_build <- identical(plan$package_type, "source") &&
+        (is.na(needs_compilation) || !nzchar(needs_compilation) ||
+             identical(tolower(needs_compilation), "yes"))
+    if (!identical(plan$source_build, expected_source_build)) {
+        stop("The approved tool installation plan build metadata is inconsistent.", call. = FALSE)
+    }
+    invisible(TRUE)
+}
+
+# Updating a shared library while another R process has loaded its package can
+# fail (notably on Windows) or damage files. No process-use registry is kept;
+# callers should close other R sessions using the package and retry on failure.
+# Install only after the caller has obtained consent. A supplied plan uses the
+# exact repository metadata and package type shown in the one-time request.
+tool_library_install <- function(package, minimum_version, root,
+                                 repos = getOption("repos"), timeout_seconds = 300, plan = NULL) {
+    .tool_validate_request(package, minimum_version)
+    .tool_validate_root(root)
+    initial <- tool_library_check(package, minimum_version, root)
+    if (!initial$install_required) return(invisible(initial))
+    if (is.null(plan)) plan <- tool_library_plan(package, minimum_version, root, repos)
+    if (is.null(plan)) return(invisible(tool_library_check(package, minimum_version, root)))
+    .tool_validate_install_plan(plan, package, minimum_version, root)
+    package_type <- plan$package_type
+    available <- plan$available
+    library <- plan$library
+    selected_repositories <- plan$repositories
     .tool_with_library_lock(library, {
         current <- tool_library_check(package, minimum_version, root)
         if (!current$install_required) return(invisible(current))
-        description <- as.data.frame(as.list(row), stringsAsFactors = FALSE)
-        if (!.tool_dependencies_allowed(description)) {
-            stop("Refusing to install ", package,
-                 " because it has non-base package dependencies.")
-        }
+        .tool_validate_install_plan(plan, package, minimum_version, root)
         updating <- !is.null(current$version)
         dir.create(library, recursive = TRUE, showWarnings = FALSE)
         if (file.access(library, 2L) != 0L) stop("The vscode-R managed tool library is not writable.")
         tryCatch({
-            utils::install.packages(package, lib = library, repos = repositories,
+            utils::install.packages(package, lib = library, repos = selected_repositories,
                                     available = available, dependencies = FALSE,
                                     type = package_type, quiet = TRUE)
             version <- .tool_version_at(package, library)
-            if (!.tool_version_ok(version, minimum_version)) {
-                stop("The repository version does not satisfy the requested minimum version.")
+            if (!identical(version, plan$version) ||
+                    !.tool_version_ok(version, minimum_version)) {
+                stop("The installed version does not match the approved repository version.")
             }
             .tool_verify_child(package, minimum_version, library)
             invisible(list(package = package, version = version, source = "managed",
