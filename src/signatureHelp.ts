@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
-import { sessionForDocument } from './session';
+import { ensureSessionWorkspace, sessionForDocument } from './session';
+import { withRpcCancellation } from './nativeRpc';
 import { getChunks } from './rmarkdown';
 
 interface Token {
@@ -215,11 +216,11 @@ export function liveSignature(
 }
 
 export class SessionSignatureHelpProvider implements vscode.SignatureHelpProvider {
-    provideSignatureHelp(
+    async provideSignatureHelp(
         document: vscode.TextDocument,
         position: vscode.Position,
         token: vscode.CancellationToken,
-    ): vscode.SignatureHelp | undefined {
+    ): Promise<vscode.SignatureHelp | undefined> {
         if (!['r', 'rmd'].includes(document.languageId)) {
             return;
         }
@@ -244,7 +245,37 @@ export class SessionSignatureHelpProvider implements vscode.SignatureHelpProvide
         if (text.length > 200000) {
             return;
         }
-        const live = liveSignature(text, target.workspaceData.globalenv);
+        let live = liveSignature(text, target.workspaceData.globalenv);
+        // Known formals stay immediately available while native R is busy.
+        // sessionForDocument has already scheduled any dirty cache refresh.
+        if (!live) {
+            const version = document.version;
+            const controller = new AbortController();
+            const cancellation = token.onCancellationRequested(() => controller.abort());
+            if (token.isCancellationRequested) {
+                controller.abort();
+            }
+            try {
+                await withRpcCancellation(() => ensureSessionWorkspace(target), controller.signal);
+            } catch (error) {
+                if (error instanceof Error && error.name === 'AbortError') {
+                    return;
+                }
+                throw error;
+            } finally {
+                cancellation.dispose();
+            }
+            if (
+                token.isCancellationRequested ||
+                document.isClosed ||
+                document.version !== version ||
+                sessionForDocument(document.uri) !== target ||
+                target.workspaceUnavailable
+            ) {
+                return;
+            }
+            live = liveSignature(text, target.workspaceData.globalenv);
+        }
         if (!live) {
             return;
         }

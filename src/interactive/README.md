@@ -71,6 +71,33 @@ currently remains limited to Linux/macOS.
 
 Backend-specific preflight and private package installation live behind the registry and [sessPreparation.ts](backends/sessPreparation.ts). vscode-R installs the `sess` snapshot bundled with the extension; missing Imports use the configured repository. Common agent settings do not require a sess library or R path. The agent bundle cache is separate from the sess runtime cache. Existing flat launch configurations are normalized by `backendDescriptor()`; `withBackend()` derives compatibility fields for older readers. The [sess README](../../sess/README.md) documents its R hooks and wire protocol.
 
+## Workspace, history, and output delivery
+
+Workspace invalidations coalesce per session, with one inspection in flight and
+one pending refresh. Obsolete connections cannot publish late metadata. Automatic
+sess snapshots use structural metadata; custom member inspection remains an
+explicit completion operation. Revisions omit unchanged workspace payloads while
+metadata is recomputed to account for mutable R objects.
+
+Interactive snapshots and large workspace events negotiate pull-based message
+paging. Each wire frame stays within the protocol limit, including the complete
+envelope and workspace. Pages belong to the requesting connection and expire;
+reconnection requests a fresh snapshot rather than resubmitting R code.
+
+Journal indexes map executions to retained byte ranges and committed display
+references. They can be rebuilt from the journal after interrupted writes or
+legacy restoration. Execution source and event working sets have byte limits;
+the durable admission ledger still prevents duplicate execution after eviction.
+Archived history reads use asynchronous file operations. Asset collection retains
+its conservative behavior when a journal cannot establish which assets are live.
+
+Console delivery keeps prefix snapshots of buffered text and appends only the
+new suffix to existing notebook output. Rich displays keep their stable identities
+and continue to replace changed frames. Failed or obsolete renders do not advance
+the delivered offset. Notebook content and metadata edits invalidate execution-ID
+lookups; output-only changes preserve the cell index. Completion timing still
+includes the final output write.
+
 ## Backend contract and ordering
 
 Use the types in [backend.ts](backend.ts) as the source of truth. The essential rules are:

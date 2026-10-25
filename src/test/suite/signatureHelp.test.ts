@@ -1,5 +1,8 @@
 import * as assert from 'assert';
-import { liveSignature } from '../../signatureHelp';
+import * as vscode from 'vscode';
+import * as sinon from 'sinon';
+import * as session from '../../session';
+import { liveSignature, SessionSignatureHelpProvider } from '../../signatureHelp';
 
 suite('Live R function signatures', () => {
     const summaries = {
@@ -77,5 +80,67 @@ suite('Live R function signatures', () => {
             liveSignature('fun1(', { fun1: { type: 'double', str: 'num 1' } }),
             undefined,
         );
+    });
+});
+
+suite('Session signature workspace demand', () => {
+    test('known cached signatures do not wait for a busy native workspace', async () => {
+        const document = await vscode.workspace.openTextDocument({
+            language: 'r',
+            content: 'cached(',
+        });
+        const target = {
+            workspaceData: { globalenv: { cached: { type: 'closure', str: 'function (x)' } } },
+        } as unknown as session.Session;
+        const owner = sinon.stub(session, 'sessionForDocument').returns(target);
+        const refresh = sinon
+            .stub(session, 'ensureSessionWorkspace')
+            .returns(new Promise(() => {}));
+        const cancellation = new vscode.CancellationTokenSource();
+        try {
+            const help = await new SessionSignatureHelpProvider().provideSignatureHelp(
+                document,
+                new vscode.Position(0, 7),
+                cancellation.token,
+            );
+            assert.strictEqual(help?.signatures[0].label, 'cached(x)');
+            assert.ok(!refresh.called);
+        } finally {
+            cancellation.dispose();
+            owner.restore();
+            refresh.restore();
+        }
+    });
+
+    test('a missing signature refreshes its owner without changing the selection', async () => {
+        const document = await vscode.workspace.openTextDocument({
+            language: 'r',
+            content: 'fresh(',
+        });
+        const target = { workspaceData: { globalenv: {} } } as unknown as session.Session;
+        const owner = sinon.stub(session, 'sessionForDocument').returns(target);
+        const refresh = sinon.stub(session, 'ensureSessionWorkspace').callsFake(() => {
+            target.workspaceData.globalenv.fresh = {
+                class: 'function',
+                type: 'closure',
+                str: 'function (x)',
+                length: 1,
+            };
+            return Promise.resolve();
+        });
+        const cancellation = new vscode.CancellationTokenSource();
+        try {
+            const help = await new SessionSignatureHelpProvider().provideSignatureHelp(
+                document,
+                new vscode.Position(0, 6),
+                cancellation.token,
+            );
+            assert.strictEqual(help?.signatures[0].label, 'fresh(x)');
+            assert.ok(refresh.calledOnceWithExactly(target));
+        } finally {
+            cancellation.dispose();
+            owner.restore();
+            refresh.restore();
+        }
     });
 });

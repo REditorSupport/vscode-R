@@ -18,6 +18,13 @@ import { TerminalSessionRegistry } from './terminalSessionRegistry';
 import { SessionProcessMonitor } from './sessionProcessMonitor';
 import { sessionProcessIdentity } from './sessionIdentity';
 import { NativeTerminalPidWaitRegistry } from './nativeTerminalPidWait';
+import { WorkspaceRefreshScheduler } from './workspaceRefresh';
+import {
+    NativeRpcConnection,
+    NativeRpcFrames,
+    RpcRequestOptions,
+    withRpcCancellation,
+} from './nativeRpc';
 import { purgeAddinPickerItems, RSEditOperation, RSRange } from './rstudioapi';
 
 import {
@@ -72,7 +79,7 @@ export interface GlobalEnv {
     [key: string]: {
         class: string[] | string;
         type: string;
-        length: number;
+        length?: number;
         str: string;
         dim?: number[];
         names?: string[];
@@ -85,6 +92,7 @@ export interface WorkspaceData {
     search: string[];
     loaded_namespaces: string[];
     globalenv: GlobalEnv;
+    revision?: number;
 }
 
 // Thin adapter to track per-socket metadata alongside net.Socket
@@ -255,7 +263,11 @@ const sessionDocumentBound = new vscode.EventEmitter<Uri>();
 export const onDidBindSessionDocument = sessionDocumentBound.event;
 
 export function sessionForDocument(uri: Uri): Session | undefined {
-    return boundSessionForDocument(uri) ?? activeSession;
+    const target = boundSessionForDocument(uri) ?? activeSession;
+    if (target) {
+        void ensureSessionWorkspace(target);
+    }
+    return target;
 }
 
 export function boundSessionForDocument(uri: Uri): Session | undefined {
@@ -270,6 +282,7 @@ export function boundSessionForDocument(uri: Uri): Session | undefined {
 export function bindSessionDocument(uri: Uri, session: Session): void {
     const previous = boundSessionForDocument(uri);
     documentSessions.set(uri.toString(), session);
+    void ensureSessionWorkspace(session);
     if (previous !== session) {
         sessionDocumentBound.fire(uri);
     }
@@ -280,6 +293,7 @@ export function unbindSessionDocument(uri: Uri): void {
 }
 
 export function unregisterSessionTransport(target: Session): void {
+    workspaceRefreshes.get(target)?.dispose();
     for (const [uri, owner] of documentSessions) {
         if (owner === target) {
             documentSessions.delete(uri);
@@ -302,7 +316,6 @@ export function unregisterSessionTransport(target: Session): void {
 function clearActiveSession(): Promise<void> {
     sessionSelectionRevision++;
     deferWorkspaceRefresh();
-    workspaceRefreshPending = false;
     activeSession = undefined;
     workspaceData = { search: [], loaded_namespaces: [], globalenv: {} };
     workingDir = '';
@@ -364,8 +377,19 @@ export function updateSessionWorkspace(target: Session, data: WorkspaceData): vo
     }
 }
 
+export function invalidateWorkspaceChildren(target: Session): void {
+    if (
+        sessions.get(target.sessionId) === target &&
+        isConnectedSession(target) &&
+        !target.workspaceUnavailable
+    ) {
+        rWorkspace?.invalidateChildren(target);
+    }
+}
+
 /** Move document routing to a new process; existing data viewers keep their old owner. */
 export function replaceSessionTransport(previous: Session, next: Session): void {
+    workspaceRefreshes.get(previous)?.dispose();
     for (const [uri, owner] of documentSessions) {
         if (owner === previous) {
             documentSessions.set(uri, next);
@@ -669,9 +693,7 @@ export let activeSession: Session | undefined;
 // Older terminal lookups must not overwrite a newer selection or activation.
 let sessionSelectionRevision = 0;
 let activeBrowserUri: Uri | undefined;
-let workspaceRefreshTimer: NodeJS.Timeout | undefined;
-let workspaceRefreshInProgress = false;
-let workspaceRefreshPending = false;
+const workspaceRefreshes = new WeakMap<Session, WorkspaceRefreshScheduler<WorkspaceData>>();
 
 interface DataViewColumnDef {
     headerName: string;
@@ -903,14 +925,7 @@ function isLiveSessionSocket(socket: IpcSocket): boolean {
     );
 }
 
-const pendingRequests = new Map<
-    number,
-    {
-        resolve: (value: unknown) => void;
-        reject: (reason?: unknown) => void;
-        socket: IpcSocket;
-    }
->();
+const nativeRpcConnections = new WeakMap<IpcSocket, NativeRpcConnection>();
 
 const terminalDiscoveryOperations = new WeakMap<vscode.Terminal, Promise<void>>();
 
@@ -1356,8 +1371,8 @@ function startGlobalSessionServer(generation: number): Promise<string> {
             console.info('[SessionServer] Client connected via IPC pipe');
             activeConnections.add(socket);
 
-            let readBuffers: Buffer[] = [];
-            let readBufferLength = 0;
+            const rpc = new NativeRpcConnection(socket);
+            nativeRpcConnections.set(socket, rpc);
 
             const handleLine = (buf: Buffer) => {
                 let lineEnd = buf.length;
@@ -1376,17 +1391,7 @@ function startGlobalSessionServer(generation: number): Promise<string> {
                             return;
                         }
                         if (message.id !== undefined && !message.method) {
-                            // Response to a request we sent
-                            const id = Number(message.id);
-                            const pending = pendingRequests.get(id);
-                            if (pending?.socket === socket) {
-                                pendingRequests.delete(id);
-                                if (message.error) {
-                                    pending.reject(message.error);
-                                } else {
-                                    pending.resolve(message.result);
-                                }
-                            }
+                            rpc.response(message);
                         } else if (message.id === undefined || message.id === null) {
                             await handleNotification(message, socket);
                         } else {
@@ -1398,56 +1403,26 @@ function startGlobalSessionServer(generation: number): Promise<string> {
                 })();
             };
 
+            const frames = new NativeRpcFrames(handleLine);
             socket.on('data', (data: Buffer) => {
-                let start = 0;
-                let newline = data.indexOf(0x0a, start);
-
-                while (newline !== -1) {
-                    const incoming = data.subarray(start, newline);
-                    let buf: Buffer;
-
-                    if (readBuffers.length === 0) {
-                        buf = incoming;
-                    } else {
-                        if (incoming.length > 0) {
-                            readBuffers.push(incoming);
-                            readBufferLength += incoming.length;
-                        }
-                        buf =
-                            readBuffers.length === 1
-                                ? readBuffers[0]
-                                : Buffer.concat(readBuffers, readBufferLength);
-                        readBuffers = [];
-                        readBufferLength = 0;
-                    }
-
-                    handleLine(buf);
-                    start = newline + 1;
-                    newline = data.indexOf(0x0a, start);
-                }
-
-                if (start < data.length) {
-                    const incoming = data.subarray(start);
-                    readBuffers.push(incoming);
-                    readBufferLength += incoming.length;
+                try {
+                    frames.push(data);
+                } catch (error) {
+                    console.error('[SessionServer] Invalid IPC frame', error);
+                    socket.destroy();
                 }
             });
 
             socket.on('close', () => {
                 console.info('[SessionServer] Client disconnected');
-                readBuffers = [];
-                readBufferLength = 0;
+                frames.clear();
+                rpc.close();
+                nativeRpcConnections.delete(socket);
                 activeConnections.delete(socket);
                 for (const [id, pending] of pendingSessionAttachments) {
                     if (pending.socket === socket) {
                         pendingSessionAttachments.delete(id);
                         pending.controller.abort();
-                    }
-                }
-                for (const [id, pending] of pendingRequests.entries()) {
-                    if (pending.socket === socket) {
-                        pendingRequests.delete(id);
-                        pending.reject(new Error('IPC socket disconnected'));
                     }
                 }
                 if (pipeClient === socket) {
@@ -2301,57 +2276,68 @@ async function updatePlot() {
     await globalPlotManager?.showStandardPlot();
 }
 
-export function deferWorkspaceRefresh(): void {
-    if (workspaceRefreshTimer) {
-        clearTimeout(workspaceRefreshTimer);
-        workspaceRefreshTimer = undefined;
+export function deferWorkspaceRefresh(terminal?: vscode.Terminal): void {
+    const target = terminal ? terminalRegistry.ownerOf(terminal) : activeSession;
+    if (target) {
+        workspaceRefreshes.get(target)?.defer();
     }
 }
 
-function scheduleWorkspaceRefresh(delayMs: number = 500): void {
-    workspaceRefreshPending = true;
-    if (workspaceRefreshTimer) {
-        clearTimeout(workspaceRefreshTimer);
+function workspaceRefreshFor(target: Session): WorkspaceRefreshScheduler<WorkspaceData> {
+    let refresh = workspaceRefreshes.get(target);
+    if (!refresh) {
+        refresh = new WorkspaceRefreshScheduler<WorkspaceData>(
+            async () => {
+                const response = await sessionRequest(
+                    { method: 'workspace', params: { revision: target.workspaceData.revision } },
+                    target,
+                );
+                if (!response) {
+                    return undefined;
+                }
+                if ((response as { unchanged?: boolean }).unchanged) {
+                    return target.workspaceData;
+                }
+                return response as WorkspaceData;
+            },
+            (data) => {
+                if (data === target.workspaceData) {
+                    invalidateWorkspaceChildren(target);
+                } else {
+                    updateSessionWorkspace(target, data);
+                }
+            },
+            () =>
+                sessions.get(target.sessionId) === target &&
+                !target.workspaceUnavailable &&
+                isConnectedSession(target),
+            (error) => console.error('[updateWorkspace]', error),
+        );
+        workspaceRefreshes.set(target, refresh);
     }
-    workspaceRefreshTimer = setTimeout(() => {
-        workspaceRefreshTimer = undefined;
-        void runWorkspaceRefresh();
-    }, delayMs);
+    return refresh;
 }
 
-async function runWorkspaceRefresh(): Promise<void> {
-    if (workspaceRefreshInProgress || !workspaceRefreshPending) {
-        return;
-    }
-    workspaceRefreshPending = false;
-    workspaceRefreshInProgress = true;
-    try {
-        await updateWorkspace();
-    } finally {
-        workspaceRefreshInProgress = false;
-        if (workspaceRefreshPending) {
-            scheduleWorkspaceRefresh();
-        }
+function scheduleWorkspaceRefresh(delayMs: number = 500, target = activeSession): void {
+    if (target) {
+        workspaceRefreshFor(target).invalidate(delayMs);
     }
 }
 
-export async function updateWorkspace() {
-    const requestedSession = activeSession;
-    if (
-        (!globalPipePath && !requestedSession?.requester) ||
-        !requestedSession ||
-        requestedSession.workspaceUnavailable
-    ) {
-        return;
+/** Resolve dirty metadata for the document's owner without selecting that session. */
+export function ensureSessionWorkspace(target: Session): Promise<void> {
+    // Interactive agents own invalidation and publish their complete cached workspace.
+    if (target.requester) {
+        return Promise.resolve();
     }
-    try {
-        const response = await sessionRequest({ method: 'workspace' }, requestedSession);
-        if (response && sessions.get(requestedSession.sessionId) === requestedSession) {
-            updateSessionWorkspace(requestedSession, response as WorkspaceData);
-            console.info('[updateWorkspace] Done');
-        }
-    } catch (e) {
-        console.error(e);
+    return workspaceRefreshFor(target).ensure();
+}
+
+export async function updateWorkspace(): Promise<void> {
+    if (activeSession) {
+        const refresh = workspaceRefreshFor(activeSession);
+        refresh.invalidate();
+        await refresh.ensure();
     }
 }
 
@@ -3377,6 +3363,9 @@ import * as rstudioapi from './rstudioapi';
 
 export async function activateSession(session: Session): Promise<void> {
     sessionSelectionRevision++;
+    if (activeSession && activeSession !== session) {
+        workspaceRefreshes.get(activeSession)?.defer();
+    }
     activeSession = session;
     const refreshed = refreshActiveSession(session);
     if (!session.workspaceUnavailable) {
@@ -3810,8 +3799,14 @@ async function handleNotification(message: Record<string, unknown>, socket: IpcS
         }
 
         case 'workspace_updated': {
-            if (socket === activeSession?.socket) {
-                scheduleWorkspaceRefresh();
+            const target = socket._sessionId && sessions.get(socket._sessionId);
+            if (target && target.socket === socket) {
+                const refresh = workspaceRefreshFor(target);
+                if (target === activeSession) {
+                    refresh.invalidate(500);
+                } else {
+                    refresh.invalidate();
+                }
             }
             break;
         }
@@ -4070,6 +4065,7 @@ export async function cleanupSession(sessionId: string, closingSocket?: IpcSocke
     if (!session || (closingSocket && session.socket !== closingSocket)) {
         return;
     }
+    workspaceRefreshes.get(session)?.dispose();
     sessions.delete(sessionId);
     terminalRegistry.releaseSession(session);
     const disconnected = invalidateSessionConnection(session);
@@ -4089,46 +4085,25 @@ export async function cleanupSession(sessionId: string, closingSocket?: IpcSocke
 export async function sessionRequest(
     data: Record<string, unknown>,
     target: Session | string | null | undefined = activeSession,
+    options: RpcRequestOptions = {},
 ): Promise<unknown> {
     try {
         const owner = typeof target === 'string' ? sessions.get(target) : target;
-        if (owner?.requester) {
-            return await owner.requester(data);
+        const requester = owner?.requester;
+        if (requester) {
+            return await withRpcCancellation(() => requester(data), options.signal);
         }
         // An explicitly bound viewer must never fall back to the active session.
         const socket = owner?.socket ?? (target === undefined ? pipeClient : undefined);
-        if (!socket || socket.destroyed) {
+        const rpc = socket && nativeRpcConnections.get(socket);
+        if (!socket || socket.destroyed || !rpc) {
             throw new Error('IPC socket is not connected');
         }
-
-        return await new Promise((resolve, reject) => {
-            const id =
-                data.id !== undefined ? Number(data.id) : Math.floor(Math.random() * 1000000);
-            const payload = data.jsonrpc
-                ? data
-                : {
-                      jsonrpc: '2.0',
-                      id,
-                      ...data,
-                  };
-
-            pendingRequests.set(id, { resolve, reject, socket });
-
-            try {
-                socket.write(JSON.stringify(payload) + '\n');
-            } catch (e) {
-                pendingRequests.delete(id);
-                reject(e);
-            }
-
-            setTimeout(() => {
-                if (pendingRequests.has(id)) {
-                    pendingRequests.delete(id);
-                    reject(new Error('Request timed out'));
-                }
-            }, 5000);
-        });
+        return await rpc.request(data, options);
     } catch (error) {
+        if (error instanceof Error && error.name === 'AbortError') {
+            return undefined;
+        }
         if (error instanceof Error) {
             console.log('error message: ', error.message);
         } else {

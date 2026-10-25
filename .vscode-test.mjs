@@ -22,8 +22,9 @@ const common = {
 	}
 };
 
-// Keep mock/provider tests independent of R language-server startup. The real
-// Interactive integration suite has its own window with the built-in LSP enabled.
+// Keep mock/provider tests independent of R language-server startup. Editor
+// command tests also need a fresh window after fixtures create terminals and
+// webviews. The real Interactive suite has its own window with the LSP enabled.
 function testProfile(name, lspEnabled) {
 	const directory = path.resolve('.vscode-test/user-data', name);
 	mkdirSync(path.join(directory, 'User'), { recursive: true });
@@ -35,9 +36,19 @@ export default defineConfig([
 	{
 		...common,
 		label: 'provider-tests',
-		files: 'out/test/suite/**/!(interactiveEditor).test.js',
+		files: 'out/test/suite/**/!(interactiveEditor|interactiveInputFeatures|completionMiddleware).test.js',
 		mocha: { ...common.mocha, require: './out/test/common/extensionSetup.js' },
 		launchArgs: testProfile('provider-tests', false)
+	},
+	{
+		...common,
+		label: 'editor-command-tests',
+		files: [
+			'out/test/suite/interactiveInputFeatures.test.js',
+			'out/test/suite/completionMiddleware.test.js'
+		],
+		mocha: { ...common.mocha, require: './out/test/common/extensionSetup.js' },
+		launchArgs: testProfile('editor-command-tests', false)
 	},
 	{
 		...common,
