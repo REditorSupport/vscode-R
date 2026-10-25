@@ -11,10 +11,26 @@ local({
         site_library <- file.path(root, "isolated-libraries", label, "site")
         dir.create(user_library, recursive = TRUE, showWarnings = FALSE)
         dir.create(site_library, recursive = TRUE, showWarnings = FALSE)
-        c(paste0("R_LIBS_USER=", shQuote(user_library)),
-          paste0("R_LIBS_SITE=", shQuote(site_library)),
-          paste0("R_LIBS=", shQuote(libraries)),
-          paste0("VSCODE_R_TEST_AMBIENT_LIBRARY=", shQuote(ambient_library)))
+        c(R_LIBS_USER = user_library, R_LIBS_SITE = site_library,
+          R_LIBS = libraries, VSCODE_R_TEST_AMBIENT_LIBRARY = ambient_library)
+    }
+    with_child_environment <- function(environment, expression) {
+        stopifnot(is.character(environment), !is.null(names(environment)),
+                  !anyNA(environment), !anyDuplicated(names(environment)))
+        keys <- names(environment)
+        previous <- Sys.getenv(keys, unset = NA_character_)
+        on.exit({
+            unset <- keys[is.na(previous)]
+            if (length(unset)) Sys.unsetenv(unset)
+            restore <- previous[!is.na(previous)]
+            if (length(restore)) do.call(Sys.setenv, as.list(restore))
+        }, add = TRUE)
+        do.call(Sys.setenv, as.list(environment))
+        force(expression)
+    }
+    system2_with_child_environment <- function(environment, command, args, ...) {
+        arguments <- c(list(command = command, args = args), list(...))
+        with_child_environment(environment, do.call(system2, arguments))
     }
 
     source_package <- function(version) {
@@ -36,10 +52,12 @@ local({
         writeLines(c("export(fixture_device)", "export(jgd)"), file.path(package, "NAMESPACE"))
         previous <- setwd(root)
         on.exit(setwd(previous), add = TRUE)
-        output <- system2(file.path(R.home("bin"), "R"),
-                          c("CMD", "build", "--no-build-vignettes", shQuote(basename(package))),
-                          env = isolated_child_env(paste0("build-", version)),
-                          stdout = TRUE, stderr = TRUE)
+        output <- system2_with_child_environment(
+            isolated_child_env(paste0("build-", version)),
+            file.path(R.home("bin"), "R"),
+            c("CMD", "build", "--no-build-vignettes", shQuote(basename(package))),
+            stdout = TRUE, stderr = TRUE
+        )
         status <- attr(output, "status")
         if (!is.null(status) && status != 0L) stop(paste(output, collapse = "\n"))
         archive <- file.path(root, paste0("jgd_", version, ".tar.gz"))
@@ -57,11 +75,13 @@ local({
     tools::write_PACKAGES(file.path(root, "repo", "src", "contrib"), type = "source")
     repo <- paste0("file:///", sub("^/", "", normalizePath(file.path(root, "repo"), winslash = "/")))
     dir.create(ambient_library)
-    ambient_install <- system2(file.path(R.home("bin"), "R"),
-                               c("CMD", "INSTALL", paste0("--library=", shQuote(ambient_library)),
-                                 shQuote(file.path(root, "jgd-0.1.0"))),
-                               env = isolated_child_env("ambient-install"),
-                               stdout = TRUE, stderr = TRUE)
+    ambient_install <- system2_with_child_environment(
+        isolated_child_env("ambient-install"),
+        file.path(R.home("bin"), "R"),
+        c("CMD", "INSTALL", paste0("--library=", shQuote(ambient_library)),
+          shQuote(file.path(root, "jgd-0.1.0"))),
+        stdout = TRUE, stderr = TRUE
+    )
     ambient_status <- attr(ambient_install, "status")
     if (!is.null(ambient_status) && ambient_status != 0L) {
         stop("Could not install ambient jgd fixture: ", paste(ambient_install, collapse = "\n"))
@@ -94,11 +114,13 @@ local({
     }
     sess_library <- file.path(root, "sess-library")
     dir.create(sess_library)
-    sess_install <- system2(file.path(R.home("bin"), "R"),
-                            c("CMD", "INSTALL", paste0("--library=", shQuote(sess_library)),
-                              shQuote(file.path(getwd(), "sess"))),
-                            env = isolated_child_env("sess-install", dependency_library),
-                            stdout = TRUE, stderr = TRUE)
+    sess_install <- system2_with_child_environment(
+        isolated_child_env("sess-install", dependency_library),
+        file.path(R.home("bin"), "R"),
+        c("CMD", "INSTALL", paste0("--library=", shQuote(sess_library)),
+          shQuote(file.path(getwd(), "sess"))),
+        stdout = TRUE, stderr = TRUE
+    )
     sess_status <- attr(sess_install, "status")
     if (!is.null(sess_status) && sess_status != 0L) {
         stop("Could not install sess test fixture: ", paste(sess_install, collapse = "\n"))
@@ -165,9 +187,8 @@ local({
     run_child <- function(mode, result) {
         child_args <- c("--vanilla", "--slave", paste0("--file=", runner), "--args",
                         mode, root, repo, result)
-        output <- system2(r_binary, shQuote(child_args),
-                          env = isolated_child_env(mode),
-                          stdout = TRUE, stderr = TRUE)
+        output <- system2_with_child_environment(isolated_child_env(mode), r_binary,
+                                                 shQuote(child_args), stdout = TRUE, stderr = TRUE)
         status <- attr(output, "status")
         if (!is.null(status) && status != 0L) stop(paste(output, collapse = "\n"))
         readLines(result, warn = FALSE)
@@ -274,11 +295,13 @@ local({
     run_real_child <- function(mode, result, wait = TRUE) {
         args <- c("--vanilla", "--slave", paste0("--file=", real_runner), "--args",
                   mode, root, repo, result, sess_library)
-        system2(r_binary, shQuote(args), wait = wait,
-                env = isolated_child_env(paste0("real-", mode),
-                                         paste(sess_library, dependency_library, sep = .Platform$path.sep)),
-                stdout = if (wait) TRUE else file.path(root, paste0(mode, "-out")),
-                stderr = if (wait) TRUE else file.path(root, paste0(mode, "-err")))
+        system2_with_child_environment(
+            isolated_child_env(paste0("real-", mode),
+                               paste(sess_library, dependency_library, sep = .Platform$path.sep)),
+            r_binary, shQuote(args), wait = wait,
+            stdout = if (wait) TRUE else file.path(root, paste0(mode, "-out")),
+            stderr = if (wait) TRUE else file.path(root, paste0(mode, "-err"))
+        )
     }
 
     for (mode in c("real-loaded-old", "real-user-old")) {
@@ -318,10 +341,10 @@ local({
     approved_result <- file.path(root, "approved-result")
     approved_args <- c("--vanilla", "--slave", paste0("--file=", runner), "--args",
                        "approved", approved_root, repo, approved_result)
-    approved_process <- system2(r_binary, shQuote(approved_args), wait = FALSE,
-                                env = isolated_child_env("approved"),
-                                stdout = file.path(root, "approved-out"),
-                                stderr = file.path(root, "approved-err"))
+    approved_process <- system2_with_child_environment(
+        isolated_child_env("approved"), r_binary, shQuote(approved_args), wait = FALSE,
+        stdout = file.path(root, "approved-out"), stderr = file.path(root, "approved-err")
+    )
     request <- wait_requests(file.path(approved_root, "consent"), 1L)
     answer_requests(request, "approve")
     deadline <- Sys.time() + 30
@@ -341,10 +364,10 @@ local({
     declined_result <- file.path(root, "declined-result")
     declined_args <- c("--vanilla", "--slave", paste0("--file=", runner), "--args",
                        "declined", declined_root, repo, declined_result)
-    declined_process <- system2(r_binary, shQuote(declined_args), wait = FALSE,
-                                env = isolated_child_env("declined"),
-                                stdout = file.path(root, "declined-out"),
-                                stderr = file.path(root, "declined-err"))
+    declined_process <- system2_with_child_environment(
+        isolated_child_env("declined"), r_binary, shQuote(declined_args), wait = FALSE,
+        stdout = file.path(root, "declined-out"), stderr = file.path(root, "declined-err")
+    )
     request <- wait_requests(file.path(declined_root, "consent"), 1L)
     answer_requests(request, "decline")
     deadline <- Sys.time() + 30
@@ -399,10 +422,11 @@ local({
     parallel_children <- lapply(seq_along(parallel_result), function(index) {
         child_args <- c("--vanilla", "--slave", paste0("--file=", runner), "--args",
                         "parallel", parallel_root, repo, parallel_result[[index]])
-        system2(r_binary, shQuote(child_args), wait = FALSE,
-                env = isolated_child_env(paste0("parallel-", index)),
-                stdout = file.path(parallel_root, paste0(index, "-out")),
-                stderr = file.path(parallel_root, paste0(index, "-err")))
+        system2_with_child_environment(
+            isolated_child_env(paste0("parallel-", index)), r_binary, shQuote(child_args), wait = FALSE,
+            stdout = file.path(parallel_root, paste0(index, "-out")),
+            stderr = file.path(parallel_root, paste0(index, "-err"))
+        )
     })
     requests <- wait_requests(parallel_consent, 2L)
     answer_requests(requests, "approve")
@@ -461,10 +485,12 @@ local({
         "source(file.path(getwd(), 'R', 'profile.R'))"
     ), startup_profile)
     profile_result <- file.path(profile_root, "result")
-    profile_process <- system2(r_binary, shQuote(c("--vanilla", "--slave", paste0("--file=", startup_profile))),
-                               env = isolated_child_env("profile"),
-                               wait = FALSE, stdout = file.path(profile_root, "stdout"),
-                               stderr = file.path(profile_root, "stderr"))
+    profile_process <- system2_with_child_environment(
+        isolated_child_env("profile"), r_binary,
+        shQuote(c("--vanilla", "--slave", paste0("--file=", startup_profile))),
+        wait = FALSE, stdout = file.path(profile_root, "stdout"),
+        stderr = file.path(profile_root, "stderr")
+    )
     request <- wait_requests(profile_consent, 1L)
     answer_requests(request, "decline")
     deadline <- Sys.time() + 30
