@@ -132,6 +132,21 @@ local({
   expect_equal(Sys.getenv("JGD_SOCKET"), "external-jgd")
   expect_equal(length(callbacks), 0L)
 
+  # A failed optional jgd preparation remains disabled for discovery retries.
+  denied_options <- list(use_rstudioapi = FALSE, plot_backend = "jgd",
+                         attachment_id = "console_no_jgd", auto_activate = FALSE,
+                         allow_jgd = FALSE)
+  denied_settings <- list(path = path, endpoint = "old", options = denied_options)
+  env$.sess_env$con <- NULL
+  Sys.setenv(JGD_SOCKET = "keep-this-socket")
+  writeLines(jsonlite::toJSON(list(version = 1L, endpoint = "new",
+                                   jgdSocket = "replacement-jgd"), auto_unbox = TRUE), path)
+  env$.schedule_reconnect(denied_settings, schedule = schedule)
+  tick()
+  expect_equal(tail(attempts, 1L)[[1L]], c(list(endpoint = "new"), denied_options))
+  expect_equal(Sys.getenv("JGD_SOCKET"), "keep-this-socket")
+  expect_identical(env$.sess_env$reconnect$options$allow_jgd, FALSE)
+
   # A registered notifier receives the replacement endpoint and owns the
   # setup callback. A same-process registration without a notifier fails closed.
   startup_option <- "vscodeR.terminalStartup"

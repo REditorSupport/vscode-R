@@ -6,8 +6,12 @@
 \usage{
 runtime_start(
   use_rstudioapi = TRUE,
-  plot_backend = c("auto", "jgd", "httpgd", "standard", "native")
+  plot_backend = c("auto", "jgd", "httpgd", "standard", "native"),
+  allow_jgd = TRUE
 )
+}
+\arguments{
+\item{allow_jgd}{Logical. Whether the jgd renderer may be selected.}
 }
 \description{
 Start the VS Code runtime integration (internal)

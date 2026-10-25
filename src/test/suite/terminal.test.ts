@@ -1,3 +1,4 @@
+import { JGD_MINIMUM_VERSION } from '../../jgdVersion';
 import * as vscode from 'vscode';
 import * as sinon from 'sinon';
 import * as assert from 'assert';
@@ -75,6 +76,7 @@ suite('R Terminal', () => {
         consentDirectoryStub = sandbox
             .stub(session, 'getSessConsentDirectory')
             .resolves('/unused-test-consent');
+        sandbox.stub(session, 'getToolConsentDirectory').resolves('/unused-tool-consent');
         session.deploySessionWatcher(extension_root);
         await session.getGlobalPipePath();
     });
@@ -838,6 +840,27 @@ suite('R Terminal', () => {
         const options = createTerminal.firstCall.args[0] as vscode.TerminalOptions;
         assert.strictEqual(options.shellPath, process.execPath);
         assert.strictEqual(options.env?.['VSCODE_R_SESS_CONSENT_DIRECTORY'], '/target-R-consent');
+        assert.strictEqual(
+            options.env?.['VSCODE_R_TOOL_CONSENT_DIRECTORY'],
+            '/unused-tool-consent',
+        );
+        assert.strictEqual(
+            options.env?.['VSCODE_R_TOOL_ROOT'],
+            extension.extensionContext.globalStorageUri.fsPath,
+        );
+        assert.ok(
+            options.env?.['VSCODE_R_TOOL_LIBRARY_HELPER']?.endsWith(
+                path.join('R', 'tool-library.R'),
+            ),
+        );
+        assert.ok(
+            options.env?.['VSCODE_R_TOOL_CONSENT_HELPER']?.endsWith(
+                path.join('R', 'tool-consent.R'),
+            ),
+        );
+        assert.ok(options.env?.['VSCODE_R_JGD_HELPER']?.endsWith(path.join('R', 'prepare-jgd.R')));
+        assert.strictEqual(options.env?.['VSCODE_R_JGD_MINIMUM_VERSION'], JGD_MINIMUM_VERSION);
+        assert.strictEqual(options.env?.['VSCODE_R_JGD_CAN_PROMPT'], 'FALSE');
         sinon.assert.notCalled(getRpath);
         sinon.assert.notCalled(queryR);
         sinon.assert.notCalled(installTask);

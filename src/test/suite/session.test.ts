@@ -1,3 +1,4 @@
+import { JGD_MINIMUM_VERSION } from '../../jgdVersion';
 import * as vscode from 'vscode';
 import * as sinon from 'sinon';
 import * as assert from 'assert';
@@ -18,6 +19,7 @@ import * as processTree from '../../processTree';
 import * as extension from '../../extension';
 import * as plotViewer from '../../plotViewer';
 import { SessConsentService } from '../../sessConsent';
+import { ToolConsentService } from '../../toolConsent';
 import { initializeHtmlWidgetViewers, shutdownHtmlWidgetViewers } from '../../webViewer';
 import type { RSessionApi } from '../../api';
 
@@ -988,6 +990,18 @@ suite('Session Communication', () => {
             assert.match(source, /auto_activate = TRUE/);
             assert.match(source, /tryCatch\(/);
             assert.match(source, /use_rstudioapi = (TRUE|FALSE)/);
+            assert.match(source, /tool_consent_dir <- "[^"]+"/);
+            assert.match(source, /tool_root <- "[^"]+"/);
+            assert.match(source, /tool_consent_directory = tool_consent_dir/);
+            assert.match(source, /tool_library_helper = tool_library_helper/);
+            assert.match(source, /tool_consent_helper = tool_consent_helper/);
+            assert.match(source, /prepare-jgd\.R/);
+            assert.match(source, /jgd_can_prompt <- (?:TRUE|FALSE)/);
+            assert.match(source, /jgd_helper = jgd_helper/);
+            assert.match(source, /jgd_can_prompt = jgd_can_prompt/);
+            assert.ok(
+                source.includes(`jgd_minimum_version = ${JSON.stringify(JGD_MINIMUM_VERSION)}`),
+            );
             const backgroundSource = await fsp.readFile(backgroundPreparation.scriptPath, 'utf8');
             assert.ok(
                 backgroundSource.includes(
@@ -1243,6 +1257,7 @@ suite('Session Communication', () => {
         if (!oldPreparation) {
             return;
         }
+        const oldToolDirectory = await session.getToolConsentDirectory();
 
         let enterStop!: () => void;
         let releaseStop!: () => void;
@@ -1279,8 +1294,12 @@ suite('Session Communication', () => {
             await oldShutdown;
             return;
         }
+        const newToolDirectory = await session.getToolConsentDirectory();
+        assert.notStrictEqual(newToolDirectory, oldToolDirectory);
         releaseStop();
         await oldShutdown;
+        assert.ok(await pathExists(newToolDirectory));
+        assert.strictEqual(await pathExists(oldToolDirectory), false);
         assert.ok(
             await pathExists(newPreparation.scriptPath),
             'old shutdown must not remove a later preparation',
@@ -1349,6 +1368,36 @@ suite('Session Communication', () => {
         assert.deepStrictEqual(information.firstCall.args, [
             'This command requires that r.sessionWatcher be enabled.',
         ]);
+    });
+
+    test('a failed optional tool consent service does not prevent sess attachment preparation', async () => {
+        sandbox.stub(extension, 'enableSessionWatcher').value(true);
+        sandbox
+            .stub(ToolConsentService.prototype, 'start')
+            .rejects(new Error('tool directory unavailable'));
+        const preparation = await session.prepareAttachment({
+            connection: { transport: 'sess', endpoint: localSessEndpoint('tool-unavailable') },
+        });
+        assert.ok(preparation);
+        const source = await fsp.readFile(preparation!.scriptPath, 'utf8');
+        assert.match(source, /tool_consent_dir <- ""/);
+        assert.match(source, /vscode_r_attach_sess\(/);
+        preparation!.dispose();
+    });
+
+    test('sess and tool consent use separate directories and both are cleaned up on shutdown', async () => {
+        const sessDirectory = await session.getSessConsentDirectory();
+        const toolDirectory = await session.getToolConsentDirectory();
+        assert.ok(sessDirectory);
+        assert.ok(toolDirectory);
+        assert.notStrictEqual(sessDirectory, toolDirectory);
+        assert.ok(await pathExists(sessDirectory));
+        assert.ok(await pathExists(toolDirectory));
+
+        await session.shutdownSessionWatcher();
+
+        assert.strictEqual(await pathExists(sessDirectory), false);
+        assert.strictEqual(await pathExists(toolDirectory), false);
     });
 
     test('reconnecting terminals preserve the selected terminal in either attach order', async () => {
@@ -1421,7 +1470,7 @@ suite('Session Communication', () => {
         const scriptContent = await fsp.readFile(scriptPath, 'utf8');
         assert.match(
             scriptContent,
-            /vscode_r_attach_sess\(endpoint, sess_src, managed_root, consent_dir, source_helper, installer_helper, "native", use_rstudioapi = (?:TRUE|FALSE)\)/,
+            /vscode_r_attach_sess\(endpoint, sess_src, managed_root, consent_dir, source_helper, installer_helper, "native", .*use_rstudioapi = (?:TRUE|FALSE)\)/,
         );
         assert.doesNotMatch(scriptContent, /Sys\.(?:setenv|unsetenv)\(JGD_SOCKET/);
     });
