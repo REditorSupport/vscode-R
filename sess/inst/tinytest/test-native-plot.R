@@ -17,6 +17,37 @@ local({
   expect_equal(select("jgd", TRUE, TRUE), "jgd")
   expect_equal(select("httpgd", FALSE, TRUE), "standard")
   expect_equal(select("native", TRUE, TRUE), "native")
+  expect_error(sess:::runtime_start(allow_jgd = NA), "single non-NA logical")
+})
+
+# A denied optional renderer is short-circuited before package discovery and
+# falls back with an actionable warning for an explicit jgd request.
+local({
+  sess:::runtime_stop()
+  state <- get(".sess_env", asNamespace("sess"))
+  original_device <- getOption("device")
+  original_plot_path <- state$latest_plot_path
+  fallback_plot_path <- tempfile("sess-jgd-fallback-")
+  state$latest_plot_path <- fallback_plot_path
+  on.exit({
+    sess:::runtime_stop()
+    options(device = original_device)
+    unlink(fallback_plot_path)
+    state$latest_plot_path <- original_plot_path
+  }, add = TRUE)
+  env <- new.env(parent = asNamespace("sess"))
+  env$.sess_env <- state
+  env$runtime_start <- sess:::runtime_start
+  environment(env$runtime_start) <- env
+  env$requireNamespace <- function(package, ...) {
+    if (identical(package, "jgd")) stop("jgd lookup should be short-circuited")
+    base::requireNamespace(package, ...)
+  }
+  expect_warning(
+    env$runtime_start(use_rstudioapi = FALSE, plot_backend = "jgd", allow_jgd = FALSE),
+    "jgd setup was not available"
+  )
+  expect_true(isTRUE(sess:::.runtime_state()$active))
 })
 
 local({

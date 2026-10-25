@@ -5,6 +5,17 @@ local({
     root <- normalizePath(root, winslash = "/", mustWork = TRUE)
     r_literal <- function(value) paste0("\"", gsub("\\\"", "\\\\\\\"", value), "\"")
     on.exit(unlink(root, recursive = TRUE), add = TRUE)
+    ambient_library <- file.path(root, "ambient-user-library")
+    isolated_child_env <- function(label, libraries = "") {
+        user_library <- file.path(root, "isolated-libraries", label, "user")
+        site_library <- file.path(root, "isolated-libraries", label, "site")
+        dir.create(user_library, recursive = TRUE, showWarnings = FALSE)
+        dir.create(site_library, recursive = TRUE, showWarnings = FALSE)
+        c(paste0("R_LIBS_USER=", shQuote(user_library)),
+          paste0("R_LIBS_SITE=", shQuote(site_library)),
+          paste0("R_LIBS=", shQuote(libraries)),
+          paste0("VSCODE_R_TEST_AMBIENT_LIBRARY=", shQuote(ambient_library)))
+    }
 
     source_package <- function(version) {
         package <- file.path(root, paste0("jgd-", version))
@@ -18,7 +29,7 @@ local({
             "fixture_device <- function() 'jgd'",
             "jgd <- function() {",
             "  path <- Sys.getenv('JGD_TEST_DEVICE_LOG', '')",
-            "  if (nzchar(path)) writeLines('jgd', path)",
+            "  if (nzchar(path)) cat('jgd\\n', file=path, append=TRUE)",
             "  invisible(NULL)",
             "}"
         ), file.path(package, "R", "api.R"))
@@ -27,6 +38,7 @@ local({
         on.exit(setwd(previous), add = TRUE)
         output <- system2(file.path(R.home("bin"), "R"),
                           c("CMD", "build", "--no-build-vignettes", shQuote(basename(package))),
+                          env = isolated_child_env(paste0("build-", version)),
                           stdout = TRUE, stderr = TRUE)
         status <- attr(output, "status")
         if (!is.null(status) && status != 0L) stop(paste(output, collapse = "\n"))
@@ -44,10 +56,59 @@ local({
     unlink(file.path(root, "repo", "src", "contrib", "jgd_0.0.1.tar.gz"))
     tools::write_PACKAGES(file.path(root, "repo", "src", "contrib"), type = "source")
     repo <- paste0("file:///", sub("^/", "", normalizePath(file.path(root, "repo"), winslash = "/")))
+    dir.create(ambient_library)
+    ambient_install <- system2(file.path(R.home("bin"), "R"),
+                               c("CMD", "INSTALL", paste0("--library=", shQuote(ambient_library)),
+                                 shQuote(file.path(root, "jgd-0.1.0"))),
+                               env = isolated_child_env("ambient-install"),
+                               stdout = TRUE, stderr = TRUE)
+    ambient_status <- attr(ambient_install, "status")
+    if (!is.null(ambient_status) && ambient_status != 0L) {
+        stop("Could not install ambient jgd fixture: ", paste(ambient_install, collapse = "\n"))
+    }
+    old_user_library <- Sys.getenv("R_LIBS_USER", unset = NA_character_)
+    old_site_library <- Sys.getenv("R_LIBS_SITE", unset = NA_character_)
+    Sys.setenv(R_LIBS_USER = ambient_library, R_LIBS_SITE = ambient_library)
+    on.exit({
+        if (is.na(old_user_library)) Sys.unsetenv("R_LIBS_USER") else
+            Sys.setenv(R_LIBS_USER = old_user_library)
+        if (is.na(old_site_library)) Sys.unsetenv("R_LIBS_SITE") else
+            Sys.setenv(R_LIBS_SITE = old_site_library)
+    }, add = TRUE)
+    installed <- utils::installed.packages(lib.loc = .libPaths())
+    runtime_dependencies <- unique(c(
+        "processx", "later", "jsonlite", "rstudioapi",
+        unlist(tools::package_dependencies(c("processx", "later", "jsonlite", "rstudioapi"),
+                                           db = installed, which = c("Depends", "Imports"),
+                                           recursive = TRUE), use.names = FALSE)
+    ))
+    dependency_library <- file.path(root, "runtime-dependencies")
+    dir.create(dependency_library)
+    for (dependency in setdiff(runtime_dependencies, rownames(installed)[installed[, "LibPath"] == .Library])) {
+        rows <- which(rownames(installed) == dependency)
+        if (!length(rows)) stop("Missing installed runtime test dependency: ", dependency)
+        source_path <- file.path(installed[rows[[1L]], "LibPath"], dependency)
+        if (!file.copy(source_path, dependency_library, recursive = TRUE)) {
+            stop("Could not stage runtime test dependency: ", dependency)
+        }
+    }
+    sess_library <- file.path(root, "sess-library")
+    dir.create(sess_library)
+    sess_install <- system2(file.path(R.home("bin"), "R"),
+                            c("CMD", "INSTALL", paste0("--library=", shQuote(sess_library)),
+                              shQuote(file.path(getwd(), "sess"))),
+                            env = isolated_child_env("sess-install", dependency_library),
+                            stdout = TRUE, stderr = TRUE)
+    sess_status <- attr(sess_install, "status")
+    if (!is.null(sess_status) && sess_status != 0L) {
+        stop("Could not install sess test fixture: ", paste(sess_install, collapse = "\n"))
+    }
     runner <- file.path(root, "run.R")
     writeLines(c(
         "args <- commandArgs(TRUE); mode <- args[[1L]]; root <- args[[2L]]; repo <- args[[3L]];",
         "result <- args[[4L]];",
+        "ambient <- normalizePath(Sys.getenv('VSCODE_R_TEST_AMBIENT_LIBRARY'), winslash='/');",
+        "stopifnot(!ambient %in% normalizePath(.libPaths(), winslash='/'));",
         "source(file.path(getwd(), 'R', 'tool-library.R'));",
         "source(file.path(getwd(), 'R', 'tool-consent.R'));",
         "source(file.path(getwd(), 'R', 'prepare-jgd.R'));",
@@ -59,12 +120,14 @@ local({
         "connect_seen <- new.env();",
         "device_log <- file.path(root, paste0(mode, '-device-log'));",
         "Sys.setenv(JGD_TEST_DEVICE_LOG=device_log);",
-        "vscode_r_prepare_sess <- function(...) { ns <- new.env(); ns$connect <- function(...) {",
+        "vscode_r_prepare_sess <- function(...) { ns <- new.env(); ns$connect <- function(allow_jgd=TRUE, ...) {",
+        "  connect_seen$allow_jgd <- allow_jgd;",
+        "  if (mode == 'socket-empty') Sys.setenv(JGD_SOCKET='fixture-socket');",
         "  connect_seen$socket <- Sys.getenv('JGD_SOCKET', unset='');",
         "  connect_seen$loaded <- requireNamespace('jgd', quietly=TRUE);",
         "  hooks <- new.env(parent=globalenv());",
         "  sys.source(file.path(getwd(), 'sess', 'R', 'hooks.R'), hooks);",
-        "  has_jgd <- nzchar(connect_seen$socket) && connect_seen$loaded;",
+        "  has_jgd <- connect_seen$allow_jgd && nzchar(connect_seen$socket) && connect_seen$loaded;",
         "  connect_seen$device <- hooks$.select_plot_backend('jgd', FALSE, has_jgd);",
         "  if (connect_seen$device == 'jgd') jgd::jgd(); TRUE }; ns };",
         "if (mode == 'old') {",
@@ -73,9 +136,11 @@ local({
         "  .libPaths(c(old, .Library)); loadNamespace('jgd', lib.loc=old);",
         "}",
         "if (mode == 'offline') options(repos=c(CRAN=file.path(root, 'missing-repo')));",
+        "if (mode == 'socket-empty') Sys.unsetenv('JGD_SOCKET');",
         "tool_library_helper <- if (mode %in% c('parallel', 'no-prompt', 'no-prompt-compatible'))",
         "  file.path(root, 'instrumented-tool-library.R') else",
         "  file.path(getwd(), 'R', 'tool-library.R');",
+        "if (mode == 'library-helper-missing') tool_library_helper <- file.path(root, 'missing-tool-library.R');",
         "if (mode == 'no-prompt-compatible') {",
         "  ordinary <- file.path(root, 'ordinary-library'); dir.create(ordinary);",
         "  utils::install.packages('jgd', repos=repo, type='source', lib=ordinary, quiet=TRUE);",
@@ -86,12 +151,14 @@ local({
         "  'unused', 'unused', 'jgd', timeout_seconds=0, tool_root=file.path(root, 'tools'),",
         "  tool_consent_directory=consent, tool_library_helper=tool_library_helper,",
         "  tool_consent_helper=file.path(getwd(), 'R', 'tool-consent.R'),",
-        "  jgd_helper=file.path(getwd(), 'R', 'prepare-jgd.R'),",
-        "  jgd_can_prompt=!(mode %in% c('no-prompt', 'no-prompt-compatible')),",
+        "  jgd_helper=if (mode == 'helper-missing') file.path(root, 'missing-prepare-jgd.R') else",
+        "    file.path(getwd(), 'R', 'prepare-jgd.R'),",
+        "  jgd_can_prompt=!(mode %in% c('no-prompt', 'no-prompt-compatible', 'socket-empty')),",
         "  jgd_minimum_version='0.1.0');",
         "stopifnot(isTRUE(answer), identical(Sys.getenv('JGD_SOCKET'), 'fixture-socket'));",
         "stopifnot(identical(getOption('timeout'), timeout_before), identical(.libPaths(), libraries_before));",
-        "writeLines(c(connect_seen$socket, as.character(connect_seen$loaded), connect_seen$device), result);"
+        "writeLines(c(connect_seen$socket, as.character(connect_seen$loaded), connect_seen$device,",
+        "            as.character(connect_seen$allow_jgd)), result);"
     ), runner)
 
     r_binary <- file.path(R.home("bin"), "R")
@@ -99,6 +166,7 @@ local({
         child_args <- c("--vanilla", "--slave", paste0("--file=", runner), "--args",
                         mode, root, repo, result)
         output <- system2(r_binary, shQuote(child_args),
+                          env = isolated_child_env(mode),
                           stdout = TRUE, stderr = TRUE)
         status <- attr(output, "status")
         if (!is.null(status) && status != 0L) stop(paste(output, collapse = "\n"))
@@ -132,12 +200,126 @@ local({
         }
     }
 
+    dir.create(file.path(root, "consent"), showWarnings = FALSE)
+    real_runner <- file.path(root, "real-connect.R")
+    writeLines(c(
+        "args <- commandArgs(TRUE); mode <- args[[1L]]; root <- args[[2L]]; repo <- args[[3L]];",
+        "result <- args[[4L]]; sess_library <- args[[5L]];",
+        "ambient <- normalizePath(Sys.getenv('VSCODE_R_TEST_AMBIENT_LIBRARY'), winslash='/');",
+        "stopifnot(!ambient %in% normalizePath(.libPaths(), winslash='/'));",
+        "source(file.path(getwd(), 'R', 'tool-library.R'));",
+        "source(file.path(getwd(), 'R', 'tool-consent.R'));",
+        "source(file.path(getwd(), 'R', 'prepare-jgd.R'));",
+        "source(file.path(getwd(), 'R', 'attach_sess.R'));",
+        "options(repos=c(CRAN=repo), pkgType='source', sess.quiet=TRUE);",
+        "sess_ns <- loadNamespace('sess', lib.loc=sess_library);",
+        "endpoint <- if (.Platform$OS.type == 'windows')",
+        "  paste0('\\\\\\\\?\\\\pipe\\\\', basename(tempfile('sess-jgd-'))) else tempfile(fileext='.sock');",
+        "server <- processx::conn_create_unix_socket(endpoint);",
+        "discovery <- file.path(root, paste0(mode, '-discovery.json'));",
+        "writeLines(jsonlite::toJSON(list(version=1L, endpoint=endpoint, jgdSocket='fixture-jgd-socket'),",
+        "                            auto_unbox=TRUE), discovery);",
+        "Sys.setenv(SESS_DISCOVERY_FILE=discovery, JGD_TEST_DEVICE_LOG=file.path(root, paste0(mode, '-real-device')));",
+        "Sys.unsetenv('JGD_SOCKET');",
+        "old_library <- file.path(root, paste0(mode, '-old-library')); dir.create(old_library);",
+        "if (mode %in% c('real-loaded-old', 'real-user-old'))",
+        "  utils::install.packages(file.path(root, 'jgd-0.0.1'), repos=NULL,",
+        "                         type='source', lib=old_library, quiet=TRUE);",
+        "if (mode == 'real-loaded-old') loadNamespace('jgd', lib.loc=old_library);",
+        "if (mode == 'real-user-old') .libPaths(c(old_library, .libPaths()));",
+        "connect_env <- new.env(parent=sess_ns); connect_env$.sess_env <- sess_ns$.sess_env;",
+        "connect_env$connect <- getExportedValue('sess', 'connect');",
+        "environment(connect_env$connect) <- connect_env;",
+        "connect_env$.schedule_reconnect <- sess_ns$.schedule_reconnect;",
+        "environment(connect_env$.schedule_reconnect) <- connect_env;",
+        "connect_env$.reconnect_with_startup <- sess_ns$.reconnect_with_startup;",
+        "environment(connect_env$.reconnect_with_startup) <- connect_env;",
+        "connect_env$poll_connection <- function(...) {",
+        "  processx::poll(list(server), 1000L); processx::conn_accept_unix_socket(server);",
+        "  processx::poll(list(server), 1000L); message <- processx::conn_read_chars(server);",
+        "  stopifnot(grepl('\\\"method\\\":\\\"attach\\\"', message)); invisible(NULL)",
+        "};",
+        "answer <- vscode_r_with_jgd('jgd', function(allow_jgd=TRUE)",
+        "  connect_env$connect(endpoint=endpoint, use_rstudioapi=FALSE,",
+        "                       plot_backend='jgd', allow_jgd=allow_jgd),",
+        "  jgd_helper=file.path(getwd(), 'R', 'prepare-jgd.R'),",
+        "  tool_root=file.path(root, paste0(mode, '-tools')),",
+        "  tool_consent_directory=file.path(root, 'consent'),",
+        "  tool_library_helper=file.path(getwd(), 'R', 'tool-library.R'),",
+        "  tool_consent_helper=file.path(getwd(), 'R', 'tool-consent.R'),",
+        "  can_prompt=identical(mode, 'real-approved'), minimum_version='0.1.0');",
+        "allow <- sess_ns$.sess_env$reconnect$options$allow_jgd;",
+        "socket <- Sys.getenv('JGD_SOCKET', unset='');",
+        "loaded <- 'jgd' %in% loadedNamespaces();",
+        "getOption('device')();",
+        "settings <- sess_ns$.sess_env$reconnect;",
+        "sess_ns$.transport_disconnect(silent=TRUE); close(server);",
+        "next_endpoint <- if (.Platform$OS.type == 'windows')",
+        "  paste0('\\\\\\\\?\\\\pipe\\\\', basename(tempfile('sess-jgd-next-'))) else tempfile(fileext='.sock');",
+        "server <- processx::conn_create_unix_socket(next_endpoint);",
+        "writeLines(jsonlite::toJSON(list(version=1L, endpoint=next_endpoint,",
+        "  jgdSocket='fixture-jgd-socket-next'), auto_unbox=TRUE), discovery);",
+        "scheduled <- NULL;",
+        "connect_env$.schedule_reconnect(settings, schedule=function(callback, delay) { scheduled <<- callback });",
+        "stopifnot(is.function(scheduled)); scheduled();",
+        "next_allow <- sess_ns$.sess_env$reconnect$options$allow_jgd;",
+        "next_socket <- Sys.getenv('JGD_SOCKET', unset='');",
+        "next_loaded <- 'jgd' %in% loadedNamespaces();",
+        "getOption('device')();",
+        "writeLines(c(as.character(answer), as.character(allow), socket, as.character(loaded),",
+        "             as.character(next_allow), next_socket, as.character(next_loaded)), result);",
+        "sess_ns$.transport_disconnect(silent=TRUE); close(server)"
+    ), real_runner)
+
+    run_real_child <- function(mode, result, wait = TRUE) {
+        args <- c("--vanilla", "--slave", paste0("--file=", real_runner), "--args",
+                  mode, root, repo, result, sess_library)
+        system2(r_binary, shQuote(args), wait = wait,
+                env = isolated_child_env(paste0("real-", mode),
+                                         paste(sess_library, dependency_library, sep = .Platform$path.sep)),
+                stdout = if (wait) TRUE else file.path(root, paste0(mode, "-out")),
+                stderr = if (wait) TRUE else file.path(root, paste0(mode, "-err")))
+    }
+
+    for (mode in c("real-loaded-old", "real-user-old")) {
+        result <- file.path(root, paste0(mode, "-result"))
+        output <- run_real_child(mode, result)
+        status <- attr(output, "status")
+        if (!is.null(status) && status != 0L) stop(paste(output, collapse = "\n"))
+        values <- readLines(result, warn = FALSE)
+        stopifnot(identical(values[c(1L, 2L, 3L)], c("TRUE", "FALSE", "")))
+        stopifnot(identical(values[[4L]], as.character(identical(mode, "real-loaded-old"))))
+        stopifnot(identical(values[c(5L, 6L)], c("FALSE", "")))
+        stopifnot(identical(values[[7L]], values[[4L]]))
+        stopifnot(!file.exists(file.path(root, paste0(mode, "-real-device"))))
+    }
+
+    approved_real_result <- file.path(root, "real-approved-result")
+    real_process <- run_real_child("real-approved", approved_real_result, wait = FALSE)
+    real_request <- wait_requests(file.path(root, "consent"), 1L)
+    answer_requests(real_request, "approve")
+    deadline <- Sys.time() + 30
+    while (!file.exists(approved_real_result) && Sys.time() < deadline) Sys.sleep(0.01)
+    if (!file.exists(approved_real_result)) {
+        logs <- unlist(lapply(c("real-approved-out", "real-approved-err"), function(name) {
+            path <- file.path(root, name)
+            if (file.exists(path)) readLines(path, warn = FALSE) else character()
+        }))
+        stop("Actual sess jgd connection did not finish: ", paste(logs, collapse = "\n"))
+    }
+    stopifnot(identical(readLines(approved_real_result, warn = FALSE),
+                        c("TRUE", "TRUE", "fixture-jgd-socket", "TRUE", "TRUE",
+                          "fixture-jgd-socket-next", "TRUE")))
+    stopifnot(identical(readLines(file.path(root, "real-approved-real-device"), warn = FALSE),
+                        c("jgd", "jgd")))
+
     approved_root <- file.path(root, "approved")
     dir.create(approved_root)
     approved_result <- file.path(root, "approved-result")
     approved_args <- c("--vanilla", "--slave", paste0("--file=", runner), "--args",
                        "approved", approved_root, repo, approved_result)
     approved_process <- system2(r_binary, shQuote(approved_args), wait = FALSE,
+                                env = isolated_child_env("approved"),
                                 stdout = file.path(root, "approved-out"),
                                 stderr = file.path(root, "approved-err"))
     request <- wait_requests(file.path(approved_root, "consent"), 1L)
@@ -151,7 +333,7 @@ local({
         }))
         stop("Approved jgd attach did not finish: ", paste(logs, collapse = "\n"))
     }
-    stopifnot(identical(readLines(approved_result), c("fixture-socket", "TRUE", "jgd")))
+    stopifnot(identical(readLines(approved_result), c("fixture-socket", "TRUE", "jgd", "TRUE")))
     stopifnot(identical(readLines(file.path(approved_root, "approved-device-log")), "jgd"))
 
     declined_root <- file.path(root, "declined")
@@ -160,6 +342,7 @@ local({
     declined_args <- c("--vanilla", "--slave", paste0("--file=", runner), "--args",
                        "declined", declined_root, repo, declined_result)
     declined_process <- system2(r_binary, shQuote(declined_args), wait = FALSE,
+                                env = isolated_child_env("declined"),
                                 stdout = file.path(root, "declined-out"),
                                 stderr = file.path(root, "declined-err"))
     request <- wait_requests(file.path(declined_root, "consent"), 1L)
@@ -167,12 +350,18 @@ local({
     deadline <- Sys.time() + 30
     while (!file.exists(declined_result) && Sys.time() < deadline) Sys.sleep(0.01)
     if (!file.exists(declined_result)) stop("Declined jgd attach did not finish.")
-    stopifnot(identical(readLines(declined_result), c("", "FALSE", "standard")))
+    stopifnot(identical(readLines(declined_result), c("fixture-socket", "FALSE", "standard", "FALSE")))
 
-    for (mode in c("old", "offline")) {
+    for (mode in c("old", "offline", "helper-missing", "library-helper-missing", "socket-empty")) {
         result <- file.path(root, paste0(mode, "-result"))
         observed <- run_child(mode, result)
-        stopifnot(identical(observed, c("", if (mode == "old") "TRUE" else "FALSE", "standard")))
+        expected_socket <- "fixture-socket"
+        expected <- c(expected_socket, if (mode == "old") "TRUE" else "FALSE",
+                      "standard", "FALSE")
+        if (!identical(observed, expected)) {
+            stop(mode, " expected ", paste(expected, collapse = " | "), " observed ",
+                 paste(observed, collapse = " | "))
+        }
         stopifnot(length(list.files(file.path(root, mode, "consent"), pattern = "\\.request$")) == 0L)
     }
 
@@ -186,9 +375,9 @@ local({
         result <- file.path(root, paste0(mode, "-result"))
         observed <- run_child(mode, result)
         if (mode == "no-prompt") {
-            stopifnot(identical(observed, c("", "FALSE", "standard")))
+            stopifnot(identical(observed, c("fixture-socket", "FALSE", "standard", "FALSE")))
         } else {
-            stopifnot(identical(observed, c("fixture-socket", "TRUE", "jgd")))
+            stopifnot(identical(observed, c("fixture-socket", "TRUE", "jgd", "TRUE")))
             stopifnot(identical(readLines(file.path(root, paste0(mode, "-device-log"))), "jgd"))
         }
         stopifnot(length(list.files(file.path(root, "consent"), pattern = "\\.request$")) == 0L)
@@ -211,6 +400,7 @@ local({
         child_args <- c("--vanilla", "--slave", paste0("--file=", runner), "--args",
                         "parallel", parallel_root, repo, parallel_result[[index]])
         system2(r_binary, shQuote(child_args), wait = FALSE,
+                env = isolated_child_env(paste0("parallel-", index)),
                 stdout = file.path(parallel_root, paste0(index, "-out")),
                 stderr = file.path(parallel_root, paste0(index, "-err")))
     })
@@ -220,7 +410,7 @@ local({
     while (!all(file.exists(parallel_result)) && Sys.time() < deadline) Sys.sleep(0.01)
     if (!all(file.exists(parallel_result))) stop("Concurrent jgd preparation did not finish.")
     stopifnot(all(vapply(parallel_result, function(path) {
-        identical(readLines(path, warn = FALSE), c("fixture-socket", "TRUE", "jgd"))
+        identical(readLines(path, warn = FALSE), c("fixture-socket", "TRUE", "jgd", "TRUE"))
     }, FALSE)))
     stopifnot(length(readLines(file.path(parallel_root, "verify-log"), warn = FALSE)) == 1L)
 
@@ -238,9 +428,9 @@ local({
     file.create(source_helper, installer_helper, empty_user_profile)
     writeLines(c(
         "source(file.path(getwd(), 'R', 'attach_sess.R'))",
-        "vscode_r_prepare_sess <- function(...) { ns <- new.env(); ns$connect <- function(...) {",
+        "vscode_r_prepare_sess <- function(...) { ns <- new.env(); ns$connect <- function(allow_jgd=TRUE, ...) {",
         paste0("  writeLines(c(Sys.getenv('JGD_SOCKET', unset=''), ",
-               "as.character(requireNamespace('jgd', quietly=TRUE))), ",
+               "as.character(requireNamespace('jgd', quietly=TRUE)), as.character(allow_jgd)), ",
                "", r_literal(profile_log), ")"),
         "  TRUE",
         "}; ns }"
@@ -272,6 +462,7 @@ local({
     ), startup_profile)
     profile_result <- file.path(profile_root, "result")
     profile_process <- system2(r_binary, shQuote(c("--vanilla", "--slave", paste0("--file=", startup_profile))),
+                               env = isolated_child_env("profile"),
                                wait = FALSE, stdout = file.path(profile_root, "stdout"),
                                stderr = file.path(profile_root, "stderr"))
     request <- wait_requests(profile_consent, 1L)
@@ -279,7 +470,7 @@ local({
     deadline <- Sys.time() + 30
     while (!file.exists(profile_log) && Sys.time() < deadline) Sys.sleep(0.01)
     if (!file.exists(profile_log)) stop("Declined startup profile did not connect sess.")
-    stopifnot(identical(readLines(profile_log), c("", "FALSE")))
+    stopifnot(identical(readLines(profile_log), c("fixture-socket", "FALSE", "FALSE")))
     startup_status <- readLines(startup_file, warn = FALSE)
     deadline <- Sys.time() + 10
     while (length(startup_status) == 6L && startup_status[[6L]] == "pending" &&

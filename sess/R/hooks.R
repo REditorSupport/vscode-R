@@ -34,10 +34,16 @@
 
 #' Start the VS Code runtime integration (internal)
 #'
+#' @param allow_jgd Logical. Whether the jgd renderer may be selected.
+#'
 #' @keywords internal
 runtime_start <- function(use_rstudioapi = TRUE,
-                          plot_backend = c("auto", "jgd", "httpgd", "standard", "native")) {
+                          plot_backend = c("auto", "jgd", "httpgd", "standard", "native"),
+                          allow_jgd = TRUE) {
   plot_backend <- match.arg(plot_backend)
+  if (!(is.logical(allow_jgd) && length(allow_jgd) == 1L && !is.na(allow_jgd))) {
+    stop("allow_jgd must be a single non-NA logical value.", call. = FALSE)
+  }
   .sess_env$runtime_start_phase <- "initialize"
   state <- .runtime_state()
   if (isTRUE(state$active)) {
@@ -213,7 +219,7 @@ runtime_start <- function(use_rstudioapi = TRUE,
   }
   # 4. Plot device: JGD > httpgd > Standard, or no plot integration for native
   .sess_env$runtime_start_phase <- "plot"
-  has_jgd <- plot_backend %in% c("auto", "jgd") &&
+  has_jgd <- allow_jgd && plot_backend %in% c("auto", "jgd") &&
     nzchar(Sys.getenv("JGD_SOCKET")) && requireNamespace("jgd", quietly = TRUE)
   # The built-in client requires the 2.x renderer schema, including descr.
   has_httpgd <- plot_backend %in% c("auto", "httpgd") &&
@@ -263,7 +269,11 @@ runtime_start <- function(use_rstudioapi = TRUE,
     # unavailable, warn before silently degrading to the standard viewer.
     # Auto is meant to degrade quietly.
     if (plot_backend %in% c("jgd", "httpgd")) {
-      if (plot_backend == "jgd" && !requireNamespace("jgd", quietly = TRUE)) {
+      if (plot_backend == "jgd" && !allow_jgd) {
+        warning("[sess] Plot backend \"jgd\" was requested but jgd setup was not available. ",
+                "Falling back to the standard plot viewer. Check the jgd setup message, ",
+                "or change the r.plot.backend setting.", call. = FALSE)
+      } else if (plot_backend == "jgd" && !requireNamespace("jgd", quietly = TRUE)) {
         warning("[sess] Plot backend \"jgd\" was requested but the jgd package ",
                 "is not installed. Falling back to the standard plot viewer. ",
                 "Install jgd, or change the r.plot.backend setting.", call. = FALSE)

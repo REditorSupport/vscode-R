@@ -9,7 +9,8 @@ connect(
   use_rstudioapi = TRUE,
   plot_backend = c("auto", "jgd", "httpgd", "standard", "native"),
   attachment_id = NULL,
-  auto_activate = TRUE
+  auto_activate = TRUE,
+  allow_jgd = TRUE
 )
 }
 \arguments{
@@ -23,12 +24,14 @@ If NULL, uses SESS_ENDPOINT, then SESS_DISCOVERY_FILE.}
 
 \item{attachment_id}{Optional opaque identifier supplied by an external
 terminal integration to correlate this attachment with its preparation.
-It must be 1-128 ASCII characters from \code{A-Z}, \code{a-z}, \code{0-9},
-\code{_}, and \code{-}. It is not an authentication token or an exclusive
-ownership claim.}
+It must be 1-128 ASCII characters from \code{A-Z}, \code{a-z}, \code{0-9}, \code{_}, and \code{-}.
+It is not an authentication token or an exclusive ownership claim.}
 
 \item{auto_activate}{Logical. Whether vscode-R should select this attachment
 automatically. \code{FALSE} requires \code{attachment_id}.}
+
+\item{allow_jgd}{Logical. Whether the jgd renderer may be selected. Set to
+\code{FALSE} when optional jgd preparation was unavailable.}
 }
 \value{
 Invisibly returns \code{TRUE} when the IPC connection and runtime startup
@@ -42,7 +45,7 @@ When SESS_DISCOVERY_FILE describes the connected endpoint, an
 unexpected disconnect waits for a replacement endpoint in that file and
 reconnects with the same runtime options and session identity. The optional
 discovery jgdSocket string updates JGD_SOCKET when the resolved backend
-includes jgd; an empty
-string clears it, and an omitted field leaves it unchanged. Set
+includes jgd and \code{allow_jgd} is \code{TRUE}; an empty string clears it, and an
+omitted field leaves it unchanged. Set
 \code{options(sess.quiet = TRUE)} to suppress the successful connection message.
 }

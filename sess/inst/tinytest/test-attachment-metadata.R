@@ -55,7 +55,10 @@ local({
     list(attachment_id = strrep("a", 129L)),
     list(auto_activate = NA),
     list(auto_activate = c(TRUE, FALSE)),
-    list(auto_activate = FALSE)
+    list(auto_activate = FALSE),
+    list(allow_jgd = NA),
+    list(allow_jgd = c(TRUE, FALSE)),
+    list(allow_jgd = 1L)
   )
   for (args in invalid) {
     expect_error(do.call(env$connect, c(list(endpoint = ""), args)))
@@ -88,12 +91,18 @@ local({
   Sys.setenv(SESS_DISCOVERY_FILE = discovery_path)
   env$.resolve_endpoint <- function(endpoint = NULL, ...) target_endpoint
   env$.read_discovery <- function(path) list(endpoint = target_endpoint)
-  env$.configure_discovery_jgd <- function(discovery, jgd_enabled) NULL
+  discovery_jgd_enabled <- logical()
+  env$.configure_discovery_jgd <- function(discovery, jgd_enabled) {
+    discovery_jgd_enabled <<- c(discovery_jgd_enabled, jgd_enabled)
+  }
   invisible(env$connect(
     endpoint = target_endpoint,
     attachment_id = "console_retry_2",
-    auto_activate = FALSE
+    auto_activate = FALSE,
+    allow_jgd = FALSE
   ))
   expect_equal(state$reconnect$options$attachment_id, "console_retry_2")
   expect_false(state$reconnect$options$auto_activate)
+  expect_false(state$reconnect$options$allow_jgd)
+  expect_false(tail(discovery_jgd_enabled, 1L))
 })

@@ -12,9 +12,8 @@ vscode_r_with_jgd <- function(
     minimum_version = Sys.getenv("VSCODE_R_JGD_MINIMUM_VERSION", unset = "")
 ) {
     if (!is.function(connect)) stop("connect must be a function.", call. = FALSE)
-    if (!plot_backend %in% c("jgd", "auto") ||
-            !nzchar(Sys.getenv("JGD_SOCKET", unset = ""))) {
-        return(connect())
+    if (!plot_backend %in% c("jgd", "auto")) {
+        return(connect(allow_jgd = TRUE))
     }
     jgd_setup <- new.env(parent = environment())
     loaded <- nzchar(jgd_helper) && file.exists(jgd_helper) &&
@@ -32,14 +31,8 @@ vscode_r_with_jgd <- function(
             tool_library_helper, tool_consent_helper, can_prompt, minimum_version
         ))
     }
-
-    previous_socket <- Sys.getenv("JGD_SOCKET", unset = NA_character_)
-    on.exit({
-        if (is.na(previous_socket)) Sys.unsetenv("JGD_SOCKET") else
-            Sys.setenv(JGD_SOCKET = previous_socket)
-    }, add = TRUE)
-    Sys.unsetenv("JGD_SOCKET")
-    connect()
+    message("vscode-R could not load managed jgd setup resources; using the available plot fallback.")
+    connect(allow_jgd = FALSE)
 }
 
 vscode_r_prepare_sess <- function(pkg_path, managed_root, consent_dir,
@@ -300,7 +293,10 @@ vscode_r_attach_sess <- function(endpoint, pkg_path, managed_root, consent_dir,
         }
         vscode_r_with_jgd(
             plot_backend,
-            function() do.call(connect, args),
+            function(allow_jgd = TRUE) {
+                args$allow_jgd <- allow_jgd
+                do.call(connect, args)
+            },
             jgd_helper, tool_root, tool_consent_directory,
             tool_library_helper, tool_consent_helper, jgd_can_prompt, jgd_minimum_version
         )

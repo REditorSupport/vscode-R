@@ -5,6 +5,8 @@
 #' @param use_rstudioapi Logical. Enable rstudioapi emulation. Defaults to TRUE.
 #' @param plot_backend Plot backend: `auto`, `jgd`, `httpgd`, `standard`, or
 #'   `native`. NULL also selects `auto`.
+#' @param allow_jgd Logical. Whether the jgd renderer may be selected. Set to
+#'   `FALSE` when optional jgd preparation was unavailable.
 #' @param attachment_id Optional opaque identifier supplied by an external
 #'   terminal integration to correlate this attachment with its preparation.
 #'   It must be 1-128 ASCII characters from `A-Z`, `a-z`, `0-9`, `_`, and `-`.
@@ -17,13 +19,13 @@
 #'   unexpected disconnect waits for a replacement endpoint in that file and
 #'   reconnects with the same runtime options and session identity. The optional
 #'   discovery jgdSocket string updates JGD_SOCKET when the resolved backend
-#'   includes jgd; an empty
-#'   string clears it, and an omitted field leaves it unchanged. Set
+#'   includes jgd and `allow_jgd` is `TRUE`; an empty string clears it, and an
+#'   omitted field leaves it unchanged. Set
 #'   `options(sess.quiet = TRUE)` to suppress the successful connection message.
 #' @export
 connect <- function(endpoint = NULL, use_rstudioapi = TRUE,
                     plot_backend = c("auto", "jgd", "httpgd", "standard", "native"),
-                    attachment_id = NULL, auto_activate = TRUE) {
+                    attachment_id = NULL, auto_activate = TRUE, allow_jgd = TRUE) {
   if (!is.null(attachment_id) &&
         !(is.character(attachment_id) && length(attachment_id) == 1L &&
             !is.na(attachment_id) &&
@@ -35,6 +37,9 @@ connect <- function(endpoint = NULL, use_rstudioapi = TRUE,
   }
   if (!auto_activate && is.null(attachment_id)) {
     stop("auto_activate = FALSE requires attachment_id.", call. = FALSE)
+  }
+  if (!(is.logical(allow_jgd) && length(allow_jgd) == 1L && !is.na(allow_jgd))) {
+    stop("allow_jgd must be a single non-NA logical value.", call. = FALSE)
   }
 
   plot_backend <- .resolve_plot_backend(plot_backend)
@@ -68,11 +73,12 @@ connect <- function(endpoint = NULL, use_rstudioapi = TRUE,
   # endpoints from the generated attach script. Never redirect an unrelated client.
   discovery <- if (nzchar(discovery_file)) .read_discovery(discovery_file) else NULL
   if (!is.null(discovery) && identical(discovery$endpoint, endpoint)) {
-    .configure_discovery_jgd(discovery, plot_backend %in% c("auto", "jgd"))
+    .configure_discovery_jgd(discovery, allow_jgd && plot_backend %in% c("auto", "jgd"))
     .sess_env$reconnect <- list(
       path = discovery_file, endpoint = endpoint,
       options = list(use_rstudioapi = use_rstudioapi, plot_backend = plot_backend,
-                     attachment_id = attachment_id, auto_activate = auto_activate)
+                     attachment_id = attachment_id, auto_activate = auto_activate,
+                     allow_jgd = allow_jgd)
     )
   }
 
@@ -124,7 +130,8 @@ connect <- function(endpoint = NULL, use_rstudioapi = TRUE,
   if (is.na(use_rstudioapi)) use_rstudioapi <- TRUE
   if (isTRUE(connected) && !is.null(.sess_env$con)) {
     tryCatch(
-      runtime_start(use_rstudioapi = use_rstudioapi, plot_backend = plot_backend),
+      runtime_start(use_rstudioapi = use_rstudioapi, plot_backend = plot_backend,
+                    allow_jgd = allow_jgd),
       error = function(e) {
         phase <- .sess_env$runtime_start_phase
         error_call <- conditionCall(e)
@@ -309,8 +316,12 @@ connect <- function(endpoint = NULL, use_rstudioapi = TRUE,
           !identical(endpoint, settings$endpoint)) {
       # Read endpoint and renderer from one snapshot, even if the file is
       # replaced again while connect() runs.
-      .configure_discovery_jgd(discovery,
-                               settings$options$plot_backend %in% c("auto", "jgd"))
+      allow_jgd <- settings$options$allow_jgd
+      if (is.null(allow_jgd)) allow_jgd <- TRUE
+      .configure_discovery_jgd(
+        discovery,
+        isTRUE(allow_jgd) && settings$options$plot_backend %in% c("auto", "jgd")
+      )
       .sess_env$reconnecting <- TRUE
       tryCatch(
         .reconnect_with_startup(endpoint, function() {

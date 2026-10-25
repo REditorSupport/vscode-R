@@ -1,4 +1,4 @@
-# Keep socket fallback, preparation, connection, and restoration in one place.
+# Keep optional jgd preparation and its result shared by terminal connections.
 vscode_r_connect_with_jgd <- function(
     plot_backend,
     connect,
@@ -10,26 +10,14 @@ vscode_r_connect_with_jgd <- function(
     minimum_version = Sys.getenv("VSCODE_R_JGD_MINIMUM_VERSION", unset = "")
 ) {
     if (!is.function(connect)) stop("connect must be a function.", call. = FALSE)
-    if (!plot_backend %in% c("jgd", "auto") || !nzchar(Sys.getenv("JGD_SOCKET", unset = ""))) {
-        return(connect())
+    if (!plot_backend %in% c("jgd", "auto")) {
+        return(connect(allow_jgd = TRUE))
     }
-    previous_socket <- Sys.getenv("JGD_SOCKET", unset = NA_character_)
-    on.exit({
-        if (is.na(previous_socket)) {
-            Sys.unsetenv("JGD_SOCKET")
-        } else {
-            Sys.setenv(JGD_SOCKET = previous_socket)
-        }
-    }, add = TRUE)
     ready <- isTRUE(vscode_r_prepare_jgd(
         plot_backend, tool_root, consent_directory,
         library_helper, consent_helper, can_prompt, minimum_version
     ))
-    if (!ready) {
-        # An old loaded jgd namespace still satisfies requireNamespace; hide the socket so hooks choose fallback.
-        Sys.unsetenv("JGD_SOCKET")
-    }
-    connect()
+    connect(allow_jgd = ready)
 }
 
 # Prepare optional plot support without making sess startup depend on CRAN access
@@ -45,9 +33,6 @@ vscode_r_prepare_jgd <- function(
 ) {
     if (!is.character(plot_backend) || length(plot_backend) != 1L ||
             is.na(plot_backend) || !plot_backend %in% c("jgd", "auto")) {
-        return(FALSE)
-    }
-    if (!nzchar(Sys.getenv("JGD_SOCKET", unset = ""))) {
         return(FALSE)
     }
     if (!(is.logical(can_prompt) && length(can_prompt) == 1L && !is.na(can_prompt))) {
