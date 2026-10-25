@@ -3,6 +3,10 @@ import { ConsentResponse, FileConsentService } from './fileConsent';
 export type ToolConsentBackend = 'jgd' | 'auto';
 export type ToolConsentChoice = 'install' | 'notNow' | 'dontAskAgain' | 'dismiss';
 
+export interface ToolConsentSessionState {
+    autoPrompted: boolean;
+}
+
 export interface ToolPackagePlan {
     name: string;
     minimumVersion: string;
@@ -23,7 +27,8 @@ export interface ToolConsentServiceOptions {
     directory: string;
     isEnabled: () => boolean;
     isAutoPromptEnabled: () => boolean;
-    rememberAutoPromptShown: () => Promise<void>;
+    sessionState: ToolConsentSessionState;
+    rememberAutoPromptDismissal: () => Promise<void>;
     prompt: (request: ToolConsentRequest) => Promise<ToolConsentChoice>;
     intervalMs?: number;
 }
@@ -68,7 +73,6 @@ export function parseToolConsentRequest(id: string, content: string): ToolConsen
             Buffer.byteLength(repository, 'utf8') > 2048 ||
             !repository ||
             /[\u0000-\u001f\u007f]/.test(repository) ||
-            comparePackageVersions(version, minimumVersion) < 0 ||
             !PACKAGE_TYPE.test(packageType) ||
             (sourceBuild !== 'yes' && sourceBuild !== 'no')
         ) {
@@ -79,21 +83,9 @@ export function parseToolConsentRequest(id: string, content: string): ToolConsen
     return { id, runtime, backend, packages };
 }
 
-function comparePackageVersions(left: string, right: string): number {
-    const parse = (version: string) => version.split(/[.-]/).map(Number);
-    const a = parse(left);
-    const b = parse(right);
-    for (let index = 0; index < Math.max(a.length, b.length); index++) {
-        const difference = (a[index] ?? 0) - (b[index] ?? 0);
-        if (difference !== 0) return difference;
-    }
-    return 0;
-}
-
 /** Bridges a fixed R package plan to a one-time VS Code decision. Use a directory dedicated to this service. */
 export class ToolConsentService {
     private readonly bridge: FileConsentService<ToolConsentRequest>;
-    private autoPromptInFlight = false;
     private running = false;
 
     constructor(private readonly options: ToolConsentServiceOptions) {
@@ -127,22 +119,16 @@ export class ToolConsentService {
             return;
         }
         const automatic = request.backend === 'auto';
-        if (automatic && (!this.options.isAutoPromptEnabled() || this.autoPromptInFlight)) {
+        if (automatic && (
+            !this.options.isAutoPromptEnabled() || this.options.sessionState.autoPrompted
+        )) {
             await respond('decline');
             return;
         }
-        if (automatic) this.autoPromptInFlight = true;
         if (automatic) {
-            try {
-                await this.options.rememberAutoPromptShown();
-            } catch {
-                this.autoPromptInFlight = false;
-                await respond('decline');
-                return;
-            }
+            this.options.sessionState.autoPrompted = true;
         }
         if (!this.running || !this.options.isEnabled()) {
-            if (automatic) this.autoPromptInFlight = false;
             await respond('decline');
             return;
         }
@@ -153,12 +139,16 @@ export class ToolConsentService {
             choice = 'dismiss';
         }
         if (!this.running || !this.options.isEnabled()) {
-            if (automatic) this.autoPromptInFlight = false;
             await respond('decline');
             return;
         }
-        if (automatic) {
-            this.autoPromptInFlight = false;
+        if (automatic && choice === 'dontAskAgain') {
+            try {
+                await this.options.rememberAutoPromptDismissal();
+            } catch {
+                await respond('decline');
+                return;
+            }
         }
         const accepted = choice === 'install' && this.running && this.options.isEnabled();
         await respond(accepted ? 'approve' : 'decline');

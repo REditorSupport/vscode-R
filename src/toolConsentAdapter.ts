@@ -1,9 +1,17 @@
 import * as vscode from 'vscode';
-import { ToolConsentChoice, ToolConsentRequest, ToolConsentService } from './toolConsent';
+import {
+    ToolConsentChoice,
+    ToolConsentRequest,
+    ToolConsentService,
+    ToolConsentSessionState,
+} from './toolConsent';
 
 const AUTO_PROMPT_SETTING = 'plot.jgd.installationPrompt';
+// Shared by services in this extension host; a new host starts with a fresh state.
+const hostSessionState: ToolConsentSessionState = { autoPrompted: false };
 
 function formatPlan(request: ToolConsentRequest): string {
+    const [platform, version] = request.runtime.split('|');
     const rows = request.packages.map(
         (item) => `• ${item.name} ${item.version} (minimum ${item.minimumVersion})\n  Repository: ${item.repository}`,
     );
@@ -13,7 +21,7 @@ function formatPlan(request: ToolConsentRequest): string {
     const modeNotice = request.backend === 'auto'
         ? '\n\nAutomatic plot backend setup is optional; declining uses the available fallback.'
         : '';
-    return `Install these R packages for R ${request.runtime}?\n\n${rows.join('\n')}${buildNotice}${modeNotice}\n\nPackages are installed in a vscode-R-managed library. Existing user and project libraries are not changed.`;
+    return `Install these R packages for R ${version} (${platform})?\n\n${rows.join('\n')}${buildNotice}${modeNotice}\n\nPackages are installed in a vscode-R-managed library. Existing user and project libraries are not changed.`;
 }
 
 export function createToolConsentService(
@@ -26,7 +34,8 @@ export function createToolConsentService(
         isEnabled,
         isAutoPromptEnabled: () =>
             vscode.workspace.getConfiguration('r').get<boolean>(AUTO_PROMPT_SETTING, true),
-        rememberAutoPromptShown: async () => {
+        sessionState: hostSessionState,
+        rememberAutoPromptDismissal: async () => {
             await vscode.workspace.getConfiguration('r').update(
                 AUTO_PROMPT_SETTING,
                 false,
@@ -47,14 +56,5 @@ export function createToolConsentService(
             return 'dismiss';
         },
     });
-}
-
-/** Set `r.plot.jgd.installationPrompt` to true to show automatic prompts again. */
-export async function resetAutomaticToolPrompt(): Promise<void> {
-    await vscode.workspace.getConfiguration('r').update(
-        AUTO_PROMPT_SETTING,
-        true,
-        vscode.ConfigurationTarget.Global,
-    );
 }
 

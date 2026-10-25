@@ -44,6 +44,7 @@ suite('managed package consent bridge', () => {
     let failPreferenceSave: boolean;
     let choice: ToolConsentChoice;
     let prompts: ToolConsentRequest[];
+    let sessionState: { autoPrompted: boolean };
     const services: ToolConsentService[] = [];
 
     setup(async () => {
@@ -52,6 +53,7 @@ suite('managed package consent bridge', () => {
         failPreferenceSave = false;
         choice = 'install';
         prompts = [];
+        sessionState = { autoPrompted: false };
     });
 
     teardown(async () => {
@@ -59,12 +61,16 @@ suite('managed package consent bridge', () => {
         await fs.rm(directory, { recursive: true, force: true });
     });
 
-    function service(prompt?: (request: ToolConsentRequest) => Promise<ToolConsentChoice>): ToolConsentService {
+    function service(
+        prompt?: (request: ToolConsentRequest) => Promise<ToolConsentChoice>,
+        requestDirectory = directory,
+    ): ToolConsentService {
         const result = new ToolConsentService({
-            directory,
+            directory: requestDirectory,
             isEnabled: () => true,
             isAutoPromptEnabled: () => autoPromptEnabled,
-            rememberAutoPromptShown: async () => {
+            sessionState,
+            rememberAutoPromptDismissal: async () => {
                 if (failPreferenceSave) throw new Error('settings unavailable');
                 autoPromptEnabled = false;
             },
@@ -78,8 +84,13 @@ suite('managed package consent bridge', () => {
         return result;
     }
 
-    async function writeRequest(id: string, backend: 'jgd' | 'auto', version?: string): Promise<string> {
-        const request = path.join(directory, `${id}.request`);
+    async function writeRequest(
+        id: string,
+        backend: 'jgd' | 'auto',
+        version?: string,
+        requestDirectory = directory,
+    ): Promise<string> {
+        const request = path.join(requestDirectory, `${id}.request`);
         await fs.writeFile(request, requestContent(id, backend, version));
         return request;
     }
@@ -112,34 +123,75 @@ suite('managed package consent bridge', () => {
         assert.strictEqual(request.packages[0].sourceBuild, true);
     });
 
-    test('automatic prompt is remembered, explicit jgd still prompts, and settings can reset it', async () => {
+    test('automatic prompt is limited to one per host session across services', async () => {
         const first = service();
         await first.start();
         const firstId = '3'.repeat(32);
+        choice = 'notNow';
         await writeRequest(firstId, 'auto');
-        assert.strictEqual(await waitForFile(path.join(directory, `${firstId}.response`)), 'approve\n');
-        assert.strictEqual(autoPromptEnabled, false);
+        assert.strictEqual(await waitForFile(path.join(directory, `${firstId}.response`)), 'decline\n');
+        assert.strictEqual(autoPromptEnabled, true);
+        assert.strictEqual(sessionState.autoPrompted, true);
         await first.stop();
 
-        await fs.rm(path.join(directory, `${firstId}.request`), { force: true });
-        await fs.rm(path.join(directory, `${firstId}.response`), { force: true });
-        const restarted = service();
-        await restarted.start();
+        const secondDirectory = path.join(directory, 'another-service');
+        await fs.mkdir(secondDirectory);
+        const secondService = service(undefined, secondDirectory);
+        await secondService.start();
         const secondId = '4'.repeat(32);
-        await writeRequest(secondId, 'auto');
-        assert.strictEqual(await waitForFile(path.join(directory, `${secondId}.response`)), 'decline\n');
+        await writeRequest(secondId, 'auto', undefined, secondDirectory);
+        assert.strictEqual(await waitForFile(path.join(secondDirectory, `${secondId}.response`)), 'decline\n');
         assert.strictEqual(prompts.length, 1);
+        await secondService.stop();
 
-        const explicitId = '5'.repeat(32);
+        // A fresh state represents a new VS Code extension-host session.
+        sessionState = { autoPrompted: false };
+        const newHostDirectory = path.join(directory, 'new-host');
+        await fs.mkdir(newHostDirectory);
+        const nextHost = service(undefined, newHostDirectory);
+        await nextHost.start();
+        choice = 'install';
+        const thirdId = '5'.repeat(32);
+        await writeRequest(thirdId, 'auto', undefined, newHostDirectory);
+        assert.strictEqual(await waitForFile(path.join(newHostDirectory, `${thirdId}.response`)), 'approve\n');
+        assert.strictEqual(prompts.length, 2);
+    });
+
+    test("only Don't ask again persists suppression; explicit requests ignore it", async () => {
+        const broker = service();
+        await broker.start();
+        choice = 'dontAskAgain';
+        const firstId = '6'.repeat(32);
+        await writeRequest(firstId, 'auto');
+        assert.strictEqual(await waitForFile(path.join(directory, `${firstId}.response`)), 'decline\n');
+        assert.strictEqual(autoPromptEnabled, false);
+
+        choice = 'install';
+        const explicitId = '7'.repeat(32);
         await writeRequest(explicitId, 'jgd');
         assert.strictEqual(await waitForFile(path.join(directory, `${explicitId}.response`)), 'approve\n');
         assert.strictEqual(prompts.length, 2);
-        assert.strictEqual(autoPromptEnabled, false);
+        await broker.stop();
+
+        sessionState = { autoPrompted: false };
+        const nextHostDirectory = path.join(directory, 'next-host');
+        await fs.mkdir(nextHostDirectory);
+        const nextHost = service(undefined, nextHostDirectory);
+        await nextHost.start();
+        const suppressedId = '8'.repeat(32);
+        await writeRequest(suppressedId, 'auto', undefined, nextHostDirectory);
+        assert.strictEqual(await waitForFile(path.join(nextHostDirectory, `${suppressedId}.response`)), 'decline\n');
+        assert.strictEqual(prompts.length, 2);
 
         autoPromptEnabled = true;
-        const resetId = '6'.repeat(32);
-        await writeRequest(resetId, 'auto');
-        assert.strictEqual(await waitForFile(path.join(directory, `${resetId}.response`)), 'approve\n');
+        sessionState = { autoPrompted: false };
+        const resetHostDirectory = path.join(directory, 'reset-host');
+        await fs.mkdir(resetHostDirectory);
+        const resetHost = service(undefined, resetHostDirectory);
+        await resetHost.start();
+        const resetId = '9'.repeat(32);
+        await writeRequest(resetId, 'auto', undefined, resetHostDirectory);
+        assert.strictEqual(await waitForFile(path.join(resetHostDirectory, `${resetId}.response`)), 'approve\n');
         assert.strictEqual(prompts.length, 3);
     });
 
@@ -166,60 +218,52 @@ suite('managed package consent bridge', () => {
         assert.strictEqual(await waitForFile(path.join(directory, `${firstId}.response`)), 'decline\n');
     });
 
-    test('automatic prompt is skipped when persisting the one-time setting fails', async () => {
+    test('a failed automatic dismissal save never grants installation', async () => {
         failPreferenceSave = true;
+        choice = 'dontAskAgain';
         const broker = service();
         await broker.start();
         const id = '9'.repeat(32);
         await writeRequest(id, 'auto');
         assert.strictEqual(await waitForFile(path.join(directory, `${id}.response`)), 'decline\n');
-        assert.strictEqual(prompts.length, 0);
+        assert.strictEqual(prompts.length, 1);
         assert.strictEqual(autoPromptEnabled, true);
     });
 
-    test('declined automatic choices are remembered without suppressing explicit jgd prompts', async () => {
-        const broker = service();
-        await broker.start();
-        const automaticChoices: ToolConsentChoice[] = ['notNow', 'dismiss', 'dontAskAgain'];
-        for (const [index, automaticChoice] of automaticChoices.entries()) {
+    test('Not now, dismiss, and install do not change the persistent setting', async () => {
+        for (const [index, result] of (['notNow', 'dismiss', 'install'] as const).entries()) {
             autoPromptEnabled = true;
-            choice = automaticChoice;
-            const automaticId = String(index + 1).repeat(31) + String(index + 1);
-            await writeRequest(automaticId, 'auto');
-            assert.strictEqual(
-                await waitForFile(path.join(directory, `${automaticId}.response`)),
-                'decline\n',
-            );
-            assert.strictEqual(autoPromptEnabled, false);
-
-            choice = 'install';
-            const explicitId = String(index + 4).repeat(31) + String(index + 4);
-            await writeRequest(explicitId, 'jgd');
-            assert.strictEqual(
-                await waitForFile(path.join(directory, `${explicitId}.response`)),
-                'approve\n',
-            );
+            choice = result;
+            sessionState = { autoPrompted: false };
+            const hostDirectory = path.join(directory, `host-${index}`);
+            await fs.mkdir(hostDirectory);
+            const broker = service(undefined, hostDirectory);
+            await broker.start();
+            const id = String(index + 1).repeat(32);
+            await writeRequest(id, 'auto', undefined, hostDirectory);
+            const expected = result === 'install' ? 'approve\n' : 'decline\n';
+            assert.strictEqual(await waitForFile(path.join(hostDirectory, `${id}.response`)), expected);
+            assert.strictEqual(autoPromptEnabled, true);
         }
-        assert.deepStrictEqual(prompts.map((request) => request.backend), [
-            'auto', 'jgd', 'auto', 'jgd', 'auto', 'jgd',
-        ]);
     });
 
-    test('shutdown during automatic preference save never opens the prompt', async () => {
-        let finishSave!: () => void;
-        let saveStarted!: () => void;
-        const started = new Promise<void>((resolve) => { saveStarted = resolve; });
+    test('shutdown while an automatic prompt is pending cannot publish a late approval', async () => {
+        let finishPrompt!: (value: ToolConsentChoice) => void;
+        let promptStarted!: () => void;
+        let dismissals = 0;
+        const started = new Promise<void>((resolve) => { promptStarted = resolve; });
         const broker = new ToolConsentService({
             directory,
             isEnabled: () => true,
             isAutoPromptEnabled: () => true,
-            rememberAutoPromptShown: () => new Promise((resolve) => {
-                finishSave = resolve;
-                saveStarted();
-            }),
+            sessionState,
+            rememberAutoPromptDismissal: async () => {
+                dismissals++;
+            },
             prompt: async (request) => {
                 prompts.push(request);
-                return 'install';
+                promptStarted();
+                return new Promise((resolve) => { finishPrompt = resolve; });
             },
             intervalMs: 5,
         });
@@ -229,8 +273,9 @@ suite('managed package consent bridge', () => {
         await writeRequest(id, 'auto');
         await started;
         await broker.stop();
-        finishSave();
+        finishPrompt('install');
         assert.strictEqual(await waitForFile(path.join(directory, `${id}.response`)), 'decline\n');
-        assert.strictEqual(prompts.length, 0);
+        assert.strictEqual(prompts.length, 1);
+        assert.strictEqual(dismissals, 0);
     });
 });

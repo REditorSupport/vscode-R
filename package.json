@@ -2316,7 +2316,7 @@
           "default": true,
           "scope": "application",
           "ignoreSync": true,
-          "markdownDescription": "Show the one-time prompt to install an optional package when `#r.plot.backend#` is `auto`. vscode-R turns this off after the prompt is shown. Set this to `true` in User Settings to show the automatic prompt again. Explicitly selecting the `jgd` backend prompts whenever installation is needed, regardless of this setting."
+          "markdownDescription": "Show one automatic prompt per vscode-R extension-host session when `#r.plot.backend#` is `auto`. Choosing `Don't ask again` disables automatic prompts in User Settings; set this to `true` to allow prompts again in a later session. `Not now`, dismissal, and installation do not change this setting. Explicitly selecting the `jgd` backend prompts whenever installation is needed, regardless of this setting."
         },
         "r.plot.jgd.historyLimit": {
           "type": "number",
