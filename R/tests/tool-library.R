@@ -4,6 +4,7 @@ source("R/tool-library.R")
 local({
     root <- tempfile("tool-library-")
     dir.create(root)
+    root <- normalizePath(root, winslash = "/", mustWork = TRUE)
     on.exit(unlink(root, recursive = TRUE), add = TRUE)
     original_paths <- .libPaths()
     on.exit(.libPaths(original_paths), add = TRUE)
