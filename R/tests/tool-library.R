@@ -90,6 +90,25 @@ local({
     # Replace it with a dependency-free package, then install without network access.
     write_package("jgd", "1.2.0")
     tools::write_PACKAGES(file.path(root, "repo", "src", "contrib"), type = "source")
+    # The same verification failure must distinguish first installation from an update.
+    failing_install <- tool_library_install
+    environment(failing_install) <- list2env(list(
+        .tool_verify_child = function(...) stop("fixture verification failure")
+    ), parent = environment(tool_library_install))
+    for (updating in c(FALSE, TRUE)) {
+        failure_root <- file.path(root, if (updating) "failed update" else "failed installation")
+        if (updating) {
+            existing <- file.path(tool_library_path(failure_root), "jgd")
+            dir.create(existing, recursive = TRUE)
+            writeLines(c("Package: jgd", "Version: 0.1.0"), file.path(existing, "DESCRIPTION"))
+        }
+        failure <- tryCatch(failing_install("jgd", "1.0.0", failure_root, repos = c(CRAN = repo)),
+                            error = identity)
+        expected <- paste0("Could not ", if (updating) "update" else "install", " the managed jgd package. ",
+                           if (updating) "Close other R sessions using it and try again. " else "",
+                           "fixture verification failure")
+        stopifnot(inherits(failure, "error"), identical(conditionMessage(failure), expected))
+    }
     too_old <- tryCatch(tool_library_install("jgd", "1.3.0", root_path, repos = c(CRAN = repo)),
                         error = identity)
     stopifnot(inherits(too_old, "error"), !dir.exists(file.path(managed, "jgd")))

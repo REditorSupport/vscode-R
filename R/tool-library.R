@@ -200,6 +200,7 @@ tool_library_install <- function(package, minimum_version, root,
             stop("Refusing to install ", package,
                  " because it has non-base package dependencies.")
         }
+        updating <- !is.null(current$version)
         dir.create(library, recursive = TRUE, showWarnings = FALSE)
         if (file.access(library, 2L) != 0L) stop("The vscode-R managed tool library is not writable.")
         tryCatch({
@@ -214,8 +215,9 @@ tool_library_install <- function(package, minimum_version, root,
             invisible(list(package = package, version = version, source = "managed",
                            install_required = FALSE, library = library))
         }, error = function(error) {
-            stop("Could not update the managed ", package,
-                 " package. Close other R sessions using it and try again. ",
+            action <- if (updating) "update" else "install"
+            advice <- if (updating) "Close other R sessions using it and try again. " else ""
+            stop("Could not ", action, " the managed ", package, " package. ", advice,
                  conditionMessage(error), call. = FALSE)
         })
     }, timeout_seconds = timeout_seconds)
