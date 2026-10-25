@@ -210,6 +210,51 @@ suite('Interactive backend configuration', () => {
         await client.request('stop');
         assert.strictEqual((await client.snapshot()).manifest.status, 'exited');
     });
+    test('coalesces workspace notifications and discards metadata invalidated during inspection', async () => {
+        let calls = 0;
+        let release!: (value: unknown) => void;
+        backend.inspectResult = () => {
+            calls++;
+            return calls === 1
+                ? new Promise((resolve) => {
+                      release = resolve;
+                  })
+                : Promise.resolve({ revision: 2, globalenv: { latest: {} } });
+        };
+        for (let i = 0; i < 20; i++) {
+            backend.emit({ type: 'workspaceChanged' });
+        }
+        await until(() => calls === 1);
+        for (let i = 0; i < 20; i++) {
+            backend.emit({ type: 'workspaceChanged' });
+        }
+        assert.strictEqual(calls, 1);
+        release({ revision: 1, globalenv: { stale: {} } });
+        await until(() =>
+            events.some((event) => event.type === 'workspace' && event.data.revision === 2),
+        );
+        assert.strictEqual(calls, 2);
+        assert.ok(!events.some((event) => event.type === 'workspace' && event.data.revision === 1));
+        assert.deepStrictEqual(await client.request('inspect', { method: 'workspace' }), {
+            revision: 2,
+            globalenv: { latest: {} },
+        });
+    });
+
+    test('unchanged workspace replies retain the complete cache without publishing another event', async () => {
+        let calls = 0;
+        const previous = (await client.snapshot()).workspace;
+        const published = events.filter((event) => event.type === 'workspace').length;
+        backend.inspectResult = () => {
+            calls++;
+            return Promise.resolve({ revision: 1, unchanged: true });
+        };
+        backend.emit({ type: 'workspaceChanged' });
+        await until(() => calls === 1);
+        assert.deepStrictEqual((await client.snapshot()).workspace, previous);
+        assert.strictEqual(events.filter((event) => event.type === 'workspace').length, published);
+    });
+
     test('handles completion before transport acknowledgement and deduplicates submissions', async () => {
         let acknowledge!: () => void;
         backend.dispatchResult = () =>

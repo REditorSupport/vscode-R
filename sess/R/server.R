@@ -478,7 +478,7 @@ dispatch_message <- function(line) {
         interactive_stop()
         TRUE
       },
-      "workspace" = function(p) get_workspace_data(),
+      "workspace" = function(p) get_workspace_data(p$revision),
       "workspace_children" = function(p) get_workspace_children(p$name, p$path, p$start, p$view_id),
       "workspace_view" = function(p) handle_workspace_view(p$name, p$path),
       "hover" = function(p) handle_hover(p$expr),

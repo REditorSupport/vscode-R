@@ -10,6 +10,7 @@ import { AssetStore } from './assets';
 import { BackendEvent, BackendFactory, SessionBackend, inspectionMethod } from './backend';
 import {
     AGENT_PROTOCOL,
+    MAX_MESSAGE_BYTES,
     AgentConfig,
     AgentSnapshot,
     ExecutionRecord,
@@ -20,13 +21,17 @@ import {
     identifier,
     sessionLabel,
 } from './protocol';
-import { searchHistory } from './history';
+import { MessagePages, boundedJson } from './messagePages';
+import { isDeepStrictEqual } from 'node:util';
+import { WorkspaceRefreshScheduler } from '../workspaceRefresh';
 
 interface Client {
     socket: net.Socket;
     authenticated: boolean;
     subscribed: boolean;
     id: string;
+    paging?: boolean;
+    pages: MessagePages;
 }
 /** This process never imports vscode and is supervised independently of the editor. */
 export class SessionAgent {
@@ -44,6 +49,7 @@ export class SessionAgent {
     private current?: string;
     private input?: Record<string, unknown>;
     private workspace?: Record<string, unknown>;
+    private workspaceRefresh: WorkspaceRefreshScheduler<Record<string, unknown>>;
     private outputBytes = new Map<string, number>();
     private truncated = new Set<string>();
     private retentionWarnings = new Set<string>();
@@ -77,6 +83,30 @@ export class SessionAgent {
             () => retainedAssetIds(config.storage),
         );
         this.backend = factory(config);
+        this.workspaceRefresh = new WorkspaceRefreshScheduler(
+            async () => {
+                const response = object(
+                    await this.backend.inspect({
+                        method: 'workspace',
+                        params: { revision: this.workspace?.revision },
+                        timeout: 2000,
+                    }),
+                );
+                return response.unchanged ? undefined : response;
+            },
+            (workspace) => {
+                if (!isDeepStrictEqual(workspace, this.workspace)) {
+                    this.workspace = workspace;
+                    this.event('workspace', workspace);
+                }
+            },
+            () =>
+                !this.stopped &&
+                !this.stopping &&
+                this.backendReady &&
+                !this.current &&
+                this.manifest.capabilities.inspection !== false,
+        );
         this.manifest = {
             protocol: AGENT_PROTOCOL,
             id: config.id,
@@ -103,7 +133,7 @@ export class SessionAgent {
             supervision: config.supervision,
         };
         // A previous agent's accepted/running work must never be replayed automatically.
-        for (const entry of this.journal.executions.values()) {
+        for (const entry of this.journal.executions.unfinished()) {
             if (entry.state === 'running' || entry.state === 'queued') {
                 this.journal.update({ ...entry, state: 'unknown', ended: Date.now() });
             }
@@ -200,17 +230,54 @@ export class SessionAgent {
     }
 
     private send(socket: net.Socket, message: unknown): void {
-        if (!socket.destroyed) {
-            if (socket.writableLength > 8 * 1024 * 1024) {
+        if (socket.destroyed) {
+            return;
+        }
+        if (socket.writableLength > 8 * 1024 * 1024) {
+            socket.destroy();
+            return;
+        }
+        let encoded = boundedJson(message);
+        if (Buffer.byteLength(encoded) > MAX_MESSAGE_BYTES) {
+            const client = [...this.clients].find((entry) => entry.socket === socket);
+            const value = message as { id?: number; result?: unknown; event?: SessionEvent };
+            if (client?.paging) {
+                try {
+                    encoded = value.event
+                        ? JSON.stringify({ eventPage: client.pages.retain(value.event) })
+                        : JSON.stringify({
+                              id: value.id,
+                              resultPage: client.pages.retain(value.result),
+                          });
+                } catch (error) {
+                    if (value.id !== undefined) {
+                        encoded = JSON.stringify({ id: value.id, error: String(error) });
+                    } else {
+                        socket.destroy();
+                        return;
+                    }
+                }
+            } else if (value.id !== undefined) {
+                encoded = JSON.stringify({
+                    id: value.id,
+                    error: 'Response exceeds the message limit; update vscode-R to read paged snapshots',
+                });
+            } else {
                 socket.destroy();
                 return;
             }
-            socket.write(JSON.stringify(message) + '\n');
         }
+        socket.write(encoded + '\n');
     }
 
     private connectClient(socket: net.Socket): void {
-        const client: Client = { socket, authenticated: false, subscribed: false, id: '' };
+        const client: Client = {
+            socket,
+            authenticated: false,
+            subscribed: false,
+            id: '',
+            pages: new MessagePages(),
+        };
         this.clients.add(client);
         const authTimer = setTimeout(() => {
             if (!client.authenticated) {
@@ -257,6 +324,7 @@ export class SessionAgent {
             throw new Error('Invalid request');
         }
         const params = object(request.params ?? {});
+        client.pages.expire();
         if (!client.authenticated) {
             if (
                 request.method !== 'hello' ||
@@ -268,6 +336,7 @@ export class SessionAgent {
             }
             client.id = identifier(params.clientId);
             client.authenticated = true;
+            client.paging = params.paging === true;
             this.send(client.socket, { id: request.id, result: this.manifest });
             return;
         }
@@ -276,6 +345,9 @@ export class SessionAgent {
         }
         let result: unknown = true;
         switch (request.method) {
+            case 'messagePage':
+                result = client.pages.read(String(params.token), Number(params.offset));
+                break;
             case 'claim':
                 if (
                     !this.lease ||
@@ -311,7 +383,7 @@ export class SessionAgent {
                 if (!Number.isSafeInteger(before) || Number(before) < 1) {
                     throw new Error('Invalid history cursor');
                 }
-                result = searchHistory(this.journal.executions.values(), query, Number(before));
+                result = this.journal.executions.history(query, Number(before));
                 break;
             }
             case 'rename': {
@@ -333,18 +405,24 @@ export class SessionAgent {
             case 'snapshot': {
                 const recent = this.journal.recent(
                     Math.max(1, Math.min(Number(params.limit) || 50, this.config.historyLimit)),
+                    this.current,
                 );
                 // Bound one protocol response. Older/full output remains in the journal.
                 let size = 0;
                 const executions: ExecutionRecord[] = [];
-                for (const record of recent.executions.slice().reverse()) {
+                for (const record of recent.executions
+                    .slice()
+                    .sort((a, b) =>
+                        a.id === this.current ? -1 : b.id === this.current ? 1 : b.order - a.order,
+                    )) {
                     const bytes = Buffer.byteLength(JSON.stringify(record));
                     if (size + bytes > 1400 * 1024) {
                         break;
                     }
                     size += bytes;
-                    executions.unshift(record);
+                    executions.push(record);
                 }
+                executions.sort((a, b) => a.order - b.order);
                 const ids = new Set(executions.map((record) => record.id));
                 const events: SessionEvent[] = [];
                 for (const event of recent.events.slice().reverse()) {
@@ -466,11 +544,14 @@ export class SessionAgent {
                 if (this.backend.capabilities.inspection === false) {
                     throw new Error('This runtime does not support inspection');
                 }
-                if (this.current) {
-                    if (params.method === 'workspace') {
-                        result = this.workspace ?? {};
-                        break;
+                if (params.method === 'workspace') {
+                    if (!this.current) {
+                        await this.refreshWorkspace();
                     }
+                    result = this.workspace ?? {};
+                    break;
+                }
+                if (this.current) {
                     throw new Error('R is busy; cached data remains available. Retry when idle.');
                 }
                 result = await this.backend.inspect({
@@ -648,9 +729,7 @@ export class SessionAgent {
                 this.event(event.type, { method: event.method, params: event.params }, executionId);
                 break;
             case 'workspaceChanged':
-                if (!this.current) {
-                    void this.refreshWorkspace();
-                }
+                this.workspaceRefresh.invalidate(25);
                 break;
             case 'clientRequest': {
                 const id = this.nextRequest++;
@@ -699,6 +778,7 @@ export class SessionAgent {
                     break;
                 }
                 this.backendReady = false;
+                this.workspaceRefresh.invalidate();
                 if (this.current) {
                     this.uncertain(this.current, event.message);
                 }
@@ -809,26 +889,8 @@ export class SessionAgent {
     }
 
     private async refreshWorkspace(): Promise<void> {
-        if (
-            this.stopped ||
-            !this.backendReady ||
-            this.current ||
-            this.manifest.capabilities.inspection === false
-        ) {
-            return;
-        }
-        try {
-            const workspace = object(
-                await this.backend.inspect({ method: 'workspace', params: {}, timeout: 2000 }),
-            );
-            if (this.stopped) {
-                return;
-            }
-            this.workspace = workspace;
-            this.event('workspace', this.workspace, undefined);
-        } catch {
-            /* A busy or disconnected process retains the last workspace snapshot. */
-        }
+        this.workspaceRefresh.invalidate();
+        await this.workspaceRefresh.ensure();
     }
 
     private cancelQueued(): number {
@@ -914,6 +976,7 @@ export class SessionAgent {
             return this.closing;
         }
         this.stopped = true;
+        this.workspaceRefresh.dispose();
         this.unsubscribe();
         clearTimeout(this.externalTimer);
         this.assets.close();

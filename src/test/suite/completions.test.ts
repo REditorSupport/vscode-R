@@ -50,6 +50,153 @@ suite('Session hover and completion', () => {
         sinon.assert.notCalled(sessionRequest);
     });
 
+    test('cancelled hover releases its native request wait', async () => {
+        const document = await openDocument();
+        const cancellation = new vscode.CancellationTokenSource();
+        let signal!: AbortSignal;
+        sessionRequest.callsFake((_data, _target, options: { signal: AbortSignal }) => {
+            signal = options.signal;
+            return new Promise((resolve) => {
+                signal.addEventListener('abort', () => resolve(undefined), { once: true });
+            });
+        });
+        try {
+            const hover = new HoverProvider().provideHover(
+                document,
+                new vscode.Position(2, 0),
+                cancellation.token,
+            );
+            await new Promise((resolve) => setImmediate(resolve));
+            sinon.assert.calledOnce(sessionRequest);
+            cancellation.cancel();
+            assert.equal(await hover, null);
+            assert.equal(signal.aborted, true);
+        } finally {
+            cancellation.dispose();
+        }
+    });
+
+    test('completed hover disposes its cancellation subscription', async () => {
+        const document = await openDocument();
+        const cancellation = new vscode.CancellationTokenSource();
+        sessionRequest.resolves({ str: 'integer, length 1' });
+        try {
+            const hover = await new HoverProvider().provideHover(
+                document,
+                new vscode.Position(2, 0),
+                cancellation.token,
+            );
+            assert.ok(hover);
+            const signal = (sessionRequest.firstCall.args[2] as { signal: AbortSignal }).signal;
+            cancellation.cancel();
+            assert.equal(signal.aborted, false);
+        } finally {
+            cancellation.dispose();
+        }
+    });
+
+    test('hover awaits fresh metadata from its owning workspace', async () => {
+        const document = await openDocument();
+        let finish!: () => void;
+        const refreshed = new Promise<void>((resolve) => {
+            finish = resolve;
+        });
+        sandbox.stub(session, 'ensureSessionWorkspace').returns(refreshed);
+        const hover = new HoverProvider().provideHover(document, new vscode.Position(2, 0));
+        session.activeSession!.workspaceData.globalenv.x = {
+            class: 'function',
+            type: 'closure',
+            length: 1,
+            str: 'function (new_arg)',
+        };
+        finish();
+        const result = await hover;
+        assert.ok(result);
+        assert.ok((result.contents[0] as vscode.MarkdownString).value.includes('new_arg'));
+        sinon.assert.notCalled(sessionRequest);
+    });
+
+    test('cached function hover remains available while workspace refresh waits for busy R', async () => {
+        const document = await openDocument();
+        let finish!: () => void;
+        sandbox.stub(session, 'ensureSessionWorkspace').returns(
+            new Promise<void>((resolve) => {
+                finish = resolve;
+            }),
+        );
+        session.activeSession!.workspaceData.globalenv.x = {
+            class: 'function',
+            type: 'closure',
+            length: 1,
+            str: 'function (cached_arg)',
+        };
+        try {
+            const hover = await new HoverProvider().provideHover(
+                document,
+                new vscode.Position(2, 0),
+            );
+            assert.ok(hover);
+            assert.ok((hover.contents[0] as vscode.MarkdownString).value.includes('cached_arg'));
+            sinon.assert.notCalled(sessionRequest);
+        } finally {
+            finish();
+        }
+    });
+
+    test('hover cancels while awaiting dirty workspace metadata', async () => {
+        const document = await openDocument();
+        const cancellation = new vscode.CancellationTokenSource();
+        let finish!: () => void;
+        sandbox.stub(session, 'ensureSessionWorkspace').returns(
+            new Promise<void>((resolve) => {
+                finish = resolve;
+            }),
+        );
+        try {
+            const hover = new HoverProvider().provideHover(
+                document,
+                new vscode.Position(2, 0),
+                cancellation.token,
+            );
+            cancellation.cancel();
+            assert.equal(await hover, null);
+            sinon.assert.notCalled(sessionRequest);
+        } finally {
+            finish();
+            cancellation.dispose();
+        }
+    });
+
+    test('cancelled member completion releases its native request wait', async () => {
+        const document = await vscode.workspace.openTextDocument({ language: 'r', content: 'x$' });
+        const cancellation = new vscode.CancellationTokenSource();
+        let signal!: AbortSignal;
+        sessionRequest.callsFake((_data, _target, options: { signal: AbortSignal }) => {
+            signal = options.signal;
+            return new Promise((resolve) => {
+                signal.addEventListener('abort', () => resolve(undefined), { once: true });
+            });
+        });
+        try {
+            const items = new LiveCompletionItemProvider().provideCompletionItems(
+                document,
+                new vscode.Position(0, 2),
+                cancellation.token,
+                {
+                    triggerKind: vscode.CompletionTriggerKind.TriggerCharacter,
+                    triggerCharacter: '$',
+                },
+            );
+            await new Promise((resolve) => setImmediate(resolve));
+            sinon.assert.calledOnce(sessionRequest);
+            cancellation.cancel();
+            assert.deepEqual(await items, []);
+            assert.equal(signal.aborted, true);
+        } finally {
+            cancellation.dispose();
+        }
+    });
+
     test('completion after a call result sends no request', async () => {
         const document = await openDocument();
         const token = new vscode.CancellationTokenSource().token;

@@ -1,8 +1,10 @@
 import { AgentSnapshot, ExecutionRecord, SessionEvent } from './protocol';
+import { StreamText } from './streamText';
 
 export interface TranscriptOutput {
     type: 'stream' | 'condition' | 'display' | 'truncated';
     data: Record<string, unknown>;
+    stream?: StreamText;
 }
 export interface TranscriptCell {
     generation: string;
@@ -60,14 +62,25 @@ export class Transcript {
             cell.record = { ...cell.record, state: 'running', started: event.time };
         } else if (event.type === 'finished' || event.type === 'uncertain') {
             cell.record = event.data.record as ExecutionRecord;
+            for (const output of cell.outputs) {
+                output.stream?.seal();
+            }
         } else if (event.type === 'stream') {
             const previous = cell.outputs.at(-1);
             if (previous?.type === 'stream' && previous.data.channel === event.data.channel) {
-                previous.data.text =
-                    (typeof previous.data.text === 'string' ? previous.data.text : '') +
-                    (typeof event.data.text === 'string' ? event.data.text : '');
+                previous.stream!.append(typeof event.data.text === 'string' ? event.data.text : '');
             } else {
-                cell.outputs.push({ type: 'stream', data: { ...event.data } });
+                const stream = new StreamText(
+                    typeof event.data.text === 'string' ? event.data.text : '',
+                );
+                const data = { ...event.data };
+                // Retain the public replay/export data shape, materializing text
+                // only when a caller explicitly reads or serializes it.
+                Object.defineProperty(data, 'text', {
+                    enumerable: true,
+                    get: () => stream.snapshot().text(),
+                });
+                cell.outputs.push({ type: 'stream', data, stream });
             }
         } else if (event.type === 'display') {
             const previous = cell.outputs.find(

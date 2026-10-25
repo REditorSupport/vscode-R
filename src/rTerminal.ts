@@ -676,7 +676,7 @@ async function sendToTerminal(
     validate?: () => void,
 ): Promise<void> {
     validate?.();
-    deferWorkspaceRefresh();
+    deferWorkspaceRefresh(term);
     if (config().get<boolean>('bracketedPaste')) {
         // Surround with ANSI control characters for bracketed paste mode
         text = `\x1b[200~${text}\x1b[201~`;

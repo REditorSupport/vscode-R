@@ -3,6 +3,7 @@ import { EventEmitter } from 'events';
 import { randomUUID } from 'crypto';
 import { JsonLines } from './framing';
 import { AGENT_PROTOCOL, AgentSnapshot, SessionEvent, SessionManifest } from './protocol';
+import { MessagePage, pageReference } from './messagePages';
 
 export class AgentClient extends EventEmitter {
     private socket?: net.Socket;
@@ -13,6 +14,9 @@ export class AgentClient extends EventEmitter {
     >();
     private heartbeat?: NodeJS.Timeout;
     private replaying?: SessionEvent[];
+    private eventDelivery = Promise.resolve();
+    private queuedEventBytes = 0;
+    private incomingPageBytes = 0;
     private closing = false;
     private ready = false;
     control = false;
@@ -29,16 +33,43 @@ export class AgentClient extends EventEmitter {
 
     async connect(options: { claim?: boolean; timeout?: number } = {}): Promise<void> {
         this.close();
+        this.eventDelivery = Promise.resolve();
         this.closing = false;
         const socket = net.createConnection(this.manifest.endpoint);
         this.socket = socket;
         const parser = new JsonLines((message) => {
-            if (message.event) {
-                if (this.replaying) {
-                    this.replaying.push(message.event as SessionEvent);
-                } else {
-                    this.emitEvent(message.event as SessionEvent);
+            if (message.event || message.eventPage) {
+                const queuedBytes = Buffer.byteLength(
+                    JSON.stringify(message.event ?? message.eventPage),
+                );
+                if (this.queuedEventBytes + queuedBytes > 8 * 1024 * 1024) {
+                    socket.destroy();
+                    return;
                 }
+                this.queuedEventBytes += queuedBytes;
+                this.eventDelivery = this.eventDelivery
+                    .then(async () => {
+                        if (this.socket !== socket || socket.destroyed) {
+                            return;
+                        }
+                        const event = message.eventPage
+                            ? await this.readPagedValue<SessionEvent>(message.eventPage, socket)
+                            : (message.event as SessionEvent);
+                        if (this.socket !== socket || socket.destroyed) {
+                            return;
+                        }
+                        if (this.replaying) {
+                            this.replaying.push(event);
+                        } else {
+                            this.emitEvent(event);
+                        }
+                    })
+                    .catch(() => {
+                        socket.destroy();
+                    })
+                    .finally(() => {
+                        this.queuedEventBytes -= queuedBytes;
+                    });
                 return;
             }
             const id = Number(message.id);
@@ -57,7 +88,7 @@ export class AgentClient extends EventEmitter {
                     ),
                 );
             } else {
-                pending.resolve(message.result);
+                pending.resolve({ value: message.result, page: message.resultPage });
             }
         });
         socket.on('data', (chunk: Buffer) => {
@@ -106,6 +137,7 @@ export class AgentClient extends EventEmitter {
                 protocol: AGENT_PROTOCOL,
                 token: this.manifest.token,
                 clientId: this.clientId,
+                paging: true,
             },
             options.timeout,
         );
@@ -181,6 +213,7 @@ export class AgentClient extends EventEmitter {
                     cursor = event.seq;
                 }
                 if (cursor >= replay.seq) {
+                    await this.eventDelivery;
                     // A socket read can contain both the response and newer events.
                     // Deliver replay first, before the transcript advances its cursor.
                     for (const event of live) {
@@ -212,7 +245,7 @@ export class AgentClient extends EventEmitter {
         if (!socket || socket.destroyed) {
             return Promise.reject(new Error('Session agent is disconnected'));
         }
-        return new Promise<T>((resolve, reject) => {
+        return new Promise<{ value: unknown; page?: unknown }>((resolve, reject) => {
             const id = ++this.counter;
             const timer = setTimeout(() => {
                 this.pending.delete(id);
@@ -222,7 +255,11 @@ export class AgentClient extends EventEmitter {
                     ),
                 );
             }, timeout);
-            this.pending.set(id, { resolve: (value) => resolve(value as T), reject, timer });
+            this.pending.set(id, {
+                resolve: (value) => resolve(value as { value: unknown; page?: unknown }),
+                reject,
+                timer,
+            });
             socket.write(
                 JSON.stringify({
                     id,
@@ -230,7 +267,48 @@ export class AgentClient extends EventEmitter {
                     params: { generation: this.manifest.generation, ...params },
                 }) + '\n',
             );
-        });
+        }).then(({ value, page }) => (page ? this.readPagedValue<T>(page, socket) : (value as T)));
+    }
+
+    private async readPagedValue<T>(value: unknown, socket: net.Socket): Promise<T> {
+        const reference = pageReference(value);
+        if (!reference) {
+            return value as T;
+        }
+        if (this.incomingPageBytes + reference.bytes > 64 * 1024 * 1024) {
+            throw new Error('Paged messages exceed memory limit');
+        }
+        this.incomingPageBytes += reference.bytes;
+        try {
+            const chunks: Buffer[] = [];
+            let offset = 0;
+            while (offset < reference.bytes) {
+                if (this.socket !== socket || socket.destroyed) {
+                    throw new Error('Session agent disconnected during message read');
+                }
+                const page = await this.request<MessagePage>('messagePage', {
+                    token: reference.token,
+                    offset,
+                });
+                if (this.socket !== socket || socket.destroyed) {
+                    throw new Error('Session agent disconnected during message read');
+                }
+                const chunk = Buffer.from(page.data, 'base64');
+                if (
+                    page.offset !== offset ||
+                    page.next <= offset ||
+                    page.next > reference.bytes ||
+                    chunk.length !== page.next - offset
+                ) {
+                    throw new Error('Invalid message page');
+                }
+                chunks.push(chunk);
+                offset = page.next;
+            }
+            return JSON.parse(Buffer.concat(chunks, reference.bytes).toString('utf8')) as T;
+        } finally {
+            this.incomingPageBytes -= reference.bytes;
+        }
     }
 
     close(): void {

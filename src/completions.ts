@@ -3,6 +3,7 @@ import * as vscode from 'vscode';
 
 import * as session from './session';
 import { PipelineSourceCache } from './pipelineCompletion';
+import { withRpcCancellation } from './nativeRpc';
 import { globalRHelp } from './extension';
 import { config } from './util';
 import { getChunks } from './rmarkdown';
@@ -62,11 +63,58 @@ const roxygenTagCompletionItems = [
     'usage',
 ].map((x: string) => new vscode.CompletionItem(`${x} `));
 
+async function cancellableSessionRequest(
+    data: Record<string, unknown>,
+    target: session.Session,
+    token?: vscode.CancellationToken,
+): Promise<unknown> {
+    if (!token) {
+        return session.sessionRequest(data, target);
+    }
+    const controller = new AbortController();
+    const cancellation = token.onCancellationRequested(() => controller.abort());
+    if (token.isCancellationRequested) {
+        controller.abort();
+    }
+    try {
+        return await session.sessionRequest(data, target, { signal: controller.signal });
+    } finally {
+        cancellation.dispose();
+    }
+}
+
+async function ensureWorkspace(
+    target: session.Session,
+    token?: vscode.CancellationToken,
+): Promise<boolean> {
+    const controller = token && new AbortController();
+    const cancellation = token?.onCancellationRequested(() => controller?.abort());
+    if (token?.isCancellationRequested) {
+        controller?.abort();
+    }
+    try {
+        await withRpcCancellation(() => session.ensureSessionWorkspace(target), controller?.signal);
+        return !token?.isCancellationRequested;
+    } catch (error) {
+        if (error instanceof Error && error.name === 'AbortError') {
+            return false;
+        }
+        throw error;
+    } finally {
+        cancellation?.dispose();
+    }
+}
+
 export class HoverProvider implements vscode.HoverProvider {
     async provideHover(
         document: vscode.TextDocument,
         position: vscode.Position,
+        token?: vscode.CancellationToken,
     ): Promise<vscode.Hover | null> {
+        if (token?.isCancellationRequested) {
+            return null;
+        }
+        const version = document.version;
         const target = session.sessionForDocument(document.uri);
         if (!target?.workspaceData?.globalenv) {
             return null;
@@ -98,14 +146,31 @@ export class HoverProvider implements vscode.HoverProvider {
             .trimEnd();
         // Workspace snapshots already contain simple-symbol summaries and function
         // formals. Use those while R is busy, and avoid an IPC round trip on every hover.
-        const cached = /[$@:]/.test(prefix.slice(-1))
-            ? undefined
-            : target.workspaceData.globalenv[symbol];
-        if (cached && ['closure', 'builtin'].includes(cached.type)) {
-            return new vscode.Hover(
-                new vscode.MarkdownString().appendCodeblock(cached.str, 'r'),
-                hoverRange,
-            );
+        const functionHover = (): vscode.Hover | undefined => {
+            const cached = /[$@:]/.test(prefix.slice(-1))
+                ? undefined
+                : target.workspaceData.globalenv[symbol];
+            if (cached && ['closure', 'builtin'].includes(cached.type)) {
+                return new vscode.Hover(
+                    new vscode.MarkdownString().appendCodeblock(cached.str, 'r'),
+                    hoverRange,
+                );
+            }
+        };
+        const immediate = functionHover();
+        if (immediate) {
+            return immediate;
+        }
+        if (
+            !(await ensureWorkspace(target, token)) ||
+            document.version !== version ||
+            session.sessionForDocument(document.uri) !== target
+        ) {
+            return null;
+        }
+        const refreshed = functionHover();
+        if (refreshed) {
+            return refreshed;
         }
 
         if (session.globalPipePath || target.requester) {
@@ -117,14 +182,22 @@ export class HoverProvider implements vscode.HoverProvider {
                 return null;
             }
             const expr = document.getText(hoverRange);
-            const response = (await session.sessionRequest(
+            const response = (await cancellableSessionRequest(
                 {
                     method: 'hover',
                     params: { expr: expr },
                 },
                 target,
+                token,
             )) as { str: string };
 
+            if (
+                token?.isCancellationRequested ||
+                document.version !== version ||
+                session.sessionForDocument(document.uri) !== target
+            ) {
+                return null;
+            }
             if (response) {
                 hoverText = response.str;
             }
@@ -221,6 +294,7 @@ export class LiveCompletionItemProvider implements vscode.CompletionItemProvider
         completionContext: vscode.CompletionContext,
     ): Promise<vscode.CompletionItem[]> {
         const items: vscode.CompletionItem[] = [];
+        const version = document.version;
         const activeSession = session.sessionForDocument(document.uri);
         if (token.isCancellationRequested || !activeSession?.workspaceData?.globalenv) {
             return items;
@@ -241,6 +315,17 @@ export class LiveCompletionItemProvider implements vscode.CompletionItemProvider
             codeStartLine = chunk.startLine + 1;
         }
 
+        // Existing metadata stays usable while R is busy. The document lookup
+        // starts dirty refreshes in the background; only an empty cache must wait.
+        if (!Object.keys(activeSession.workspaceData.globalenv).length) {
+            if (
+                !(await ensureWorkspace(activeSession, token)) ||
+                document.version !== version ||
+                session.sessionForDocument(document.uri) !== activeSession
+            ) {
+                return items;
+            }
+        }
         const trigger = completionContext.triggerCharacter;
 
         if (trigger === undefined) {
@@ -266,12 +351,13 @@ export class LiveCompletionItemProvider implements vscode.CompletionItemProvider
                     ?.with({ end: symbolPosition });
                 if (exprRange) {
                     const expr = document.getText(exprRange);
-                    const response = (await session.sessionRequest(
+                    const response = (await cancellableSessionRequest(
                         {
                             method: 'completion',
                             params: { expr: expr, trigger: trigger },
                         },
                         activeSession,
+                        token,
                     )) as RObjectElement[];
 
                     if (response) {
@@ -333,7 +419,11 @@ export class LiveCompletionItemProvider implements vscode.CompletionItemProvider
             );
         }
 
-        return token.isCancellationRequested ? [] : items;
+        return token.isCancellationRequested ||
+            document.version !== version ||
+            session.sessionForDocument(document.uri) !== activeSession
+            ? []
+            : items;
     }
 }
 
