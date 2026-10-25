@@ -23,7 +23,9 @@ function formatPlan(request: ToolConsentRequest): string {
         request.backend === 'auto'
             ? '\n\nAutomatic plot backend setup is optional; declining uses the available fallback.'
             : '';
-    return `Install these R packages for R ${version} (${platform})?\n\n${rows.join('\n')}${buildNotice}${modeNotice}\n\nPackages are installed in a vscode-R-managed library. Existing user and project libraries are not changed.`;
+    const timingNotice =
+        '\n\nR setup waits up to 10 seconds for approval. To retry later, select the jgd plot backend and attach again.';
+    return `Install these R packages for R ${version} (${platform})?\n\n${rows.join('\n')}${buildNotice}${modeNotice}${timingNotice}\n\nPackages are installed in a vscode-R-managed library. Existing user and project libraries are not changed.`;
 }
 
 export function createToolConsentService(

@@ -55,6 +55,8 @@ import {
     ViewerSessionSource,
 } from './viewerSession';
 import { SessConsentChoice, SessConsentService } from './sessConsent';
+import { ToolConsentService } from './toolConsent';
+import { createToolConsentService } from './toolConsentAdapter';
 import {
     assessTerminalStartup,
     parseTerminalStartupRecord,
@@ -869,6 +871,9 @@ export function deploySessionWatcher(extensionPath: string): void {
         attachConsentService = undefined;
         attachConsentDirectory = undefined;
         attachConsentStartup = undefined;
+        attachToolConsentService = undefined;
+        attachToolConsentDirectory = undefined;
+        attachToolConsentStartup = undefined;
         attachSessionScriptPath = undefined;
     }
     attachmentLifecycleGeneration++;
@@ -942,6 +947,9 @@ let attachSessionScriptPath: string | undefined;
 let attachConsentDirectory: string | undefined;
 let attachConsentService: SessConsentService | undefined;
 let attachConsentStartup: Promise<string> | undefined;
+let attachToolConsentDirectory: string | undefined;
+let attachToolConsentService: ToolConsentService | undefined;
+let attachToolConsentStartup: Promise<string> | undefined;
 let attachmentLifecycleGeneration = 0;
 let attachmentLifecycleStopping = false;
 let attachScriptPublication: Promise<void> = Promise.resolve();
@@ -1572,6 +1580,7 @@ function buildAttachSessionScript(
     pipePath: string,
     sessPath: string,
     consentDirectory: string,
+    toolConsentDirectory: string,
     attachment?: { attachmentId: string; autoActivate: boolean },
 ): string {
     const backend = resolveBackend();
@@ -1586,6 +1595,11 @@ function buildAttachSessionScript(
         `  consent_dir <- ${asRStringLiteral(consentDirectory.replace(/\\/g, '/'))}`,
         `  source_helper <- ${asRStringLiteral(extensionContext.asAbsolutePath(path.join('R', 'sess_source.R')).replace(/\\/g, '/'))}`,
         `  installer_helper <- ${asRStringLiteral(extensionContext.asAbsolutePath(path.join('R', 'sess-package-install.R')).replace(/\\/g, '/'))}`,
+        `  tool_root <- ${asRStringLiteral(extensionContext.globalStorageUri.fsPath.replace(/\\/g, '/'))}`,
+        `  tool_consent_dir <- ${asRStringLiteral(toolConsentDirectory.replace(/\\/g, '/'))}`,
+        `  tool_library_helper <- ${asRStringLiteral(extensionContext.asAbsolutePath(path.join('R', 'tool-library.R')).replace(/\\/g, '/'))}`,
+        `  tool_consent_helper <- ${asRStringLiteral(extensionContext.asAbsolutePath(path.join('R', 'tool-consent.R')).replace(/\\/g, '/'))}`,
+        `  jgd_helper <- ${asRStringLiteral(extensionContext.asAbsolutePath(path.join('R', 'prepare-jgd.R')).replace(/\\/g, '/'))}`,
         `  startup_helper <- ${asRStringLiteral(extensionContext.asAbsolutePath(path.join('R', 'terminal-startup.R')).replace(/\\/g, '/'))}`,
         `  attach_helper <- ${asRStringLiteral(extensionContext.asAbsolutePath(path.join('R', 'attach_sess.R')).replace(/\\/g, '/'))}`,
         ...(backend === 'native'
@@ -1597,7 +1611,7 @@ function buildAttachSessionScript(
               ]),
         '  source(startup_helper, local = TRUE)',
         '  source(attach_helper, local = TRUE)',
-        `  vscode_r_attach_sess(endpoint, sess_src, managed_root, consent_dir, source_helper, installer_helper, ${asRStringLiteral(backend)}, use_rstudioapi = ${config().get<boolean>('session.emulateRStudioAPI') ? 'TRUE' : 'FALSE'}${attachment ? `, attachment_id = ${asRStringLiteral(attachment.attachmentId)}, auto_activate = ${attachment.autoActivate ? 'TRUE' : 'FALSE'}` : ''})`,
+        `  vscode_r_attach_sess(endpoint, sess_src, managed_root, consent_dir, source_helper, installer_helper, ${asRStringLiteral(backend)}, tool_root = tool_root, tool_consent_directory = tool_consent_dir, tool_library_helper = tool_library_helper, tool_consent_helper = tool_consent_helper, jgd_helper = jgd_helper, use_rstudioapi = ${config().get<boolean>('session.emulateRStudioAPI') ? 'TRUE' : 'FALSE'}${attachment ? `, attachment_id = ${asRStringLiteral(attachment.attachmentId)}, auto_activate = ${attachment.autoActivate ? 'TRUE' : 'FALSE'}` : ''})`,
         '    })',
         '    invisible(isTRUE(attached))',
         '  }, error = function(error) {',
@@ -1713,6 +1727,65 @@ export async function getSessConsentDirectory(): Promise<string> {
     return ensureAttachSessConsentService();
 }
 
+async function ensureAttachToolConsentService(
+    generation = attachmentLifecycleGeneration,
+): Promise<string> {
+    if (!isAttachmentLifecycleCurrent(generation)) {
+        return '';
+    }
+    if (attachToolConsentStartup) {
+        return attachToolConsentStartup;
+    }
+    if (attachToolConsentService && attachToolConsentDirectory) {
+        return attachToolConsentDirectory;
+    }
+
+    const startup = (async (): Promise<string> => {
+        const directory = path.join(
+            extensionContext.globalStorageUri.fsPath,
+            'tmp',
+            'attach',
+            'tool-consent',
+            crypto.randomBytes(16).toString('hex'),
+        );
+        let service: ToolConsentService | undefined;
+        try {
+            service = createToolConsentService(
+                directory,
+                () => config().get<boolean>('sessionWatcher') === true,
+                200,
+            );
+            await service.start();
+            if (!isAttachmentLifecycleCurrent(generation)) {
+                await service.stop();
+                await removePathIfExists(directory);
+                return '';
+            }
+            attachToolConsentDirectory = directory;
+            attachToolConsentService = service;
+            return directory;
+        } catch (error) {
+            await service?.stop().catch(() => undefined);
+            await removePathIfExists(directory);
+            console.error('[session] Failed to start managed tool consent service', error);
+            return '';
+        }
+    })();
+    attachToolConsentStartup = startup;
+    try {
+        return await startup;
+    } finally {
+        if (attachToolConsentStartup === startup) {
+            attachToolConsentStartup = undefined;
+        }
+    }
+}
+
+/** Return the dedicated request directory for managed R tool installation consent. */
+export async function getToolConsentDirectory(): Promise<string> {
+    return ensureAttachToolConsentService();
+}
+
 function validateAttachmentEndpoint(endpoint: unknown): asserts endpoint is string {
     if (typeof endpoint !== 'string' || endpoint.length === 0 || endpoint.includes('\0')) {
         throw new TypeError('A non-empty local sess IPC endpoint is required.');
@@ -1759,6 +1832,7 @@ async function prepareAttachmentCore(
         .asAbsolutePath(path.join('dist', 'resources', 'sess'))
         .replace(/\\/g, '/');
     const consentDirectory = await ensureAttachSessConsentService(generation);
+    const toolConsentDirectory = await ensureAttachToolConsentService(generation);
     if (!isAttachmentLifecycleCurrent(generation)) {
         throw new Error('The session watcher shut down while preparing sess attachment.');
     }
@@ -1770,7 +1844,7 @@ async function prepareAttachmentCore(
     try {
         await fsp.writeFile(
             temporaryPath,
-            buildAttachSessionScript(endpoint, sessPath, consentDirectory, {
+            buildAttachSessionScript(endpoint, sessPath, consentDirectory, toolConsentDirectory, {
                 attachmentId,
                 autoActivate,
             }),
@@ -1832,6 +1906,7 @@ async function getAttachSessionCommandCore(): Promise<string> {
         .asAbsolutePath(path.join('dist', 'resources', 'sess'))
         .replace(/\\/g, '/');
     const consentDirectory = await ensureAttachSessConsentService(generation);
+    const toolConsentDirectory = await ensureAttachToolConsentService(generation);
     if (!isAttachmentLifecycleCurrent(generation)) {
         throw new Error('The session watcher is shutting down.');
     }
@@ -1848,7 +1923,12 @@ async function getAttachSessionCommandCore(): Promise<string> {
             try {
                 await fsp.writeFile(
                     temporaryPath,
-                    buildAttachSessionScript(pipePath, sessPath, consentDirectory),
+                    buildAttachSessionScript(
+                        pipePath,
+                        sessPath,
+                        consentDirectory,
+                        toolConsentDirectory,
+                    ),
                     { encoding: 'utf-8', mode: 0o600, flag: 'wx' },
                 );
                 await setOwnerOnlyPermissions(temporaryPath);
@@ -1909,6 +1989,9 @@ export async function shutdownSessionWatcher(): Promise<void> {
     const consentStartup = attachConsentStartup;
     const consentService = attachConsentService;
     const consentDirectory = attachConsentDirectory;
+    const toolConsentStartup = attachToolConsentStartup;
+    const toolConsentService = attachToolConsentService;
+    const toolConsentDirectory = attachToolConsentDirectory;
     const serverStartup = globalSessionServerStartup;
     const pipePathAtShutdown = globalPipePath;
     const serverAtShutdown = globalSessionServer;
@@ -1961,6 +2044,8 @@ export async function shutdownSessionWatcher(): Promise<void> {
     await manualCleanup.catch(() => undefined);
     await consentStartup?.catch(() => undefined);
     await consentService?.stop();
+    await toolConsentStartup?.catch(() => undefined);
+    await toolConsentService?.stop();
     if (attachConsentService === consentService) {
         attachConsentService = undefined;
     }
@@ -1972,6 +2057,18 @@ export async function shutdownSessionWatcher(): Promise<void> {
     }
     if (attachConsentStartup === consentStartup) {
         attachConsentStartup = undefined;
+    }
+    if (attachToolConsentService === toolConsentService) {
+        attachToolConsentService = undefined;
+    }
+    if (toolConsentDirectory) {
+        await removePathIfExists(toolConsentDirectory);
+        if (attachToolConsentDirectory === toolConsentDirectory) {
+            attachToolConsentDirectory = undefined;
+        }
+    }
+    if (attachToolConsentStartup === toolConsentStartup) {
+        attachToolConsentStartup = undefined;
     }
     // Await the startup snapshot so a server published by it can be closed below.
     await serverStartup?.catch(() => undefined);

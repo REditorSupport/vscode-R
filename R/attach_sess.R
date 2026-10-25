@@ -185,7 +185,18 @@ vscode_r_attach_sess <- function(endpoint, pkg_path, managed_root, consent_dir,
                                  setup_timeout_seconds = 300,
                                  use_rstudioapi = TRUE,
                                  attachment_id = NULL,
-                                 auto_activate = TRUE) {
+                                 auto_activate = TRUE,
+                                 tool_root = Sys.getenv("VSCODE_R_TOOL_ROOT", unset = ""),
+                                 tool_consent_directory = Sys.getenv(
+                                     "VSCODE_R_TOOL_CONSENT_DIRECTORY", unset = ""
+                                 ),
+                                 tool_library_helper = Sys.getenv(
+                                     "VSCODE_R_TOOL_LIBRARY_HELPER", unset = ""
+                                 ),
+                                 tool_consent_helper = Sys.getenv(
+                                     "VSCODE_R_TOOL_CONSENT_HELPER", unset = ""
+                                 ),
+                                 jgd_helper = Sys.getenv("VSCODE_R_JGD_HELPER", unset = "")) {
     if (!is.null(attachment_id) &&
             !(is.character(attachment_id) && length(attachment_id) == 1L &&
                   !is.na(attachment_id) &&
@@ -232,6 +243,37 @@ vscode_r_attach_sess <- function(endpoint, pkg_path, managed_root, consent_dir,
         if (is.null(ns)) {
             return(invisible(FALSE))
         }
+        previous_jgd_socket <- Sys.getenv("JGD_SOCKET", unset = NA_character_)
+        on.exit({
+            if (is.na(previous_jgd_socket)) {
+                Sys.unsetenv("JGD_SOCKET")
+            } else {
+                Sys.setenv(JGD_SOCKET = previous_jgd_socket)
+            }
+        }, add = TRUE)
+        jgd_ready <- FALSE
+        if (nzchar(jgd_helper) && file.exists(jgd_helper)) {
+            jgd_setup <- new.env(parent = environment())
+            tryCatch(sys.source(jgd_helper, envir = jgd_setup), error = function(error) {
+                message("vscode-R could not load managed jgd setup resources: ",
+                        conditionMessage(error))
+            })
+            if (is.function(jgd_setup$vscode_r_prepare_jgd)) {
+                jgd_ready <- isTRUE(tryCatch(
+                    jgd_setup$vscode_r_prepare_jgd(
+                        plot_backend, tool_root, tool_consent_directory,
+                        tool_library_helper, tool_consent_helper
+                    ),
+                    error = function(error) {
+                        message("vscode-R could not prepare optional jgd plot support: ",
+                                conditionMessage(error))
+                        FALSE
+                    },
+                    interrupt = function(error) FALSE
+                ))
+            }
+        }
+        if (!jgd_ready && plot_backend %in% c("jgd", "auto")) Sys.unsetenv("JGD_SOCKET")
         connect <- get("connect", envir = ns, inherits = FALSE)
         args <- list(endpoint = endpoint, plot_backend = plot_backend,
                      use_rstudioapi = use_rstudioapi)

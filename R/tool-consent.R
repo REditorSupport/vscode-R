@@ -115,10 +115,21 @@
 tool_library_prepare <- function(package, minimum_version, root, consent_directory,
                                  backend, repos = getOption("repos"),
                                  consent_timeout_seconds = 180,
-                                 install_timeout_seconds = 300) {
+                                 install_timeout_seconds = 300,
+                                 resolution_timeout_seconds = 5) {
     available <- tool_library_check(package, minimum_version, root)
     if (!available$install_required) return(invisible(available))
-    plan <- tool_library_plan(package, minimum_version, root, repos)
+    plan <- local({
+        previous_timeout <- getOption("timeout")
+        on.exit(options(timeout = previous_timeout), add = TRUE)
+        bounded_timeout <- resolution_timeout_seconds
+        if (is.numeric(previous_timeout) && length(previous_timeout) == 1L &&
+                !is.na(previous_timeout) && is.finite(previous_timeout) && previous_timeout > 0) {
+            bounded_timeout <- min(previous_timeout, resolution_timeout_seconds)
+        }
+        options(timeout = bounded_timeout)
+        tool_library_plan(package, minimum_version, root, repos)
+    })
     if (is.null(plan)) return(invisible(tool_library_check(package, minimum_version, root)))
     approved <- .tool_request_consent(plan, backend, consent_directory,
                                       timeout_seconds = consent_timeout_seconds)

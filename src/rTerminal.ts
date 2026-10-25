@@ -17,6 +17,7 @@ import {
     deferWorkspaceRefresh,
     getGlobalPipePath,
     getSessConsentDirectory,
+    getToolConsentDirectory,
     isTerminalClosed,
     removeTerminalDiscoveryFile,
     updateTerminalSessionDiscoveryFile,
@@ -312,6 +313,7 @@ export async function makeTerminalOptions(resource?: vscode.Uri): Promise<vscode
                 : {};
             const pipePath = await getGlobalPipePath();
             const consentDirectory = await getSessConsentDirectory();
+            const toolConsentDirectory = await getToolConsentDirectory();
             discoveryFile = await createSessionDiscoveryFile(pipePath);
             const startupFile = `${discoveryFile}.startup`;
             const startupToken = crypto.randomBytes(16).toString('hex');
@@ -338,6 +340,17 @@ export async function makeTerminalOptions(resource?: vscode.Uri): Promise<vscode
                 VSCODE_R_SESS_STARTUP_ENDPOINT: pipePath,
                 VSCODE_R_SESS_STARTUP_HELPER: extensionContext.asAbsolutePath(
                     path.join('R', 'terminal-startup.R'),
+                ),
+                VSCODE_R_TOOL_ROOT: extensionContext.globalStorageUri.fsPath,
+                VSCODE_R_TOOL_CONSENT_DIRECTORY: toolConsentDirectory,
+                VSCODE_R_TOOL_LIBRARY_HELPER: extensionContext.asAbsolutePath(
+                    path.join('R', 'tool-library.R'),
+                ),
+                VSCODE_R_TOOL_CONSENT_HELPER: extensionContext.asAbsolutePath(
+                    path.join('R', 'tool-consent.R'),
+                ),
+                VSCODE_R_JGD_HELPER: extensionContext.asAbsolutePath(
+                    path.join('R', 'prepare-jgd.R'),
                 ),
                 // Remove inherited endpoint overrides so the per-terminal discovery file
                 // remains authoritative, including after a VS Code window reload.

@@ -85,6 +85,32 @@ Set `r.plot.backend` to `"native"` to use R's configured graphics device without
 opening the VS Code plot viewer automatically. The `"standard"` backend continues
 to display static plots in VS Code.
 
+### Managed jgd installation
+
+Normal R terminals and manual session attachment can offer to install `jgd` into
+a vscode-R-managed library when the JGD plot viewer is available. An existing
+compatible package in your R libraries takes precedence. Managed installation
+uses your configured R package repositories, leaves user and project libraries
+untouched, and does not change `.libPaths()`.
+
+With `r.plot.backend` set to `"auto"`, the offer appears at most once per VS Code
+window session. **Not now** or closing the notification postpones it until a
+later window session. **Don't ask again** disables automatic offers; set
+`r.plot.jgd.installationPrompt` to `true` in User Settings to enable them again.
+Explicitly selecting `"jgd"` offers installation whenever setup requires it.
+
+The offer waits up to 10 seconds for approval before continuing with an available
+fallback plot backend. Once approved, installation runs to completion and may
+require compilation tools if the repository supplies a source package. Declining
+or a setup failure allows the R terminal and session watcher to continue. To
+retry after a timeout, select `"jgd"` and attach the session again.
+
+The managed library is shared by R sessions using the same platform and R
+major/minor version. Close other R sessions using the managed package before
+approving an update. Updating a loaded package can fail because of locked DLLs
+on Windows or leave other sessions using inconsistent package files. Restart
+affected R sessions before retrying.
+
 ## Features
 
 * Snippets for R and R Markdown.
