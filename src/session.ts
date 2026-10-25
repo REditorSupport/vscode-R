@@ -1,10 +1,9 @@
 'use strict';
 
-import { JGD_MINIMUM_VERSION } from './jgdVersion';
-
 import * as fs from 'node:fs';
 import * as fsp from 'node:fs/promises';
 import { pathExists, readJson } from './fileSystem';
+import { JGD_MINIMUM_VERSION } from './jgdVersion';
 import * as path from 'path';
 import * as os from 'os';
 import * as net from 'net';

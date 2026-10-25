@@ -1,10 +1,9 @@
 'use strict';
 
-import { JGD_MINIMUM_VERSION } from './jgdVersion';
-
 import * as path from 'path';
 import * as crypto from 'node:crypto';
 import { getMigratedSetting } from './configuration';
+import { JGD_MINIMUM_VERSION } from './jgdVersion';
 import { isDeepStrictEqual } from 'util';
 
 import * as vscode from 'vscode';
