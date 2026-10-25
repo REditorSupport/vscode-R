@@ -72,6 +72,7 @@ async function main() {
         sourcemap: !production,
         sourcesContent: false,
         platform: 'node',
+        target: 'node22',
         outfile: 'dist/extension.js',
         external: ['vscode', 'utf-8-validate', 'bufferutil'],
         logLevel: 'info',

@@ -30,7 +30,7 @@ for other changes and upgrade notes.
     install.packages("languageserver")
     ```
 
-3. Install the stable release of this extension from the [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=reditorsupport.r) or the [Open VSX Registry](https://open-vsx.org/extension/reditorsupport/r). This release requires VS Code 1.110 or later.
+3. Install the stable release of this extension from the [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=reditorsupport.r) or the [Open VSX Registry](https://open-vsx.org/extension/reditorsupport/r). This release requires VS Code 1.101.0 or later.
 
     ```sh
     code --install-extension REditorSupport.r

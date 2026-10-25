@@ -27,7 +27,7 @@
     "R Markdown"
   ],
   "engines": {
-    "vscode": "^1.98.2"
+    "vscode": "^1.101.0"
   },
   "activationEvents": [
     "workspaceContains:**/*.{rproj,Rproj,r,R,rd,Rd,rmd,Rmd}",
@@ -2619,7 +2619,7 @@
     "@types/mocha": "^8.2.3",
     "@types/node": "^22.20.5",
     "@types/sinon": "^10.0.20",
-    "@types/vscode": "~1.94.0",
+    "@types/vscode": "~1.101.0",
     "@types/winreg": "^1.2.36",
     "@vscode/test-cli": "^0.0.15",
     "@vscode/test-electron": "^3.1.0",

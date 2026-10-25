@@ -47,7 +47,6 @@ suite('Internal httpgd client', () => {
     let remote: HttpgdState;
     let ids: string[];
     let requests: { path: string; token?: string }[];
-    let websocketDescriptor: PropertyDescriptor | undefined;
     let held: ServerResponse[];
     let holdPlots: boolean;
     let invalidPlots: boolean;
@@ -62,12 +61,7 @@ suite('Internal httpgd client', () => {
         holdPlots = invalidPlots = false;
         notifications = [];
         TestWebSocket.instances = [];
-        websocketDescriptor = Object.getOwnPropertyDescriptor(globalThis, 'WebSocket');
-        Object.defineProperty(globalThis, 'WebSocket', {
-            value: undefined,
-            configurable: true,
-            writable: true,
-        });
+        globalThis.WebSocket = TestWebSocket as unknown as typeof WebSocket;
         server = createServer((request, response) => {
             const url = new URL(request.url ?? '/', origin);
             requests.push({
@@ -122,11 +116,7 @@ suite('Internal httpgd client', () => {
     });
     teardown(async () => {
         client.disconnect();
-        if (websocketDescriptor) {
-            Object.defineProperty(globalThis, 'WebSocket', websocketDescriptor);
-        } else {
-            Reflect.deleteProperty(globalThis, 'WebSocket');
-        }
+        globalThis.WebSocket = nativeWebSocket;
         for (const response of held) {
             response.destroy();
         }
@@ -161,9 +151,7 @@ suite('Internal httpgd client', () => {
         assert.deepStrictEqual(notifications, [['1'], []]);
     });
     test('polls a server on port 10080, including when native WebSocket rejects it', async () => {
-        if (typeof nativeWebSocket === 'function') {
-            globalThis.WebSocket = nativeWebSocket;
-        }
+        globalThis.WebSocket = nativeWebSocket;
         await new Promise<void>((resolve, reject) =>
             server.close((error) => (error ? reject(error) : resolve())),
         );
@@ -186,7 +174,7 @@ suite('Internal httpgd client', () => {
         await until(() => client.getPlots()[0]?.id === '2');
         assert.deepStrictEqual(await client.getPlotBytes({ id: '2', renderer: 'png' }), binary);
     });
-    test('polls without WebSocket and only fetches plots after a state change', async () => {
+    test('polls when WebSocket cannot connect and only fetches changed plots', async () => {
         await client.connect();
         await until(() => requests.filter((request) => request.path === '/state').length >= 2);
         assert.strictEqual(requests.filter((request) => request.path === '/plots').length, 1);
@@ -196,7 +184,6 @@ suite('Internal httpgd client', () => {
         assert.deepStrictEqual(notifications, [['1'], ['1', '2']]);
     });
     test('uses native WebSocket notifications and falls back after a disconnect', async () => {
-        globalThis.WebSocket = TestWebSocket as unknown as typeof WebSocket;
         await client.connect();
         const socket = TestWebSocket.instances[0];
         assert.strictEqual(socket.url.protocol, 'ws:');
@@ -215,12 +202,7 @@ suite('Internal httpgd client', () => {
         TestWebSocket.instances[1].open();
         await until(() => requests.filter((request) => request.path === '/plots').length >= 5);
     });
-    test('receives notifications through an actual native WebSocket connection', async function () {
-        if (typeof nativeWebSocket !== 'function') {
-            this.skip();
-            return;
-        }
-
+    test('receives notifications through an actual native WebSocket connection', async () => {
         const handshakeTimeoutMs = 5000;
         const testOrigin = origin;
         const actualServer = server;
@@ -401,7 +383,6 @@ suite('Internal httpgd client', () => {
         }
     });
     test('falls back when WebSocket cannot open', async () => {
-        globalThis.WebSocket = TestWebSocket as unknown as typeof WebSocket;
         await client.connect();
         await until(() => TestWebSocket.instances[0].readyState === 3);
         ids = ['2'];
@@ -409,7 +390,6 @@ suite('Internal httpgd client', () => {
         await until(() => client.getPlots()[0]?.id === '2');
     });
     test('serializes plot refreshes and retains updates received during a request', async () => {
-        globalThis.WebSocket = TestWebSocket as unknown as typeof WebSocket;
         await client.connect();
         const socket = TestWebSocket.instances[0];
         socket.open();
