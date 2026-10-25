@@ -95,9 +95,9 @@ untouched, and does not change `.libPaths()`.
 
 With `r.plot.backend` set to `"auto"`, the offer appears at most once per VS Code
 window session. **Not now** or closing the notification postpones it until a
-later window session. **Don't ask again** disables automatic offers; set
-`r.plot.jgd.installationPrompt` to `true` in User Settings to enable them again.
-Explicitly selecting `"jgd"` offers installation whenever setup requires it.
+later window session. **Don't ask again** disables automatic offers. Explicitly
+selecting `"jgd"` offers installation whenever setup requires it, even after
+choosing **Don't ask again**.
 
 R waits for the installation decision before connecting the session watcher;
 code sent during setup stays queued. Once approved, installation may require

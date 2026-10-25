@@ -1756,6 +1756,7 @@ async function ensureAttachToolConsentService(
             service = createToolConsentService(
                 directory,
                 () => config().get<boolean>('sessionWatcher') === true,
+                extensionContext.globalState,
                 200,
             );
             await service.start();

@@ -2311,13 +2311,6 @@
           ],
           "markdownDescription": "The canonical setting for selecting the plot backend. `standard` uses the VS Code static plot viewer; `native` leaves R's configured graphics device untouched.\n\nWhen set to `auto`, the best available backend is used (JGD if installed, then httpgd, then standard). For backwards compatibility, setting `#r.plot.useHttpgd#` to `true` selects httpgd while this setting remains `auto`; workspace settings take precedence over user settings, with an explicit backend value preferred within the same scope."
         },
-        "r.plot.jgd.installationPrompt": {
-          "type": "boolean",
-          "default": true,
-          "scope": "application",
-          "ignoreSync": true,
-          "markdownDescription": "Show one automatic prompt per vscode-R extension-host session when `#r.plot.backend#` is `auto`. Choosing `Don't ask again` disables automatic prompts in User Settings; set this to `true` to allow prompts again in a later session. `Not now`, dismissal, and installation do not change this setting. Explicitly selecting the `jgd` backend prompts whenever installation is needed, regardless of this setting."
-        },
         "r.plot.jgd.historyLimit": {
           "type": "number",
           "default": 50,

@@ -72,7 +72,7 @@ suite('managed package consent bridge', () => {
             sessionState,
             rememberAutoPromptDismissal: () => {
                 if (failPreferenceSave) {
-                    return Promise.reject(new Error('settings unavailable'));
+                    return Promise.reject(new Error('global state unavailable'));
                 }
                 autoPromptEnabled = false;
                 return Promise.resolve();
@@ -220,20 +220,6 @@ suite('managed package consent bridge', () => {
             'decline\n',
         );
         assert.strictEqual(prompts.length, 2);
-
-        autoPromptEnabled = true;
-        sessionState = { autoPrompted: false };
-        const resetHostDirectory = path.join(directory, 'reset-host');
-        await fs.mkdir(resetHostDirectory);
-        const resetHost = service(undefined, resetHostDirectory);
-        await resetHost.start();
-        const resetId = '9'.repeat(32);
-        await writeRequest(resetId, 'auto', undefined, resetHostDirectory);
-        assert.strictEqual(
-            await waitForFile(path.join(resetHostDirectory, `${resetId}.response`)),
-            'approve\n',
-        );
-        assert.strictEqual(prompts.length, 3);
     });
 
     test('parallel automatic requests show one prompt and a changed plan cannot be approved', async () => {
@@ -283,7 +269,7 @@ suite('managed package consent bridge', () => {
         assert.strictEqual(autoPromptEnabled, true);
     });
 
-    test('Not now, dismiss, and install do not change the persistent setting', async () => {
+    test('Not now, dismiss, and install do not change persistent suppression', async () => {
         for (const [index, result] of (['notNow', 'dismiss', 'install'] as const).entries()) {
             autoPromptEnabled = true;
             choice = result;

@@ -6,7 +6,7 @@ import {
     ToolConsentSessionState,
 } from './toolConsent';
 
-const AUTO_PROMPT_SETTING = 'plot.jgd.installationPrompt';
+const JGD_INSTALL_PROMPT_DISMISSED = 'jgdInstallPromptDismissed';
 // Shared by services in this extension host; a new host starts with a fresh state.
 const hostSessionState: ToolConsentSessionState = { autoPrompted: false };
 
@@ -29,18 +29,16 @@ function formatPlan(request: ToolConsentRequest): string {
 export function createToolConsentService(
     directory: string,
     isEnabled: () => boolean,
+    globalState: vscode.Memento,
     intervalMs?: number,
 ): ToolConsentService {
     return new ToolConsentService({
         directory,
         isEnabled,
-        isAutoPromptEnabled: () =>
-            vscode.workspace.getConfiguration('r').get<boolean>(AUTO_PROMPT_SETTING, true),
+        isAutoPromptEnabled: () => globalState.get<unknown>(JGD_INSTALL_PROMPT_DISMISSED) !== true,
         sessionState: hostSessionState,
         rememberAutoPromptDismissal: async () => {
-            await vscode.workspace
-                .getConfiguration('r')
-                .update(AUTO_PROMPT_SETTING, false, vscode.ConfigurationTarget.Global);
+            await globalState.update(JGD_INSTALL_PROMPT_DISMISSED, true);
         },
         intervalMs,
         prompt: async (request): Promise<ToolConsentChoice> => {
