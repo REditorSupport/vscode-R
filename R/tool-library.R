@@ -286,7 +286,13 @@ tool_library_load <- function(package, minimum_version, root) {
     }
     if (selected$source == "loaded") return(asNamespace(package))
     if (selected$install_required) return(NULL)
-    namespace <- loadNamespace(package, lib.loc = selected$library)
+    namespace <- tryCatch(loadNamespace(package, lib.loc = selected$library), error = function(error) {
+        if (selected$source != "managed") stop(error)
+        stop("Could not load the managed ", package, " package. Remove ",
+             shQuote(file.path(selected$library, package)),
+             " to allow vscode-R to offer installation on the next startup. ",
+             conditionMessage(error), call. = FALSE)
+    })
     actual_path <- normalizePath(getNamespaceInfo(namespace, "path"), winslash = "/", mustWork = TRUE)
     intended_path <- normalizePath(file.path(selected$library, package), winslash = "/", mustWork = TRUE)
     actual_version <- as.character(getNamespaceVersion(namespace))

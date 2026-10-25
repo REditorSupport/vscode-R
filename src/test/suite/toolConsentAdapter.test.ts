@@ -46,8 +46,8 @@ suite('Managed package consent persistence', () => {
                     JGD_MINIMUM_VERSION,
                     '1.2.0',
                     'https://cloud.r-project.org',
-                    'source',
-                    'yes',
+                    backend === 'auto' ? 'source' : 'win.binary',
+                    backend === 'auto' ? 'yes' : 'no',
                     '',
                 ].join('\n');
                 await fs.writeFile(path.join(directory, id + '.request'), content);
@@ -77,6 +77,8 @@ suite('Managed package consent persistence', () => {
             assert.strictEqual(broker.canPrompt('auto'), false);
             assert.strictEqual(broker.canPrompt('jgd'), true);
             assert.strictEqual(prompt.callCount, 2);
+            assert.ok(prompt.firstCall.args[0].includes('(source; minimum '));
+            assert.ok(prompt.secondCall.args[0].includes('(binary; minimum '));
         } finally {
             await broker.stop();
             sandbox.restore();

@@ -15,7 +15,7 @@ function formatPlan(request: ToolConsentRequest): string {
     const [platform, version] = request.runtime.split('|');
     const rows = request.packages.map(
         (item) =>
-            `• ${item.name} ${item.version} (minimum ${item.minimumVersion})\n  Repository: ${item.repository}`,
+            `• ${item.name} ${item.version} (${item.packageType === 'source' ? 'source' : 'binary'}; minimum ${item.minimumVersion})\n  Repository: ${item.repository}`,
     );
     const buildNotice = request.packages.some((item) => item.sourceBuild)
         ? '\n\nA source build may be required and may need system build tools.'

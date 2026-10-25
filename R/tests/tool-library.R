@@ -56,6 +56,25 @@ local({
                                         strsplit(R.version$minor, ".", fixed = TRUE)[[1L]][1L],
                                         sep = "."), "library")))
 
+    # DESCRIPTION can look compatible even when the installed package cannot load.
+    broken_root <- file.path(root, "broken")
+    broken_library <- tool_library_path(broken_root)
+    broken_package <- file.path(broken_library, "jgd")
+    dir.create(broken_package, recursive = TRUE)
+    writeLines(c("Package: jgd", "Version: 1.0.0"), file.path(broken_package, "DESCRIPTION"))
+    original_failure <- tryCatch(loadNamespace("jgd", lib.loc = broken_library), error = identity)
+    failure <- tryCatch(tool_library_load("jgd", "1.0.0", broken_root), error = identity)
+    stopifnot(inherits(original_failure, "error"), inherits(failure, "error"),
+              grepl(broken_package, conditionMessage(failure), fixed = TRUE),
+              grepl("Remove ", conditionMessage(failure), fixed = TRUE),
+              grepl("installation on the next startup", conditionMessage(failure), fixed = TRUE),
+              grepl(conditionMessage(original_failure), conditionMessage(failure), fixed = TRUE),
+              file.exists(file.path(broken_package, "DESCRIPTION")))
+    .libPaths(c(broken_library, original_paths))
+    user_failure <- tryCatch(tool_library_load("jgd", "1.0.0", broken_root), error = identity)
+    stopifnot(identical(conditionMessage(user_failure), conditionMessage(original_failure)))
+    .libPaths(original_paths)
+
     project_library <- file.path(root, "project library")
     package_manager_library <- file.path(root, "package manager library")
     user_library <- file.path(root, "user library")
