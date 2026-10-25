@@ -132,6 +132,7 @@ suite('Session Terminal Lifecycle', () => {
         } as unknown as vscode.WorkspaceConfiguration);
         sandbox.stub(util, 'getRterm').resolves(process.execPath);
         sandbox.stub(session, 'getSessConsentDirectory').resolves('/unused-test-consent');
+        sandbox.stub(session, 'getToolConsentDirectory').resolves('/unused-tool-consent');
         sandbox.stub(session, 'createSessionDiscoveryFile').resolves(discoveryFile);
         sandbox.stub(session, 'updateTerminalSessionDiscoveryFile').resolves();
         sandbox.stub(vscode.window, 'terminals').value([terminal]);

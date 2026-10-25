@@ -2619,6 +2619,7 @@
     "test:sess-source": "node --test scripts/sess-source.test.js && pnpm run test:sess-identity && pnpm run test:sess-attach",
     "test:tool-library": "Rscript --vanilla R/tests/tool-library.R",
     "test:tool-consent": "Rscript --vanilla R/tests/tool-consent.R",
+    "test:prepare-jgd": "Rscript --vanilla R/tests/prepare-jgd.R",
     "test:interactive": "pnpm run pretest && pnpm run test:node",
     "test:interactive:examples": "pnpm run compile && tsc && node src/test/examples/run.cjs"
   },
