@@ -132,6 +132,24 @@ local({
         "  as.character(file.exists(marker)), tool_path), result)"
     ), runner)
 
+    read_child_logs <- function(logs, timeout_seconds = 10) {
+        deadline <- Sys.time() + timeout_seconds
+        repeat {
+            output <- lapply(logs, function(path) {
+                suppressWarnings(tryCatch(readLines(path, warn = FALSE),
+                                          error = function(error) error))
+            })
+            failed <- vapply(output, inherits, FALSE, "error")
+            if (!any(failed)) return(unlist(output))
+            if (Sys.time() >= deadline) {
+                stop(output[[which(failed)[[1L]]]])
+            }
+            # Publishing a result does not close redirected stdout/stderr. Windows
+            # can deny read access until the asynchronous child releases them.
+            Sys.sleep(0.02)
+        }
+    }
+
     # Answer consent requests by package until the child publishes its result.
     serve <- function(consent, result, answers, logs) {
         seen <- list()
@@ -152,9 +170,8 @@ local({
             }
             if (file.exists(result)) return(seen)
             if (Sys.time() >= deadline) {
-                output <- unlist(lapply(logs, function(path) {
-                    if (file.exists(path)) readLines(path, warn = FALSE) else character()
-                }))
+                output <- tryCatch(read_child_logs(logs, timeout_seconds = 0),
+                                   error = conditionMessage)
                 stop("Timed out waiting for the attach child: ", paste(output, collapse = "\n"))
             }
             Sys.sleep(0.02)
@@ -170,7 +187,7 @@ local({
         system2_with_child_environment(isolated_child_env(mode), r_binary, shQuote(args),
                                        wait = FALSE, stdout = logs[[1L]], stderr = logs[[2L]])
         requests <- serve(file.path(root, mode, "consent"), result, answers, logs)
-        output <- unlist(lapply(logs, readLines, warn = FALSE))
+        output <- read_child_logs(logs)
         list(values = readLines(result, warn = FALSE), requests = requests,
              messages = grep("^vscode-R|incompatible", output, value = TRUE))
     }
