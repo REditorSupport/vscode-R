@@ -60,7 +60,7 @@ for other changes and upgrade notes.
 Steps 1–3 above are all that's required to get started with R in VS Code. But we also recommend the following software for a fully optimized R + VS Code experience:
 
 * Install an interactive plotting backend for a better R graphics experience:
-  * [jgd](https://github.com/grantmcdermott/jgd): Lightweight JSON graphics device with native vscode-R integration.
+  * [jgd](https://github.com/grantmcdermott/jgd): Lightweight JSON graphics device with native vscode-R integration. If it is not installed, vscode-R can offer to install it into a vscode-R-managed library without changing your R libraries.
   * [httpgd](https://github.com/nx10/httpgd): SVG-based graphics device served via HTTP and WebSockets.
 
 * [arf](https://github.com/eitsupi/arf): A modern R console with many features: syntax highlighting, multiline editing, vi/emacs keybindings, R version switching, etc. Successor to [radian](https://github.com/randy3k/radian) written in Rust.
@@ -84,33 +84,6 @@ Please consult the relevant installation wiki pages for your OS ([Windows](https
 Set `r.plot.backend` to `"native"` to use R's configured graphics device without
 opening the VS Code plot viewer automatically. The `"standard"` backend continues
 to display static plots in VS Code.
-
-### Managed jgd installation
-
-Normal R terminals and manual session attachment can offer to install `jgd` into
-a vscode-R-managed library when the JGD plot viewer is available. An existing
-compatible package in your R libraries takes precedence. Managed installation
-uses your configured R package repositories, leaves user and project libraries
-untouched, and does not change `.libPaths()`.
-
-With `r.plot.backend` set to `"auto"`, the offer appears at most once per VS Code
-window session. **Not now** or closing the notification postpones it until a
-later window session. **Don't ask again** disables automatic offers. Explicitly
-selecting `"jgd"` offers installation whenever setup requires it, even after
-choosing **Don't ask again**.
-
-R waits for the installation decision before connecting the session watcher;
-code sent during setup stays queued. Once approved, installation may require
-compilation tools if the repository supplies a source package. Declining or a
-setup failure allows the R terminal and session watcher to continue with an
-available fallback plot backend. When automatic offers are suppressed, setup
-uses an existing compatible package or falls back without querying repositories.
-
-The managed library is shared by R sessions using the same platform and R
-major/minor version. Close other R sessions using the managed package before
-approving an update. Updating a loaded package can fail because of locked DLLs
-on Windows or leave other sessions using inconsistent package files. Restart
-affected R sessions before retrying.
 
 ## Features
 
