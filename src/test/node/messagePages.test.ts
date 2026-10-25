@@ -8,7 +8,13 @@ import * as sinon from 'sinon';
 import { SessionAgent } from '../../interactive/agent';
 import { AgentClient } from '../../interactive/client';
 import { BackendEvent, ClientReply, SessionBackend } from '../../interactive/backend';
-import { AgentConfig, SessionEvent, SessionManifest, Submission } from '../../interactive/protocol';
+import {
+    AgentConfig,
+    MAX_CODE_BYTES,
+    SessionEvent,
+    SessionManifest,
+    Submission,
+} from '../../interactive/protocol';
 import { JsonLines } from '../../interactive/framing';
 import { MessagePages, boundedJson } from '../../interactive/messagePages';
 
@@ -181,6 +187,72 @@ suite('Bounded message pages', () => {
                 assert.ok(client.connected);
             } finally {
                 client.close();
+                await agent.close();
+            }
+        });
+
+        test('restores active escaped code after reconnect when its JSON exceeds the history allowance', async () => {
+            const backend = new BackendFixture();
+            const globalenv: Record<string, unknown> = {};
+            for (let i = 0; i < 13000; i++) {
+                globalenv['object_' + i] = { type: 'integer', str: 'x'.repeat(200) };
+            }
+            backend.workspace = { globalenv, revision: 1 };
+            const dispatch = sinon.spy(backend, 'dispatch');
+            const config: AgentConfig = {
+                id: randomUUID(),
+                generation: randomUUID(),
+                label: 'escaped code',
+                directory: root,
+                storage: path.join(root, 'escaped-storage'),
+                provider: 'r',
+                supervision: 'test',
+                historyLimit: 50,
+                maxOutputBytes: 4 * 1024 * 1024,
+                maxJournalBytes: 32 * 1024 * 1024,
+            };
+            const agent = new SessionAgent(config, () => backend);
+            const manifest = await agent.start();
+            const client = new AgentClient(manifest);
+            const reconnected = new AgentClient(manifest);
+            try {
+                await client.connect();
+                await client.request('inspect', { method: 'workspace' });
+                const id = randomUUID();
+                // Quotes and newlines make valid raw source much larger in JSON.
+                const code = '"a"\n'.repeat(MAX_CODE_BYTES / 4);
+                assert.strictEqual(Buffer.byteLength(code), MAX_CODE_BYTES);
+                await client.request('submit', { submission: { id, code } });
+                client.close();
+                await reconnected.connect({ claim: false });
+                let paged = false;
+                const parser = new JsonLines((message) => {
+                    paged ||= message.resultPage !== undefined;
+                });
+                (reconnected as unknown as { socket: net.Socket }).socket.on(
+                    'data',
+                    (chunk: Buffer) => parser.push(chunk),
+                );
+                const snapshot = await reconnected.snapshot(1);
+                const active = snapshot.executions.find((record) => record.id === id);
+                assert.ok(active, 'Reconnect must preserve the admitted active execution');
+                assert.strictEqual(active.code, code);
+                assert.strictEqual(active.state, 'running');
+                assert.ok(Buffer.byteLength(JSON.stringify(active)) > 1400 * 1024);
+                assert.strictEqual(snapshot.manifest.status, 'busy');
+                assert.strictEqual(
+                    Object.keys(snapshot.workspace!.globalenv as object).length,
+                    13000,
+                );
+                assert.ok(
+                    paged,
+                    'The complete envelope must be paged rather than dropping active code',
+                );
+                assert.ok(reconnected.connected);
+                sinon.assert.calledOnce(dispatch);
+            } finally {
+                client.close();
+                reconnected.close();
                 await agent.close();
             }
         });

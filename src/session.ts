@@ -377,6 +377,16 @@ export function updateSessionWorkspace(target: Session, data: WorkspaceData): vo
     }
 }
 
+export function invalidateWorkspaceChildren(target: Session): void {
+    if (
+        sessions.get(target.sessionId) === target &&
+        isConnectedSession(target) &&
+        !target.workspaceUnavailable
+    ) {
+        rWorkspace?.invalidateChildren(target);
+    }
+}
+
 /** Move document routing to a new process; existing data viewers keep their old owner. */
 export function replaceSessionTransport(previous: Session, next: Session): void {
     workspaceRefreshes.get(previous)?.dispose();
@@ -2282,12 +2292,21 @@ function workspaceRefreshFor(target: Session): WorkspaceRefreshScheduler<Workspa
                     { method: 'workspace', params: { revision: target.workspaceData.revision } },
                     target,
                 );
-                if (!response || (response as { unchanged?: boolean }).unchanged) {
+                if (!response) {
                     return undefined;
+                }
+                if ((response as { unchanged?: boolean }).unchanged) {
+                    return target.workspaceData;
                 }
                 return response as WorkspaceData;
             },
-            (data) => updateSessionWorkspace(target, data),
+            (data) => {
+                if (data === target.workspaceData) {
+                    invalidateWorkspaceChildren(target);
+                } else {
+                    updateSessionWorkspace(target, data);
+                }
+            },
             () =>
                 sessions.get(target.sessionId) === target &&
                 !target.workspaceUnavailable &&

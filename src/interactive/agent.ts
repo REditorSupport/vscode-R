@@ -92,12 +92,14 @@ export class SessionAgent {
                         timeout: 2000,
                     }),
                 );
-                return response.unchanged ? undefined : response;
+                return response.unchanged ? this.workspace : response;
             },
             (workspace) => {
                 if (!isDeepStrictEqual(workspace, this.workspace)) {
                     this.workspace = workspace;
                     this.event('workspace', workspace);
+                } else {
+                    this.event('workspaceInvalidated', {});
                 }
             },
             () =>
@@ -407,7 +409,8 @@ export class SessionAgent {
                     Math.max(1, Math.min(Number(params.limit) || 50, this.config.historyLimit)),
                     this.current,
                 );
-                // Bound one protocol response. Older/full output remains in the journal.
+                // Bound historical output while preserving active code whose JSON
+                // escapes exceed the allowance. send() pages the complete envelope.
                 let size = 0;
                 const executions: ExecutionRecord[] = [];
                 for (const record of recent.executions
@@ -416,7 +419,7 @@ export class SessionAgent {
                         a.id === this.current ? -1 : b.id === this.current ? 1 : b.order - a.order,
                     )) {
                     const bytes = Buffer.byteLength(JSON.stringify(record));
-                    if (size + bytes > 1400 * 1024) {
+                    if (record.id !== this.current && size + bytes > 1400 * 1024) {
                         break;
                     }
                     size += bytes;

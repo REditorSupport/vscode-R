@@ -374,6 +374,25 @@ export class InteractiveManager
                     for (const view of this.views.values()) {
                         if (view.notebook === event.notebook) {
                             view.cellIndex?.invalidate();
+                            for (const change of event.contentChanges) {
+                                for (const cell of change.removedCells) {
+                                    const id = cell.metadata.rExecutionId as string | undefined;
+                                    const generation = cell.metadata.rGeneration as
+                                        | string
+                                        | undefined;
+                                    const model = generation
+                                        ? [view.model, ...view.history].find(
+                                              (model) => model.generation === generation,
+                                          )
+                                        : view.model;
+                                    for (const output of (id && model?.cells.get(id)?.outputs) ||
+                                        []) {
+                                        if (output.stream) {
+                                            view.outputState?.forget(output.stream);
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -2023,6 +2042,8 @@ export class InteractiveManager
                 view.target,
                 event.data as unknown as session.WorkspaceData,
             );
+        } else if (event.type === 'workspaceInvalidated') {
+            session.invalidateWorkspaceChildren(view.target);
         } else if (event.type === 'input' && view.client.control) {
             void this.prompt(view, event.data);
         } else if (event.type === 'clientRequest' && view.client.control) {

@@ -108,6 +108,48 @@ suite('Indexed journal working sets', () => {
         }
     });
 
+    test('indexes prototype-named execution IDs after a cold persisted-index reopen', () => {
+        const original = path.join(root, 'original'),
+            directory = path.join(root, 'cold');
+        let journal = new SessionJournal(original, 'generation');
+        journal.accept({ id: 'old', code: '1' });
+        journal.append('stream', { text: 'old output' }, 'old');
+        journal.close();
+        fs.cpSync(original, directory, { recursive: true });
+        // Keep a valid persisted index while using a path outside the hot cache.
+        const file = path.join(directory, 'events-index.json');
+        const saved = JSON.parse(fs.readFileSync(file, 'utf8')) as { data: string; hash: string };
+        const index = JSON.parse(saved.data) as { segments: { name: string; mtime: number }[] };
+        for (const segment of index.segments) {
+            segment.mtime = fs.statSync(path.join(directory, segment.name)).mtimeMs;
+        }
+        saved.data = JSON.stringify(index);
+        saved.hash = createHash('sha256').update(saved.data).digest('hex');
+        fs.writeFileSync(file, JSON.stringify(saved));
+        journal = new SessionJournal(directory, 'generation');
+        try {
+            const ids = ['__proto__', 'constructor', 'toString'];
+            for (const id of ids) {
+                const record = journal.accept({ id, code: id }).record;
+                journal.append('accepted', { record }, id);
+                journal.append('stream', { text: id }, id);
+            }
+            const recent = journal.recent(3);
+            assert.deepStrictEqual(
+                recent.executions.map((record) => record.id),
+                ids,
+            );
+            assert.deepStrictEqual(
+                recent.events
+                    .filter((event) => event.type === 'stream')
+                    .map((event) => event.data.text),
+                ids,
+            );
+        } finally {
+            journal.close();
+        }
+    });
+
     test('reads legacy archived records and output asynchronously without repairing files', async () => {
         const directory = path.join(root, 'generation');
         const journal = new SessionJournal(directory, 'generation');

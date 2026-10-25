@@ -51,8 +51,12 @@ workspace_length <- function(object) {
   if (typeof(object) %in% c("closure", "builtin")) return(1L)
   # unclass() can copy an entire classed vector. Check dispatch before using the
   # primitive length instead; unknown custom lengths belong to explicit queries.
-  has_method <- any(vapply(c(class(object), "default"), function(class_name) {
-    !is.null(utils::getS3method("length", class_name, optional = TRUE, envir = .GlobalEnv))
+  registry <- get(".__S3MethodsTable__.", envir = .BaseNamespaceEnv, inherits = FALSE)
+  has_method <- any(vapply(paste0("length.", c(class(object), "default")), function(method) {
+    # exists(mode = "any") does not force active bindings or promises. Treat an
+    # ambiguous binding as a method; getS3method's function lookup would force it.
+    exists(method, envir = .GlobalEnv, mode = "any", inherits = TRUE) ||
+      exists(method, envir = registry, mode = "any", inherits = FALSE)
   }, logical(1)))
   if (has_method) NULL else length(object)
 }

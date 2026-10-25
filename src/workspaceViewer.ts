@@ -99,6 +99,17 @@ export class WorkspaceDataProvider implements TreeDataProvider<TreeItem> {
         this._onDidChangeTreeData.fire(undefined);
     }
 
+    /** Values can change without changing the top-level structural metadata. */
+    public invalidateChildren(owner: Session): void {
+        if (this.owner !== owner) {
+            return;
+        }
+        this.childPageGeneration++;
+        this.childPages.clear();
+        this.childPageLoads.clear();
+        this._onDidChangeTreeData.fire(this.globalEnvRootItem);
+    }
+
     public constructor() {
         this.attachedNamespacesRootItem = new TreeItem(
             'Attached Namespaces',

@@ -507,7 +507,9 @@ export class SessionJournal {
         let recordBytes = 0;
         for (const record of records) {
             const bytes = Buffer.byteLength(JSON.stringify(record));
-            if (recordBytes + bytes > 1400 * 1024) {
+            // Raw code is bounded at admission, but JSON escaping can exceed the
+            // history allowance. Active work must survive reconnect regardless.
+            if (record.id !== activeId && recordBytes + bytes > 1400 * 1024) {
                 continue;
             }
             executions.push(record);
@@ -520,7 +522,7 @@ export class SessionJournal {
                 this.directory,
                 this.index,
                 new Set(executions.map((record) => record.id)),
-                maxRecentBytes - recordBytes,
+                Math.max(0, maxRecentBytes - recordBytes),
             ),
         };
     }

@@ -150,6 +150,34 @@ suite('Workspace Viewer', () => {
         );
     });
 
+    test('unchanged metadata refresh reloads child values without replacing the workspace', async () => {
+        session.updateSessionWorkspace(first, { ...data('mutable'), revision: 1 });
+        const metadata = first.workspaceData;
+        let value = 1;
+        let childQueries = 0;
+        first.requester = (request) => {
+            if (request.method === 'workspace') {
+                return Promise.resolve({ revision: 1, unchanged: true });
+            }
+            childQueries++;
+            return Promise.resolve({
+                children: [
+                    { str: `int ${value}`, class: 'integer', type: 'integer', has_children: false },
+                ],
+            });
+        };
+        const node = (await envNodes())[0];
+        assert.strictEqual((await provider.getChildren(node))[0].description, 'int 1');
+        value = 2;
+        session.invalidateWorkspaceChildren(second);
+        assert.strictEqual((await provider.getChildren(node))[0].description, 'int 1');
+        assert.strictEqual(childQueries, 1);
+        await session.updateWorkspace();
+        assert.strictEqual(first.workspaceData, metadata);
+        assert.strictEqual((await provider.getChildren(node))[0].description, 'int 2');
+        assert.strictEqual(childQueries, 2);
+    });
+
     test('readiness updates reenable workspace actions without another focus event', async () => {
         first.workspaceUnavailable = 'R is starting…';
         session.updateSessionWorkspace(first, first.workspaceData);

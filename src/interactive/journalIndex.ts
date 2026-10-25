@@ -130,6 +130,14 @@ function decodeIndex(text: string, generation: string): JournalIndex | undefined
         ) {
             return;
         }
+        for (const segment of index.segments) {
+            // JSON restores Object.prototype. Valid execution IDs such as
+            // __proto__ must remain ordinary keys when this segment is appended.
+            segment.ranges = Object.assign(
+                Object.create(null) as Record<string, [number, number]>,
+                segment.ranges,
+            );
+        }
         return index;
     } catch {
         return;

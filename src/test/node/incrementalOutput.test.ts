@@ -174,6 +174,69 @@ suite('Incremental Interactive console delivery', () => {
         assert.strictEqual(Buffer.from(model.outputs[0].items[0].data).toString(), 'first second');
     });
 
+    test('removing a console output releases its delivery even while an append is pending', async () => {
+        const model = notebook(),
+            state = new NotebookOutputState();
+        const removed = new StreamText('removed'),
+            retained = new StreamText('retained');
+        await updateNotebookOutputs(
+            model.execution,
+            [],
+            [streamOutput(removed, 'removed'), streamOutput(retained, 'retained')],
+            state,
+        );
+        let release!: () => void;
+        const blocked = new Promise<void>((resolve) => {
+            release = resolve;
+        });
+        const append = model.execution.appendOutputItems.bind(model.execution);
+        model.execution.appendOutputItems = async (items, output) => {
+            await blocked;
+            await append(items, output);
+        };
+        removed.append(' tail');
+        const pending = updateNotebookOutputs(
+            model.execution,
+            [...model.outputs],
+            [streamOutput(removed, 'removed'), streamOutput(retained, 'retained')],
+            state,
+        );
+        state.forget(removed);
+        assert.strictEqual(state.get(removed.snapshot()), undefined);
+        assert.ok(state.get(retained.snapshot()));
+        release();
+        await pending;
+        assert.strictEqual(
+            state.get(removed.snapshot()),
+            undefined,
+            'Late acknowledgements must not retain a removed buffer again',
+        );
+        assert.ok(
+            state.get(retained.snapshot()),
+            'Other outputs retain their incremental delivery',
+        );
+    });
+
+    test('cleared output items cannot be acknowledged after a notebook append', async () => {
+        const model = notebook(),
+            state = new NotebookOutputState(),
+            text = new StreamText('before');
+        await updateNotebookOutputs(model.execution, [], [streamOutput(text)], state);
+        model.execution.appendOutputItems = (_items, output) => {
+            output.items = [];
+            return Promise.resolve();
+        };
+        text.append(' after');
+        await updateNotebookOutputs(
+            model.execution,
+            [...model.outputs],
+            [streamOutput(text)],
+            state,
+            () => model.outputs,
+        );
+        assert.strictEqual(state.get(text.snapshot()), undefined);
+    });
+
     test('acknowledges normalized progress output without re-encoding its raw prefix', async () => {
         const model = notebook(),
             state = new NotebookOutputState(),

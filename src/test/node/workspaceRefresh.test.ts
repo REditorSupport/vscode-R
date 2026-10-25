@@ -79,6 +79,31 @@ suite('Workspace refresh scheduling', () => {
         assert.deepStrictEqual(published, []);
     });
 
+    test('coalesces successful unchanged reads and suppresses invalidated child notifications', async () => {
+        const cached = { version: 1 };
+        const first = deferred<typeof cached>();
+        let reads = 0;
+        let invalidations = 0;
+        const scheduler = new WorkspaceRefreshScheduler<typeof cached>(
+            () => (++reads === 1 ? first.promise : Promise.resolve(cached)),
+            (value) => {
+                assert.strictEqual(value, cached);
+                invalidations++;
+            },
+            () => true,
+        );
+        const running = scheduler.ensure();
+        await Promise.resolve();
+        for (let i = 0; i < 20; i++) {
+            scheduler.invalidate();
+        }
+        first.resolve(cached);
+        await running;
+        assert.strictEqual(reads, 2);
+        assert.strictEqual(invalidations, 1);
+        scheduler.dispose();
+    });
+
     test('deferred sends keep invalidation and inspection failures do not spin', async () => {
         let calls = 0;
         const errors: unknown[] = [];

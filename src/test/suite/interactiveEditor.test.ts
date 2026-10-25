@@ -15,6 +15,7 @@ import { InteractiveSerializer, DISPLAY_MIME } from '../../interactive/notebook'
 import { AgentConfig, SessionManifest } from '../../interactive/protocol';
 import type { SessionEvent } from '../../interactive/protocol';
 import type { Transcript, TranscriptCell } from '../../interactive/transcript';
+import type { NotebookOutputState } from '../../interactive/notebookOutput';
 import { AssetStorageStats, exportedAssetName, readAsset } from '../../interactive/assets';
 import { resolveExecutable } from '../../interactive/executable';
 import { shellQuote } from '../../interactive/launcher';
@@ -3489,7 +3490,34 @@ par(mfrow=c(1,1))`,
             document: notebook.uri,
         });
         await until(() => manifests[0].status === 'busy');
+        const manager = interactiveManager() as unknown as {
+            views: Map<
+                string,
+                {
+                    client: AgentClient;
+                    model: Transcript;
+                    outputState?: NotebookOutputState;
+                }
+            >;
+        };
+        const view = [...manager.views.values()].find(
+            (view) => view.client.manifest.id === manifests[0].id,
+        );
+        assert.ok(view);
+        const removedStreams = [...view.model.cells.values()]
+            .filter((cell) => !['queued', 'running', 'unknown'].includes(cell.record.state))
+            .flatMap((cell) =>
+                cell.outputs.flatMap((output) => (output.stream ? [output.stream] : [])),
+            );
+        assert.ok(removedStreams.length, 'Exercise clearing completed console output');
         await vscode.commands.executeCommand('r.interactive.clear', notebook.uri);
+        for (const stream of removedStreams) {
+            assert.strictEqual(
+                view.outputState?.get(stream.snapshot()),
+                undefined,
+                'Clearing cells must release their notebook delivery handles and buffers',
+            );
+        }
         assert.ok(
             notebook.getCells().some((cell) => cell.document.getText() === '# unfinished draft'),
         );

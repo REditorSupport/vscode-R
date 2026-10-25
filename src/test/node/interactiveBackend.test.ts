@@ -245,13 +245,63 @@ suite('Interactive backend configuration', () => {
         let calls = 0;
         const previous = (await client.snapshot()).workspace;
         const published = events.filter((event) => event.type === 'workspace').length;
+        const invalidations = events.filter(
+            (event) => event.type === 'workspaceInvalidated',
+        ).length;
         backend.inspectResult = () => {
             calls++;
             return Promise.resolve({ revision: 1, unchanged: true });
         };
-        backend.emit({ type: 'workspaceChanged' });
+        for (let i = 0; i < 20; i++) {
+            backend.emit({ type: 'workspaceChanged' });
+        }
         await until(() => calls === 1);
+        await until(
+            () =>
+                events.filter((event) => event.type === 'workspaceInvalidated').length ===
+                invalidations + 1,
+        );
         assert.deepStrictEqual((await client.snapshot()).workspace, previous);
+        assert.strictEqual(events.filter((event) => event.type === 'workspace').length, published);
+        assert.deepStrictEqual(
+            events.find((event) => event.type === 'workspaceInvalidated')!.data,
+            {},
+        );
+    });
+
+    test('equal legacy workspace snapshots still invalidate expanded child values', async () => {
+        const previous = (await client.snapshot()).workspace;
+        const invalidations = events.filter(
+            (event) => event.type === 'workspaceInvalidated',
+        ).length;
+        backend.inspectResult = () => Promise.resolve(previous);
+        backend.emit({ type: 'workspaceChanged' });
+        await until(
+            () =>
+                events.filter((event) => event.type === 'workspaceInvalidated').length ===
+                invalidations + 1,
+        );
+        assert.deepStrictEqual((await client.snapshot()).workspace, previous);
+    });
+
+    test('manual workspace inspection invalidates children when metadata is unchanged', async () => {
+        const previous = (await client.snapshot()).workspace;
+        const published = events.filter((event) => event.type === 'workspace').length;
+        const invalidations = events.filter(
+            (event) => event.type === 'workspaceInvalidated',
+        ).length;
+        let calls = 0;
+        backend.inspectResult = () => {
+            calls++;
+            return Promise.resolve({ revision: 1, unchanged: true });
+        };
+        assert.deepStrictEqual(await client.request('inspect', { method: 'workspace' }), previous);
+        await until(
+            () =>
+                events.filter((event) => event.type === 'workspaceInvalidated').length ===
+                invalidations + 1,
+        );
+        assert.strictEqual(calls, 1);
         assert.strictEqual(events.filter((event) => event.type === 'workspace').length, published);
     });
 
