@@ -414,9 +414,13 @@ writeLines(c(
     "while (length(ids) < count && Sys.time() < deadline) {",
     "  requests <- list.files(directory, pattern='\\\\.request$', full.names=TRUE)",
     "  for (request in requests) {",
-    "    lines <- readLines(request, warn=FALSE)",
-    "    if (length(lines) != 5L || lines[[1L]] != 'vscode-r-sess-consent-v1') stop('bad request')",
-    "    id <- lines[[2L]]; if (id %in% ids) next",
+    "    id <- sub('\\\\.request$', '', basename(request))",
+    "    if (id %in% ids) next",
+    "    lines <- suppressWarnings(tryCatch(readLines(request, warn=FALSE),",
+    "      error=function(e) { if (!file.exists(request)) NULL else stop(e) }))",
+    "    if (is.null(lines)) next",
+    "    if (length(lines) != 5L || lines[[1L]] != 'vscode-r-sess-consent-v1' ||",
+    "        lines[[2L]] != id) stop('bad request')",
     "    if (nzchar(wait_marker) && !file.exists(wait_marker)) next",
     "    ids <- c(ids, id); temporary <- tempfile(tmpdir=directory)",
     "    identities <- c(identities, lines[[4L]])",
@@ -609,7 +613,7 @@ run_case <- function(mode) {
         if (!file.exists(status_path)) stop(paste("consent agent did not finish:", mode))
         agent_status <- readLines(status_path, warn = FALSE)
         if (!identical(agent_status, "ok")) {
-            stop(paste("consent agent failed:", paste(agent_status, collapse = " ")))
+            stop(paste("consent agent failed in", mode, ":", paste(agent_status, collapse = " ")))
         }
         log_path <- file.path(case_root, "consent-ids")
         ids <- readLines(log_path, warn = FALSE)
@@ -647,7 +651,8 @@ wait_for_request <- function(directory, seconds) {
     requests[[1L]]
 }
 
-start_consent_agent <- function(case_root, answer, wait_marker = "", label = "consent") {
+start_consent_agent <- function(case_root, answer, wait_marker = "", label = "consent",
+                                count = 1L, script = agent) {
     consent <- file.path(case_root, "consent")
     log <- file.path(case_root, paste0(label, "-ids"))
     identity_log <- file.path(case_root, paste0(label, "-identities"))
@@ -657,8 +662,8 @@ start_consent_agent <- function(case_root, answer, wait_marker = "", label = "co
     system2(
         r_binary,
         shQuote(c(
-            "--vanilla", "--slave", paste0("--file=", agent), "--args",
-            consent, "1", answer, log, identity_log, status, wait_marker
+            "--vanilla", "--slave", paste0("--file=", script), "--args",
+            consent, as.character(count), answer, log, identity_log, status, wait_marker
         )),
         wait = FALSE,
         stdout = stdout,
@@ -668,7 +673,7 @@ start_consent_agent <- function(case_root, answer, wait_marker = "", label = "co
          stdout = stdout, stderr = stderr)
 }
 
-wait_for_agent <- function(paths) {
+wait_for_agent <- function(paths, count = 1L) {
     wait_for_file(paths$status, 10, "consent-agent completion")
     result <- readLines(paths$status, warn = FALSE)
     if (!identical(result, "ok")) {
@@ -676,16 +681,66 @@ wait_for_agent <- function(paths) {
     }
     ids <- readLines(paths$log, warn = FALSE)
     identities <- readLines(paths$identity_log, warn = FALSE)
-    stopifnot(length(ids) == 1L, grepl("^[A-Za-z0-9_-]{16,64}$", ids))
+    stopifnot(length(ids) == count, !anyDuplicated(ids),
+              all(grepl("^[A-Za-z0-9_-]{16,64}$", ids)))
     minor <- strsplit(R.version$minor, ".", fixed = TRUE)[[1L]][1L]
     expected_runtime <- paste(
         R.version$platform,
         paste(R.version$major, minor, sep = "."),
         sep = "|"
     )
-    stopifnot(identical(identities, expected_runtime))
+    stopifnot(identical(identities, rep(expected_runtime, count)))
     ids
 }
+
+# Force the list/read race instead of relying on platform scheduling: one request
+# vanishes after listing, and a handled request remains while the next arrives.
+scan_root <- file.path(root, "consent-scan-race")
+scan_consent <- file.path(scan_root, "consent")
+dir.create(scan_consent, recursive = TRUE)
+expired_id <- paste0(strrep("0", 16), "expired")
+first_id <- strrep("a", 20)
+second_id <- strrep("b", 20)
+expired_request <- file.path(scan_consent, paste0(expired_id, ".request"))
+first_request <- file.path(scan_consent, paste0(first_id, ".request"))
+second_request <- file.path(scan_consent, paste0(second_id, ".request"))
+first_response <- file.path(scan_consent, paste0(first_id, ".response"))
+scan_reads <- file.path(scan_root, "first-request-reads")
+request_lines <- function(id) {
+    c("vscode-r-sess-consent-v1", id, revision, sess_runtime_identity(), "missing")
+}
+writeLines(request_lines(expired_id), expired_request)
+writeLines(request_lines(first_id), first_request)
+scan_agent <- file.path(scan_root, "raced-agent.R")
+writeLines(c(
+    paste0("expired <- ", r_literal(expired_request)),
+    paste0("first <- ", r_literal(first_request)),
+    paste0("second <- ", r_literal(second_request)),
+    paste0("response <- ", r_literal(first_response)),
+    "reads <- 0L",
+    "list.files <- function(...) {",
+    paste0("  if (file.exists(response) && !file.exists(second)) writeLines(",
+           "c(", paste(vapply(request_lines(second_id), r_literal, ""), collapse = ", "),
+           "), second)"),
+    "  files <- base::list.files(...)",
+    "  if (expired %in% files) unlink(expired)",
+    "  files",
+    "}",
+    "readLines <- function(con, ...) {",
+    "  if (identical(con, first)) {",
+    "    reads <<- reads + 1L",
+    "    if (reads > 1L) stop('handled request read twice')",
+    "  }",
+    "  base::readLines(con, ...)",
+    "}",
+    paste0("source(", r_literal(agent), ")"),
+    paste0("writeLines(as.character(reads), ", r_literal(scan_reads), ")")
+), scan_agent)
+scan_paths <- start_consent_agent(scan_root, "decline", count = 2L, script = scan_agent)
+scan_ids <- wait_for_agent(scan_paths, count = 2L)
+wait_for_file(scan_reads, 5, "consent scan fixture completion")
+stopifnot(identical(scan_ids, c(first_id, second_id)), !file.exists(expired_request),
+          identical(readLines(scan_reads), "1"))
 
 start_parallel_child <- function(case_root, mode, role, result_file, install_helper = "") {
     environment_names <- c("VSCODE_R_TEST_INSTALL_HELPER", "VSCODE_R_TEST_REQUEST_LOG")

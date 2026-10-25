@@ -3,11 +3,13 @@ import * as path from 'path';
 import { createRequire } from 'module';
 import * as vscode from 'vscode';
 import type { InteractiveManager } from '../../interactive/manager';
+import { acknowledgeEditorSelection, executeEditorCommand } from '../common/editorState';
 
 suite('Interactive input formatting with independent providers', () => {
     let editor: vscode.TextEditor;
     let controller: vscode.NotebookController;
     let notebook: vscode.NotebookDocument;
+    let inputUri: vscode.Uri;
     let originalTabs: Set<vscode.Tab>;
     let providers: vscode.Disposable[];
     let previousOnType: boolean | undefined;
@@ -23,11 +25,14 @@ suite('Interactive input formatting with independent providers', () => {
         }
     };
     const replaceInput = async (text: string): Promise<void> => {
-        await editor.edit((builder) =>
-            builder.replace(new vscode.Range(0, 0, editor.document.lineCount, 0), text),
+        assert.ok(
+            await editor.edit((builder) =>
+                builder.replace(new vscode.Range(0, 0, editor.document.lineCount, 0), text),
+            ),
         );
+        await until(() => editor.document.getText() === text);
         const end = editor.document.positionAt(text.length);
-        editor.selection = new vscode.Selection(end, end);
+        await acknowledgeEditorSelection(editor, new vscode.Selection(end, end));
     };
     const focusInput = async (): Promise<void> => {
         await vscode.commands.executeCommand(
@@ -36,8 +41,25 @@ suite('Interactive input formatting with independent providers', () => {
             notebook.uri,
         );
         await vscode.commands.executeCommand('interactive.input.focus');
-        await until(() => vscode.window.activeTextEditor?.document.uri.scheme === selector.scheme);
+        await until(
+            () => vscode.window.activeTextEditor?.document.uri.toString() === inputUri.toString(),
+        );
         editor = vscode.window.activeTextEditor!;
+        await acknowledgeEditorSelection(editor, editor.selection);
+    };
+    const setFormatSetting = async (
+        name: 'formatOnType' | 'formatOnPaste',
+        value: boolean | undefined,
+    ): Promise<void> => {
+        await settings().update(name, value, vscode.ConfigurationTarget.Global, true);
+        await until(() => settings().inspect<boolean>(name)?.globalLanguageValue === value);
+        if (value !== undefined) {
+            await until(
+                () =>
+                    vscode.workspace.getConfiguration('editor', editor.document).get(name) ===
+                    value,
+            );
+        }
     };
     const formatExpression = (document: vscode.TextDocument): vscode.TextEdit[] => [
         vscode.TextEdit.replace(
@@ -70,6 +92,7 @@ suite('Interactive input formatting with independent providers', () => {
             'Independent formatting',
         );
         notebook = await vscode.workspace.openNotebookDocument(opened.notebookUri);
+        inputUri = opened.inputUri;
         await vscode.languages.setTextDocumentLanguage(
             await vscode.workspace.openTextDocument(opened.inputUri),
             'r',
@@ -87,8 +110,8 @@ suite('Interactive input formatting with independent providers', () => {
     setup(async () => {
         providers = [];
         await focusInput();
-        await settings().update('formatOnType', true, vscode.ConfigurationTarget.Global, true);
-        await settings().update('formatOnPaste', true, vscode.ConfigurationTarget.Global, true);
+        await setFormatSetting('formatOnType', true);
+        await setFormatSetting('formatOnPaste', true);
         await replaceInput('');
     });
     teardown(async () => {
@@ -96,22 +119,12 @@ suite('Interactive input formatting with independent providers', () => {
             provider.dispose();
         });
         await focusInput();
-        await settings().update('formatOnType', false, vscode.ConfigurationTarget.Global, true);
+        await setFormatSetting('formatOnType', false);
         await replaceInput('');
     });
     suiteTeardown(async () => {
-        await settings().update(
-            'formatOnType',
-            previousOnType,
-            vscode.ConfigurationTarget.Global,
-            true,
-        );
-        await settings().update(
-            'formatOnPaste',
-            previousOnPaste,
-            vscode.ConfigurationTarget.Global,
-            true,
-        );
+        await setFormatSetting('formatOnType', previousOnType);
+        await setFormatSetting('formatOnPaste', previousOnPaste);
         controller.dispose();
         await vscode.window.tabGroups.close(
             vscode.window.tabGroups.all
@@ -141,7 +154,7 @@ suite('Interactive input formatting with independent providers', () => {
             await replaceInput('');
             const before = calls.length;
             for (const ch of text) {
-                await vscode.commands.executeCommand('type', { text: ch });
+                await executeEditorCommand(editor, 'type', ch);
             }
             await until(() => editor.document.getText() === text.replace('1+1', '1 + 1'));
             assert.ok(calls.length > before);
@@ -159,7 +172,7 @@ suite('Interactive input formatting with independent providers', () => {
         );
         assert.deepStrictEqual(calls[0].options, { tabSize: 2, insertSpaces: true });
         await replaceInput('(1+1');
-        await vscode.commands.executeCommand('type', { text: ')' });
+        await executeEditorCommand(editor, 'type', ')');
         await until(() => editor.document.getText() === '(1 + 1)');
         await vscode.commands.executeCommand('undo');
         await until(() => editor.document.getText() === '(1+1');
@@ -179,14 +192,14 @@ suite('Interactive input formatting with independent providers', () => {
                 ')',
             ),
         );
-        await settings().update('formatOnType', false, vscode.ConfigurationTarget.Global, true);
+        await setFormatSetting('formatOnType', false);
         await replaceInput('(1+1');
-        await vscode.commands.executeCommand('type', { text: ')' });
+        await executeEditorCommand(editor, 'type', ')');
         await new Promise((resolve) => setTimeout(resolve, 100));
         assert.strictEqual(editor.document.getText(), '(1+1)');
         assert.strictEqual(calls, 0);
-        await settings().update('formatOnType', true, vscode.ConfigurationTarget.Global, true);
-        await vscode.commands.executeCommand('type', { text: '!' });
+        await setFormatSetting('formatOnType', true);
+        await executeEditorCommand(editor, 'type', '!');
         await new Promise((resolve) => setTimeout(resolve, 100));
         assert.strictEqual(calls, 0);
     });
@@ -215,14 +228,9 @@ suite('Interactive input formatting with independent providers', () => {
             }),
         );
         for (const enabled of [false, true]) {
-            await settings().update(
-                'formatOnPaste',
-                enabled,
-                vscode.ConfigurationTarget.Global,
-                true,
-            );
+            await setFormatSetting('formatOnPaste', enabled);
             await replaceInput('(1+1');
-            await vscode.commands.executeCommand('paste', { text: ')' });
+            await executeEditorCommand(editor, 'paste', ')');
             // On-type formatting runs asynchronously from document-change events.
             await new Promise((resolve) => setTimeout(resolve, 100));
             assert.strictEqual(
@@ -235,7 +243,7 @@ suite('Interactive input formatting with independent providers', () => {
         }
         assert.deepStrictEqual(ranges[0], new vscode.Range(0, 4, 0, 5));
         await replaceInput('(1+1');
-        await vscode.commands.executeCommand('type', { text: ')' });
+        await executeEditorCommand(editor, 'type', ')');
         await until(() => editor.document.getText() === '(1 + 1)');
         assert.strictEqual(typeCalls, 1, 'Typing still invokes the on-type provider after paste');
     });
@@ -250,7 +258,7 @@ suite('Interactive input formatting with independent providers', () => {
                 },
             }),
         );
-        await vscode.commands.executeCommand('paste', { text: '(1+1)' });
+        await executeEditorCommand(editor, 'paste', '(1+1)');
         assert.strictEqual(editor.document.getText(), '(1 + 1)');
         assert.deepStrictEqual(ranges[0], new vscode.Range(0, 0, 0, 5));
         assert.strictEqual(editor.document.offsetAt(editor.selection.active), 7);
@@ -258,17 +266,18 @@ suite('Interactive input formatting with independent providers', () => {
         await until(() => editor.document.getText() === '(1+1)');
         await vscode.commands.executeCommand('undo');
         await until(() => editor.document.getText() === '');
-        await settings().update('formatOnPaste', false, vscode.ConfigurationTarget.Global, true);
-        await vscode.commands.executeCommand('paste', { text: '(1+1)' });
+        await setFormatSetting('formatOnPaste', false);
+        await executeEditorCommand(editor, 'paste', '(1+1)');
         assert.strictEqual(editor.document.getText(), '(1+1)');
         assert.strictEqual(ranges.length, 1);
         const source = await vscode.workspace.openTextDocument({
             language: 'plaintext',
             content: '',
         });
-        await vscode.window.showTextDocument(source);
+        const sourceEditor = await vscode.window.showTextDocument(source);
         await until(() => vscode.window.activeTextEditor?.document === source);
-        await vscode.commands.executeCommand('paste', { text: '(1+1)' });
+        await acknowledgeEditorSelection(sourceEditor, new vscode.Selection(0, 0, 0, 0));
+        await executeEditorCommand(sourceEditor, 'paste', '(1+1)');
         assert.strictEqual(source.getText(), '(1+1)');
         await focusInput();
     });

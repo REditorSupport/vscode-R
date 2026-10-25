@@ -133,7 +133,11 @@ suite('R Markdown execution', () => {
                 file: string,
                 format?: string,
             ): Promise<string>;
+            findSiteParam(): Promise<string | undefined>;
         };
+        // Literal quoting is independent of whichever editor a previous suite
+        // left active and whether its directory contains a Markdown site.
+        sandbox.stub(manager, 'findSiteParam').resolves(undefined);
         const file = util.ToRStringLiteral(`/tmp/it's "report".Rmd`, '"');
         assert.strictEqual(
             await manager.getKnitCommand({ site: '' }, file),

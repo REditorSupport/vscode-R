@@ -4,6 +4,7 @@ import { PassThrough } from 'stream';
 import * as vscode from 'vscode';
 import * as lsp from 'vscode-languageclient/node';
 import { completionMiddleware } from '../../completionMiddleware';
+import { acknowledgeEditorSelection } from '../common/editorState';
 
 suite('Completion signature help', () => {
     let sandbox: sinon.SinonSandbox;
@@ -227,6 +228,7 @@ suite('Completion signature help acceptance', () => {
             const toClient = new PassThrough();
             const server = lsp.createProtocolConnection(toServer, toClient);
             const signatures: lsp.SignatureHelpParams[] = [];
+            const openedDocuments = new Set<string>();
             let resolutions = 0;
             server.onRequest(lsp.InitializeRequest.type, (): lsp.InitializeResult => ({
                 capabilities: {
@@ -256,6 +258,9 @@ suite('Completion signature help acceptance', () => {
                 };
             });
             server.onRequest(lsp.ShutdownRequest.type, () => undefined);
+            server.onNotification(lsp.DidOpenTextDocumentNotification.type, (params) => {
+                openedDocuments.add(params.textDocument.uri);
+            });
             server.listen();
             const client = new lsp.LanguageClient(
                 'completion-acceptance-test',
@@ -273,7 +278,14 @@ suite('Completion signature help acceptance', () => {
                     content: 'fun',
                 });
                 const editor = await vscode.window.showTextDocument(document);
-                editor.selection = new vscode.Selection(0, 3, 0, 3);
+                await until(() => openedDocuments.has(document.uri.toString()));
+                await until(
+                    () =>
+                        vscode.workspace
+                            .getConfiguration('editor', document)
+                            .get('parameterHints.enabled') === enabled,
+                );
+                await acknowledgeEditorSelection(editor, new vscode.Selection(0, 3, 0, 3));
                 await vscode.commands.executeCommand('editor.action.triggerSuggest');
                 await until(() => resolutions > 0);
                 assert.strictEqual(
@@ -291,6 +303,7 @@ suite('Completion signature help acceptance', () => {
                     await new Promise((resolve) => setTimeout(resolve, 100));
                     assert.strictEqual(signatures.length, 0);
                 }
+                await until(() => editor.selection.active.character === 5);
                 assert.strictEqual(editor.selection.active.character, 5);
             } finally {
                 await vscode.commands.executeCommand('closeParameterHints');
