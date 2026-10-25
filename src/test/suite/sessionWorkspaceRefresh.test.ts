@@ -154,4 +154,63 @@ suite('Session workspace refresh demand', () => {
         sinon.assert.notCalled(refresh);
         assert.strictEqual(target.workspaceData, metadata);
     });
+
+    test('native workspace access retries a failed request without a new invalidation', async () => {
+        const socket = await connections.attach('workspace-retry-demand', 55103, 'external-host', {
+            autoActivate: false,
+            attachmentId: 'workspace-retry-demand-fixture',
+        });
+        await session.activateSessionById('workspace-retry-demand');
+        session.deferWorkspaceRefresh();
+        const target = session.activeSession!;
+        const previous: session.WorkspaceData = {
+            revision: 1,
+            globalenv: {},
+            search: [],
+            loaded_namespaces: [],
+        };
+        target.workspaceData = previous;
+        let requests = 0;
+        sandbox.stub(socket, 'write').callsFake((data: string | Uint8Array) => {
+            const request = JSON.parse(data.toString()) as { method?: string; id: number };
+            if (request.method === 'workspace') {
+                requests++;
+                const response =
+                    requests === 1
+                        ? { error: { code: -32603, message: 'Transient inspection failure' } }
+                        : {
+                              result: {
+                                  revision: 2,
+                                  globalenv: {
+                                      latest: {
+                                          class: 'integer',
+                                          type: 'integer',
+                                          length: 1,
+                                          str: 'integer, length 1',
+                                      },
+                                  },
+                                  search: [],
+                                  loaded_namespaces: [],
+                              },
+                          };
+                socket.emit(
+                    'data',
+                    Buffer.from(
+                        `${JSON.stringify({ jsonrpc: '2.0', id: request.id, ...response })}\n`,
+                    ),
+                );
+            }
+            return true;
+        });
+        await session.ensureSessionWorkspace(target);
+        await new Promise((resolve) => setImmediate(resolve));
+        assert.strictEqual(requests, 1, 'A failed read must not trigger automatic retries');
+        assert.strictEqual(target.workspaceData, previous);
+        await session.ensureSessionWorkspace(target);
+        assert.strictEqual(requests, 2);
+        assert.ok(target.workspaceData.globalenv.latest);
+        assert.strictEqual(session.activeSession, target);
+        await session.ensureSessionWorkspace(target);
+        assert.strictEqual(requests, 2, 'Successful metadata stays cached until invalidated');
+    });
 });

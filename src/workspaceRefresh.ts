@@ -42,6 +42,7 @@ export class WorkspaceRefreshScheduler<T> {
             return Promise.resolve();
         }
         this.defer();
+        let retryOnDemand = false;
         this.running = Promise.resolve()
             .then(async () => {
                 while (!this.disposed && this.dirty && this.canRefresh()) {
@@ -52,21 +53,31 @@ export class WorkspaceRefreshScheduler<T> {
                         if (this.disposed) {
                             return;
                         }
+                        if (value === undefined) {
+                            this.dirty = true;
+                            retryOnDemand = true;
+                            return;
+                        }
                         if (!this.canRefresh()) {
                             this.dirty = true;
                             return;
                         }
-                        if (revision === this.revision && value !== undefined) {
+                        if (revision === this.revision) {
                             this.publish(value);
                         }
                     } catch (error) {
+                        this.dirty = true;
+                        retryOnDemand = true;
                         this.report(error);
+                        return;
                     }
                 }
             })
             .finally(() => {
                 this.running = undefined;
-                if (!this.disposed && this.dirty && this.canRefresh()) {
+                // Failed reads retain the invalidation, but a later caller or
+                // notification must request the retry instead of spinning here.
+                if (!retryOnDemand && !this.disposed && this.dirty && this.canRefresh()) {
                     void this.ensure();
                 }
             });

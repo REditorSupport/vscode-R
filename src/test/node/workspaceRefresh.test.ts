@@ -104,27 +104,75 @@ suite('Workspace refresh scheduling', () => {
         scheduler.dispose();
     });
 
-    test('deferred sends keep invalidation and inspection failures do not spin', async () => {
+    test('deferred sends retain failed reads for the next explicit demand without spinning', async () => {
         let calls = 0;
         const errors: unknown[] = [];
-        const scheduler = new WorkspaceRefreshScheduler(
+        const published: number[] = [];
+        const scheduler = new WorkspaceRefreshScheduler<number>(
             () => {
                 calls++;
-                return Promise.reject(new Error('R busy'));
+                return calls === 1 ? Promise.reject(new Error('R busy')) : Promise.resolve(2);
             },
-            () => assert.fail('A failed inspection must preserve the previous workspace'),
+            (value) => published.push(value),
             () => true,
             (error) => errors.push(error),
         );
         scheduler.invalidate(1000);
         scheduler.defer();
         await scheduler.ensure();
-        await scheduler.ensure();
+        await new Promise((resolve) => setImmediate(resolve));
         assert.strictEqual(calls, 1);
         assert.strictEqual(errors.length, 1);
-        scheduler.invalidate();
+        assert.deepStrictEqual(published, []);
         await scheduler.ensure();
         assert.strictEqual(calls, 2);
+        assert.deepStrictEqual(published, [2]);
+        await scheduler.ensure();
+        assert.strictEqual(calls, 2, 'A successful refresh clears the pending demand');
+        scheduler.dispose();
+    });
+
+    test('an undefined read stays pending without an automatic retry', async () => {
+        let calls = 0;
+        const published: number[] = [];
+        const scheduler = new WorkspaceRefreshScheduler<number>(
+            () => Promise.resolve(++calls === 1 ? undefined : 2),
+            (value) => published.push(value),
+            () => true,
+        );
+        await scheduler.ensure();
+        await new Promise((resolve) => setImmediate(resolve));
+        assert.strictEqual(calls, 1);
+        assert.deepStrictEqual(published, []);
+        await scheduler.ensure();
+        assert.strictEqual(calls, 2);
+        assert.deepStrictEqual(published, [2]);
+        scheduler.dispose();
+    });
+
+    test('invalidations during a failed read remain coalesced until the next demand', async () => {
+        const first = deferred<number | undefined>();
+        let calls = 0;
+        const published: number[] = [];
+        const scheduler = new WorkspaceRefreshScheduler<number>(
+            () => (++calls === 1 ? first.promise : Promise.resolve(2)),
+            (value) => published.push(value),
+            () => true,
+        );
+        const running = scheduler.ensure();
+        await Promise.resolve();
+        for (let i = 0; i < 20; i++) {
+            scheduler.invalidate();
+            assert.strictEqual(scheduler.ensure(), running);
+        }
+        first.resolve(undefined);
+        await running;
+        await new Promise((resolve) => setImmediate(resolve));
+        assert.strictEqual(calls, 1);
+        assert.deepStrictEqual(published, []);
+        await scheduler.ensure();
+        assert.strictEqual(calls, 2);
+        assert.deepStrictEqual(published, [2]);
         scheduler.dispose();
     });
 });
