@@ -8,6 +8,8 @@ local({
     description <- read.dcf(file.path(package, "DESCRIPTION"))
     deps <- if ("Imports" %in% colnames(description)) description[1L, "Imports"] else ""
     deps <- trimws(gsub("\\s*\\(.*\\)", "", unlist(strsplit(deps, ","))))
+    # The Interactive installation also requests rstudioapi, which sess only suggests.
+    deps <- c(deps, "rstudioapi")
     installed <- utils::installed.packages(lib.loc = .libPaths())
     missing <- setdiff(deps[nzchar(deps)], rownames(installed))
     stopifnot(!length(missing))

@@ -1,4 +1,4 @@
-import { JGD_MINIMUM_VERSION } from '../../jgdVersion';
+import { TOOL_MINIMUM_VERSIONS } from '../../toolVersions';
 import * as vscode from 'vscode';
 import * as sinon from 'sinon';
 import * as assert from 'assert';
@@ -995,12 +995,21 @@ suite('Session Communication', () => {
             assert.match(source, /tool_consent_directory = tool_consent_dir/);
             assert.match(source, /tool_library_helper = tool_library_helper/);
             assert.match(source, /tool_consent_helper = tool_consent_helper/);
-            assert.match(source, /prepare-jgd\.R/);
+            assert.match(source, /prepare-tools\.R/);
             assert.match(source, /jgd_can_prompt <- (?:TRUE|FALSE)/);
-            assert.match(source, /jgd_helper = jgd_helper/);
+            assert.match(source, /rstudioapi_can_prompt <- (?:TRUE|FALSE)/);
+            assert.match(source, /tool_prepare_helper = tool_prepare_helper/);
             assert.match(source, /jgd_can_prompt = jgd_can_prompt/);
+            assert.match(source, /rstudioapi_can_prompt = rstudioapi_can_prompt/);
             assert.ok(
-                source.includes(`jgd_minimum_version = ${JSON.stringify(JGD_MINIMUM_VERSION)}`),
+                source.includes(
+                    `jgd_minimum_version = ${JSON.stringify(TOOL_MINIMUM_VERSIONS.jgd)}`,
+                ),
+            );
+            assert.ok(
+                source.includes(
+                    `rstudioapi_minimum_version = ${JSON.stringify(TOOL_MINIMUM_VERSIONS.rstudioapi)}`,
+                ),
             );
             const backgroundSource = await fsp.readFile(backgroundPreparation.scriptPath, 'utf8');
             assert.ok(
@@ -1381,8 +1390,19 @@ suite('Session Communication', () => {
         assert.ok(preparation);
         const source = await fsp.readFile(preparation!.scriptPath, 'utf8');
         assert.match(source, /tool_consent_dir <- ""/);
+        assert.match(source, /jgd_can_prompt <- FALSE/);
+        assert.match(source, /rstudioapi_can_prompt <- FALSE/);
         assert.match(source, /vscode_r_attach_sess\(/);
         preparation!.dispose();
+    });
+
+    test('jgd install offers are limited to the jgd and auto plot backends', async () => {
+        await session.getToolConsentDirectory();
+        // An explicit jgd backend is offered every time, so it does not depend on prior prompts.
+        assert.strictEqual(session.canPromptForJgdInstall('jgd'), true);
+        for (const backend of ['httpgd', 'standard', 'native']) {
+            assert.strictEqual(session.canPromptForJgdInstall(backend), false);
+        }
     });
 
     test('sess and tool consent use separate directories and both are cleaned up on shutdown', async () => {

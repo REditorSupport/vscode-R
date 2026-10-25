@@ -48,6 +48,8 @@ jobs:
       - run: pnpm run build
       - name: Verify managed jgd preparation
         run: pnpm run test:prepare-jgd
+      - name: Verify managed rstudioapi preparation
+        run: pnpm run test:prepare-rstudioapi
       - name: Verify installed sess identity
         run: |
           source("R/sess_source.R")

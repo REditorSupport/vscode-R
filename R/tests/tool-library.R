@@ -93,6 +93,8 @@ local({
     stopifnot(tool_library_check("jgd", "1.0.0", root_path)$install_required)
     stopifnot(inherits(tryCatch(tool_library_check("arbitrary", "1.0.0", root_path),
                                 error = identity), "error"))
+    stopifnot(identical(unname(.vscode_r_tool_packages), c("jgd", "rstudioapi")))
+    stopifnot(isTRUE(.tool_validate_request("rstudioapi", "0.4.0")))
     for (invalid in c("", "1.foo", "https://example.com/pkg")) {
         stopifnot(inherits(tryCatch(tool_library_check("jgd", invalid, root_path),
                                     error = identity), "error"))
@@ -135,14 +137,14 @@ local({
     stopifnot(inherits(too_old, "error"), !dir.exists(file.path(managed, "jgd")))
     frozen_plan <- tool_library_plan("jgd", "1.0.0", root_path, repos = c(CRAN = repo))
     stopifnot(identical(frozen_plan$version, "1.2.0"))
-    consent_lines <- .tool_consent_lines(frozen_plan, strrep("a", 32L), "auto")
+    consent_lines <- .tool_consent_lines(frozen_plan, strrep("a", 32L), "once")
     stopifnot(identical(consent_lines[1:5],
                         c("vscode-r-package-consent-v1", strrep("a", 32L),
                           paste(R.version$platform,
                                 paste(R.version$major,
                                       strsplit(R.version$minor, ".", fixed = TRUE)[[1L]][1L],
                                       sep = "."), sep = "|"),
-                          "auto", "1")))
+                          "once", "1")))
     stopifnot(identical(consent_lines[6:11],
                         c("jgd", "1.0.0", "1.2.0", frozen_plan$repository,
                           frozen_plan$package_type, if (frozen_plan$source_build) "yes" else "no")))

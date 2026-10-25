@@ -1,10 +1,16 @@
 import { ConsentResponse, FileConsentService } from './fileConsent';
+import { isToolPackageName } from './toolVersions';
 
-export type ToolConsentBackend = 'jgd' | 'auto';
+/**
+ * `always` asks on every request; `once` asks at most once per host session for each package
+ * and honors a remembered "Don't ask again".
+ */
+export type ToolConsentPolicy = 'always' | 'once';
 export type ToolConsentChoice = 'install' | 'notNow' | 'dontAskAgain' | 'dismiss';
 
 export interface ToolConsentSessionState {
-    autoPrompted: boolean;
+    /** Packages already offered under the `once` policy in this extension host. */
+    promptedPackages: Set<string>;
 }
 
 export interface ToolPackagePlan {
@@ -19,16 +25,16 @@ export interface ToolPackagePlan {
 export interface ToolConsentRequest {
     id: string;
     runtime: string;
-    backend: ToolConsentBackend;
+    policy: ToolConsentPolicy;
     packages: ToolPackagePlan[];
 }
 
 export interface ToolConsentServiceOptions {
     directory: string;
     isEnabled: () => boolean;
-    isAutoPromptEnabled: () => boolean;
+    isPromptEnabled: (packageName: string) => boolean;
     sessionState: ToolConsentSessionState;
-    rememberAutoPromptDismissal: () => Promise<void>;
+    rememberPromptDismissal: (packageName: string) => Promise<void>;
     prompt: (request: ToolConsentRequest) => Promise<ToolConsentChoice>;
     intervalMs?: number;
 }
@@ -54,11 +60,11 @@ export function parseToolConsentRequest(id: string, content: string): ToolConsen
         throw new Error('Malformed package consent request.');
     }
     const runtime = lines[2];
-    const backend = lines[3];
+    const policy = lines[3];
     const count = Number(lines[4]);
     if (
         !RUNTIME.test(runtime) ||
-        (backend !== 'jgd' && backend !== 'auto') ||
+        (policy !== 'always' && policy !== 'once') ||
         !/^(?:[1-9]|1[0-6])$/.test(lines[4]) ||
         count < 1 ||
         count > MAX_PACKAGES ||
@@ -94,7 +100,7 @@ export function parseToolConsentRequest(id: string, content: string): ToolConsen
             sourceBuild: sourceBuild === 'yes',
         });
     }
-    return { id, runtime, backend, packages };
+    return { id, runtime, policy, packages };
 }
 
 /** Bridges a fixed R package plan to a one-time VS Code decision. Use a directory dedicated to this service. */
@@ -124,39 +130,37 @@ export class ToolConsentService {
         return this.bridge.stop();
     }
 
-    canPrompt(backend: string): boolean {
-        if (!this.running || !this.options.isEnabled()) {
+    /** Whether a request for these packages under this policy could currently be shown. */
+    canPrompt(packageNames: readonly string[], policy: ToolConsentPolicy): boolean {
+        if (!this.running || !this.options.isEnabled() || packageNames.length === 0) {
             return false;
         }
-        if (backend === 'jgd') {
-            return true;
-        }
-        return (
-            backend === 'auto' &&
-            this.options.isAutoPromptEnabled() &&
-            !this.options.sessionState.autoPrompted
-        );
+        return packageNames.every((name) => {
+            if (!isToolPackageName(name)) {
+                return false;
+            }
+            return (
+                policy === 'always' ||
+                (this.options.isPromptEnabled(name) &&
+                    !this.options.sessionState.promptedPackages.has(name))
+            );
+        });
     }
 
     private async processRequest(
         request: ToolConsentRequest,
         respond: (response: ConsentResponse) => Promise<void>,
     ): Promise<void> {
-        if (!this.running || !this.options.isEnabled()) {
+        const names = request.packages.map((item) => item.name);
+        const once = request.policy === 'once';
+        if (!this.canPrompt(names, request.policy)) {
             await respond('decline');
             return;
         }
-        const automatic = request.backend === 'auto';
-        if (!this.canPrompt(request.backend)) {
-            await respond('decline');
-            return;
-        }
-        if (automatic) {
-            this.options.sessionState.autoPrompted = true;
-        }
-        if (!this.running || !this.options.isEnabled()) {
-            await respond('decline');
-            return;
+        if (once) {
+            for (const name of names) {
+                this.options.sessionState.promptedPackages.add(name);
+            }
         }
         let choice: ToolConsentChoice = 'dismiss';
         try {
@@ -168,9 +172,11 @@ export class ToolConsentService {
             await respond('decline');
             return;
         }
-        if (automatic && choice === 'dontAskAgain') {
+        if (once && choice === 'dontAskAgain') {
             try {
-                await this.options.rememberAutoPromptDismissal();
+                for (const name of names) {
+                    await this.options.rememberPromptDismissal(name);
+                }
             } catch {
                 await respond('decline');
                 return;

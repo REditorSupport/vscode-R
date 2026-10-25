@@ -79,7 +79,8 @@ const run = promisify(execFile);
 private <- ${rString(runtime.library)}
 user <- ${rString(userLibrary)}
 database <- installed.packages(lib.loc=unique(c(private,.libPaths())))
-dependencies <- unique(c("ps", unlist(tools::package_dependencies(
+# The Interactive setup installs rstudioapi beside sess although sess only suggests it.
+dependencies <- unique(c("ps", "rstudioapi", unlist(tools::package_dependencies(
     c("sess","ps"), database, which=c("Depends","Imports","LinkingTo"), recursive=TRUE))))
 for (package in dependencies) {
     if (!is.na(database[package,"Priority"]) || dir.exists(file.path(private,package))) next

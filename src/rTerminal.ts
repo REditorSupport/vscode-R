@@ -3,7 +3,7 @@
 import * as path from 'path';
 import * as crypto from 'node:crypto';
 import { getMigratedSetting } from './configuration';
-import { JGD_MINIMUM_VERSION } from './jgdVersion';
+import { TOOL_MINIMUM_VERSIONS } from './toolVersions';
 import { isDeepStrictEqual } from 'util';
 
 import * as vscode from 'vscode';
@@ -19,7 +19,8 @@ import {
     getGlobalPipePath,
     getSessConsentDirectory,
     getToolConsentDirectory,
-    canPromptForToolConsent,
+    canPromptForJgdInstall,
+    canPromptForRStudioApiInstall,
     isTerminalClosed,
     removeTerminalDiscoveryFile,
     updateTerminalSessionDiscoveryFile,
@@ -316,7 +317,8 @@ export async function makeTerminalOptions(resource?: vscode.Uri): Promise<vscode
             const pipePath = await getGlobalPipePath();
             const consentDirectory = await getSessConsentDirectory();
             const toolConsentDirectory = await getToolConsentDirectory();
-            const jgdCanPrompt = canPromptForToolConsent(backend);
+            const jgdCanPrompt = canPromptForJgdInstall(backend);
+            const rstudioapiCanPrompt = canPromptForRStudioApiInstall();
             discoveryFile = await createSessionDiscoveryFile(pipePath);
             const startupFile = `${discoveryFile}.startup`;
             const startupToken = crypto.randomBytes(16).toString('hex');
@@ -352,11 +354,13 @@ export async function makeTerminalOptions(resource?: vscode.Uri): Promise<vscode
                 VSCODE_R_TOOL_CONSENT_HELPER: extensionContext.asAbsolutePath(
                     path.join('R', 'tool-consent.R'),
                 ),
-                VSCODE_R_JGD_HELPER: extensionContext.asAbsolutePath(
-                    path.join('R', 'prepare-jgd.R'),
+                VSCODE_R_TOOL_PREPARE_HELPER: extensionContext.asAbsolutePath(
+                    path.join('R', 'prepare-tools.R'),
                 ),
-                VSCODE_R_JGD_MINIMUM_VERSION: JGD_MINIMUM_VERSION,
+                VSCODE_R_JGD_MINIMUM_VERSION: TOOL_MINIMUM_VERSIONS.jgd,
                 VSCODE_R_JGD_CAN_PROMPT: jgdCanPrompt ? 'TRUE' : 'FALSE',
+                VSCODE_R_RSTUDIOAPI_MINIMUM_VERSION: TOOL_MINIMUM_VERSIONS.rstudioapi,
+                VSCODE_R_RSTUDIOAPI_CAN_PROMPT: rstudioapiCanPrompt ? 'TRUE' : 'FALSE',
                 // Remove inherited endpoint overrides so the per-terminal discovery file
                 // remains authoritative, including after a VS Code window reload.
                 SESS_ENDPOINT: null,

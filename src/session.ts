@@ -3,7 +3,6 @@
 import * as fs from 'node:fs';
 import * as fsp from 'node:fs/promises';
 import { pathExists, readJson } from './fileSystem';
-import { JGD_MINIMUM_VERSION } from './jgdVersion';
 import * as path from 'path';
 import * as os from 'os';
 import * as net from 'net';
@@ -64,6 +63,7 @@ import {
 } from './viewerSession';
 import { SessConsentChoice, SessConsentService } from './sessConsent';
 import { ToolConsentService } from './toolConsent';
+import { TOOL_MINIMUM_VERSIONS } from './toolVersions';
 import { createToolConsentService } from './toolConsentAdapter';
 import {
     assessTerminalStartup,
@@ -1561,8 +1561,8 @@ function buildAttachSessionScript(
 ): string {
     const backend = resolveBackend();
     const jgdSocket = getSessionJgdSocket();
-    const jgdCanPrompt =
-        toolConsentDirectory.length > 0 && attachToolConsentService?.canPrompt(backend) === true;
+    const jgdCanPrompt = toolConsentDirectory.length > 0 && canPromptForJgdInstall(backend);
+    const rstudioapiCanPrompt = toolConsentDirectory.length > 0 && canPromptForRStudioApiInstall();
     return [
         'local({',
         '  tryCatch({',
@@ -1577,8 +1577,9 @@ function buildAttachSessionScript(
         `  tool_consent_dir <- ${asRStringLiteral(toolConsentDirectory.replace(/\\/g, '/'))}`,
         `  tool_library_helper <- ${asRStringLiteral(extensionContext.asAbsolutePath(path.join('R', 'tool-library.R')).replace(/\\/g, '/'))}`,
         `  tool_consent_helper <- ${asRStringLiteral(extensionContext.asAbsolutePath(path.join('R', 'tool-consent.R')).replace(/\\/g, '/'))}`,
-        `  jgd_helper <- ${asRStringLiteral(extensionContext.asAbsolutePath(path.join('R', 'prepare-jgd.R')).replace(/\\/g, '/'))}`,
+        `  tool_prepare_helper <- ${asRStringLiteral(extensionContext.asAbsolutePath(path.join('R', 'prepare-tools.R')).replace(/\\/g, '/'))}`,
         `  jgd_can_prompt <- ${jgdCanPrompt ? 'TRUE' : 'FALSE'}`,
+        `  rstudioapi_can_prompt <- ${rstudioapiCanPrompt ? 'TRUE' : 'FALSE'}`,
         `  startup_helper <- ${asRStringLiteral(extensionContext.asAbsolutePath(path.join('R', 'terminal-startup.R')).replace(/\\/g, '/'))}`,
         `  attach_helper <- ${asRStringLiteral(extensionContext.asAbsolutePath(path.join('R', 'attach_sess.R')).replace(/\\/g, '/'))}`,
         ...(backend === 'native'
@@ -1590,7 +1591,7 @@ function buildAttachSessionScript(
               ]),
         '  source(startup_helper, local = TRUE)',
         '  source(attach_helper, local = TRUE)',
-        `  vscode_r_attach_sess(endpoint, sess_src, managed_root, consent_dir, source_helper, installer_helper, ${asRStringLiteral(backend)}, tool_root = tool_root, tool_consent_directory = tool_consent_dir, tool_library_helper = tool_library_helper, tool_consent_helper = tool_consent_helper, jgd_helper = jgd_helper, jgd_can_prompt = jgd_can_prompt, jgd_minimum_version = ${asRStringLiteral(JGD_MINIMUM_VERSION)}, use_rstudioapi = ${config().get<boolean>('session.emulateRStudioAPI') ? 'TRUE' : 'FALSE'}${attachment ? `, attachment_id = ${asRStringLiteral(attachment.attachmentId)}, auto_activate = ${attachment.autoActivate ? 'TRUE' : 'FALSE'}` : ''})`,
+        `  vscode_r_attach_sess(endpoint, sess_src, managed_root, consent_dir, source_helper, installer_helper, ${asRStringLiteral(backend)}, tool_root = tool_root, tool_consent_directory = tool_consent_dir, tool_library_helper = tool_library_helper, tool_consent_helper = tool_consent_helper, tool_prepare_helper = tool_prepare_helper, jgd_can_prompt = jgd_can_prompt, jgd_minimum_version = ${asRStringLiteral(TOOL_MINIMUM_VERSIONS.jgd)}, rstudioapi_can_prompt = rstudioapi_can_prompt, rstudioapi_minimum_version = ${asRStringLiteral(TOOL_MINIMUM_VERSIONS.rstudioapi)}, use_rstudioapi = ${config().get<boolean>('session.emulateRStudioAPI') ? 'TRUE' : 'FALSE'}${attachment ? `, attachment_id = ${asRStringLiteral(attachment.attachmentId)}, auto_activate = ${attachment.autoActivate ? 'TRUE' : 'FALSE'}` : ''})`,
         '    })',
         '    invisible(isTRUE(attached))',
         '  }, error = function(error) {',
@@ -1766,9 +1767,15 @@ export async function getToolConsentDirectory(): Promise<string> {
     return ensureAttachToolConsentService();
 }
 
-/** Whether the running consent service may display a prompt for this backend. */
-export function canPromptForToolConsent(backend: string): boolean {
-    return attachToolConsentService?.canPrompt(backend) === true;
+/** Whether the running consent service may offer to install jgd for this plot backend. */
+export function canPromptForJgdInstall(backend: string): boolean {
+    const policy = backend === 'jgd' ? 'always' : backend === 'auto' ? 'once' : undefined;
+    return policy !== undefined && attachToolConsentService?.canPrompt(['jgd'], policy) === true;
+}
+
+/** Whether the running consent service may offer to install rstudioapi. */
+export function canPromptForRStudioApiInstall(): boolean {
+    return attachToolConsentService?.canPrompt(['rstudioapi'], 'once') === true;
 }
 
 function validateAttachmentEndpoint(endpoint: unknown): asserts endpoint is string {
