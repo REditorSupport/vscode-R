@@ -124,6 +124,20 @@ export class ToolConsentService {
         return this.bridge.stop();
     }
 
+    canPrompt(backend: string): boolean {
+        if (!this.running || !this.options.isEnabled()) {
+            return false;
+        }
+        if (backend === 'jgd') {
+            return true;
+        }
+        return (
+            backend === 'auto' &&
+            this.options.isAutoPromptEnabled() &&
+            !this.options.sessionState.autoPrompted
+        );
+    }
+
     private async processRequest(
         request: ToolConsentRequest,
         respond: (response: ConsentResponse) => Promise<void>,
@@ -133,10 +147,7 @@ export class ToolConsentService {
             return;
         }
         const automatic = request.backend === 'auto';
-        if (
-            automatic &&
-            (!this.options.isAutoPromptEnabled() || this.options.sessionState.autoPrompted)
-        ) {
+        if (!this.canPrompt(request.backend)) {
             await respond('decline');
             return;
         }

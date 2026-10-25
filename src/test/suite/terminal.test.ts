@@ -858,6 +858,7 @@ suite('R Terminal', () => {
             ),
         );
         assert.ok(options.env?.['VSCODE_R_JGD_HELPER']?.endsWith(path.join('R', 'prepare-jgd.R')));
+        assert.strictEqual(options.env?.['VSCODE_R_JGD_CAN_PROMPT'], 'FALSE');
         sinon.assert.notCalled(getRpath);
         sinon.assert.notCalled(queryR);
         sinon.assert.notCalled(installTask);

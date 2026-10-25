@@ -116,7 +116,7 @@ tool_library_prepare <- function(package, minimum_version, root, consent_directo
                                  backend, repos = getOption("repos"),
                                  consent_timeout_seconds = 180,
                                  install_timeout_seconds = 300,
-                                 resolution_timeout_seconds = 5) {
+                                 resolution_timeout_seconds = 30) {
     available <- tool_library_check(package, minimum_version, root)
     if (!available$install_required) return(invisible(available))
     plan <- local({

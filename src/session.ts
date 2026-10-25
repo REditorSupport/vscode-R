@@ -1585,6 +1585,8 @@ function buildAttachSessionScript(
 ): string {
     const backend = resolveBackend();
     const jgdSocket = getSessionJgdSocket();
+    const jgdCanPrompt =
+        toolConsentDirectory.length > 0 && attachToolConsentService?.canPrompt(backend) === true;
     return [
         'local({',
         '  tryCatch({',
@@ -1600,6 +1602,7 @@ function buildAttachSessionScript(
         `  tool_library_helper <- ${asRStringLiteral(extensionContext.asAbsolutePath(path.join('R', 'tool-library.R')).replace(/\\/g, '/'))}`,
         `  tool_consent_helper <- ${asRStringLiteral(extensionContext.asAbsolutePath(path.join('R', 'tool-consent.R')).replace(/\\/g, '/'))}`,
         `  jgd_helper <- ${asRStringLiteral(extensionContext.asAbsolutePath(path.join('R', 'prepare-jgd.R')).replace(/\\/g, '/'))}`,
+        `  jgd_can_prompt <- ${jgdCanPrompt ? 'TRUE' : 'FALSE'}`,
         `  startup_helper <- ${asRStringLiteral(extensionContext.asAbsolutePath(path.join('R', 'terminal-startup.R')).replace(/\\/g, '/'))}`,
         `  attach_helper <- ${asRStringLiteral(extensionContext.asAbsolutePath(path.join('R', 'attach_sess.R')).replace(/\\/g, '/'))}`,
         ...(backend === 'native'
@@ -1611,7 +1614,7 @@ function buildAttachSessionScript(
               ]),
         '  source(startup_helper, local = TRUE)',
         '  source(attach_helper, local = TRUE)',
-        `  vscode_r_attach_sess(endpoint, sess_src, managed_root, consent_dir, source_helper, installer_helper, ${asRStringLiteral(backend)}, tool_root = tool_root, tool_consent_directory = tool_consent_dir, tool_library_helper = tool_library_helper, tool_consent_helper = tool_consent_helper, jgd_helper = jgd_helper, use_rstudioapi = ${config().get<boolean>('session.emulateRStudioAPI') ? 'TRUE' : 'FALSE'}${attachment ? `, attachment_id = ${asRStringLiteral(attachment.attachmentId)}, auto_activate = ${attachment.autoActivate ? 'TRUE' : 'FALSE'}` : ''})`,
+        `  vscode_r_attach_sess(endpoint, sess_src, managed_root, consent_dir, source_helper, installer_helper, ${asRStringLiteral(backend)}, tool_root = tool_root, tool_consent_directory = tool_consent_dir, tool_library_helper = tool_library_helper, tool_consent_helper = tool_consent_helper, jgd_helper = jgd_helper, jgd_can_prompt = jgd_can_prompt, use_rstudioapi = ${config().get<boolean>('session.emulateRStudioAPI') ? 'TRUE' : 'FALSE'}${attachment ? `, attachment_id = ${asRStringLiteral(attachment.attachmentId)}, auto_activate = ${attachment.autoActivate ? 'TRUE' : 'FALSE'}` : ''})`,
         '    })',
         '    invisible(isTRUE(attached))',
         '  }, error = function(error) {',
@@ -1784,6 +1787,11 @@ async function ensureAttachToolConsentService(
 /** Return the dedicated request directory for managed R tool installation consent. */
 export async function getToolConsentDirectory(): Promise<string> {
     return ensureAttachToolConsentService();
+}
+
+/** Whether the running consent service may display a prompt for this backend. */
+export function canPromptForToolConsent(backend: string): boolean {
+    return attachToolConsentService?.canPrompt(backend) === true;
 }
 
 function validateAttachmentEndpoint(endpoint: unknown): asserts endpoint is string {

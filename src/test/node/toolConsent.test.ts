@@ -101,6 +101,9 @@ suite('managed package consent bridge', () => {
     test('explicit jgd asks on each request and does not alter automatic prompt preference', async () => {
         const broker = service();
         await broker.start();
+        assert.strictEqual(broker.canPrompt('jgd'), true);
+        assert.strictEqual(broker.canPrompt('auto'), true);
+        assert.strictEqual(broker.canPrompt('httpgd'), false);
         for (const id of ['1'.repeat(32), '2'.repeat(32)]) {
             await writeRequest(id, 'jgd');
             assert.strictEqual(
@@ -146,12 +149,14 @@ suite('managed package consent bridge', () => {
         );
         assert.strictEqual(autoPromptEnabled, true);
         assert.strictEqual(sessionState.autoPrompted, true);
+        assert.strictEqual(first.canPrompt('auto'), false);
         await first.stop();
 
         const secondDirectory = path.join(directory, 'another-service');
         await fs.mkdir(secondDirectory);
         const secondService = service(undefined, secondDirectory);
         await secondService.start();
+        assert.strictEqual(secondService.canPrompt('auto'), false);
         const secondId = '4'.repeat(32);
         await writeRequest(secondId, 'auto', undefined, secondDirectory);
         assert.strictEqual(
@@ -167,6 +172,7 @@ suite('managed package consent bridge', () => {
         await fs.mkdir(newHostDirectory);
         const nextHost = service(undefined, newHostDirectory);
         await nextHost.start();
+        assert.strictEqual(nextHost.canPrompt('auto'), true);
         choice = 'install';
         const thirdId = '5'.repeat(32);
         await writeRequest(thirdId, 'auto', undefined, newHostDirectory);
@@ -182,12 +188,15 @@ suite('managed package consent bridge', () => {
         await broker.start();
         choice = 'dontAskAgain';
         const firstId = '6'.repeat(32);
+        assert.strictEqual(broker.canPrompt('auto'), true);
         await writeRequest(firstId, 'auto');
         assert.strictEqual(
             await waitForFile(path.join(directory, `${firstId}.response`)),
             'decline\n',
         );
         assert.strictEqual(autoPromptEnabled, false);
+        assert.strictEqual(broker.canPrompt('auto'), false);
+        assert.strictEqual(broker.canPrompt('jgd'), true);
 
         choice = 'install';
         const explicitId = '7'.repeat(32);

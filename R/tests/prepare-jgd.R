@@ -41,6 +41,8 @@ local({
 
     package <- source_package("0.1.0")
     source_package("0.0.1")
+    unlink(file.path(root, "repo", "src", "contrib", "jgd_0.0.1.tar.gz"))
+    tools::write_PACKAGES(file.path(root, "repo", "src", "contrib"), type = "source")
     repo <- paste0("file:///", sub("^/", "", normalizePath(file.path(root, "repo"), winslash = "/")))
     runner <- file.path(root, "run.R")
     writeLines(c(
@@ -70,14 +72,21 @@ local({
         "  .libPaths(c(old, .Library)); loadNamespace('jgd', lib.loc=old);",
         "}",
         "if (mode == 'offline') options(repos=c(CRAN=file.path(root, 'missing-repo')));",
-        "tool_library_helper <- if (mode == 'parallel') file.path(root, 'instrumented-tool-library.R') else",
+        "tool_library_helper <- if (mode %in% c('parallel', 'no-prompt', 'no-prompt-compatible'))",
+        "  file.path(root, 'instrumented-tool-library.R') else",
         "  file.path(getwd(), 'R', 'tool-library.R');",
+        "if (mode == 'no-prompt-compatible') {",
+        "  ordinary <- file.path(root, 'ordinary-library'); dir.create(ordinary);",
+        "  utils::install.packages('jgd', repos=repo, type='source', lib=ordinary, quiet=TRUE);",
+        "  .libPaths(c(ordinary, .libPaths()));",
+        "}",
         "timeout_before <- getOption('timeout'); libraries_before <- .libPaths();",
         "answer <- vscode_r_attach_sess('endpoint', 'unused', file.path(root, 'tools'), consent,",
         "  'unused', 'unused', 'jgd', timeout_seconds=0, tool_root=file.path(root, 'tools'),",
         "  tool_consent_directory=consent, tool_library_helper=tool_library_helper,",
         "  tool_consent_helper=file.path(getwd(), 'R', 'tool-consent.R'),",
-        "  jgd_helper=file.path(getwd(), 'R', 'prepare-jgd.R'));",
+        "  jgd_helper=file.path(getwd(), 'R', 'prepare-jgd.R'),",
+        "  jgd_can_prompt=!(mode %in% c('no-prompt', 'no-prompt-compatible')));",
         "stopifnot(isTRUE(answer), identical(Sys.getenv('JGD_SOCKET'), 'fixture-socket'));",
         "stopifnot(identical(getOption('timeout'), timeout_before), identical(.libPaths(), libraries_before));",
         "writeLines(c(connect_seen$socket, as.character(connect_seen$loaded), connect_seen$device), result);"
@@ -165,6 +174,25 @@ local({
         stopifnot(length(list.files(file.path(root, mode, "consent"), pattern = "\\.request$")) == 0L)
     }
 
+    for (mode in c("no-prompt", "no-prompt-compatible")) {
+        plan_marker <- file.path(root, paste0(mode, "-plan-called"))
+        helper_lines <- readLines(file.path(getwd(), "R", "tool-library.R"), warn = FALSE)
+        helper_lines <- c(helper_lines,
+                          paste0("tool_library_plan <- function(...) { file.create(",
+                                 r_literal(plan_marker), "); stop('unexpected metadata resolution') }"))
+        writeLines(helper_lines, file.path(root, "instrumented-tool-library.R"))
+        result <- file.path(root, paste0(mode, "-result"))
+        observed <- run_child(mode, result)
+        if (mode == "no-prompt") {
+            stopifnot(identical(observed, c("", "FALSE", "standard")))
+        } else {
+            stopifnot(identical(observed, c("fixture-socket", "TRUE", "jgd")))
+            stopifnot(identical(readLines(file.path(root, paste0(mode, "-device-log"))), "jgd"))
+        }
+        stopifnot(length(list.files(file.path(root, "consent"), pattern = "\\.request$")) == 0L)
+        stopifnot(!file.exists(plan_marker))
+    }
+
     parallel_root <- file.path(root, "parallel")
     dir.create(parallel_root)
     base_helper <- readLines(file.path(getwd(), "R", "tool-library.R"), warn = FALSE)
@@ -207,6 +235,7 @@ local({
     empty_user_profile <- file.path(profile_root, "empty-user-profile.R")
     file.create(source_helper, installer_helper, empty_user_profile)
     writeLines(c(
+        "source(file.path(getwd(), 'R', 'attach_sess.R'))",
         "vscode_r_prepare_sess <- function(...) { ns <- new.env(); ns$connect <- function(...) {",
         paste0("  writeLines(c(Sys.getenv('JGD_SOCKET', unset=''), ",
                "as.character(requireNamespace('jgd', quietly=TRUE))), ",
@@ -232,6 +261,7 @@ local({
         paste0("  VSCODE_R_TOOL_CONSENT_DIRECTORY=", r_literal(profile_consent), ","),
         paste0("  VSCODE_R_TOOL_LIBRARY_HELPER=", r_literal(file.path(getwd(), "R", "tool-library.R")), ","),
         paste0("  VSCODE_R_TOOL_CONSENT_HELPER=", r_literal(file.path(getwd(), "R", "tool-consent.R")), ","),
+        "  VSCODE_R_JGD_CAN_PROMPT='TRUE',",
         paste0("  R_PROFILE_USER_OLD=", r_literal(empty_user_profile), ","),
         "  SESS_PLOT_BACKEND='jgd', JGD_SOCKET='fixture-socket')",
         paste0("options(repos=c(CRAN=", r_literal(repo), "), pkgType='source')"),

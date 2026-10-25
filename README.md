@@ -99,11 +99,12 @@ later window session. **Don't ask again** disables automatic offers; set
 `r.plot.jgd.installationPrompt` to `true` in User Settings to enable them again.
 Explicitly selecting `"jgd"` offers installation whenever setup requires it.
 
-The offer waits up to 10 seconds for approval before continuing with an available
-fallback plot backend. Once approved, installation runs to completion and may
-require compilation tools if the repository supplies a source package. Declining
-or a setup failure allows the R terminal and session watcher to continue. To
-retry after a timeout, select `"jgd"` and attach the session again.
+R waits for the installation decision before connecting the session watcher;
+code sent during setup stays queued. Once approved, installation may require
+compilation tools if the repository supplies a source package. Declining or a
+setup failure allows the R terminal and session watcher to continue with an
+available fallback plot backend. When automatic offers are suppressed, setup
+uses an existing compatible package or falls back without querying repositories.
 
 The managed library is shared by R sessions using the same platform and R
 major/minor version. Close other R sessions using the managed package before

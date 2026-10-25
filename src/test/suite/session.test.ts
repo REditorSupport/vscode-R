@@ -995,7 +995,9 @@ suite('Session Communication', () => {
             assert.match(source, /tool_library_helper = tool_library_helper/);
             assert.match(source, /tool_consent_helper = tool_consent_helper/);
             assert.match(source, /prepare-jgd\.R/);
+            assert.match(source, /jgd_can_prompt <- (?:TRUE|FALSE)/);
             assert.match(source, /jgd_helper = jgd_helper/);
+            assert.match(source, /jgd_can_prompt = jgd_can_prompt/);
             const backgroundSource = await fsp.readFile(backgroundPreparation.scriptPath, 'utf8');
             assert.ok(
                 backgroundSource.includes(
