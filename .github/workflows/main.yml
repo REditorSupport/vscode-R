@@ -42,12 +42,12 @@ jobs:
         run: pnpm run test:tool-library
       - name: Verify managed tool consent
         run: pnpm run test:tool-consent
-      - name: Verify managed jgd preparation
-        run: pnpm run test:prepare-jgd
       - name: Install R test dependencies
         run: install.packages(c("remotes", "pkgbuild", "languageserver", "lintr", "renv"))
         shell: Rscript {0}
       - run: pnpm run build
+      - name: Verify managed jgd preparation
+        run: pnpm run test:prepare-jgd
       - name: Verify installed sess identity
         run: |
           source("R/sess_source.R")
