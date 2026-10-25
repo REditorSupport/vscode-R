@@ -75,7 +75,9 @@ export class SessConsentService {
         } catch {
             choice = 'dismiss';
         }
-        if (!this.running) return;
+        if (!this.running) {
+            return;
+        }
         if (!this.options.isEnabled()) {
             await respond('decline');
             return;
@@ -87,7 +89,9 @@ export class SessConsentService {
                 await respond('decline');
                 return;
             }
-            if (!this.running) return;
+            if (!this.running) {
+                return;
+            }
             await respond('decline');
             return;
         }

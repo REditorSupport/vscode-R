@@ -46,7 +46,9 @@ export function parseToolConsentRequest(id: string, content: string): ToolConsen
         throw new Error('Invalid package consent request size or termination.');
     }
     const normalized = content.replace(/\r\n/g, '\n');
-    if (normalized.includes('\r')) throw new Error('Invalid package consent line ending.');
+    if (normalized.includes('\r')) {
+        throw new Error('Invalid package consent line ending.');
+    }
     const lines = normalized.slice(0, -1).split('\n');
     if (lines.length < 5 || lines[0] !== 'vscode-r-package-consent-v1' || lines[1] !== id) {
         throw new Error('Malformed package consent request.');
@@ -58,27 +60,39 @@ export function parseToolConsentRequest(id: string, content: string): ToolConsen
         !RUNTIME.test(runtime) ||
         (backend !== 'jgd' && backend !== 'auto') ||
         !/^(?:[1-9]|1[0-6])$/.test(lines[4]) ||
-        count < 1 || count > MAX_PACKAGES ||
+        count < 1 ||
+        count > MAX_PACKAGES ||
         lines.length !== 5 + count * 6
     ) {
         throw new Error('Malformed package consent request header.');
     }
     const packages: ToolPackagePlan[] = [];
     for (let offset = 5; offset < lines.length; offset += 6) {
-        const [name, minimumVersion, version, repository, packageType, sourceBuild] = lines.slice(offset, offset + 6);
+        const [name, minimumVersion, version, repository, packageType, sourceBuild] = lines.slice(
+            offset,
+            offset + 6,
+        );
         if (
             !PACKAGE_NAME.test(name) ||
             !PACKAGE_VERSION.test(minimumVersion) ||
             !PACKAGE_VERSION.test(version) ||
             Buffer.byteLength(repository, 'utf8') > 2048 ||
             !repository ||
+            // eslint-disable-next-line no-control-regex -- repository values must not contain control characters
             /[\u0000-\u001f\u007f]/.test(repository) ||
             !PACKAGE_TYPE.test(packageType) ||
             (sourceBuild !== 'yes' && sourceBuild !== 'no')
         ) {
             throw new Error('Malformed package consent request package entry.');
         }
-        packages.push({ name, minimumVersion, version, repository, packageType, sourceBuild: sourceBuild === 'yes' });
+        packages.push({
+            name,
+            minimumVersion,
+            version,
+            repository,
+            packageType,
+            sourceBuild: sourceBuild === 'yes',
+        });
     }
     return { id, runtime, backend, packages };
 }
@@ -119,9 +133,10 @@ export class ToolConsentService {
             return;
         }
         const automatic = request.backend === 'auto';
-        if (automatic && (
-            !this.options.isAutoPromptEnabled() || this.options.sessionState.autoPrompted
-        )) {
+        if (
+            automatic &&
+            (!this.options.isAutoPromptEnabled() || this.options.sessionState.autoPrompted)
+        ) {
             await respond('decline');
             return;
         }

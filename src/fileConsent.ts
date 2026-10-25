@@ -31,7 +31,9 @@ export class FileConsentService<Request> {
     constructor(private readonly options: FileConsentServiceOptions<Request>) {}
 
     async start(): Promise<void> {
-        if (!this.stopped) return;
+        if (!this.stopped) {
+            return;
+        }
         await fs.mkdir(this.options.directory, { recursive: true, mode: 0o700 });
         await this.setOwnerOnlyPermissions(this.options.directory, 0o700);
         this.stopped = false;
@@ -52,16 +54,21 @@ export class FileConsentService<Request> {
     }
 
     private async scan(): Promise<void> {
-        if (this.stopped) return;
+        if (this.stopped) {
+            return;
+        }
         let names: string[];
         try {
             names = await fs.readdir(this.options.directory);
         } catch {
             return;
         }
-        if (this.stopped) return;
+        if (this.stopped) {
+            return;
+        }
         const present = new Set(
-            names.filter((name) => this.options.requestName.test(name))
+            names
+                .filter((name) => this.options.requestName.test(name))
                 .map((name) => name.slice(0, -'.request'.length)),
         );
         for (const id of this.seen) {
@@ -71,9 +78,13 @@ export class FileConsentService<Request> {
             }
         }
         for (const name of names) {
-            if (!this.options.requestName.test(name)) continue;
+            if (!this.options.requestName.test(name)) {
+                continue;
+            }
             const id = name.slice(0, -'.request'.length);
-            if (this.pending.has(id) || this.seen.has(id)) continue;
+            if (this.pending.has(id) || this.seen.has(id)) {
+                continue;
+            }
             this.seen.add(id);
             const work = this.processFile(id).finally(() => {
                 this.pending.delete(id);
@@ -89,7 +100,9 @@ export class FileConsentService<Request> {
         try {
             content = await this.readBoundedRequest(requestPath);
         } catch {
-            if (!this.stopped) await this.respond(id, 'decline');
+            if (!this.stopped) {
+                await this.respond(id, 'decline');
+            }
             return;
         }
         this.contents.set(id, content);
@@ -120,7 +133,9 @@ export class FileConsentService<Request> {
         try {
             const buffer = Buffer.alloc(this.options.maxBytes + 1);
             const { bytesRead } = await handle.read(buffer, 0, buffer.length, 0);
-            if (bytesRead > this.options.maxBytes) throw new Error('Consent request exceeds its size limit.');
+            if (bytesRead > this.options.maxBytes) {
+                throw new Error('Consent request exceeds its size limit.');
+            }
             return buffer.toString('utf8', 0, bytesRead);
         } finally {
             await handle.close();
@@ -128,7 +143,9 @@ export class FileConsentService<Request> {
     }
 
     private async respond(id: string, response: ConsentResponse): Promise<void> {
-        if (this.responses.has(id)) return;
+        if (this.responses.has(id)) {
+            return;
+        }
         this.responses.add(id);
         const write = this.publishResponse(id, response, this.contents.get(id));
         this.activeWrites.add(write);
@@ -157,7 +174,8 @@ export class FileConsentService<Request> {
             });
             await this.setOwnerOnlyPermissions(temporaryPath, 0o600);
             const requestPath = path.join(this.options.directory, `${id}.request`);
-            let publish = response === 'decline' ||
+            let publish =
+                response === 'decline' ||
                 (!this.stopped && this.options.isEnabled() && fsSync.existsSync(requestPath));
             if (publish && response === 'approve' && expectedContent !== undefined) {
                 try {
@@ -178,6 +196,8 @@ export class FileConsentService<Request> {
     }
 
     private async setOwnerOnlyPermissions(filePath: string, mode: number): Promise<void> {
-        if (process.platform !== 'win32') await fs.chmod(filePath, mode);
+        if (process.platform !== 'win32') {
+            await fs.chmod(filePath, mode);
+        }
     }
 }
