@@ -1,5 +1,7 @@
 'use strict';
 
+import { JGD_MINIMUM_VERSION } from './jgdVersion';
+
 import * as fs from 'node:fs';
 import * as fsp from 'node:fs/promises';
 import { pathExists, readJson } from './fileSystem';
@@ -1614,7 +1616,7 @@ function buildAttachSessionScript(
               ]),
         '  source(startup_helper, local = TRUE)',
         '  source(attach_helper, local = TRUE)',
-        `  vscode_r_attach_sess(endpoint, sess_src, managed_root, consent_dir, source_helper, installer_helper, ${asRStringLiteral(backend)}, tool_root = tool_root, tool_consent_directory = tool_consent_dir, tool_library_helper = tool_library_helper, tool_consent_helper = tool_consent_helper, jgd_helper = jgd_helper, jgd_can_prompt = jgd_can_prompt, use_rstudioapi = ${config().get<boolean>('session.emulateRStudioAPI') ? 'TRUE' : 'FALSE'}${attachment ? `, attachment_id = ${asRStringLiteral(attachment.attachmentId)}, auto_activate = ${attachment.autoActivate ? 'TRUE' : 'FALSE'}` : ''})`,
+        `  vscode_r_attach_sess(endpoint, sess_src, managed_root, consent_dir, source_helper, installer_helper, ${asRStringLiteral(backend)}, tool_root = tool_root, tool_consent_directory = tool_consent_dir, tool_library_helper = tool_library_helper, tool_consent_helper = tool_consent_helper, jgd_helper = jgd_helper, jgd_can_prompt = jgd_can_prompt, jgd_minimum_version = ${asRStringLiteral(JGD_MINIMUM_VERSION)}, use_rstudioapi = ${config().get<boolean>('session.emulateRStudioAPI') ? 'TRUE' : 'FALSE'}${attachment ? `, attachment_id = ${asRStringLiteral(attachment.attachmentId)}, auto_activate = ${attachment.autoActivate ? 'TRUE' : 'FALSE'}` : ''})`,
         '    })',
         '    invisible(isTRUE(attached))',
         '  }, error = function(error) {',

@@ -54,7 +54,8 @@ local({
         "source(file.path(getwd(), 'R', 'attach_sess.R'));",
         "options(repos=c(CRAN=repo), pkgType='source');",
         "consent <- file.path(root, 'consent'); dir.create(consent, showWarnings=FALSE);",
-        "Sys.setenv(JGD_SOCKET='fixture-socket');",
+        # Manual attach must use its supplied minimum rather than an inherited terminal value.
+        "Sys.setenv(JGD_SOCKET='fixture-socket', VSCODE_R_JGD_MINIMUM_VERSION='9.9.9');",
         "connect_seen <- new.env();",
         "device_log <- file.path(root, paste0(mode, '-device-log'));",
         "Sys.setenv(JGD_TEST_DEVICE_LOG=device_log);",
@@ -86,7 +87,8 @@ local({
         "  tool_consent_directory=consent, tool_library_helper=tool_library_helper,",
         "  tool_consent_helper=file.path(getwd(), 'R', 'tool-consent.R'),",
         "  jgd_helper=file.path(getwd(), 'R', 'prepare-jgd.R'),",
-        "  jgd_can_prompt=!(mode %in% c('no-prompt', 'no-prompt-compatible')));",
+        "  jgd_can_prompt=!(mode %in% c('no-prompt', 'no-prompt-compatible')),",
+        "  jgd_minimum_version='0.1.0');",
         "stopifnot(isTRUE(answer), identical(Sys.getenv('JGD_SOCKET'), 'fixture-socket'));",
         "stopifnot(identical(getOption('timeout'), timeout_before), identical(.libPaths(), libraries_before));",
         "writeLines(c(connect_seen$socket, as.character(connect_seen$loaded), connect_seen$device), result);"
@@ -262,6 +264,7 @@ local({
         paste0("  VSCODE_R_TOOL_LIBRARY_HELPER=", r_literal(file.path(getwd(), "R", "tool-library.R")), ","),
         paste0("  VSCODE_R_TOOL_CONSENT_HELPER=", r_literal(file.path(getwd(), "R", "tool-consent.R")), ","),
         "  VSCODE_R_JGD_CAN_PROMPT='TRUE',",
+        "  VSCODE_R_JGD_MINIMUM_VERSION='0.1.0',",
         paste0("  R_PROFILE_USER_OLD=", r_literal(empty_user_profile), ","),
         "  SESS_PLOT_BACKEND='jgd', JGD_SOCKET='fixture-socket')",
         paste0("options(repos=c(CRAN=", r_literal(repo), "), pkgType='source')"),

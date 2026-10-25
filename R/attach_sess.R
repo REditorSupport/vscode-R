@@ -8,7 +8,8 @@ vscode_r_with_jgd <- function(
     tool_consent_directory = Sys.getenv("VSCODE_R_TOOL_CONSENT_DIRECTORY", unset = ""),
     tool_library_helper = Sys.getenv("VSCODE_R_TOOL_LIBRARY_HELPER", unset = ""),
     tool_consent_helper = Sys.getenv("VSCODE_R_TOOL_CONSENT_HELPER", unset = ""),
-    can_prompt = identical(Sys.getenv("VSCODE_R_JGD_CAN_PROMPT", unset = "TRUE"), "TRUE")
+    can_prompt = identical(Sys.getenv("VSCODE_R_JGD_CAN_PROMPT", unset = "TRUE"), "TRUE"),
+    minimum_version = Sys.getenv("VSCODE_R_JGD_MINIMUM_VERSION", unset = "")
 ) {
     if (!is.function(connect)) stop("connect must be a function.", call. = FALSE)
     if (!plot_backend %in% c("jgd", "auto") ||
@@ -28,7 +29,7 @@ vscode_r_with_jgd <- function(
     if (loaded && is.function(jgd_setup$vscode_r_connect_with_jgd)) {
         return(jgd_setup$vscode_r_connect_with_jgd(
             plot_backend, connect, tool_root, tool_consent_directory,
-            tool_library_helper, tool_consent_helper, can_prompt
+            tool_library_helper, tool_consent_helper, can_prompt, minimum_version
         ))
     }
 
@@ -238,7 +239,10 @@ vscode_r_attach_sess <- function(endpoint, pkg_path, managed_root, consent_dir,
                                      "VSCODE_R_TOOL_CONSENT_HELPER", unset = ""
                                  ),
                                  jgd_helper = Sys.getenv("VSCODE_R_JGD_HELPER", unset = ""),
-                                 jgd_can_prompt = TRUE) {
+                                 jgd_can_prompt = TRUE,
+                                 jgd_minimum_version = Sys.getenv(
+                                     "VSCODE_R_JGD_MINIMUM_VERSION", unset = ""
+                                 )) {
     if (!is.null(attachment_id) &&
             !(is.character(attachment_id) && length(attachment_id) == 1L &&
                   !is.na(attachment_id) &&
@@ -298,7 +302,7 @@ vscode_r_attach_sess <- function(endpoint, pkg_path, managed_root, consent_dir,
             plot_backend,
             function() do.call(connect, args),
             jgd_helper, tool_root, tool_consent_directory,
-            tool_library_helper, tool_consent_helper, jgd_can_prompt
+            tool_library_helper, tool_consent_helper, jgd_can_prompt, jgd_minimum_version
         )
     }
 

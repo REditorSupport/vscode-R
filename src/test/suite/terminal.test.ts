@@ -1,3 +1,4 @@
+import { JGD_MINIMUM_VERSION } from '../../jgdVersion';
 import * as vscode from 'vscode';
 import * as sinon from 'sinon';
 import * as assert from 'assert';
@@ -858,6 +859,7 @@ suite('R Terminal', () => {
             ),
         );
         assert.ok(options.env?.['VSCODE_R_JGD_HELPER']?.endsWith(path.join('R', 'prepare-jgd.R')));
+        assert.strictEqual(options.env?.['VSCODE_R_JGD_MINIMUM_VERSION'], JGD_MINIMUM_VERSION);
         assert.strictEqual(options.env?.['VSCODE_R_JGD_CAN_PROMPT'], 'FALSE');
         sinon.assert.notCalled(getRpath);
         sinon.assert.notCalled(queryR);

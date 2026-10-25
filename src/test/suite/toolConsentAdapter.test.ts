@@ -1,4 +1,5 @@
 import * as assert from 'assert';
+import { JGD_MINIMUM_VERSION } from '../../jgdVersion';
 import * as fs from 'node:fs/promises';
 import * as os from 'os';
 import * as path from 'path';
@@ -7,10 +8,12 @@ import * as vscode from 'vscode';
 import { createToolConsentService } from '../../toolConsentAdapter';
 
 suite('Managed package consent persistence', () => {
-    test("Don't ask again saves global state and explicit jgd still prompts", async () => {
+    test('dismissal applies to the same minimum version and a changed minimum prompts again', async () => {
         const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'vscode-r-tool-adapter-'));
         const sandbox = sinon.createSandbox();
-        const values = new Map<string, unknown>([['jgdInstallPromptDismissed', true]]);
+        const values = new Map<string, unknown>([
+            ['jgdInstallPromptDismissedMinimumVersion', JGD_MINIMUM_VERSION],
+        ]);
         const globalState: vscode.Memento = {
             keys: () => [...values.keys()],
             get: <T>(key: string, fallback?: T) => (values.get(key) as T | undefined) ?? fallback,
@@ -28,8 +31,8 @@ suite('Managed package consent persistence', () => {
             await broker.start();
             assert.strictEqual(broker.canPrompt('auto'), false);
             assert.strictEqual(broker.canPrompt('jgd'), true);
-            // Start the request flow with no previously saved dismissal.
-            values.clear();
+            // A prior minimum's dismissal permits an offer for the current minimum.
+            values.set('jgdInstallPromptDismissedMinimumVersion', '0.0.1');
             assert.strictEqual(broker.canPrompt('auto'), true);
             for (const [index, backend] of ['auto', 'jgd'].entries()) {
                 const id = String(index + 1).repeat(32);
@@ -40,7 +43,7 @@ suite('Managed package consent persistence', () => {
                     backend,
                     '1',
                     'jgd',
-                    '0.1.0',
+                    JGD_MINIMUM_VERSION,
                     '1.2.0',
                     'https://cloud.r-project.org',
                     'source',
@@ -68,7 +71,9 @@ suite('Managed package consent persistence', () => {
                     }
                 }
             }
-            assert.deepStrictEqual(update.args, [['jgdInstallPromptDismissed', true]]);
+            assert.deepStrictEqual(update.args, [
+                ['jgdInstallPromptDismissedMinimumVersion', JGD_MINIMUM_VERSION],
+            ]);
             assert.strictEqual(broker.canPrompt('auto'), false);
             assert.strictEqual(broker.canPrompt('jgd'), true);
             assert.strictEqual(prompt.callCount, 2);

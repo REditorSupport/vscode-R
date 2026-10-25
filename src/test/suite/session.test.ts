@@ -1,3 +1,4 @@
+import { JGD_MINIMUM_VERSION } from '../../jgdVersion';
 import * as vscode from 'vscode';
 import * as sinon from 'sinon';
 import * as assert from 'assert';
@@ -998,6 +999,9 @@ suite('Session Communication', () => {
             assert.match(source, /jgd_can_prompt <- (?:TRUE|FALSE)/);
             assert.match(source, /jgd_helper = jgd_helper/);
             assert.match(source, /jgd_can_prompt = jgd_can_prompt/);
+            assert.ok(
+                source.includes(`jgd_minimum_version = ${JSON.stringify(JGD_MINIMUM_VERSION)}`),
+            );
             const backgroundSource = await fsp.readFile(backgroundPreparation.scriptPath, 'utf8');
             assert.ok(
                 backgroundSource.includes(

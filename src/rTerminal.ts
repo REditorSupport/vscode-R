@@ -1,5 +1,7 @@
 'use strict';
 
+import { JGD_MINIMUM_VERSION } from './jgdVersion';
+
 import * as path from 'path';
 import * as crypto from 'node:crypto';
 import { getMigratedSetting } from './configuration';
@@ -354,6 +356,7 @@ export async function makeTerminalOptions(resource?: vscode.Uri): Promise<vscode
                 VSCODE_R_JGD_HELPER: extensionContext.asAbsolutePath(
                     path.join('R', 'prepare-jgd.R'),
                 ),
+                VSCODE_R_JGD_MINIMUM_VERSION: JGD_MINIMUM_VERSION,
                 VSCODE_R_JGD_CAN_PROMPT: jgdCanPrompt ? 'TRUE' : 'FALSE',
                 // Remove inherited endpoint overrides so the per-terminal discovery file
                 // remains authoritative, including after a VS Code window reload.

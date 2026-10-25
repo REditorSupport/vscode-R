@@ -1,6 +1,3 @@
-# Keep the jgd minimum in one R-side location so consent and installation agree.
-VSCODE_R_JGD_MINIMUM_VERSION <- "0.1.0"
-
 # Keep socket fallback, preparation, connection, and restoration in one place.
 vscode_r_connect_with_jgd <- function(
     plot_backend,
@@ -9,7 +6,8 @@ vscode_r_connect_with_jgd <- function(
     consent_directory = Sys.getenv("VSCODE_R_TOOL_CONSENT_DIRECTORY", unset = ""),
     library_helper = Sys.getenv("VSCODE_R_TOOL_LIBRARY_HELPER", unset = ""),
     consent_helper = Sys.getenv("VSCODE_R_TOOL_CONSENT_HELPER", unset = ""),
-    can_prompt = identical(Sys.getenv("VSCODE_R_JGD_CAN_PROMPT", unset = "TRUE"), "TRUE")
+    can_prompt = identical(Sys.getenv("VSCODE_R_JGD_CAN_PROMPT", unset = "TRUE"), "TRUE"),
+    minimum_version = Sys.getenv("VSCODE_R_JGD_MINIMUM_VERSION", unset = "")
 ) {
     if (!is.function(connect)) stop("connect must be a function.", call. = FALSE)
     if (!plot_backend %in% c("jgd", "auto") || !nzchar(Sys.getenv("JGD_SOCKET", unset = ""))) {
@@ -25,7 +23,7 @@ vscode_r_connect_with_jgd <- function(
     }, add = TRUE)
     ready <- isTRUE(vscode_r_prepare_jgd(
         plot_backend, tool_root, consent_directory,
-        library_helper, consent_helper, can_prompt
+        library_helper, consent_helper, can_prompt, minimum_version
     ))
     if (!ready) {
         # An old loaded jgd namespace still satisfies requireNamespace; hide the socket so hooks choose fallback.
@@ -42,7 +40,8 @@ vscode_r_prepare_jgd <- function(
     consent_directory = Sys.getenv("VSCODE_R_TOOL_CONSENT_DIRECTORY", unset = ""),
     library_helper = Sys.getenv("VSCODE_R_TOOL_LIBRARY_HELPER", unset = ""),
     consent_helper = Sys.getenv("VSCODE_R_TOOL_CONSENT_HELPER", unset = ""),
-    can_prompt = identical(Sys.getenv("VSCODE_R_JGD_CAN_PROMPT", unset = "TRUE"), "TRUE")
+    can_prompt = identical(Sys.getenv("VSCODE_R_JGD_CAN_PROMPT", unset = "TRUE"), "TRUE"),
+    minimum_version = Sys.getenv("VSCODE_R_JGD_MINIMUM_VERSION", unset = "")
 ) {
     if (!is.character(plot_backend) || length(plot_backend) != 1L ||
             is.na(plot_backend) || !plot_backend %in% c("jgd", "auto")) {
@@ -68,12 +67,12 @@ vscode_r_prepare_jgd <- function(
         if (!can_prompt) {
             # A compatible ordinary or managed copy remains usable without resolving a new plan.
             return(!is.null(tool_environment$tool_library_load(
-                "jgd", VSCODE_R_JGD_MINIMUM_VERSION, tool_root
+                "jgd", minimum_version, tool_root
             )))
         }
         prepared <- tool_environment$tool_library_prepare(
             "jgd",
-            VSCODE_R_JGD_MINIMUM_VERSION,
+            minimum_version,
             tool_root,
             consent_directory,
             plot_backend,
@@ -86,7 +85,7 @@ vscode_r_prepare_jgd <- function(
             return(FALSE)
         }
         namespace <- tool_environment$tool_library_load(
-            "jgd", VSCODE_R_JGD_MINIMUM_VERSION, tool_root
+            "jgd", minimum_version, tool_root
         )
         if (is.null(namespace)) {
             message("vscode-R could not load a compatible jgd package; using the available plot fallback.")

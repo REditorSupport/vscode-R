@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import { JGD_MINIMUM_VERSION } from './jgdVersion';
 import {
     ToolConsentChoice,
     ToolConsentRequest,
@@ -6,7 +7,7 @@ import {
     ToolConsentSessionState,
 } from './toolConsent';
 
-const JGD_INSTALL_PROMPT_DISMISSED = 'jgdInstallPromptDismissed';
+const JGD_INSTALL_PROMPT_DISMISSED_MINIMUM_VERSION = 'jgdInstallPromptDismissedMinimumVersion';
 // Shared by services in this extension host; a new host starts with a fresh state.
 const hostSessionState: ToolConsentSessionState = { autoPrompted: false };
 
@@ -35,10 +36,15 @@ export function createToolConsentService(
     return new ToolConsentService({
         directory,
         isEnabled,
-        isAutoPromptEnabled: () => globalState.get<unknown>(JGD_INSTALL_PROMPT_DISMISSED) !== true,
+        isAutoPromptEnabled: () =>
+            globalState.get<unknown>(JGD_INSTALL_PROMPT_DISMISSED_MINIMUM_VERSION) !==
+            JGD_MINIMUM_VERSION,
         sessionState: hostSessionState,
         rememberAutoPromptDismissal: async () => {
-            await globalState.update(JGD_INSTALL_PROMPT_DISMISSED, true);
+            await globalState.update(
+                JGD_INSTALL_PROMPT_DISMISSED_MINIMUM_VERSION,
+                JGD_MINIMUM_VERSION,
+            );
         },
         intervalMs,
         prompt: async (request): Promise<ToolConsentChoice> => {
