@@ -38,6 +38,8 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - name: Verify sess source identity and bootstrap
         run: pnpm run test:sess-source
+      - name: Verify managed tool library
+        run: pnpm run test:tool-library
       - name: Install R test dependencies
         run: install.packages(c("remotes", "pkgbuild", "languageserver", "lintr", "renv"))
         shell: Rscript {0}
