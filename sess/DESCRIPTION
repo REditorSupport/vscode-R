@@ -28,8 +28,7 @@ Imports:
     later,
     jsonlite,
     utils,
-    methods,
-    rstudioapi
+    methods
 Suggests:
     bit64,
     data.table,
@@ -38,6 +37,7 @@ Suggests:
     systemfonts,
     httpgd,
     jgd,
+    rstudioapi,
     svglite,
     tinytest
 NeedsCompilation: no

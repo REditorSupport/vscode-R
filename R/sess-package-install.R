@@ -51,6 +51,9 @@ sess_install <- function(pkg_path, library, repos, interactive = FALSE) {
 
     deps <- if ("Imports" %in% colnames(description)) description[1L, "Imports"] else ""
     deps <- trimws(gsub("\\s*\\(.*\\)", "", unlist(strsplit(deps, ","))))
+    # The private Interactive runtime loads rstudioapi itself. Ordinary terminals
+    # obtain it on demand from the extension's tool library instead.
+    if (interactive) deps <- c(deps, "rstudioapi")
     installed <- utils::installed.packages(lib.loc = unique(c(library, .libPaths())))
     missing <- setdiff(deps[nzchar(deps)], rownames(installed))
     if (length(missing)) {

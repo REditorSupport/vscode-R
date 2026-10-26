@@ -30,30 +30,30 @@ local({
         class = "vscode_r_tool_install_plan"
     )
 
-    lines <- .tool_consent_lines(plan, strrep("a", 32L), "jgd")
+    lines <- .tool_consent_lines(plan, strrep("a", 32L), "always")
     stopifnot(length(lines) == 11L)
     stopifnot(identical(lines[c(1L, 2L, 4L, 5L)],
-                        c("vscode-r-package-consent-v1", strrep("a", 32L), "jgd", "1")))
+                        c("vscode-r-package-consent-v1", strrep("a", 32L), "always", "1")))
     stopifnot(identical(lines[6:11],
                         c("jgd", "0.1.0", "0.1.0", repository, "source", "yes")))
     invalid <- plan
     invalid$repository <- paste0(repository, "\nother.example")
-    stopifnot(inherits(tryCatch(.tool_consent_lines(invalid, strrep("b", 32L), "auto"),
+    stopifnot(inherits(tryCatch(.tool_consent_lines(invalid, strrep("b", 32L), "once"),
                                 error = identity), "error"))
 
     directory <- file.path(root, "consent")
     dir.create(directory)
-    approval <- .tool_publish_consent_request(plan, strrep("c", 32L), "auto", directory)
+    approval <- .tool_publish_consent_request(plan, strrep("c", 32L), "once", directory)
     stopifnot(identical(readLines(approval$request_path),
-                        .tool_consent_lines(plan, strrep("c", 32L), "auto")))
+                        .tool_consent_lines(plan, strrep("c", 32L), "once")))
     stopifnot(inherits(tryCatch(.tool_publish_consent_request(plan, strrep("c", 32L),
-                                                              "auto", directory),
+                                                              "once", directory),
                                 error = identity), "error"))
     writeLines("approve", approval$response_path)
     stopifnot(isTRUE(.tool_wait_for_consent(approval, timeout_seconds = 0)))
     stopifnot(!file.exists(approval$request_path), !file.exists(approval$response_path))
 
-    changed <- .tool_publish_consent_request(plan, strrep("d", 32L), "auto", directory)
+    changed <- .tool_publish_consent_request(plan, strrep("d", 32L), "once", directory)
     changed_lines <- changed$lines
     changed_lines[8L] <- "0.2.0"
     writeLines(changed_lines, changed$request_path)
@@ -61,18 +61,18 @@ local({
     stopifnot(!.tool_wait_for_consent(changed, timeout_seconds = 0))
     stopifnot(!file.exists(changed$request_path), !file.exists(changed$response_path))
 
-    declined <- .tool_publish_consent_request(plan, strrep("e", 32L), "jgd", directory)
+    declined <- .tool_publish_consent_request(plan, strrep("e", 32L), "always", directory)
     writeLines("decline", declined$response_path)
     stopifnot(!.tool_wait_for_consent(declined, timeout_seconds = 0))
     stopifnot(!file.exists(declined$request_path), !file.exists(declined$response_path))
 
-    stopifnot(!.tool_request_consent(plan, "auto", directory, timeout_seconds = 0))
+    stopifnot(!.tool_request_consent(plan, "once", directory, timeout_seconds = 0))
     stopifnot(length(list.files(directory)) == 0L)
 
-    unavailable <- .tool_publish_consent_request(plan, strrep("f", 32L), "auto", directory)
+    unavailable <- .tool_publish_consent_request(plan, strrep("f", 32L), "once", directory)
     stopifnot(!.tool_wait_for_consent(unavailable, timeout_seconds = 0))
     stopifnot(!file.exists(unavailable$request_path), !file.exists(unavailable$response_path))
-    invalid_timeout <- .tool_publish_consent_request(plan, strrep("0", 32L), "auto", directory)
+    invalid_timeout <- .tool_publish_consent_request(plan, strrep("0", 32L), "once", directory)
     stopifnot(inherits(tryCatch(.tool_wait_for_consent(invalid_timeout, timeout_seconds = -1),
                                 error = identity), "error"))
     stopifnot(!file.exists(invalid_timeout$request_path), !file.exists(invalid_timeout$response_path))
@@ -88,10 +88,10 @@ local({
              install_required = !ready, library = library)
     }
     prepare_environment$tool_library_plan <- function(...) if (ready) NULL else plan
-    prepare_environment$.tool_request_consent <- function(received, backend, directory,
+    prepare_environment$.tool_request_consent <- function(received, policy, directory,
                                                           timeout_seconds) {
         prompt_calls <<- prompt_calls + 1L
-        stopifnot(identical(received, plan), backend %in% c("jgd", "auto"),
+        stopifnot(identical(received, plan), policy %in% c("always", "once"),
                   identical(directory, "consent"))
         permission
     }
@@ -105,16 +105,16 @@ local({
     received_plan <- plan
     prepare <- tool_library_prepare
     environment(prepare) <- prepare_environment
-    stopifnot(is.null(prepare("jgd", "0.1.0", root, "consent", "auto", repos = character())))
+    stopifnot(is.null(prepare("jgd", "0.1.0", root, "consent", "once", repos = character())))
     stopifnot(prompt_calls == 1L, install_calls == 0L)
     permission <- FALSE
-    stopifnot(is.null(prepare("jgd", "0.1.0", root, "consent", "jgd", repos = character())))
+    stopifnot(is.null(prepare("jgd", "0.1.0", root, "consent", "always", repos = character())))
     stopifnot(prompt_calls == 2L, install_calls == 0L)
     permission <- TRUE
-    prepare("jgd", "0.1.0", root, "consent", "auto", repos = character())
+    prepare("jgd", "0.1.0", root, "consent", "once", repos = character())
     stopifnot(prompt_calls == 3L, install_calls == 1L)
     ready <- TRUE
-    prepare("jgd", "0.1.0", root, "consent", "auto", repos = character())
+    prepare("jgd", "0.1.0", root, "consent", "once", repos = character())
     stopifnot(prompt_calls == 3L, install_calls == 1L)
 
     # Exercise prepare through its real file request and response path.
@@ -122,17 +122,17 @@ local({
     consent_directory <- file.path(root, "prepare consent")
     dir.create(consent_directory)
     original_wait <- .tool_wait_for_consent
-    prepare_environment$.tool_request_consent <- function(received, backend,
+    prepare_environment$.tool_request_consent <- function(received, policy,
                                                           directory, timeout_seconds) {
         request <- .tool_publish_consent_request(received, strrep("1", 32L),
-                                                 backend, directory)
+                                                 policy, directory)
         prepare_environment$.tool_wait_for_consent(request, timeout_seconds)
     }
     prepare_environment$.tool_wait_for_consent <- function(request, timeout_seconds) {
         writeLines("approve", request$response_path)
         original_wait(request, timeout_seconds = 0)
     }
-    prepared <- prepare("jgd", "0.1.0", root, consent_directory, "jgd",
+    prepared <- prepare("jgd", "0.1.0", root, consent_directory, "always",
                         repos = character())
     stopifnot(identical(prepared$version, plan$version),
               prompt_calls == 3L, install_calls == 2L,

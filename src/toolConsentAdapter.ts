@@ -1,15 +1,33 @@
 import * as vscode from 'vscode';
-import { JGD_MINIMUM_VERSION } from './jgdVersion';
 import {
     ToolConsentChoice,
     ToolConsentRequest,
     ToolConsentService,
     ToolConsentSessionState,
 } from './toolConsent';
+import { isToolPackageName, TOOL_MINIMUM_VERSIONS, ToolPackageName } from './toolVersions';
 
-const JGD_INSTALL_PROMPT_DISMISSED_MINIMUM_VERSION = 'jgdInstallPromptDismissedMinimumVersion';
+// One global-state key per package, for example jgdInstallPromptDismissedMinimumVersion.
+function dismissedMinimumVersionKey(packageName: string): string {
+    return `${packageName}InstallPromptDismissedMinimumVersion`;
+}
 // Shared by services in this extension host; a new host starts with a fresh state.
-const hostSessionState: ToolConsentSessionState = { autoPrompted: false };
+const hostSessionState: ToolConsentSessionState = { promptedPackages: new Set() };
+
+const OPTIONAL_NOTICES: Record<ToolPackageName, string> = {
+    jgd: 'Automatic plot backend setup is optional; declining uses the available fallback.',
+    rstudioapi: 'RStudio API emulation is optional; declining skips installing rstudioapi.',
+};
+
+function optionalNotice(request: ToolConsentRequest): string {
+    if (request.policy !== 'once') {
+        return '';
+    }
+    const notices = request.packages.flatMap((item) =>
+        isToolPackageName(item.name) ? [OPTIONAL_NOTICES[item.name]] : [],
+    );
+    return notices.length > 0 ? `\n\n${notices.join(' ')}` : '';
+}
 
 function formatPlan(request: ToolConsentRequest): string {
     const [platform, version] = request.runtime.split('|');
@@ -20,11 +38,7 @@ function formatPlan(request: ToolConsentRequest): string {
     const buildNotice = request.packages.some((item) => item.sourceBuild)
         ? '\n\nA source build may be required and may need system build tools.'
         : '';
-    const modeNotice =
-        request.backend === 'auto'
-            ? '\n\nAutomatic plot backend setup is optional; declining uses the available fallback.'
-            : '';
-    return `Install these R packages for R ${version} (${platform})?\n\n${rows.join('\n')}${buildNotice}${modeNotice}\n\nPackages are installed in a vscode-R-managed library. Existing user and project libraries are not changed.`;
+    return `Install these R packages for R ${version} (${platform})?\n\n${rows.join('\n')}${buildNotice}${optionalNotice(request)}\n\nPackages are installed in a vscode-R-managed library. Existing user and project libraries are not changed.`;
 }
 
 export function createToolConsentService(
@@ -36,14 +50,18 @@ export function createToolConsentService(
     return new ToolConsentService({
         directory,
         isEnabled,
-        isAutoPromptEnabled: () =>
-            globalState.get<unknown>(JGD_INSTALL_PROMPT_DISMISSED_MINIMUM_VERSION) !==
-            JGD_MINIMUM_VERSION,
+        isPromptEnabled: (packageName) =>
+            isToolPackageName(packageName) &&
+            globalState.get<unknown>(dismissedMinimumVersionKey(packageName)) !==
+                TOOL_MINIMUM_VERSIONS[packageName],
         sessionState: hostSessionState,
-        rememberAutoPromptDismissal: async () => {
+        rememberPromptDismissal: async (packageName) => {
+            if (!isToolPackageName(packageName)) {
+                throw new Error(`Unknown managed tool package: ${packageName}`);
+            }
             await globalState.update(
-                JGD_INSTALL_PROMPT_DISMISSED_MINIMUM_VERSION,
-                JGD_MINIMUM_VERSION,
+                dismissedMinimumVersionKey(packageName),
+                TOOL_MINIMUM_VERSIONS[packageName],
             );
         },
         intervalMs,
@@ -52,7 +70,7 @@ export function createToolConsentService(
             const notNow = 'Not now';
             const dontAskAgain = "Don't ask again";
             const choice =
-                request.backend === 'auto'
+                request.policy === 'once'
                     ? await vscode.window.showWarningMessage(
                           formatPlan(request),
                           install,

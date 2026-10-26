@@ -2,11 +2,11 @@
 .tool_consent_max_bytes <- 16384L
 .tool_consent_request_version <- "vscode-r-package-consent-v1"
 
-.tool_consent_lines <- function(plan, id, backend) {
+.tool_consent_lines <- function(plan, id, policy) {
     if (!inherits(plan, "vscode_r_tool_install_plan") ||
             !(is.character(id) && length(id) == 1L &&
                   grepl("^[A-Za-z0-9_-]{1,64}$", id)) ||
-            !(is.character(backend) && length(backend) == 1L && backend %in% c("jgd", "auto"))) {
+            !(is.character(policy) && length(policy) == 1L && policy %in% c("always", "once"))) {
         stop("Invalid managed tool consent request.", call. = FALSE)
     }
     runtime_minor <- strsplit(R.version$minor, ".", fixed = TRUE)[[1L]][1L]
@@ -20,7 +20,7 @@
         stop("The managed tool installation plan cannot be represented in a consent request.",
              call. = FALSE)
     }
-    lines <- c(.tool_consent_request_version, id, runtime, backend, "1", package_fields)
+    lines <- c(.tool_consent_request_version, id, runtime, policy, "1", package_fields)
     request <- paste0(paste(lines, collapse = "\n"), "\n")
     if (nchar(request, type = "bytes") > .tool_consent_max_bytes) {
         stop("The managed tool consent request is too large.", call. = FALSE)
@@ -28,7 +28,7 @@
     lines
 }
 
-.tool_publish_consent_request <- function(plan, id, backend, directory) {
+.tool_publish_consent_request <- function(plan, id, policy, directory) {
     if (!(is.character(directory) && length(directory) == 1L &&
               !is.na(directory) && nzchar(directory))) {
         stop("The managed tool consent directory is unavailable.", call. = FALSE)
@@ -38,7 +38,7 @@
         stop("The managed tool consent directory is unavailable.", call. = FALSE)
     }
     if (.Platform$OS.type == "unix") Sys.chmod(directory, "0700")
-    lines <- .tool_consent_lines(plan, id, backend)
+    lines <- .tool_consent_lines(plan, id, policy)
     request_path <- file.path(directory, paste0(id, ".request"))
     response_path <- file.path(directory, paste0(id, ".response"))
     if (file.exists(request_path) || file.exists(response_path)) {
@@ -88,7 +88,7 @@
     }
 }
 
-.tool_request_consent <- function(plan, backend, directory, timeout_seconds = 180) {
+.tool_request_consent <- function(plan, policy, directory, timeout_seconds = 180) {
     if (!(is.character(directory) && length(directory) == 1L &&
               !is.na(directory) && nzchar(directory) && dir.exists(directory))) {
         stop("The extension's tool consent service is unavailable. Restart VS Code and try again.",
@@ -106,14 +106,15 @@
         response_path <- file.path(directory, paste0(id, ".response"))
         if (!file.exists(request_path) && !file.exists(response_path)) break
     }
-    request <- .tool_publish_consent_request(plan, id, backend, directory)
+    request <- .tool_publish_consent_request(plan, id, policy, directory)
     .tool_wait_for_consent(request, timeout_seconds)
 }
 
 # Request consent only when no compatible namespace is already available.
 # On approval the frozen repository result is passed directly to installation.
+# `policy` is "always" or "once"; the extension applies it to its prompt.
 tool_library_prepare <- function(package, minimum_version, root, consent_directory,
-                                 backend, repos = getOption("repos"),
+                                 policy, repos = getOption("repos"),
                                  consent_timeout_seconds = 180,
                                  install_timeout_seconds = 300,
                                  resolution_timeout_seconds = 30) {
@@ -131,7 +132,7 @@ tool_library_prepare <- function(package, minimum_version, root, consent_directo
         tool_library_plan(package, minimum_version, root, repos)
     })
     if (is.null(plan)) return(invisible(tool_library_check(package, minimum_version, root)))
-    approved <- .tool_request_consent(plan, backend, consent_directory,
+    approved <- .tool_request_consent(plan, policy, consent_directory,
                                       timeout_seconds = consent_timeout_seconds)
     if (!isTRUE(approved)) return(invisible(NULL))
     tool_library_install(package, minimum_version, root, repos = plan$repositories,

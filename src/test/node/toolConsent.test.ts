@@ -7,17 +7,26 @@ import {
     ToolConsentChoice,
     ToolConsentRequest,
     ToolConsentService,
+    ToolConsentSessionState,
 } from '../../toolConsent';
 
-function requestContent(id: string, backend: 'jgd' | 'auto', version = '1.2.0'): string {
+type Policy = 'always' | 'once';
+
+function requestContent(
+    id: string,
+    policy: Policy,
+    version = '1.2.0',
+    packageName = 'jgd',
+    minimumVersion = '0.1.0',
+): string {
     return [
         'vscode-r-package-consent-v1',
         id,
         'linux-x86_64|4.5',
-        backend,
+        policy,
         '1',
-        'jgd',
-        '0.1.0',
+        packageName,
+        minimumVersion,
         version,
         'https://cloud.r-project.org',
         'source',
@@ -40,20 +49,20 @@ async function waitForFile(file: string): Promise<string> {
 
 suite('managed package consent bridge', () => {
     let directory: string;
-    let autoPromptEnabled: boolean;
+    let dismissed: Set<string>;
     let failPreferenceSave: boolean;
     let choice: ToolConsentChoice;
     let prompts: ToolConsentRequest[];
-    let sessionState: { autoPrompted: boolean };
+    let sessionState: ToolConsentSessionState;
     const services: ToolConsentService[] = [];
 
     setup(async () => {
         directory = await fs.mkdtemp(path.join(os.tmpdir(), 'vscode-r-package-consent-'));
-        autoPromptEnabled = true;
+        dismissed = new Set();
         failPreferenceSave = false;
         choice = 'install';
         prompts = [];
-        sessionState = { autoPrompted: false };
+        sessionState = { promptedPackages: new Set() };
     });
 
     teardown(async () => {
@@ -68,13 +77,13 @@ suite('managed package consent bridge', () => {
         const result = new ToolConsentService({
             directory: requestDirectory,
             isEnabled: () => true,
-            isAutoPromptEnabled: () => autoPromptEnabled,
+            isPromptEnabled: (name) => !dismissed.has(name),
             sessionState,
-            rememberAutoPromptDismissal: () => {
+            rememberPromptDismissal: (name) => {
                 if (failPreferenceSave) {
                     return Promise.reject(new Error('global state unavailable'));
                 }
-                autoPromptEnabled = false;
+                dismissed.add(name);
                 return Promise.resolve();
             },
             prompt: async (request) => {
@@ -89,23 +98,25 @@ suite('managed package consent bridge', () => {
 
     async function writeRequest(
         id: string,
-        backend: 'jgd' | 'auto',
+        policy: Policy,
         version?: string,
         requestDirectory = directory,
+        packageName?: string,
     ): Promise<string> {
         const request = path.join(requestDirectory, `${id}.request`);
-        await fs.writeFile(request, requestContent(id, backend, version));
+        await fs.writeFile(request, requestContent(id, policy, version, packageName));
         return request;
     }
 
     test('explicit jgd asks on each request and does not alter automatic prompt preference', async () => {
         const broker = service();
         await broker.start();
-        assert.strictEqual(broker.canPrompt('jgd'), true);
-        assert.strictEqual(broker.canPrompt('auto'), true);
-        assert.strictEqual(broker.canPrompt('httpgd'), false);
+        assert.strictEqual(broker.canPrompt(['jgd'], 'always'), true);
+        assert.strictEqual(broker.canPrompt(['jgd'], 'once'), true);
+        assert.strictEqual(broker.canPrompt(['unlisted'], 'always'), false);
+        assert.strictEqual(broker.canPrompt([], 'always'), false);
         for (const id of ['1'.repeat(32), '2'.repeat(32)]) {
-            await writeRequest(id, 'jgd');
+            await writeRequest(id, 'always');
             assert.strictEqual(
                 await waitForFile(path.join(directory, `${id}.response`)),
                 'approve\n',
@@ -114,7 +125,7 @@ suite('managed package consent bridge', () => {
             await fs.rm(path.join(directory, `${id}.response`), { force: true });
         }
         assert.strictEqual(prompts.length, 2);
-        assert.strictEqual(autoPromptEnabled, true);
+        assert.strictEqual(dismissed.size, 0);
         assert.deepStrictEqual(prompts[0].packages, [
             {
                 name: 'jgd',
@@ -131,9 +142,9 @@ suite('managed package consent bridge', () => {
         const id = 'b'.repeat(32);
         const request = parseToolConsentRequest(
             id,
-            requestContent(id, 'jgd').replace(/\n/g, '\r\n'),
+            requestContent(id, 'always').replace(/\n/g, '\r\n'),
         );
-        assert.strictEqual(request.backend, 'jgd');
+        assert.strictEqual(request.policy, 'always');
         assert.strictEqual(request.packages[0].sourceBuild, true);
     });
 
@@ -142,23 +153,23 @@ suite('managed package consent bridge', () => {
         await first.start();
         const firstId = '3'.repeat(32);
         choice = 'notNow';
-        await writeRequest(firstId, 'auto');
+        await writeRequest(firstId, 'once');
         assert.strictEqual(
             await waitForFile(path.join(directory, `${firstId}.response`)),
             'decline\n',
         );
-        assert.strictEqual(autoPromptEnabled, true);
-        assert.strictEqual(sessionState.autoPrompted, true);
-        assert.strictEqual(first.canPrompt('auto'), false);
+        assert.strictEqual(dismissed.size, 0);
+        assert.deepStrictEqual([...sessionState.promptedPackages], ['jgd']);
+        assert.strictEqual(first.canPrompt(['jgd'], 'once'), false);
         await first.stop();
 
         const secondDirectory = path.join(directory, 'another-service');
         await fs.mkdir(secondDirectory);
         const secondService = service(undefined, secondDirectory);
         await secondService.start();
-        assert.strictEqual(secondService.canPrompt('auto'), false);
+        assert.strictEqual(secondService.canPrompt(['jgd'], 'once'), false);
         const secondId = '4'.repeat(32);
-        await writeRequest(secondId, 'auto', undefined, secondDirectory);
+        await writeRequest(secondId, 'once', undefined, secondDirectory);
         assert.strictEqual(
             await waitForFile(path.join(secondDirectory, `${secondId}.response`)),
             'decline\n',
@@ -167,15 +178,15 @@ suite('managed package consent bridge', () => {
         await secondService.stop();
 
         // A fresh state represents a new VS Code extension-host session.
-        sessionState = { autoPrompted: false };
+        sessionState = { promptedPackages: new Set() };
         const newHostDirectory = path.join(directory, 'new-host');
         await fs.mkdir(newHostDirectory);
         const nextHost = service(undefined, newHostDirectory);
         await nextHost.start();
-        assert.strictEqual(nextHost.canPrompt('auto'), true);
+        assert.strictEqual(nextHost.canPrompt(['jgd'], 'once'), true);
         choice = 'install';
         const thirdId = '5'.repeat(32);
-        await writeRequest(thirdId, 'auto', undefined, newHostDirectory);
+        await writeRequest(thirdId, 'once', undefined, newHostDirectory);
         assert.strictEqual(
             await waitForFile(path.join(newHostDirectory, `${thirdId}.response`)),
             'approve\n',
@@ -188,19 +199,19 @@ suite('managed package consent bridge', () => {
         await broker.start();
         choice = 'dontAskAgain';
         const firstId = '6'.repeat(32);
-        assert.strictEqual(broker.canPrompt('auto'), true);
-        await writeRequest(firstId, 'auto');
+        assert.strictEqual(broker.canPrompt(['jgd'], 'once'), true);
+        await writeRequest(firstId, 'once');
         assert.strictEqual(
             await waitForFile(path.join(directory, `${firstId}.response`)),
             'decline\n',
         );
-        assert.strictEqual(autoPromptEnabled, false);
-        assert.strictEqual(broker.canPrompt('auto'), false);
-        assert.strictEqual(broker.canPrompt('jgd'), true);
+        assert.deepStrictEqual([...dismissed], ['jgd']);
+        assert.strictEqual(broker.canPrompt(['jgd'], 'once'), false);
+        assert.strictEqual(broker.canPrompt(['jgd'], 'always'), true);
 
         choice = 'install';
         const explicitId = '7'.repeat(32);
-        await writeRequest(explicitId, 'jgd');
+        await writeRequest(explicitId, 'always');
         assert.strictEqual(
             await waitForFile(path.join(directory, `${explicitId}.response`)),
             'approve\n',
@@ -208,13 +219,13 @@ suite('managed package consent bridge', () => {
         assert.strictEqual(prompts.length, 2);
         await broker.stop();
 
-        sessionState = { autoPrompted: false };
+        sessionState = { promptedPackages: new Set() };
         const nextHostDirectory = path.join(directory, 'next-host');
         await fs.mkdir(nextHostDirectory);
         const nextHost = service(undefined, nextHostDirectory);
         await nextHost.start();
         const suppressedId = '8'.repeat(32);
-        await writeRequest(suppressedId, 'auto', undefined, nextHostDirectory);
+        await writeRequest(suppressedId, 'once', undefined, nextHostDirectory);
         assert.strictEqual(
             await waitForFile(path.join(nextHostDirectory, `${suppressedId}.response`)),
             'decline\n',
@@ -232,8 +243,8 @@ suite('managed package consent bridge', () => {
         );
         const firstId = '7'.repeat(32);
         const secondId = '8'.repeat(32);
-        await writeRequest(firstId, 'auto');
-        await writeRequest(secondId, 'auto');
+        await writeRequest(firstId, 'once');
+        await writeRequest(secondId, 'once');
         await broker.start();
         const deadline = Date.now() + 3000;
         while (prompts.length === 0 && Date.now() < deadline) {
@@ -248,7 +259,7 @@ suite('managed package consent bridge', () => {
         );
         await fs.writeFile(
             path.join(directory, `${promptedId}.request`),
-            requestContent(promptedId, 'auto', '1.3.0'),
+            requestContent(promptedId, 'once', '1.3.0'),
         );
         finishPrompt('install');
         assert.strictEqual(
@@ -263,29 +274,29 @@ suite('managed package consent bridge', () => {
         const broker = service();
         await broker.start();
         const id = '9'.repeat(32);
-        await writeRequest(id, 'auto');
+        await writeRequest(id, 'once');
         assert.strictEqual(await waitForFile(path.join(directory, `${id}.response`)), 'decline\n');
         assert.strictEqual(prompts.length, 1);
-        assert.strictEqual(autoPromptEnabled, true);
+        assert.strictEqual(dismissed.size, 0);
     });
 
     test('Not now, dismiss, and install do not change persistent suppression', async () => {
         for (const [index, result] of (['notNow', 'dismiss', 'install'] as const).entries()) {
-            autoPromptEnabled = true;
+            dismissed.clear();
             choice = result;
-            sessionState = { autoPrompted: false };
+            sessionState = { promptedPackages: new Set() };
             const hostDirectory = path.join(directory, `host-${index}`);
             await fs.mkdir(hostDirectory);
             const broker = service(undefined, hostDirectory);
             await broker.start();
             const id = String(index + 1).repeat(32);
-            await writeRequest(id, 'auto', undefined, hostDirectory);
+            await writeRequest(id, 'once', undefined, hostDirectory);
             const expected = result === 'install' ? 'approve\n' : 'decline\n';
             assert.strictEqual(
                 await waitForFile(path.join(hostDirectory, `${id}.response`)),
                 expected,
             );
-            assert.strictEqual(autoPromptEnabled, true);
+            assert.strictEqual(dismissed.size, 0);
         }
     });
 
@@ -299,9 +310,9 @@ suite('managed package consent bridge', () => {
         const broker = new ToolConsentService({
             directory,
             isEnabled: () => true,
-            isAutoPromptEnabled: () => true,
+            isPromptEnabled: () => true,
             sessionState,
-            rememberAutoPromptDismissal: () => {
+            rememberPromptDismissal: () => {
                 dismissals++;
                 return Promise.resolve();
             },
@@ -317,12 +328,89 @@ suite('managed package consent bridge', () => {
         services.push(broker);
         await broker.start();
         const id = 'a'.repeat(32);
-        await writeRequest(id, 'auto');
+        await writeRequest(id, 'once');
         await started;
         await broker.stop();
         finishPrompt('install');
         assert.strictEqual(await waitForFile(path.join(directory, `${id}.response`)), 'decline\n');
         assert.strictEqual(prompts.length, 1);
         assert.strictEqual(dismissals, 0);
+    });
+
+    async function answerFor(
+        id: string,
+        policy: Policy,
+        packageName: string,
+        requestDirectory = directory,
+    ): Promise<string> {
+        await writeRequest(id, policy, undefined, requestDirectory, packageName);
+        return waitForFile(path.join(requestDirectory, `${id}.response`));
+    }
+
+    test('automatic prompts are tracked per package within one host session', async () => {
+        const broker = service();
+        await broker.start();
+        choice = 'notNow';
+        assert.strictEqual(broker.canPrompt(['rstudioapi'], 'once'), true);
+        assert.strictEqual(await answerFor('c'.repeat(32), 'once', 'jgd'), 'decline\n');
+        // Offering jgd must not use up the offer for rstudioapi in the same startup.
+        assert.strictEqual(broker.canPrompt(['jgd'], 'once'), false);
+        assert.strictEqual(broker.canPrompt(['rstudioapi'], 'once'), true);
+        choice = 'install';
+        assert.strictEqual(await answerFor('d'.repeat(32), 'once', 'rstudioapi'), 'approve\n');
+        assert.deepStrictEqual(
+            prompts.map((request) => request.packages[0].name),
+            ['jgd', 'rstudioapi'],
+        );
+        // Each package is offered once per host session.
+        assert.strictEqual(await answerFor('e'.repeat(32), 'once', 'rstudioapi'), 'decline\n');
+        assert.strictEqual(await answerFor('f'.repeat(32), 'once', 'jgd'), 'decline\n');
+        assert.strictEqual(prompts.length, 2);
+        assert.deepStrictEqual([...sessionState.promptedPackages].sort(), ['jgd', 'rstudioapi']);
+    });
+
+    test("Don't ask again is remembered only for its own package", async () => {
+        const broker = service();
+        await broker.start();
+        choice = 'dontAskAgain';
+        assert.strictEqual(await answerFor('1'.repeat(32), 'once', 'rstudioapi'), 'decline\n');
+        assert.deepStrictEqual([...dismissed], ['rstudioapi']);
+        assert.strictEqual(broker.canPrompt(['rstudioapi'], 'once'), false);
+        assert.strictEqual(broker.canPrompt(['jgd'], 'once'), true);
+
+        // A new host session still honors the remembered choice for rstudioapi only.
+        sessionState = { promptedPackages: new Set() };
+        const nextHostDirectory = path.join(directory, 'next-host');
+        await fs.mkdir(nextHostDirectory);
+        const nextHost = service(undefined, nextHostDirectory);
+        await nextHost.start();
+        assert.strictEqual(nextHost.canPrompt(['rstudioapi'], 'once'), false);
+        assert.strictEqual(nextHost.canPrompt(['jgd'], 'once'), true);
+        assert.strictEqual(
+            await answerFor('2'.repeat(32), 'once', 'rstudioapi', nextHostDirectory),
+            'decline\n',
+        );
+        assert.strictEqual(prompts.length, 1);
+        choice = 'install';
+        assert.strictEqual(
+            await answerFor('3'.repeat(32), 'once', 'jgd', nextHostDirectory),
+            'approve\n',
+        );
+        assert.strictEqual(prompts.length, 2);
+    });
+
+    test('packages outside the allowlist are declined without a prompt', async () => {
+        const broker = service();
+        await broker.start();
+        assert.strictEqual(await answerFor('4'.repeat(32), 'always', 'unlisted'), 'decline\n');
+        assert.strictEqual(prompts.length, 0);
+    });
+
+    test('the prompt request carries the package and policy', async () => {
+        const broker = service();
+        await broker.start();
+        assert.strictEqual(await answerFor('5'.repeat(32), 'once', 'rstudioapi'), 'approve\n');
+        assert.strictEqual(prompts[0].policy, 'once');
+        assert.strictEqual(prompts[0].packages[0].name, 'rstudioapi');
     });
 });

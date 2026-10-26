@@ -1,7 +1,7 @@
 # R-side support for packages managed by vscode-R as optional tools.
 # The allowlist is intentionally fixed here; callers may select a minimum version
 # but cannot use this installer to fetch arbitrary package names or URLs.
-.vscode_r_tool_packages <- c(jgd = "jgd")
+.vscode_r_tool_packages <- c(jgd = "jgd", rstudioapi = "rstudioapi")
 
 tool_library_path <- function(root) {
     .tool_validate_root(root)

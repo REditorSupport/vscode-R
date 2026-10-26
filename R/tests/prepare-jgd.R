@@ -97,8 +97,8 @@ local({
     }, add = TRUE)
     installed <- utils::installed.packages(lib.loc = .libPaths())
     runtime_dependencies <- unique(c(
-        "processx", "later", "jsonlite", "rstudioapi",
-        unlist(tools::package_dependencies(c("processx", "later", "jsonlite", "rstudioapi"),
+        "processx", "later", "jsonlite",
+        unlist(tools::package_dependencies(c("processx", "later", "jsonlite"),
                                            db = installed, which = c("Depends", "Imports"),
                                            recursive = TRUE), use.names = FALSE)
     ))
@@ -133,7 +133,7 @@ local({
         "stopifnot(!ambient %in% normalizePath(.libPaths(), winslash='/'));",
         "source(file.path(getwd(), 'R', 'tool-library.R'));",
         "source(file.path(getwd(), 'R', 'tool-consent.R'));",
-        "source(file.path(getwd(), 'R', 'prepare-jgd.R'));",
+        "source(file.path(getwd(), 'R', 'prepare-tools.R'));",
         "source(file.path(getwd(), 'R', 'attach_sess.R'));",
         "options(repos=c(CRAN=repo), pkgType='source');",
         "consent <- file.path(root, 'consent'); dir.create(consent, showWarnings=FALSE);",
@@ -170,11 +170,12 @@ local({
         "}",
         "timeout_before <- getOption('timeout'); libraries_before <- .libPaths();",
         "answer <- vscode_r_attach_sess('endpoint', 'unused', file.path(root, 'tools'), consent,",
-        "  'unused', 'unused', 'jgd', timeout_seconds=0, tool_root=file.path(root, 'tools'),",
+        "  'unused', 'unused', 'jgd', timeout_seconds=0, use_rstudioapi=FALSE,",
+        "  tool_root=file.path(root, 'tools'),",
         "  tool_consent_directory=consent, tool_library_helper=tool_library_helper,",
         "  tool_consent_helper=file.path(getwd(), 'R', 'tool-consent.R'),",
-        "  jgd_helper=if (mode == 'helper-missing') file.path(root, 'missing-prepare-jgd.R') else",
-        "    file.path(getwd(), 'R', 'prepare-jgd.R'),",
+        "  tool_prepare_helper=if (mode == 'helper-missing') file.path(root, 'missing-prepare-tools.R') else",
+        "    file.path(getwd(), 'R', 'prepare-tools.R'),",
         "  jgd_can_prompt=!(mode %in% c('no-prompt', 'no-prompt-compatible', 'socket-empty')),",
         "  jgd_minimum_version='0.1.0');",
         "stopifnot(isTRUE(answer), identical(Sys.getenv('JGD_SOCKET'), 'fixture-socket'));",
@@ -230,7 +231,7 @@ local({
         "stopifnot(!ambient %in% normalizePath(.libPaths(), winslash='/'));",
         "source(file.path(getwd(), 'R', 'tool-library.R'));",
         "source(file.path(getwd(), 'R', 'tool-consent.R'));",
-        "source(file.path(getwd(), 'R', 'prepare-jgd.R'));",
+        "source(file.path(getwd(), 'R', 'prepare-tools.R'));",
         "source(file.path(getwd(), 'R', 'attach_sess.R'));",
         "options(repos=c(CRAN=repo), pkgType='source', sess.quiet=TRUE);",
         "sess_ns <- loadNamespace('sess', lib.loc=sess_library);",
@@ -263,7 +264,7 @@ local({
         "answer <- vscode_r_with_jgd('jgd', function(allow_jgd=TRUE)",
         "  connect_env$connect(endpoint=endpoint, use_rstudioapi=FALSE,",
         "                       plot_backend='jgd', allow_jgd=allow_jgd),",
-        "  jgd_helper=file.path(getwd(), 'R', 'prepare-jgd.R'),",
+        "  tool_prepare_helper=file.path(getwd(), 'R', 'prepare-tools.R'),",
         "  tool_root=file.path(root, paste0(mode, '-tools')),",
         "  tool_consent_directory=file.path(root, 'consent'),",
         "  tool_library_helper=file.path(getwd(), 'R', 'tool-library.R'),",
@@ -472,7 +473,7 @@ local({
         "  VSCODE_R_SESS_STARTUP_TOKEN='0123456789abcdef0123456789abcdef',",
         "  VSCODE_R_SESS_STARTUP_ENDPOINT='fixture-endpoint',",
         paste0("  VSCODE_R_SESS_STARTUP_HELPER=", r_literal(file.path(getwd(), "R", "terminal-startup.R")), ","),
-        paste0("  VSCODE_R_JGD_HELPER=", r_literal(file.path(getwd(), "R", "prepare-jgd.R")), ","),
+        paste0("  VSCODE_R_TOOL_PREPARE_HELPER=", r_literal(file.path(getwd(), "R", "prepare-tools.R")), ","),
         paste0("  VSCODE_R_TOOL_ROOT=", r_literal(file.path(profile_root, "tools")), ","),
         paste0("  VSCODE_R_TOOL_CONSENT_DIRECTORY=", r_literal(profile_consent), ","),
         paste0("  VSCODE_R_TOOL_LIBRARY_HELPER=", r_literal(file.path(getwd(), "R", "tool-library.R")), ","),
@@ -480,7 +481,7 @@ local({
         "  VSCODE_R_JGD_CAN_PROMPT='TRUE',",
         "  VSCODE_R_JGD_MINIMUM_VERSION='0.1.0',",
         paste0("  R_PROFILE_USER_OLD=", r_literal(empty_user_profile), ","),
-        "  SESS_PLOT_BACKEND='jgd', JGD_SOCKET='fixture-socket')",
+        "  SESS_PLOT_BACKEND='jgd', SESS_RSTUDIOAPI='FALSE', JGD_SOCKET='fixture-socket')",
         paste0("options(repos=c(CRAN=", r_literal(repo), "), pkgType='source')"),
         "source(file.path(getwd(), 'R', 'profile.R'))"
     ), startup_profile)

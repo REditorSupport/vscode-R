@@ -2101,7 +2101,7 @@
         "r.session.emulateRStudioAPI": {
           "type": "boolean",
           "default": true,
-          "markdownDescription": "Emulate the RStudio API for addin support and other {rstudioapi} calls. Requires `#r.sessionWatcher#` to be set to `true`."
+          "markdownDescription": "Emulate the RStudio API for addin support and other {rstudioapi} calls. Requires `#r.sessionWatcher#` to be set to `true`. If {rstudioapi} is not installed, vscode-R can offer to install it into a vscode-R-managed library."
         },
         "r.session.data.pageSize": {
           "type": "integer",
@@ -2613,6 +2613,7 @@
     "test:tool-library": "Rscript --vanilla R/tests/tool-library.R",
     "test:tool-consent": "Rscript --vanilla R/tests/tool-consent.R",
     "test:prepare-jgd": "Rscript --vanilla R/tests/prepare-jgd.R",
+    "test:prepare-rstudioapi": "Rscript --vanilla R/tests/prepare-rstudioapi.R",
     "test:interactive": "pnpm run pretest && pnpm run test:node",
     "test:interactive:examples": "pnpm run compile && tsc && node src/test/examples/run.cjs"
   },
