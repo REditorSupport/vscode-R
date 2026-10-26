@@ -116,23 +116,19 @@ async function main() {
         logLevel: 'info',
     });
 
+    const contexts = [extensionCtx, agentCtx, interactiveRendererCtx, webviewCtx];
     if (watch) {
-        await Promise.all([
-            extensionCtx.watch(),
-            agentCtx.watch(),
-            interactiveRendererCtx.watch(),
-            webviewCtx.watch()
-        ]);
+        await Promise.all(contexts.map(context => context.watch()));
         console.log('Watching for changes...');
     } else {
-        await extensionCtx.rebuild();
-        await agentCtx.rebuild();
-        await interactiveRendererCtx.rebuild();
-        await webviewCtx.rebuild();
-        await extensionCtx.dispose();
-        await agentCtx.dispose();
-        await interactiveRendererCtx.dispose();
-        await webviewCtx.dispose();
+        try {
+            const results = await Promise.all(contexts.map(context => context.rebuild()));
+            if (results.some(result => result.warnings.length > 0)) {
+                throw new Error('Build failed because esbuild reported warnings.');
+            }
+        } finally {
+            await Promise.all(contexts.map(context => context.dispose()));
+        }
     }
 }
 
