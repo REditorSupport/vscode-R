@@ -1,6 +1,7 @@
 import * as assert from 'assert';
 import cp from 'child_process';
 import { EventEmitter } from 'events';
+import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 import * as sinon from 'sinon';
@@ -24,6 +25,47 @@ suite('R command utilities', () => {
         assert.strictEqual(util.ToRStringLiteral('a"b\'c', "'"), String.raw`'a"b\'c'`);
         // Editor-path templates can supply either kind of surrounding quote.
         assert.strictEqual(util.ToRStringLiteral('a"b\'c', ''), String.raw`a\"b\'c`);
+    });
+
+    test('package installation creates a user library when the default is read-only', async function () {
+        if (process.platform === 'win32' || process.getuid?.() === 0) {
+            this.skip(); // Requires enforced POSIX write permissions.
+        }
+        const root = fs.mkdtempSync(path.join(os.tmpdir(), 'vscode-r-install-'));
+        const library = path.join(root, 'system');
+        const userLibrary = path.join(root, 'user');
+        const profile = path.join(root, '.Rprofile');
+        fs.mkdirSync(library);
+        try {
+            fs.writeFileSync(
+                profile,
+                `
+                .libPaths(${util.ToRStringLiteral(library, "'")}, include.site=FALSE)
+                install.packages <- function(pkgs, lib=.libPaths()[1L], ...) {
+                    stopifnot(pkgs == 'languageserver', dir.exists(lib), lib == Sys.getenv('R_LIBS_USER'))
+                }
+            `,
+            );
+            fs.chmodSync(library, 0o555);
+            sandbox.stub(vscode.window, 'showErrorMessage').resolves('Yes' as never);
+            const task = sandbox
+                .stub(vscode.tasks, 'executeTask')
+                .resolves({} as vscode.TaskExecution);
+            sandbox.stub(vscode.tasks, 'onDidEndTask').returns(new vscode.Disposable(() => {}));
+            await util.promptToInstallRPackage('languageserver', 'lsp.promptToInstall', root);
+            assert.ok(task.calledOnce);
+            const execution = task.firstCall.args[0].execution as vscode.ProcessExecution;
+            const result = cp.spawnSync(execution.process, execution.args, {
+                cwd: root,
+                encoding: 'utf8',
+                env: { ...process.env, R_PROFILE_USER: profile, R_LIBS_USER: userLibrary },
+            });
+            assert.strictEqual(result.status, 0, result.stdout + result.stderr);
+            assert.ok(fs.existsSync(userLibrary));
+        } finally {
+            fs.chmodSync(library, 0o755);
+            fs.rmSync(root, { recursive: true, force: true });
+        }
     });
 
     test('a failed executable settles with its spawn error', async () => {

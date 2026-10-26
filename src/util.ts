@@ -657,7 +657,17 @@ export async function promptToInstallRPackage(
                     '--no-save',
                     '--no-restore',
                     '-e',
-                    `install.packages('${name}', repos='${repo}')`,
+                    `local({
+                        lib <- .libPaths()[1L]
+                        if (file.access(lib, 2L) != 0L) {
+                            lib <- strsplit(Sys.getenv('R_LIBS_USER'), .Platform$path.sep, fixed=TRUE)[[1L]][1L]
+                            if (is.na(lib) || !nzchar(lib) || lib == 'NULL') {
+                                stop('No user R library is configured.')
+                            }
+                            dir.create(lib, recursive=TRUE, showWarnings=FALSE)
+                        }
+                        install.packages(${ToRStringLiteral(name, "'")}, lib=lib, repos=${ToRStringLiteral(repo, "'")})
+                    })`,
                 ];
                 void executeAsTask('Install Package', rPath, args, true);
                 if (postInstallMsg) {
