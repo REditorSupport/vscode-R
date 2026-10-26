@@ -76,6 +76,7 @@ async function main() {
         outfile: 'dist/extension.js',
         external: ['vscode', 'utf-8-validate', 'bufferutil'],
         logLevel: 'info',
+        logOverride: { 'import-is-undefined': 'error' },
     });
 
     // A session agent remains alive after the extension host exits.
