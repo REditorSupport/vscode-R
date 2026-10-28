@@ -95,6 +95,8 @@ export interface GlobalEnv {
 export interface WorkspaceData {
     search: string[];
     loaded_namespaces: string[];
+    library_paths?: string[];
+    package_paths?: Record<string, string>;
     globalenv: GlobalEnv;
     revision?: number;
 }
@@ -379,7 +381,10 @@ export async function executeSessionCode(target: Session, code: string): Promise
 
 export function updateSessionWorkspace(target: Session, data: WorkspaceData): void {
     target.workspaceData = data;
-    rLanguageService?.syncSessionState(data, target.resource, target.sessionId, false);
+    rLanguageService?.syncSessionState(
+        target.processExited ? undefined : data, target.resource, target.sessionId, false,
+        target.libraryPaths,
+    );
     if (activeSession === target) {
         void refreshActiveSession(target);
     }
@@ -402,6 +407,9 @@ export function replaceSessionTransport(previous: Session, next: Session): void 
     for (const [uri, owner] of documentSessions) {
         if (owner === previous) {
             documentSessions.set(uri, next);
+            // Reinitialize retained notebook and input clients for the new
+            // process, even though their document URIs did not change.
+            sessionDocumentBound.fire(Uri.parse(uri));
         }
     }
     terminalRegistry.releaseSession(previous);
@@ -431,7 +439,9 @@ export function registerSessionTransport(
         : (previous ?? new Session(id, host, '', '', new net.Socket()));
     target.requester = requester;
     target.workingDir = directory;
-    target.resource = vscode.workspace.getWorkspaceFolder(Uri.file(directory))?.uri;
+    // Preserve the directory even before it belongs to an open workspace.
+    // A folder added later can then acquire this session without reattaching.
+    target.resource = Uri.file(directory);
     sessions.set(id, target);
     if (previous && previous !== target) {
         for (const [uri, owner] of documentSessions) {
@@ -3533,7 +3543,7 @@ async function refreshActiveSession(session: Session): Promise<void> {
     sessionDir = session.sessionDir;
     workingDir = session.workingDir;
     workspaceData = session.workspaceData;
-    rLanguageService?.syncSessionState(workspaceData, session.resource, session.sessionId);
+    rLanguageService?.syncSessionState(session.processExited ? undefined : workspaceData, session.resource, session.sessionId, true, session.libraryPaths);
 
     if (sessionStatusBarItem) {
         sessionStatusBarItem.text = formatSessionLabel(rVer, pid);
@@ -3851,6 +3861,11 @@ async function handleNotification(message: Record<string, unknown>, socket: IpcS
             socket._sessionId = sessionId;
             sessions.set(sessionId, session);
             const changes: RSessionConnectionChange[] = [];
+            // A replacement process may reuse the protocol session ID but has
+            // different loaded packages. Do not retain its predecessor's state.
+            if (previous) {
+                rLanguageService?.syncSessionState(undefined, previous.resource, previous.sessionId);
+            }
             const disconnected = previous ? invalidateSessionConnection(previous) : undefined;
             if (disconnected) {
                 changes.push(disconnected);
@@ -3867,11 +3882,13 @@ async function handleNotification(message: Record<string, unknown>, socket: IpcS
             };
             session.sessionDir = params.tempdir;
             session.workingDir = params.wd;
-            session.resource =
-                (native ? rTerminal.getTerminalResource(native.terminal) : undefined) ??
-                (isLocalHost(host)
-                    ? vscode.workspace.getWorkspaceFolder(Uri.file(params.wd))?.uri
-                    : undefined);
+            // Use the actual R working directory for local sessions, never
+            // getTerminalResource's active-editor/first-folder config fallback.
+            // For remote sessions only an explicitly associated terminal can
+            // supply a usable remote workspace URI.
+            session.resource = isLocalHost(host)
+                ? Uri.file(params.wd)
+                : (native ? rTerminal.getTerminalWorkspaceResource(native.terminal) : undefined);
 
             const terminalPid =
                 native && terminalRegistry.attachNative(native.terminal, session)
@@ -3929,11 +3946,13 @@ async function handleNotification(message: Record<string, unknown>, socket: IpcS
             const target = socket._sessionId && sessions.get(socket._sessionId);
             if (target && target.socket === socket) {
                 const refresh = workspaceRefreshFor(target);
-                if (target === activeSession) {
-                    refresh.invalidate(500);
-                } else {
-                    refresh.invalidate();
-                }
+                // Background workspaces can own language servers even when
+                // their R session is not selected. Coalesce their package
+                // refreshes just like the foreground session.
+                refresh.invalidate(
+                    target === activeSession || rLanguageService?.ownsWorkspaceScope(target.sessionId)
+                        ? 500 : undefined,
+                );
             }
             break;
         }

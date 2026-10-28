@@ -124,10 +124,14 @@ suite('Session Communication', () => {
         );
         const source = vscode.Uri.file('/project/restart.R');
         const input = vscode.Uri.from({ scheme: 'vscode-interactive-input', path: '/restart' });
+        const rebound: string[] = [];
+        const listener = session.onDidBindSessionDocument((uri) => rebound.push(uri.toString()));
         try {
             session.bindSessionDocument(source, previous);
             session.bindSessionDocument(input, previous);
+            rebound.length = 0;
             session.replaceSessionTransport(previous, next);
+            assert.deepStrictEqual(new Set(rebound), new Set([source.toString(), input.toString()]));
             assert.strictEqual(session.boundSessionForDocument(source), next);
             assert.strictEqual(session.boundSessionForDocument(input), next);
             assert.strictEqual(await previous.requester?.({}), 'old');
@@ -135,8 +139,43 @@ suite('Session Communication', () => {
             session.unregisterSessionTransport(previous);
             assert.strictEqual(session.boundSessionForDocument(source), next);
         } finally {
+            listener.dispose();
             session.unregisterSessionTransport(previous);
             session.unregisterSessionTransport(next);
+        }
+    });
+
+    test('terminal routing does not fall back to an unrelated active workspace', () => {
+        const folderUri = vscode.Uri.file(path.join(os.tmpdir(), 'workspace-only'));
+        const folder = { uri: folderUri, name: 'only', index: 0 };
+        sandbox.stub(vscode.workspace, 'workspaceFolders').value([folder]);
+        sandbox.stub(vscode.workspace, 'getWorkspaceFolder').callsFake((uri) =>
+            uri.fsPath === folderUri.fsPath ? folder : undefined);
+        const external = {
+            creationOptions: { cwd: path.join(os.tmpdir(), 'outside-folder') },
+        } as unknown as vscode.Terminal;
+        const unknown = { creationOptions: {} } as unknown as vscode.Terminal;
+        const associated = {
+            creationOptions: { cwd: folderUri.fsPath },
+        } as unknown as vscode.Terminal;
+        assert.strictEqual(rTerminal.getTerminalWorkspaceResource(external), undefined);
+        assert.strictEqual(rTerminal.getTerminalWorkspaceResource(unknown), undefined);
+        assert.strictEqual(rTerminal.getTerminalWorkspaceResource(associated)?.toString(),
+            folderUri.toString());
+    });
+
+    test('an Interactive session retains its unscoped directory for later workspace routing', () => {
+        const directory = path.join(os.tmpdir(), 'vscode-r-added-workspace');
+        const lookup = sandbox.stub(vscode.workspace, 'getWorkspaceFolder').returns(undefined);
+        const target = session.registerSessionTransport(
+            'late-workspace', 'host', directory, () => Promise.resolve(undefined),
+        );
+        try {
+            assert.strictEqual(target.resource?.fsPath, directory);
+            lookup.returns({ uri: vscode.Uri.file(directory), name: 'added', index: 0 });
+            assert.strictEqual(vscode.workspace.getWorkspaceFolder(target.resource!)?.name, 'added');
+        } finally {
+            session.unregisterSessionTransport(target);
         }
     });
 
@@ -954,7 +993,9 @@ suite('Session Communication', () => {
                     : undefined,
             );
             assert.ok(attached);
-            assert.strictEqual(attached.resource?.toString(), workspaceUri.toString());
+            assert.strictEqual(attached.resource?.fsPath, path.join(workspaceUri.fsPath, 'project'));
+            assert.strictEqual(vscode.workspace.getWorkspaceFolder(attached.resource!)?.uri.toString(),
+                workspaceUri.toString());
             assert.strictEqual(socket._terminalPid, undefined);
         } finally {
             client.destroy();
@@ -1765,6 +1806,8 @@ suite('Session Communication', () => {
 
     test('IPC protocol keys sessions by session_id and ignores close from a replaced socket', async () => {
         sandbox.stub(extension, 'enableSessionWatcher').value(true);
+        const syncState = sandbox.stub();
+        sandbox.stub(extension, 'rLanguageService').value({ syncSessionState: syncState });
         const sendText = sandbox.stub();
         const terminal = {
             processId: Promise.resolve(undefined),
@@ -1816,6 +1859,7 @@ suite('Session Communication', () => {
                 true,
             );
 
+            syncState.resetHistory();
             const reconnect = net.createConnection(endpoint);
             second = reconnect;
             await sendAttach(reconnect, 9876);
@@ -1824,6 +1868,8 @@ suite('Session Communication', () => {
             assert.strictEqual(session.activeSession?.pid, '9876');
             const replacementSession = session.activeSession;
             assert.ok(replacementSession);
+            sinon.assert.calledWithExactly(syncState, undefined, originalSession.resource,
+                originalSession.sessionId);
             await assert.rejects(
                 session.executeSessionCode(replacementSession, 'View(iris)'),
                 /no attached terminal/,

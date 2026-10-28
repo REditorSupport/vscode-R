@@ -135,7 +135,15 @@ get_workspace_data <- function(revision = NULL) {
   snapshot <- list(
     globalenv = objs,
     search = search()[-1],
-    loaded_namespaces = loadedNamespaces()
+    loaded_namespaces = loadedNamespaces(),
+    library_paths = .libPaths(),
+    package_paths = {
+      attached <- sub("^package:", "", grep("^package:", search(), value = TRUE))
+      paths <- vapply(attached, function(package) {
+        tryCatch(getNamespaceInfo(asNamespace(package), "path"), error = function(e) "")
+      }, character(1L))
+      as.list(paths[nzchar(paths)])
+    }
   )
   # Compare metadata after inspecting every binding: reference objects can mutate
   # in place, and R task callbacks do not cover every embedding's evaluation.

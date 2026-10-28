@@ -493,6 +493,121 @@ suite('Session package completion', () => {
         });
     });
 
+    test('session package locations are delivered to the language server', async () => {
+        const request = client('global', 'global');
+        service.syncSessionState({
+            ...packages('custompkg'),
+            library_paths: ['/tmp/custom-library'],
+            package_paths: { custompkg: '/tmp/custom-library/custompkg' },
+        }, folder.uri, 'library-session');
+        await settle();
+        sinon.assert.calledOnceWithExactly(request, 'r/syncSessionState', {
+            attachedPackages: ['custompkg', 'base'],
+            loadedNamespaces: ['custompkg', 'base'],
+            libraryPaths: ['/tmp/custom-library'],
+            packagePaths: { custompkg: '/tmp/custom-library/custompkg' },
+        });
+
+        service.syncSessionState({
+            ...packages('custompkg'), library_paths: ['/tmp/other-library'],
+        }, folder.uri, 'library-session');
+        await settle();
+        sinon.assert.calledTwice(request);
+    });
+
+    test('an unselected session acquires a newly added workspace', async () => {
+        multiServer = true;
+        const outside = vscode.Uri.file(path.join(os.tmpdir(), 'vscode-r-language-service', 'added'));
+        const request = client('added', outside.toString(true));
+        const folderLookup = vscode.workspace.getWorkspaceFolder as sinon.SinonStub;
+        service.syncSessionState(packages('splines'), outside, 'added-session', false);
+        await settle();
+        sinon.assert.notCalled(request);
+
+        folderLookup.callsFake(uri => uri.fsPath === outside.fsPath
+            ? { uri: outside, name: 'added', index: 1 } : undefined);
+        (service as unknown as ServiceInternals & { reconcileSessionScopes(): void })
+            .reconcileSessionScopes();
+        await settle();
+        sinon.assert.calledOnceWithExactly(request, 'r/syncSessionState', {
+            attachedPackages: ['splines', 'base'],
+            loadedNamespaces: ['splines', 'base'],
+        });
+    });
+
+    test('a nested workspace added later acquires the session from its parent', async () => {
+        multiServer = true;
+        const nested = vscode.Uri.joinPath(folder.uri, 'nested');
+        const outer = client('outer', folder.uri.toString(true));
+        const inner = client('inner', nested.toString(true));
+        const lookup = vscode.workspace.getWorkspaceFolder as sinon.SinonStub;
+        service.syncSessionState(packages('splines'), nested, 'nested-session');
+        await settle();
+        sinon.assert.calledOnce(outer);
+        sinon.assert.notCalled(inner);
+
+        lookup.callsFake(uri => uri.fsPath === nested.fsPath ||
+            uri.fsPath.startsWith(`${nested.fsPath}${path.sep}`)
+            ? { uri: nested, name: 'nested', index: 1 }
+            : uri.fsPath.startsWith(folder.uri.fsPath) ? folder : undefined);
+        (service as unknown as ServiceInternals & { reconcileSessionScopes(): void })
+            .reconcileSessionScopes();
+        await settle();
+        assert.deepStrictEqual(outer.lastCall.args[1], {
+            attachedPackages: [], loadedNamespaces: [],
+        });
+        assert.deepStrictEqual(inner.lastCall.args[1], {
+            attachedPackages: ['splines', 'base'], loadedNamespaces: ['splines', 'base'],
+        });
+    });
+
+    test('removing a workspace migrates its live owner to unscoped completion', async () => {
+        multiServer = true;
+        const project = client('project', folder.uri.toString(true));
+        const unscoped = client('external', 'unscoped');
+        service.syncSessionState(packages('splines'), folder.uri, 'owner');
+        await settle();
+        (vscode.workspace.getWorkspaceFolder as sinon.SinonStub).returns(undefined);
+        (service as unknown as ServiceInternals & { reconcileSessionScopes(): void })
+            .reconcileSessionScopes();
+        await settle();
+        sinon.assert.calledTwice(project);
+        sinon.assert.calledOnce(unscoped);
+        assert.deepStrictEqual(project.lastCall.args[1], {
+            attachedPackages: [], loadedNamespaces: [],
+        });
+        assert.deepStrictEqual(unscoped.firstCall.args[1], {
+            attachedPackages: ['splines', 'base'],
+            loadedNamespaces: ['splines', 'base'],
+        });
+    });
+
+    test('a definitive process exit clears package completion without closing the view', async () => {
+        multiServer = true;
+        const input = client('input', 'session:stopped-runtime');
+        const project = client('project', folder.uri.toString(true));
+        const target = session.registerSessionTransport(
+            'stopped-runtime', 'host', folder.uri.fsPath, () => Promise.resolve(undefined),
+        );
+        try {
+            session.updateSessionWorkspace(target, packages('stats'));
+            await settle();
+            sinon.assert.calledOnce(input);
+            sinon.assert.calledOnce(project);
+            target.processExited = true;
+            session.updateSessionWorkspace(target, target.workspaceData);
+            await settle();
+            assert.deepStrictEqual(input.lastCall.args[1], {
+                attachedPackages: [], loadedNamespaces: [],
+            });
+            assert.deepStrictEqual(project.lastCall.args[1], {
+                attachedPackages: [], loadedNamespaces: [],
+            });
+        } finally {
+            session.unregisterSessionTransport(target);
+        }
+    });
+
     test('workspace replay during an in-flight sync sends the state again after it completes', async () => {
         const initial = deferred();
         const request = client('global', 'global');

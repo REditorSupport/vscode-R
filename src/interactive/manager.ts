@@ -3302,6 +3302,9 @@ export class InteractiveManager
             if (snapshot.workspace) {
                 target.workspaceData = snapshot.workspace as unknown as session.WorkspaceData;
             }
+            // Restarts can finish in an unselected window. Publish the
+            // replacement process's packages even without activating it.
+            session.updateSessionWorkspace(target, target.workspaceData);
             view.base = snapshot.manifest.assetBase
                 ? (
                       await vscode.env.asExternalUri(vscode.Uri.parse(snapshot.manifest.assetBase))

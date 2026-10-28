@@ -42,11 +42,15 @@ import { completionMiddleware } from './completionMiddleware';
 interface SessionState {
     attachedPackages: string[];
     loadedNamespaces: string[];
+    libraryPaths?: string[];
+    packagePaths?: Record<string, string>;
 }
 
 interface SessionWorkspaceData {
     search: string[];
     loaded_namespaces: string[];
+    library_paths?: string[];
+    package_paths?: Record<string, string>;
 }
 
 interface ClientSessionSync {
@@ -73,11 +77,14 @@ export class LanguageService implements Disposable {
         { state: SessionState; stateKey: string; sessionId: string }
     > = new Map();
     private readonly sessionScopes = new Map<string, string>();
+    private readonly sessionResources = new Map<string, Uri | undefined>();
+    private activeSessionId = '';
     private readonly clientSessionSync = new WeakMap<LanguageClient, ClientSessionSync>();
 
     constructor() {
         this.outputChannel = window.createOutputChannel('R Language Server', { log: true });
         this.config = workspace.getConfiguration('r');
+        this.listeners.push(workspace.onDidChangeWorkspaceFolders(() => this.reconcileSessionScopes()));
         void this.startLanguageService();
     }
 
@@ -89,52 +96,108 @@ export class LanguageService implements Disposable {
         return this.stopLanguageService();
     }
 
+    /** The workspace that a live session owns is independent of editor focus. */
+    ownsWorkspaceScope(sessionId: string): boolean {
+        const scope = this.sessionScopes.get(sessionId);
+        return scope !== undefined && this.sessionStates.get(scope)?.sessionId === sessionId;
+    }
+
     syncSessionState(
         data?: SessionWorkspaceData,
         resource?: Uri,
         sessionId = '',
         active = true,
+        libraryPaths?: string[],
     ): void {
-        // Virtual documents always follow their bound session.
+        // Keep bound Interactive clients isolated from editor-focused sessions.
         if (sessionId) {
-            this.syncSessionScope(`session:${sessionId}`, data, sessionId);
+            this.syncSessionScope(`session:${sessionId}`, data, sessionId, libraryPaths);
         }
 
-        // Store the scope when the session becomes its owner. Workspace folders
-        // may be removed before disconnect, so cleanup must not reclassify it.
         const ownedScope = sessionId ? this.sessionScopes.get(sessionId) : undefined;
         if (!data) {
             if (sessionId) {
                 this.sessionScopes.delete(sessionId);
+                this.sessionResources.delete(sessionId);
+                if (this.activeSessionId === sessionId) {
+                    this.activeSessionId = '';
+                }
             }
-            this.syncSessionScope(
-                ownedScope ?? this.getSessionScope(resource),
-                undefined,
-                sessionId,
-            );
+            this.syncSessionScope(ownedScope ?? this.getSessionScope(resource), undefined, sessionId);
             return;
         }
-
+        if (sessionId) {
+            this.sessionResources.set(sessionId, resource);
+        }
         if (active) {
-            const scope = this.getSessionScope(resource);
+            this.activeSessionId = sessionId;
+        }
+        const scope = this.getSessionScope(resource);
+        const current = this.sessionStates.get(scope);
+        if (active || ownedScope === scope && current?.sessionId === sessionId ||
+            // An unselected session can own a distinct workspace when it has
+            // no existing owner. Never claim the shared unscoped/global scope
+            // merely because an Interactive view publishes a snapshot.
+            (scope !== 'unscoped' && scope !== 'global' && !current)) {
             if (ownedScope && ownedScope !== scope) {
                 this.syncSessionScope(ownedScope, undefined, sessionId);
             }
             if (sessionId) {
                 this.sessionScopes.set(sessionId, scope);
             }
-            this.syncSessionScope(scope, data, sessionId);
+            this.syncSessionScope(scope, data, sessionId, libraryPaths);
         } else if (ownedScope && this.sessionStates.get(ownedScope)?.sessionId === sessionId) {
-            // An unselected session may refresh its own workspace, but never
-            // replace the state now owned by another session.
-            this.syncSessionScope(ownedScope, data, sessionId);
+            // Preserve updates for an existing owner until workspace membership
+            // changes, even if another workspace's session is selected.
+            this.syncSessionScope(ownedScope, data, sessionId, libraryPaths);
         }
+    }
+
+    private reconcileSessionScopes(): void {
+        if (this.config.get<boolean>('lsp.multiServer') !== true) {
+            return;
+        }
+        // Workspace membership can change without a new R snapshot. Reuse the
+        // session-specific state and the original directory, not a stale folder
+        // association captured during attach.
+        for (const [sessionId, resource] of this.sessionResources) {
+            const state = this.sessionStates.get(`session:${sessionId}`)?.state;
+            if (!state) {
+                continue;
+            }
+            const previous = this.sessionScopes.get(sessionId);
+            const scope = this.getSessionScope(resource);
+            if (previous === scope) {
+                continue;
+            }
+            const owned = previous && this.sessionStates.get(previous)?.sessionId === sessionId;
+            if (owned) {
+                this.syncSessionScope(previous, undefined, sessionId);
+                this.sessionScopes.delete(sessionId);
+            }
+            const current = this.sessionStates.get(scope);
+            if (!current && scope !== 'unscoped' ||
+                owned && (!current || current.sessionId === sessionId || this.activeSessionId === sessionId)) {
+                this.sessionScopes.set(sessionId, scope);
+                this.setSessionScopeState(scope, state, sessionId);
+            }
+        }
+    }
+
+    private setSessionScopeState(scope: string, state: SessionState, sessionId: string): void {
+        const stateKey = this.getSessionStateKey(state);
+        const current = this.sessionStates.get(scope);
+        if (current?.stateKey !== stateKey || current.sessionId !== sessionId) {
+            this.sessionStates.set(scope, { state, stateKey, sessionId });
+        }
+        this.applySessionStateToScope(scope);
     }
 
     private syncSessionScope(
         scope: string,
         data: SessionWorkspaceData | undefined,
         sessionId: string,
+        libraryPaths?: string[],
     ): void {
         const current = this.sessionStates.get(scope);
         if (!data) {
@@ -152,12 +215,14 @@ export class LanguageService implements Disposable {
                 .map((value) => value.substring(8)),
             loadedNamespaces: [...data.loaded_namespaces],
         };
-        const stateKey = this.getSessionStateKey(state);
-        if (current?.stateKey !== stateKey || current.sessionId !== sessionId) {
-            this.sessionStates.set(scope, { state, stateKey, sessionId });
+        const paths = data.library_paths ?? libraryPaths;
+        if (paths?.length) {
+            state.libraryPaths = [...paths];
         }
-        // An unchanged refresh can retry delivery to a client that failed.
-        this.applySessionStateToScope(scope);
+        if (data.package_paths && Object.keys(data.package_paths).length) {
+            state.packagePaths = { ...data.package_paths };
+        }
+        this.setSessionScopeState(scope, state, sessionId);
     }
 
     private applySessionStateToScope(scope: string): void {
@@ -237,7 +302,12 @@ export class LanguageService implements Disposable {
             }
             const { state, stateKey, replay } = sync;
             try {
-                await client.sendRequest('r/syncSessionState', state);
+                const applied = await client.sendRequest<boolean>('r/syncSessionState', state);
+                if (applied === false) {
+                    this.outputChannel.appendLine(
+                        'Session package completion is unavailable with this languageserver version.',
+                    );
+                }
                 sync.syncedStateKey = stateKey;
                 sync.syncedReplay = replay;
             } catch {
@@ -252,9 +322,9 @@ export class LanguageService implements Disposable {
     }
 
     private getSessionStateKey(state: SessionState): string {
-        return [state.attachedPackages.join('\u0000'), state.loadedNamespaces.join('\u0000')].join(
-            '\u0001',
-        );
+        return JSON.stringify([
+            state.attachedPackages, state.loadedNamespaces, state.libraryPaths, state.packagePaths,
+        ]);
     }
 
     private spawnServer(
@@ -527,7 +597,10 @@ export class LanguageService implements Disposable {
 
         extensionContext.subscriptions.push(client);
         if (target) {
-            this.syncSessionScope(sessionScope, target.workspaceData, target.sessionId);
+            this.syncSessionState(
+                target.processExited ? undefined : target.workspaceData,
+                target.resource, target.sessionId, false, target.libraryPaths,
+            );
         }
         await client.start();
         await this.registerClient(key, client, sessionScope);
