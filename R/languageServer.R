@@ -89,10 +89,11 @@ server$request_handlers[["r/syncSessionState"]] <- function(self, id, params) {
         self$resolve_task_manager$cancel("r/syncSessionState")
     }
 
-    replied <- FALSE
+    response_state <- new.env(parent = emptyenv())
+    response_state$replied <- FALSE
     reply <- function(applied) {
-        if (replied) return(invisible(NULL))
-        replied <<- TRUE
+        if (response_state$replied) return(invisible(NULL))
+        response_state$replied <- TRUE
         if (identical(session_state$pending_reply, reply)) {
             session_state$pending_reply <- NULL
         }
