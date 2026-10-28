@@ -1,6 +1,14 @@
 import { QuickPickItem, QuickPickOptions, Uri, window, workspace, env } from 'vscode';
 import { extensionContext } from '../extension';
-import { executeRCommand, getCurrentWorkspaceFolder, getRpath, ToRStringLiteral, spawnAsync, getConfirmation, catchAsError } from '../util';
+import {
+    executeRCommand,
+    getCurrentWorkspaceFolder,
+    getRpath,
+    ToRStringLiteral,
+    spawnAsync,
+    getConfirmation,
+    catchAsError,
+} from '../util';
 import * as cp from 'child_process';
 import * as path from 'path';
 import * as fs from 'fs';
@@ -28,19 +36,12 @@ async function getTemplateItems(cwd: string): Promise<TemplateItem[] | undefined
         cwd: cwd,
         env: {
             ...process.env,
-            VSCR_LIM: lim
-        }
+            VSCR_LIM: lim,
+        },
     };
 
     const rScriptFile = extensionContext.asAbsolutePath('R/rmarkdown/templates.R');
-    const args = [
-        '--silent',
-        '--no-echo',
-        '--no-save',
-        '--no-restore',
-        '-f',
-        rScriptFile
-    ];
+    const args = ['--silent', '--no-echo', '--no-save', '--no-restore', '-f', rScriptFile];
 
     try {
         const result = await spawnAsync(rPath, args, options);
@@ -61,7 +62,7 @@ async function getTemplateItems(cwd: string): Promise<TemplateItem[] | undefined
                 label: x.name + (x.create_dir ? ' $(new-folder)' : ''),
                 detail: x.description,
                 picked: false,
-                info: x
+                info: x,
             };
         });
         return items;
@@ -79,7 +80,7 @@ async function launchTemplatePicker(cwd: string): Promise<TemplateItem | undefin
         canPickMany: false,
         ignoreFocusOut: false,
         placeHolder: '',
-        onDidSelectItem: undefined
+        onDidSelectItem: undefined,
     };
 
     const items = await getTemplateItems(cwd);
@@ -89,10 +90,19 @@ async function launchTemplatePicker(cwd: string): Promise<TemplateItem | undefin
             const selection = await window.showQuickPick<TemplateItem>(items, options);
             return selection;
         } else {
-            void window.showInformationMessage('No templates found. Would you like to browse the wiki page for R packages that provide R Markdown templates?', 'Yes', 'No')
+            void window
+                .showInformationMessage(
+                    'No templates found. Would you like to browse the wiki page for R packages that provide R Markdown templates?',
+                    'Yes',
+                    'No',
+                )
                 .then((select: string | undefined) => {
                     if (select === 'Yes') {
-                        void env.openExternal(Uri.parse('https://github.com/REditorSupport/vscode-R/wiki/R-Markdown#templates'));
+                        void env.openExternal(
+                            Uri.parse(
+                                'https://github.com/REditorSupport/vscode-R/wiki/R-Markdown#templates',
+                            ),
+                        );
                     }
                 });
         }
@@ -100,9 +110,12 @@ async function launchTemplatePicker(cwd: string): Promise<TemplateItem | undefin
     return undefined;
 }
 
-async function makeDraft(file: string, template: TemplateItem, cwd: string): Promise<string | undefined> {
-    const fileString = ToRStringLiteral(file, '');
-    const cmd = `cat(normalizePath(rmarkdown::draft(file='${fileString}', template='${template.info.id}', package='${template.info.package}', edit=FALSE)))`;
+async function makeDraft(
+    file: string,
+    template: TemplateItem,
+    cwd: string,
+): Promise<string | undefined> {
+    const cmd = `cat(normalizePath(rmarkdown::draft(file=${ToRStringLiteral(file, '"')}, template=${ToRStringLiteral(template.info.id, '"')}, package=${ToRStringLiteral(template.info.package, '"')}, edit=FALSE)))`;
     return await executeRCommand(cmd, cwd, (e: Error) => {
         void window.showErrorMessage(e.message);
         return '';
@@ -125,18 +138,22 @@ export async function newDraft(): Promise<void> {
         const uri = await window.showSaveDialog({
             defaultUri: Uri.file(defaultPath),
             filters: {
-                'Folder': ['']
+                Folder: [''],
             },
             saveLabel: 'Create Folder',
-            title: 'R Markdown: New Draft'
+            title: 'R Markdown: New Draft',
         });
 
         if (uri) {
             const parsedPath = path.parse(uri.fsPath);
             const dir = path.join(parsedPath.dir, parsedPath.name);
             if (fs.existsSync(dir)) {
-                if (await getConfirmation(`Folder already exists. Are you sure you want to replace the folder?`)) {
-                    fs.rmdirSync(dir, { recursive: true });
+                if (
+                    await getConfirmation(
+                        `Folder already exists. Are you sure you want to replace the folder?`,
+                    )
+                ) {
+                    fs.rmSync(dir, { recursive: true, force: true });
                 } else {
                     return;
                 }
@@ -144,19 +161,24 @@ export async function newDraft(): Promise<void> {
 
             const draftPath = await makeDraft(uri.fsPath, template, cwd);
             if (draftPath) {
-                await workspace.openTextDocument(draftPath)
-                    .then(document => window.showTextDocument(document));
+                await workspace
+                    .openTextDocument(draftPath)
+                    .then((document) => window.showTextDocument(document));
             }
         }
     } else {
         const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'vscode-R-'));
         const tempFile = path.join(tempDir, 'draft.Rmd');
-        const draftPath = await makeDraft(tempFile, template, cwd);
-        if (draftPath) {
-            const text = fs.readFileSync(draftPath, 'utf8');
-            await workspace.openTextDocument({ language: 'rmd', content: text })
-                .then(document => window.showTextDocument(document));
+        try {
+            const draftPath = await makeDraft(tempFile, template, cwd);
+            if (draftPath) {
+                const text = fs.readFileSync(draftPath, 'utf8');
+                await workspace
+                    .openTextDocument({ language: 'rmd', content: text })
+                    .then((document) => window.showTextDocument(document));
+            }
+        } finally {
+            fs.rmSync(tempDir, { recursive: true, force: true });
         }
-        fs.rmdirSync(tempDir, { recursive: true });
     }
 }

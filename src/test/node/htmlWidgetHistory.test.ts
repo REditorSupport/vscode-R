@@ -13,15 +13,26 @@ suite('Retained HTML widget history', () => {
     let persisted: unknown;
     const stores: WidgetHistoryStore[] = [];
     const source = (sessionId = 'history-source', host = 'local'): ViewerSessionSource => ({
-        sessionId, host, pid: '12345', rVer: '4.6.1', processExited: false,
+        sessionId,
+        host,
+        pid: '12345',
+        rVer: '4.6.1',
+        processExited: false,
     });
     const record = (owner = source()): WidgetHistory => ({
-        source: owner, history: [{ file: '/tmp/a.html', title: 'A' }, { file: '/tmp/b.html', title: 'B' }],
-        index: 0, viewColumn: 2,
+        source: owner,
+        history: [
+            { file: '/tmp/a.html', title: 'A' },
+            { file: '/tmp/b.html', title: 'B' },
+        ],
+        index: 0,
+        viewColumn: 2,
     });
     const create = () => {
-        const monitor = new SessionProcessMonitor<ViewerSessionSource>(host => host === 'local');
-        const store = new WidgetHistoryStore(state, owner => createViewerSessionContext(owner, monitor));
+        const monitor = new SessionProcessMonitor<ViewerSessionSource>((host) => host === 'local');
+        const store = new WidgetHistoryStore(state, (owner) =>
+            createViewerSessionContext(owner, monitor),
+        );
         stores.push(store);
         return { store, monitor };
     };
@@ -32,8 +43,9 @@ suite('Retained HTML widget history', () => {
         kill = sandbox.stub(process, 'kill').returns(true);
         persisted = undefined;
         state = {
-            keys: () => persisted ? [widgetHistoryKey] : [],
-            get: <T>(_key: string, fallback?: T) => persisted === undefined ? fallback : JSON.parse(JSON.stringify(persisted)) as T,
+            keys: () => (persisted ? [widgetHistoryKey] : []),
+            get: <T>(_key: string, fallback?: T) =>
+                persisted === undefined ? fallback : (JSON.parse(JSON.stringify(persisted)) as T),
             update: (key, value) => {
                 assert.strictEqual(key, widgetHistoryKey);
                 persisted = JSON.parse(JSON.stringify(value));
@@ -43,8 +55,8 @@ suite('Retained HTML widget history', () => {
     });
 
     teardown(async () => {
-        await Promise.all(stores.map(store => store.flush()));
-        stores.splice(0).forEach(store => store.dispose());
+        await Promise.all(stores.map((store) => store.flush()));
+        stores.splice(0).forEach((store) => store.dispose());
         sandbox.restore();
     });
 
@@ -65,9 +77,13 @@ suite('Retained HTML widget history', () => {
         const { store, monitor } = create();
         const original = source('same-process', 'foreign');
         const history = store.remember(createViewerSessionContext(original, monitor));
-        history.history.push({ file: '/tmp/a.html', title: 'A' }); history.index = 0;
+        history.history.push({ file: '/tmp/a.html', title: 'A' });
+        history.index = 0;
         const reconnected = { ...original, host: 'FOREIGN' };
-        assert.strictEqual(store.remember(createViewerSessionContext(reconnected, monitor)), history);
+        assert.strictEqual(
+            store.remember(createViewerSessionContext(reconnected, monitor)),
+            history,
+        );
         await store.save(history);
         assert.deepStrictEqual(persisted, [history]);
     });
@@ -77,14 +93,19 @@ suite('Retained HTML widget history', () => {
             const { store, monitor } = create();
             const original = source('reused-id', 'foreign');
             const history = store.remember(createViewerSessionContext(original, monitor));
-            history.history.push({ file: '/tmp/a.html', title: 'A' }); history.index = 0;
+            history.history.push({ file: '/tmp/a.html', title: 'A' });
+            history.index = 0;
             await store.save(history);
-            const replacement = { ...original, [change]: change === 'host' ? 'another-host' : '54321' };
+            const replacement = {
+                ...original,
+                [change]: change === 'host' ? 'another-host' : '54321',
+            };
             const fresh = store.remember(createViewerSessionContext(replacement, monitor));
             assert.notStrictEqual(fresh, history);
             assert.strictEqual(fresh.history.length, 0);
             assert.strictEqual(fresh.index, -1);
-            fresh.history.push({ file: '/tmp/b.html', title: 'B' }); fresh.index = 0;
+            fresh.history.push({ file: '/tmp/b.html', title: 'B' });
+            fresh.index = 0;
             await store.save(fresh);
             await store.save(history);
             assert.deepStrictEqual(persisted, [fresh]);
@@ -116,10 +137,18 @@ suite('Retained HTML widget history', () => {
 
     test('rejects invalid persisted state, trims excess history, and adjusts its selection', async () => {
         const long = record();
-        long.history = Array.from({ length: 52 }, (_, index) => ({ file: `/tmp/${index}.html`, title: String(index) }));
+        long.history = Array.from({ length: 52 }, (_, index) => ({
+            file: `/tmp/${index}.html`,
+            title: String(index),
+        }));
         long.index = 51;
-        persisted = [null, { source: {} }, { ...record(source('bad-index')), index: -1 },
-            record({ ...source('already-exited'), processExited: true }), long];
+        persisted = [
+            null,
+            { source: {} },
+            { ...record(source('bad-index')), index: -1 },
+            record({ ...source('already-exited'), processExited: true }),
+            long,
+        ];
         const { store } = create();
         await store.flush();
         assert.strictEqual(store.entries.size, 1);
@@ -133,23 +162,32 @@ suite('Retained HTML widget history', () => {
     test('queued writes capture their revision and an exit wins over pending output saves', async () => {
         const writes: unknown[] = [];
         let release!: () => void;
-        const blocked = new Promise<void>(resolve => { release = resolve; });
+        const blocked = new Promise<void>((resolve) => {
+            release = resolve;
+        });
         sandbox.stub(state, 'update').callsFake(async (_key, value) => {
             writes.push(JSON.parse(JSON.stringify(value)));
-            if (writes.length === 1) { await blocked; }
+            if (writes.length === 1) {
+                await blocked;
+            }
             persisted = value;
         });
         const { store, monitor } = create();
         const owner = source();
         const history = store.remember(createViewerSessionContext(owner, monitor));
-        history.history.push({ file: '/tmp/a.html', title: 'A' }); history.index = 0;
+        history.history.push({ file: '/tmp/a.html', title: 'A' });
+        history.index = 0;
         void store.save(history);
-        history.history.push({ file: '/tmp/b.html', title: 'B' }); history.index = 1;
+        history.history.push({ file: '/tmp/b.html', title: 'B' });
+        history.index = 1;
         void store.save(history);
         monitor.markExited({ ...owner, processExited: true });
         release();
         await store.flush();
-        assert.deepStrictEqual(writes.map(value => (value as WidgetHistory[])[0]?.history.length ?? 0), [1, 2, 0]);
+        assert.deepStrictEqual(
+            writes.map((value) => (value as WidgetHistory[])[0]?.history.length ?? 0),
+            [1, 2, 0],
+        );
         assert.deepStrictEqual(persisted, []);
     });
 });

@@ -1,6 +1,13 @@
 import * as assert from 'assert';
 import * as vm from 'vm';
-import type { ColDef, ColumnState, GridOptions, GridState } from 'ag-grid-community';
+import type {
+    ColDef,
+    ColumnState,
+    GridOptions,
+    GridState,
+    IFilterOptionDef,
+    ITextFilterParams,
+} from 'ag-grid-community';
 import { getDataViewerScript } from '../../dataViewer';
 
 interface SavedViewer {
@@ -19,7 +26,11 @@ interface ViewerScript {
     setViewerSizingMode(mode: 'fit' | 'content'): void;
 }
 
-function viewerScript(saved?: SavedViewer, gridState: GridState = {}, light = false): {
+function viewerScript(
+    saved?: SavedViewer,
+    gridState: GridState = {},
+    light = false,
+): {
     script: ViewerScript;
     stored: () => SavedViewer | undefined;
     appliedColumns: () => ColumnState[];
@@ -28,33 +39,49 @@ function viewerScript(saved?: SavedViewer, gridState: GridState = {}, light = fa
     let stored: SavedViewer | undefined;
     let appliedColumns: ColumnState[] = [];
     let contentSizingCalls = 0;
-    const script = vm.runInNewContext(`${getDataViewerScript()}
-        ({ prepareViewerColumns, prepareViewerRows, getViewerGridOptions, saveViewerState, getAgTheme, setViewerSizingMode })`, {
-        vscode: {
-            getState: () => saved,
-            setState: (value: SavedViewer) => { stored = value; },
-        },
-        gridApi: {
-            getState: () => gridState,
-            getColumns: () => ['0', '1', '2'].map(colId => ({ getColId: () => colId })),
-            applyColumnState: ({ state }: { state: ColumnState[] }) => { appliedColumns = state; },
-            autoSizeAllColumns: () => { contentSizingCalls++; },
-        },
-        document: {
-            body: { classList: { contains: (name: string) => light && name === 'vscode-high-contrast-light' } },
-            createElement: () => ({ className: '', textContent: '' }),
-            querySelector: () => ({ setAttribute: () => undefined }),
-        },
-        window: {
-            agGrid: {
-                themeBalham: { withPart: (scheme: unknown) => scheme },
-                colorSchemeLight: 'light', colorSchemeDark: 'dark',
+    const script = vm.runInNewContext(
+        `${getDataViewerScript()}
+        ({ prepareViewerColumns, prepareViewerRows, getViewerGridOptions, saveViewerState, getAgTheme, setViewerSizingMode })`,
+        {
+            vscode: {
+                getState: () => saved,
+                setState: (value: SavedViewer) => {
+                    stored = value;
+                },
+            },
+            gridApi: {
+                getState: () => gridState,
+                getColumns: () => ['0', '1', '2'].map((colId) => ({ getColId: () => colId })),
+                applyColumnState: ({ state }: { state: ColumnState[] }) => {
+                    appliedColumns = state;
+                },
+                autoSizeAllColumns: () => {
+                    contentSizingCalls++;
+                },
+            },
+            document: {
+                body: {
+                    classList: {
+                        contains: (name: string) => light && name === 'vscode-high-contrast-light',
+                    },
+                },
+                createElement: () => ({ className: '', textContent: '' }),
+                querySelector: () => ({ setAttribute: () => undefined }),
+            },
+            window: {
+                agGrid: {
+                    themeBalham: { withPart: (scheme: unknown) => scheme },
+                    colorSchemeLight: 'light',
+                    colorSchemeDark: 'dark',
+                },
             },
         },
-    }) as ViewerScript;
+    ) as ViewerScript;
     return {
-        script, stored: () => stored,
-        appliedColumns: () => appliedColumns, contentSizingCalls: () => contentSizingCalls,
+        script,
+        stored: () => stored,
+        appliedColumns: () => appliedColumns,
+        contentSizingCalls: () => contentSizingCalls,
     };
 }
 
@@ -79,20 +106,30 @@ suite('Data viewer', () => {
         viewer.script.prepareViewerColumns(columns());
         viewer.script.getViewerGridOptions(500);
         viewer.script.setViewerSizingMode('content');
-        assert.ok(viewer.appliedColumns().every(column => column.flex === null));
+        assert.ok(viewer.appliedColumns().every((column) => column.flex === null));
         assert.strictEqual(viewer.contentSizingCalls(), 1);
         assert.strictEqual(viewer.stored()?.sizingMode, 'content');
 
         viewer.script.setViewerSizingMode('fit');
         assert.strictEqual(viewer.appliedColumns()[0].flex, null);
-        assert.ok(viewer.appliedColumns().slice(1).every(column => column.flex === 1));
+        assert.ok(
+            viewer
+                .appliedColumns()
+                .slice(1)
+                .every((column) => column.flex === 1),
+        );
         assert.strictEqual(viewer.contentSizingCalls(), 1);
         assert.strictEqual(viewer.stored()?.sizingMode, 'fit');
     });
 
     test('old saved content widths do not disable the new default fit mode', () => {
         const first = viewerScript(undefined, {
-            columnSizing: { columnSizingModel: [{ colId: '1', width: 70 }, { colId: '2', width: 80 }] },
+            columnSizing: {
+                columnSizingModel: [
+                    { colId: '1', width: 70 },
+                    { colId: '2', width: 80 },
+                ],
+            },
             columnVisibility: { hiddenColIds: ['2'] },
         });
         first.script.prepareViewerColumns(columns());
@@ -107,14 +144,21 @@ suite('Data viewer', () => {
         assert.strictEqual(options.defaultColDef?.initialFlex, 1);
         assert.strictEqual(options.initialState?.columnSizing, undefined);
         assert.strictEqual(options.initialState?.partialColumnState, true);
-        assert.strictEqual(options.initialState?.columnVisibility, saved.gridState.columnVisibility);
+        assert.strictEqual(
+            options.initialState?.columnVisibility,
+            saved.gridState.columnVisibility,
+        );
         assert.ok(saved.gridState.columnSizing, 'restoring must not mutate the saved view');
     });
 
     test('restores the chosen sizing mode and its column widths or flex values', () => {
         for (const mode of ['fit', 'content'] as const) {
             const first = viewerScript(undefined, {
-                columnSizing: { columnSizingModel: [{ colId: '1', flex: mode === 'fit' ? 1 : undefined, width: 120 }] },
+                columnSizing: {
+                    columnSizingModel: [
+                        { colId: '1', flex: mode === 'fit' ? 1 : undefined, width: 120 },
+                    ],
+                },
             });
             first.script.prepareViewerColumns(columns());
             first.script.setViewerSizingMode(mode);
@@ -131,7 +175,9 @@ suite('Data viewer', () => {
         const state: GridState = {
             columnVisibility: { hiddenColIds: ['2'] },
             sort: { sortModel: [{ colId: '2', sort: 'desc' }] },
-            filter: { filterModel: { '1': { filterType: 'text', type: 'contains', filter: 'apple' } } },
+            filter: {
+                filterModel: { '1': { filterType: 'text', type: 'contains', filter: 'apple' } },
+            },
         };
         const first = viewerScript(undefined, state);
         first.script.prepareViewerColumns(columns());
@@ -149,8 +195,12 @@ suite('Data viewer', () => {
         assert.strictEqual(options.defaultColDef?.floatingFilter, true);
 
         const changes: ColDef[][] = [
-            columns().map(column => column.field === '1' ? { ...column, headerName: 'Another variable' } : column),
-            columns().map(column => column.field === '2' ? { ...column, type: 'textColumn' } : column),
+            columns().map((column) =>
+                column.field === '1' ? { ...column, headerName: 'Another variable' } : column,
+            ),
+            columns().map((column) =>
+                column.field === '2' ? { ...column, type: 'textColumn' } : column,
+            ),
             columns().reverse(),
             columns().slice(0, 2),
         ];
@@ -158,7 +208,10 @@ suite('Data viewer', () => {
             const refreshed: ViewerScript = viewerScript(saved).script;
             refreshed.prepareViewerColumns(changed);
             assert.strictEqual(refreshed.getViewerGridOptions(500).initialState, undefined);
-            assert.strictEqual(refreshed.getViewerGridOptions(500).defaultColDef?.floatingFilter, false);
+            assert.strictEqual(
+                refreshed.getViewerGridOptions(500).defaultColDef?.floatingFilter,
+                false,
+            );
         }
     });
 
@@ -203,17 +256,72 @@ suite('Data viewer', () => {
 
     test('keeps integer64 precision and missing values when loading rows', () => {
         const script = viewerScript().script;
-        const rows = script.prepareViewerRows([
-            { '1': '9007199254740993', '2': '001' },
-            { '1': '-9223372036854775807', '2': '' },
-            { '1': null },
-        ], ['1']);
+        const rows = script.prepareViewerRows(
+            [
+                { '1': '9007199254740993', '2': '001' },
+                { '1': '-9223372036854775807', '2': '' },
+                { '1': null },
+            ],
+            ['1'],
+        );
         assert.strictEqual(rows[0]['1'], 9007199254740993n);
         assert.strictEqual(rows[1]['1'], -9223372036854775807n);
         assert.strictEqual(rows[2]['1'], null);
         assert.strictEqual(rows[0]['2'], '001');
         assert.strictEqual(rows[1]['2'], '');
     });
+
+    test('logical filters offer Reset and Apply with the original labels and a built-in Blank option', () => {
+        const script = viewerScript().script;
+        const defs: ColDef[] = [{ field: '1', type: 'booleanColumn' }];
+        script.prepareViewerColumns(defs);
+        const params = defs[0].filterParams as ITextFilterParams;
+        assert.deepStrictEqual(Array.from(params.buttons ?? []), ['reset', 'apply']);
+        assert.deepStrictEqual(
+            Array.from(params.filterOptions ?? [], (option) =>
+                typeof option === 'string' ? option : option.displayKey,
+            ),
+            ['empty', 'true', 'false', 'blank'],
+        );
+        assert.deepStrictEqual(
+            Array.from(params.filterOptions ?? [], (option) =>
+                typeof option === 'string' ? option : option.displayName,
+            ),
+            ['empty', 'True', 'False', 'blank'],
+        );
+        // Preserve AG Grid's "Choose one" and "Blank" labels.
+        assert.strictEqual(script.getViewerGridOptions(500).localeText?.empty, undefined);
+        assert.strictEqual(script.getViewerGridOptions(500).localeText?.blank, undefined);
+    });
+
+    for (const [key, expected] of [
+        ['true', true],
+        ['false', false],
+    ] as const) {
+        test(`logical ${key} filter matches only its value, excluding NA`, () => {
+            const script = viewerScript().script;
+            const defs: ColDef[] = [{ field: '1', type: 'booleanColumn' }];
+            script.prepareViewerColumns(defs);
+            const params = defs[0].filterParams as ITextFilterParams;
+            const option = params.filterOptions?.find(
+                (candidate): candidate is IFilterOptionDef =>
+                    typeof candidate !== 'string' && candidate.displayKey === key,
+            );
+            assert.ok(option?.predicate);
+            assert.strictEqual(option.numberOfInputs, 0);
+            const predicate = option.predicate;
+            const rows = script.prepareViewerRows(
+                [true, false, null, undefined].map((value) => ({ '1': value })),
+                [],
+            );
+            assert.deepStrictEqual(
+                rows
+                    .filter((row) => Reflect.apply(predicate, undefined, [[], row['1']]))
+                    .map((row) => row['1']),
+                [expected],
+            );
+        });
+    }
 
     test('page-size choices are positive, sorted and unique, including restored sizes', () => {
         for (const pageSize of [0, 20, 50, 75, 500]) {
@@ -223,8 +331,13 @@ suite('Data viewer', () => {
             const script = viewerScript(first.stored()).script;
             script.prepareViewerColumns(columns());
             const options = script.getViewerGridOptions(pageSize);
-            const expected = [...new Set([20, 50, 100, pageSize || 500, 200])].sort((a, b) => a - b);
-            assert.deepStrictEqual(Array.from(options.paginationPageSizeSelector as number[]), expected);
+            const expected = [...new Set([20, 50, 100, pageSize || 500, 200])].sort(
+                (a, b) => a - b,
+            );
+            assert.deepStrictEqual(
+                Array.from(options.paginationPageSizeSelector as number[]),
+                expected,
+            );
             assert.strictEqual(options.pagination, pageSize > 0);
         }
     });

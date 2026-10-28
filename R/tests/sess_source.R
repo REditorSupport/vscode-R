@@ -199,6 +199,50 @@ stopifnot(identical(sess_loaded_source_revision(), stable))
 stopifnot(identical(getExportedValue("sess", "connect")(), "normal-library-dependency"))
 stopifnot(identical(normalized_paths(.libPaths()), normalized_paths(ordinary_before)))
 
+# The private Interactive runtime installs rstudioapi beside sess, which only
+# suggests it. Ordinary installations must not request it.
+local({
+    package <- file.path(root, "installer-dependencies", "sess")
+    dir.create(package, recursive = TRUE)
+    writeLines(c("Package: sess", "Version: 1.0.0", "Imports: sessfixturedep",
+                 "Config/vscode-R/source-revision: fixture"),
+               file.path(package, "DESCRIPTION"))
+    target <- file.path(root, "installer-dependencies", "library")
+    isolated <- file.path(root, "installer-dependencies", "empty")
+    for (directory in c(target, isolated)) dir.create(directory)
+    child <- file.path(root, "installer-dependencies.R")
+    writeLines(c(
+        "args <- commandArgs(TRUE)",
+        "installer <- new.env(parent = baseenv())",
+        "sys.source(args[[1L]], installer)",
+        "installer$sess_install_dependencies <- function(packages, ...) requested <<- packages",
+        "installer$sess_install_command <- function(...) TRUE",
+        "installer$sess_verify_package <- function(...) invisible(TRUE)",
+        "for (interactive in c(TRUE, FALSE)) {",
+        "  requested <- character()",
+        "  installer$sess_install(args[[2L]], args[[3L]], 'https://example.com',",
+        "                         interactive = interactive)",
+        "  cat('requested', interactive, paste(requested, collapse = ','), '\\n', sep = ';')",
+        "}"
+    ), child)
+    keys <- c("R_LIBS", "R_LIBS_USER", "R_LIBS_SITE")
+    previous <- Sys.getenv(keys, unset = NA_character_)
+    on.exit({
+        Sys.unsetenv(keys[is.na(previous)])
+        if (any(!is.na(previous))) do.call(Sys.setenv, as.list(previous[!is.na(previous)]))
+    }, add = TRUE)
+    Sys.setenv(R_LIBS = "", R_LIBS_USER = isolated, R_LIBS_SITE = isolated)
+    output <- system2(r_binary, shQuote(c(
+        "--vanilla", "--silent", "--no-echo", "--no-save", "--no-restore",
+        paste0("--file=", child), "--args",
+        file.path(getwd(), "R", "sess-package-install.R"), package, target
+    )), stdout = TRUE, stderr = TRUE)
+    stopifnot(is.null(attr(output, "status")))
+    stopifnot(identical(grep("^requested;", output, value = TRUE),
+                        c("requested;TRUE;sessfixturedep,rstudioapi;",
+                          "requested;FALSE;sessfixturedep;")))
+})
+
 Sys.unsetenv(c("VSCODE_R_SESS_PKG_PATH", "VSCODE_R_SESS_REPO",
                "VSCODE_R_SESS_LIBRARY", "VSCODE_R_SESS_INTERACTIVE"))
 if (is.na(previous_r_libs)) Sys.unsetenv("R_LIBS") else Sys.setenv(R_LIBS = previous_r_libs)

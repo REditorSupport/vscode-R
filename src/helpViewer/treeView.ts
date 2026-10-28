@@ -9,7 +9,6 @@ import { Package, Topic, TopicType } from './packages';
 // this enum is re-assigned just for code readability
 const CollapsibleState = vscode.TreeItemCollapsibleState;
 
-
 // the commands contributed in package.json for the tree view
 // the commands are registered in HelpTreeWrapper.constructor
 // the node-objects only need to handle the keys ('QUICKPICK' etc.) in Node.handleCommand()
@@ -29,18 +28,16 @@ const nodeCommands = {
     summarizeTopics: 'r.helpPanel.summarizeTopics',
     unsummarizeTopics: 'r.helpPanel.unsummarizeTopics',
     installPackages: 'r.helpPanel.installPackages',
-    updateInstalledPackages: 'r.helpPanel.updateInstalledPackages'
+    updateInstalledPackages: 'r.helpPanel.updateInstalledPackages',
 } as const;
 
 // used to avoid typos when handling commands
 type cmdName = keyof typeof nodeCommands;
 
-
 ////////////////////
 // The following classes are mostly just an 'adapter layer' between vscode's treeview interface
 // and the object oriented approach used here to present nodes of the treeview.
 // The 'interesting' part of the nodes is implemented below
-
 
 // wrapper around vscode.window.createTreeView()
 // necessary to implement Node.refresh(),
@@ -51,31 +48,33 @@ export class HelpTreeWrapper {
     public helpView: vscode.TreeView<Node>;
     public helpViewProvider: HelpViewProvider;
 
-    constructor(rHelp: RHelp){
+    constructor(rHelp: RHelp) {
         this.rHelp = rHelp;
         this.helpViewProvider = new HelpViewProvider(this);
-        this.helpView = vscode.window.createTreeView(
-            this.viewId,
-            {
-                treeDataProvider: this.helpViewProvider,
-                showCollapseAll: true
-            }
-        );
+        this.helpView = vscode.window.createTreeView(this.viewId, {
+            treeDataProvider: this.helpViewProvider,
+            showCollapseAll: true,
+        });
 
         // register the commands defined in `nodeCommands`
         // they still need to be defined in package.json (apart from CALLBACK)
         for (const cmd in nodeCommands) {
             const cmdTyped = cmd as cmdName; // Ok since `cmdName` is defiend as `keyof typeof nodeCommands`
-            extensionContext.subscriptions.push(vscode.commands.registerCommand(nodeCommands[cmdTyped], (node: Node | undefined) => {
-                // treeview-root is represented by `undefined`:
-                node ||= this.helpViewProvider.rootItem;
-                node.handleCommand(cmdTyped);
-            }));
+            extensionContext.subscriptions.push(
+                vscode.commands.registerCommand(
+                    nodeCommands[cmdTyped],
+                    (node: Node | undefined) => {
+                        // treeview-root is represented by `undefined`:
+                        node ||= this.helpViewProvider.rootItem;
+                        node.handleCommand(cmdTyped);
+                    },
+                ),
+            );
         }
     }
 
     public refreshNode(node: Node | undefined): void {
-        for(const listener of this.helpViewProvider.listeners){
+        for (const listener of this.helpViewProvider.listeners) {
             listener(node);
         }
     }
@@ -83,10 +82,10 @@ export class HelpTreeWrapper {
     public refreshPackageRootNode(): void {
         this.helpViewProvider.rootItem?.pkgRootNode?.refresh();
     }
-    
+
     public refreshPreviewNode(packageDir: string): void {
-        this.helpViewProvider.rootItem.previewChildren?.forEach(node => {
-            if(node.packageDir === packageDir){
+        this.helpViewProvider.rootItem.previewChildren?.forEach((node) => {
+            if (node.packageDir === packageDir) {
                 node.refresh(true);
             }
         });
@@ -97,14 +96,13 @@ export class HelpTreeWrapper {
     }
 }
 
-
 // mostly just a wrapper to implement vscode.TreeDataProvider
 export class HelpViewProvider implements vscode.TreeDataProvider<Node> {
     public rootItem: RootNode;
 
     public listeners: ((e: Node | undefined) => void)[] = [];
 
-    constructor(wrapper: HelpTreeWrapper){
+    constructor(wrapper: HelpTreeWrapper) {
         this.rootItem = new RootNode(wrapper);
     }
 
@@ -115,7 +113,7 @@ export class HelpViewProvider implements vscode.TreeDataProvider<Node> {
         });
     }
 
-    getChildren(element?: Node): vscode.ProviderResult<Node[]>{
+    getChildren(element?: Node): vscode.ProviderResult<Node[]> {
         element ||= this.rootItem;
         return element.getChildren();
     }
@@ -132,7 +130,7 @@ export class HelpViewProvider implements vscode.TreeDataProvider<Node> {
 // All the 'interesting' stuff hapens in the derived classes
 // New commands should (if possible) be implemented by defining a new derived class,
 // rather than modifying this class!
-abstract class Node extends vscode.TreeItem{
+abstract class Node extends vscode.TreeItem {
     // TreeItem (defaults for this usecase)
     declare public description?: string;
     public collapsibleState: vscode.TreeItemCollapsibleState = vscode.TreeItemCollapsibleState.None;
@@ -144,7 +142,7 @@ abstract class Node extends vscode.TreeItem{
     public command = {
         title: 'treeNodeCallback', // is this title used anywhere?
         command: nodeCommands.CALLBACK,
-        arguments: [this]
+        arguments: [this],
     } as vscode.Command | undefined;
 
     // Node
@@ -166,10 +164,10 @@ abstract class Node extends vscode.TreeItem{
     static newId: number = 0;
 
     // The default constructor just copies some info from parent
-    constructor(parent: Node | undefined, wrapper: HelpTreeWrapper){
+    constructor(parent: Node | undefined, wrapper: HelpTreeWrapper) {
         super('');
         this.wrapper = wrapper;
-        if(parent){
+        if (parent) {
             this.parent = parent;
             this.rootNode = parent.rootNode;
         }
@@ -178,15 +176,15 @@ abstract class Node extends vscode.TreeItem{
 
     // Called when a node or command-button on a node is clicked
     // Only internal commands are handled here, custom commands are implemented in _handleCommand!
-    public handleCommand(cmd: cmdName){
-        if(cmd === 'CALLBACK' && this.callBack){
+    public handleCommand(cmd: cmdName) {
+        if (cmd === 'CALLBACK' && this.callBack) {
             void this.callBack();
-        } else if(cmd === 'QUICKPICK'){
-            if(this.quickPickCommand){
+        } else if (cmd === 'QUICKPICK') {
+            if (this.quickPickCommand) {
                 this._handleCommand(this.quickPickCommand);
-            } else if(this.collapsibleState !== CollapsibleState.None){
+            } else if (this.collapsibleState !== CollapsibleState.None) {
                 void this.showQuickPick();
-            } else{
+            } else {
                 this.handleCommand('CALLBACK');
             }
         } else {
@@ -196,7 +194,7 @@ abstract class Node extends vscode.TreeItem{
 
     // overwrite this in derived classes to handle custom commands
     protected _handleCommand(cmd: cmdName): void;
-    protected _handleCommand(){
+    protected _handleCommand() {
         // to be overwritten
     }
 
@@ -207,26 +205,26 @@ abstract class Node extends vscode.TreeItem{
     // Shows a quickpick containing the children of a node
     // If the picked child has children itself, another quickpick is shown
     // Otherwise, its QUICKPICK or CALLBACK command is executed
-    public async showQuickPick(){
+    public async showQuickPick() {
         const children = await this.makeChildren(true);
-        if(!children){
+        if (!children) {
             return undefined;
         }
-        const qpItems: (vscode.QuickPickItem & {child: Node})[] = children.map(v => {
+        const qpItems: (vscode.QuickPickItem & { child: Node })[] = children.map((v) => {
             let label = v.label || '';
-            if(typeof v.iconPath === 'object' && 'id' in v.iconPath){
+            if (typeof v.iconPath === 'object' && 'id' in v.iconPath) {
                 label = `$(${v.iconPath.id}) ${label}`;
             }
             return {
                 label: v.qpLabel ?? label,
                 detail: v.qpDetail ?? v.description ?? v.tooltip,
-                child: v
+                child: v,
             };
         });
         const qp = await vscode.window.showQuickPick(qpItems, {
-            placeHolder: this.qpPrompt
+            placeHolder: this.qpPrompt,
         });
-        if(qp){
+        if (qp) {
             const child = qp.child;
             child.handleCommand('QUICKPICK');
         }
@@ -234,59 +232,61 @@ abstract class Node extends vscode.TreeItem{
 
     // Called by vscode etc. to get the children of a node
     // Not meant to be modified in derived classes!
-    public async getChildren(): Promise<Node[]|undefined> {
-        if(this.children === undefined){
+    public async getChildren(): Promise<Node[] | undefined> {
+        if (this.children === undefined) {
             this.children = await this.makeChildren();
         }
         return this.children;
     }
 
     // to be overwritten, if the node has any children
-    protected makeChildren(forQuickPick?: boolean): Promise<Node[]|undefined> | Node[] | undefined;
-    protected makeChildren(): Promise<Node[]|undefined> | Node[] | undefined {
+    protected makeChildren(
+        forQuickPick?: boolean,
+    ): Promise<Node[] | undefined> | Node[] | undefined;
+    protected makeChildren(): Promise<Node[] | undefined> | Node[] | undefined {
         return [];
     }
 
     // Can be called by a method from the node itself or externally to refresh the node in the treeview
-    public refresh(refreshChildren: boolean = true){
-        if(refreshChildren){
+    public refresh(refreshChildren: boolean = true) {
+        if (refreshChildren) {
             this.children = undefined;
         }
         this.wrapper.refreshNode(this);
     }
 
     // Clear 'grandchildren' without triggering the treeview to update too often
-    public refreshChildren(){
-        if(this.children){
-            for(const child of this.children){
+    public refreshChildren() {
+        if (this.children) {
+            for (const child of this.children) {
                 child.children = undefined;
             }
         }
     }
 
     // show/focus the node in the treeview
-    public reveal(options?: { select?: boolean, focus?: boolean, expand?: boolean | number }){
+    public reveal(options?: { select?: boolean; focus?: boolean; expand?: boolean | number }) {
         void this.wrapper.helpView.reveal(this, options);
     }
 
     // These methods are used to update this.contextValue with possible command names
     // The constructed contextValue contains the command names of the commands applying to this node
-    static makeContextValue(...args: cmdName[]){
-        return args.map(v => `_${v}_`).join('');
+    static makeContextValue(...args: cmdName[]) {
+        return args.map((v) => `_${v}_`).join('');
     }
-    public addContextValues(...args: cmdName[]){
-        args.forEach(val => {
+    public addContextValues(...args: cmdName[]) {
+        args.forEach((val) => {
             this.contextValue += `_${val}_`;
         });
         return this.contextValue;
     }
-    public removeContextValues(...args: cmdName[]){
-        args.forEach(val => {
+    public removeContextValues(...args: cmdName[]) {
+        args.forEach((val) => {
             this.contextValue = this.contextValue.replace(new RegExp(`_${val}_`), '');
         });
         return this.contextValue;
     }
-    public replaceContextValue(oldCmd: cmdName, newCmd: cmdName){
+    public replaceContextValue(oldCmd: cmdName, newCmd: cmdName) {
         this.removeContextValues(oldCmd);
         return this.addContextValues(newCmd);
     }
@@ -295,22 +295,17 @@ abstract class Node extends vscode.TreeItem{
 abstract class NonRootNode extends Node {
     parent: RootNode | NonRootNode;
     rootNode: RootNode;
-    public constructor(parent: RootNode | NonRootNode){
+    public constructor(parent: RootNode | NonRootNode) {
         super(parent, parent.wrapper);
         this.parent = parent;
         this.rootNode = parent.rootNode;
     }
 }
 
-
-
-
 ///////////////////////////////////
 // The following classes contain the implementation of the help-view-specific behaviour
 // PkgRootNode, PackageNode, and TopicNode are a bit more complex
 // The remaining nodes mostly just contain an icon and a callback
-
-
 
 // Root of the node. Is not actually used by vscode, but as 'imaginary' root item.
 class RootNode extends Node {
@@ -322,10 +317,10 @@ class RootNode extends Node {
     public staticChildren?: NonRootNode[];
     public previewChildren?: PreviewPackageNode[];
 
-    constructor(wrapper: HelpTreeWrapper){
+    constructor(wrapper: HelpTreeWrapper) {
         super(undefined, wrapper);
     }
-    makeChildren(){
+    makeChildren() {
         this.pkgRootNode ||= new PkgRootNode(this);
         this.staticChildren ||= [
             new HomeNode(this),
@@ -337,12 +332,12 @@ class RootNode extends Node {
             this.pkgRootNode,
         ];
         this.previewChildren ||= this.wrapper.rHelp.previewProviders.map(
-            previewer => new PreviewPackageNode(this, previewer)
+            (previewer) => new PreviewPackageNode(this, previewer),
         );
         return [...this.staticChildren, ...this.previewChildren];
     }
-    public refresh(refreshChildren: boolean = true){
-        if(refreshChildren){
+    public refresh(refreshChildren: boolean = true) {
+        if (refreshChildren) {
             this.children = undefined;
             this.previewChildren = undefined;
         }
@@ -358,7 +353,13 @@ class PkgRootNode extends NonRootNode {
     public description = '';
     public command = undefined;
     public collapsibleState = CollapsibleState.Collapsed;
-    public contextValue = Node.makeContextValue('QUICKPICK', 'clearCache', 'filterPackages', 'showOnlyFavorites', 'unsummarizeTopics');
+    public contextValue = Node.makeContextValue(
+        'QUICKPICK',
+        'clearCache',
+        'filterPackages',
+        'showOnlyFavorites',
+        'unsummarizeTopics',
+    );
 
     // Node
     declare public children?: PackageNode[];
@@ -371,21 +372,21 @@ class PkgRootNode extends NonRootNode {
     public filterText?: string;
     public summarizeTopics: boolean = true;
 
-    async _handleCommand(cmd: cmdName){
-        if(cmd === 'clearCache'){
+    async _handleCommand(cmd: cmdName) {
+        if (cmd === 'clearCache') {
             // used e.g. after manually installing/removing a package
             this.refresh(true);
-        } else if(cmd === 'showOnlyFavorites'){
+        } else if (cmd === 'showOnlyFavorites') {
             this.showOnlyFavorites = true;
             this.iconPath = new vscode.ThemeIcon('star-full');
             this.replaceContextValue('showOnlyFavorites', 'showAllPackages');
             this.refresh();
-        } else if(cmd === 'showAllPackages'){
+        } else if (cmd === 'showAllPackages') {
             this.showOnlyFavorites = false;
             this.iconPath = new vscode.ThemeIcon('list-unordered');
             this.replaceContextValue('showAllPackages', 'showOnlyFavorites');
             this.refresh();
-        } else if(cmd === 'filterPackages'){
+        } else if (cmd === 'filterPackages') {
             // use validation function to continuously update filtered packages
             const validateInput = (value: string) => {
                 this.filterText = value;
@@ -397,14 +398,14 @@ class PkgRootNode extends NonRootNode {
                 validateInput: validateInput,
                 value: this.filterText,
             });
-            this.description = (this.filterText ? `"${this.filterText}"` : '');
+            this.description = this.filterText ? `"${this.filterText}"` : '';
             this.refresh();
-        } else if(cmd === 'unsummarizeTopics'){
+        } else if (cmd === 'unsummarizeTopics') {
             this.summarizeTopics = false;
             this.replaceContextValue('unsummarizeTopics', 'summarizeTopics');
             this.refreshChildren(); // clears the 'grandchildren'
             this.refresh(false, false);
-        } else if(cmd === 'summarizeTopics'){
+        } else if (cmd === 'summarizeTopics') {
             this.summarizeTopics = true;
             this.replaceContextValue('summarizeTopics', 'unsummarizeTopics');
             this.refreshChildren(); // clears the 'grandchildren'
@@ -412,8 +413,8 @@ class PkgRootNode extends NonRootNode {
         }
     }
 
-    refresh(clearCache: boolean = false, refreshChildren: boolean = true){
-        if(clearCache){
+    refresh(clearCache: boolean = false, refreshChildren: boolean = true) {
+        if (clearCache) {
             this.wrapper.rHelp.clearCachedFiles(`/doc/html/packages.html`);
             void this.wrapper.rHelp.packageManager.clearCachedFiles(`/doc/html/packages.html`);
         }
@@ -423,37 +424,39 @@ class PkgRootNode extends NonRootNode {
     async makeChildren() {
         let packages = await this.wrapper.rHelp.packageManager.getPackages(false);
 
-        if(!packages){
+        if (!packages) {
             return [];
         }
 
-        if(this.filterText){
+        if (this.filterText) {
             const re = new RegExp(this.filterText);
-            packages = packages.filter(pkg => re.exec(pkg.name));
+            packages = packages.filter((pkg) => re.exec(pkg.name));
         }
 
         // favorites at the top
-        const children = packages.filter(pkg => pkg.isFavorite);
+        const children = packages.filter((pkg) => pkg.isFavorite);
 
         // nonFavorites below (if shown)
-        if(!this.showOnlyFavorites){
-            children.push(...packages.filter(pkg => !pkg.isFavorite));
+        if (!this.showOnlyFavorites) {
+            children.push(...packages.filter((pkg) => !pkg.isFavorite));
         }
 
         // make packageNode for each child
-        return children.map(
-            pkg => new PackageNode(this, pkg)
-        );
+        return children.map((pkg) => new PackageNode(this, pkg));
     }
 }
-
 
 // contains the topics belonging to an individual package
 export class PackageNode extends NonRootNode {
     // TreeItem
     public command = undefined;
     public collapsibleState = CollapsibleState.Collapsed;
-    public contextValue = Node.makeContextValue('QUICKPICK', 'clearCache', 'removePackage', 'updatePackage');
+    public contextValue = Node.makeContextValue(
+        'QUICKPICK',
+        'clearCache',
+        'removePackage',
+        'updatePackage',
+    );
 
     // QuickPick
     public qpPrompt = 'Please select a Topic.';
@@ -461,56 +464,61 @@ export class PackageNode extends NonRootNode {
     // Package
     public pkg: Package;
 
-    constructor(parent: PkgRootNode, pkg: Package){
+    constructor(parent: PkgRootNode, pkg: Package) {
         super(parent);
         this.pkg = pkg;
         this.label = pkg.name;
         this.tooltip = pkg.description;
         this.qpDetail = pkg.description;
-        if(this.pkg.isFavorite){
+        if (this.pkg.isFavorite) {
             this.addContextValues('removeFromFavorites');
-        } else{
+        } else {
             this.addContextValues('addToFavorites');
         }
-        if(this.pkg.isFavorite && !this.rootNode.pkgRootNode?.showOnlyFavorites){
+        if (this.pkg.isFavorite && !this.rootNode.pkgRootNode?.showOnlyFavorites) {
             this.iconPath = new vscode.ThemeIcon('star-full');
         }
     }
 
     public async _handleCommand(cmd: cmdName): Promise<void> {
-        if(cmd === 'clearCache'){
+        if (cmd === 'clearCache') {
             // useful e.g. when working on a package
             this.wrapper.rHelp.clearCachedFiles(new RegExp(`^/library/${this.pkg.name}/`));
             this.refresh();
-        } else if(cmd === 'addToFavorites'){
+        } else if (cmd === 'addToFavorites') {
             this.wrapper.rHelp.packageManager.addFavorite(this.pkg.name);
             this.parent.refresh();
-        } else if(cmd === 'removeFromFavorites'){
+        } else if (cmd === 'removeFromFavorites') {
             this.wrapper.rHelp.packageManager.removeFavorite(this.pkg.name);
             this.parent.refresh();
-        } else if(cmd === 'updatePackage'){
-            const success = await this.wrapper.rHelp.packageManager.installPackages([this.pkg.name]);
+        } else if (cmd === 'updatePackage') {
+            const success = await this.wrapper.rHelp.packageManager.installPackages([
+                this.pkg.name,
+            ]);
             // only reinstall if user confirmed removing the package (success === true)
             // might still refresh if install was attempted but failed
-            if(success){
+            if (success) {
                 this.parent.refresh(true);
             }
-        } else if(cmd === 'removePackage'){
+        } else if (cmd === 'removePackage') {
             const success = await this.wrapper.rHelp.packageManager.removePackage(this.pkg.name);
             // only refresh if user confirmed removing the package (success === true)
             // might still refresh if removing was attempted but failed
-            if(success){
+            if (success) {
                 this.parent.refresh(true);
             }
         }
     }
 
     async makeChildren(forQuickPick: boolean = false): Promise<TopicNode[]> {
-        const summarizeTopics = (
-            forQuickPick ? false : (this.rootNode.pkgRootNode?.summarizeTopics ?? true)
+        const summarizeTopics = forQuickPick
+            ? false
+            : (this.rootNode.pkgRootNode?.summarizeTopics ?? true);
+        const topics = await this.wrapper.rHelp.packageManager.getTopics(
+            this.pkg.name,
+            summarizeTopics,
         );
-        const topics = await this.wrapper.rHelp.packageManager.getTopics(this.pkg.name, summarizeTopics);
-        const ret = topics?.map(topic => new TopicNode(this, topic)) || [];
+        const ret = topics?.map((topic) => new TopicNode(this, topic)) || [];
         return ret;
     }
 }
@@ -528,29 +536,31 @@ class TopicNode extends NonRootNode {
         [TopicType.HOME, 'home'],
         [TopicType.INDEX, 'list-unordered'],
         [TopicType.META, 'file-code'],
-        [TopicType.NORMAL, 'circle-filled']
+        [TopicType.NORMAL, 'circle-filled'],
     ]);
 
-    protected _handleCommand(cmd: cmdName){
-        if(cmd === 'CALLBACK'){
+    protected _handleCommand(cmd: cmdName) {
+        if (cmd === 'CALLBACK') {
             void this.wrapper.rHelp.showHelpForPath(this.topic.helpPath);
-        } else if(cmd === 'openInNewPanel'){
+        } else if (cmd === 'openInNewPanel') {
             void this.wrapper.rHelp.makeNewHelpPanel();
             void this.wrapper.rHelp.showHelpForPath(this.topic.helpPath);
         }
     }
 
-    constructor(parent: NonRootNode, topic: Topic){
+    constructor(parent: NonRootNode, topic: Topic) {
         super(parent);
         this.topic = topic;
         this.label = topic.name;
-        this.iconPath = new vscode.ThemeIcon(TopicNode.iconPaths.get(this.topic.type) || 'circle-filled');
-        if(this.topic.type === TopicType.NORMAL){
+        this.iconPath = new vscode.ThemeIcon(
+            TopicNode.iconPaths.get(this.topic.type) || 'circle-filled',
+        );
+        if (this.topic.type === TopicType.NORMAL) {
             this.qpLabel = this.topic.name;
         }
-        if(this.topic.aliases){
+        if (this.topic.aliases) {
             this.tooltip = `Aliases:\n - ${this.topic.aliases.join('\n - ')}`;
-        } else{
+        } else {
             this.tooltip = this.topic.description;
         }
     }
@@ -564,7 +574,7 @@ class PreviewPackageNode extends NonRootNode {
     public iconPath = new vscode.ThemeIcon('eye');
     public command = undefined;
     public contextValue = Node.makeContextValue('QUICKPICK', 'unsummarizeTopics');
-    public qpPrompt = 'Please select a Topic.'
+    public qpPrompt = 'Please select a Topic.';
 
     public summarizeTopics: boolean = true;
 
@@ -572,20 +582,20 @@ class PreviewPackageNode extends NonRootNode {
 
     private helpPreview: RLocalHelpPreviewer;
 
-    constructor(parent: RootNode, helpPreview: RLocalHelpPreviewer){
+    constructor(parent: RootNode, helpPreview: RLocalHelpPreviewer) {
         super(parent);
         this.helpPreview = helpPreview;
         this.packageDir = helpPreview?.packageDir;
         this.refreshMetaInfo();
     }
 
-    _handleCommand(cmd: cmdName){
-        if(cmd === 'unsummarizeTopics'){
+    _handleCommand(cmd: cmdName) {
+        if (cmd === 'unsummarizeTopics') {
             this.summarizeTopics = false;
             this.replaceContextValue('unsummarizeTopics', 'summarizeTopics');
             this.refreshChildren(); // clears the 'grandchildren'
             this.refresh(true);
-        } else if(cmd === 'summarizeTopics'){
+        } else if (cmd === 'summarizeTopics') {
             this.summarizeTopics = true;
             this.replaceContextValue('summarizeTopics', 'unsummarizeTopics');
             this.refreshChildren(); // clears the 'grandchildren'
@@ -594,38 +604,34 @@ class PreviewPackageNode extends NonRootNode {
     }
 
     makeChildren(forQuickPick: boolean = false): TopicNode[] {
-        const summarizeTopics = (
-            forQuickPick ? false : (this.summarizeTopics ?? true)
-        );
+        const summarizeTopics = forQuickPick ? false : (this.summarizeTopics ?? true);
         const topics = this.helpPreview?.getTreeViewTopics(summarizeTopics) || [];
-        const ret = topics.map(topic => new TopicNode(this, topic)) || [];
+        const ret = topics.map((topic) => new TopicNode(this, topic)) || [];
         return ret;
     }
-    
+
     private refreshMetaInfo(): void {
         this.label = `Preview: ${this.helpPreview.getPackageName()}`;
         const pkgInfo = this.helpPreview.getPackageInfo();
         const toolTipParts: string[] = [];
-        if(pkgInfo?.version){
+        if (pkgInfo?.version) {
             toolTipParts.push('v' + pkgInfo.version);
         }
-        if(pkgInfo?.title){
+        if (pkgInfo?.title) {
             toolTipParts.push(pkgInfo.title);
         }
         this.tooltip = toolTipParts.join(' - ');
     }
-    
+
     // Can be called by a method from the node itself or externally to refresh the node in the treeview
-    public refresh(refreshChildren: boolean = true){
+    public refresh(refreshChildren: boolean = true) {
         this.refreshMetaInfo();
-        if(refreshChildren){
+        if (refreshChildren) {
             this.children = undefined;
         }
         this.wrapper.refreshNode(this);
     }
 }
-
-
 
 /////////////
 // The following nodes only implement an individual command each
@@ -636,14 +642,14 @@ class HomeNode extends NonRootNode {
     iconPath = new vscode.ThemeIcon('home');
     contextValue = Node.makeContextValue('openInNewPanel');
 
-    _handleCommand(cmd: cmdName){
-        if(cmd === 'openInNewPanel'){
+    _handleCommand(cmd: cmdName) {
+        if (cmd === 'openInNewPanel') {
             void this.wrapper.rHelp.makeNewHelpPanel();
             void this.wrapper.rHelp.showHelpForPath('doc/html/index.html');
         }
     }
 
-    callBack(){
+    callBack() {
         void this.wrapper.rHelp.showHelpForPath('doc/html/index.html');
     }
 }
@@ -652,7 +658,7 @@ class Search1Node extends NonRootNode {
     label = 'Open Help Topic using `?`';
     iconPath = new vscode.ThemeIcon('zap');
 
-    callBack(){
+    callBack() {
         void this.wrapper.rHelp.searchHelpByAlias();
     }
 }
@@ -661,7 +667,7 @@ class Search2Node extends NonRootNode {
     label = 'Search Help Topics using `??`';
     iconPath = new vscode.ThemeIcon('search');
 
-    callBack(){
+    callBack() {
         void this.wrapper.rHelp.searchHelpByText();
     }
 }
@@ -670,7 +676,7 @@ class RefreshNode extends NonRootNode {
     label = 'Clear Cache & Restart Help Server';
     iconPath = new vscode.ThemeIcon('refresh');
 
-    async callBack(){
+    async callBack() {
         await doWithProgress(() => this.wrapper.rHelp.refresh(), this.wrapper.viewId);
         this.rootNode.pkgRootNode?.refresh();
         this.rootNode.refresh();
@@ -681,7 +687,7 @@ class OpenForSelectionNode extends NonRootNode {
     label = 'Open Help Page for Selected Text';
     iconPath = new vscode.ThemeIcon('symbol-key');
 
-    callBack(){
+    callBack() {
         void this.wrapper.rHelp.openHelpForSelection();
     }
 }
@@ -692,25 +698,22 @@ class InstallPackageNode extends NonRootNode {
 
     contextValue = Node.makeContextValue('installPackages', 'updateInstalledPackages');
 
-    public async _handleCommand(cmd: cmdName){
-        if(cmd === 'installPackages'){
+    public async _handleCommand(cmd: cmdName) {
+        if (cmd === 'installPackages') {
             const ret = await this.wrapper.rHelp.packageManager.pickAndInstallPackages(true);
-            if(ret){
+            if (ret) {
                 this.rootNode.pkgRootNode?.refresh(true);
             }
-        } else if(cmd === 'updateInstalledPackages'){
+        } else if (cmd === 'updateInstalledPackages') {
             const ret = await this.wrapper.rHelp.packageManager.updatePackages();
-            if(ret){
+            if (ret) {
                 this.rootNode.pkgRootNode?.refresh(true);
             }
         }
     }
 
-    async callBack(){
+    async callBack() {
         await this.wrapper.rHelp.packageManager.pickAndInstallPackages();
         this.rootNode.pkgRootNode?.refresh(true);
     }
 }
-
-
-

@@ -24,7 +24,10 @@ const run = promisify(execFile);
     function makePackage(name: string): string {
         const directory = path.join(root, name);
         fs.mkdirSync(path.join(directory, 'R'), { recursive: true });
-        fs.writeFileSync(path.join(directory, 'DESCRIPTION'), `Package: ${name}\nVersion: 0.0.1\nTitle: Library Test Fixture\nDescription: A disposable package for library destination tests.\nLicense: MIT\nAuthor: R Test\nMaintainer: R Test <test@example.org>\n`);
+        fs.writeFileSync(
+            path.join(directory, 'DESCRIPTION'),
+            `Package: ${name}\nVersion: 0.0.1\nTitle: Library Test Fixture\nDescription: A disposable package for library destination tests.\nLicense: MIT\nAuthor: R Test\nMaintainer: R Test <test@example.org>\n`,
+        );
         fs.writeFileSync(path.join(directory, 'NAMESPACE'), 'export(answer)\n');
         fs.writeFileSync(path.join(directory, 'R', 'answer.R'), 'answer <- function() 42\n');
         return directory;
@@ -32,32 +35,52 @@ const run = promisify(execFile);
 
     suiteSetup(async () => {
         root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'r-interactive-libraries-')));
-        runtime = await installRuntime(process.cwd(), path.join(root, 'registry'), 'R', () => undefined);
-        userLibrary = path.join(root, 'user-library'); fs.mkdirSync(userLibrary);
+        runtime = await installRuntime(
+            process.cwd(),
+            path.join(root, 'registry'),
+            'R',
+            () => undefined,
+        );
+        userLibrary = path.join(root, 'user-library');
+        fs.mkdirSync(userLibrary);
         probe = makePackage('vscrlibprobe');
-        await run('R', ['CMD', 'INSTALL', `--library=${userLibrary}`, makePackage('vscrglobalprobe')]);
+        await run('R', [
+            'CMD',
+            'INSTALL',
+            `--library=${userLibrary}`,
+            makePackage('vscrglobalprobe'),
+        ]);
     });
     suiteTeardown(() => fs.rmSync(root, { recursive: true, force: true }));
 
-    const startup = '\nstartup_library_paths <- .libPaths()\nstartup_library_env <- Sys.getenv(c("R_LIBS", "R_LIBS_USER", "R_LIBS_SITE"))\n';
+    const startup =
+        '\nstartup_library_paths <- .libPaths()\nstartup_library_env <- Sys.getenv(c("R_LIBS", "R_LIBS_USER", "R_LIBS_SITE"))\n';
     test('loads private-only bridge dependencies without redirecting user package installs', async () => {
         const socketRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'r-lib-'));
         const endpoint = path.join(socketRoot, 's');
         const sockets = new Set<net.Socket>();
         let received = '';
-        const server = net.createServer(socket => {
+        const server = net.createServer((socket) => {
             sockets.add(socket);
-            socket.on('data', data => { received += data.toString(); });
+            socket.on('data', (data) => {
+                received += data.toString();
+            });
             socket.on('close', () => sockets.delete(socket));
         });
         const script = path.join(root, 'private-dependencies.R');
         const config = path.join(root, 'private-dependencies.json');
-        fs.writeFileSync(config, JSON.stringify({ sess: endpoint, jgd: '', token: randomUUID(), useJgd: false }));
-        fs.writeFileSync(script, `
+        fs.writeFileSync(
+            config,
+            JSON.stringify({ sess: endpoint, jgd: '', token: randomUUID(), useJgd: false }),
+        );
+        fs.writeFileSync(
+            script,
+            `
 private <- ${rString(runtime.library)}
 user <- ${rString(userLibrary)}
 database <- installed.packages(lib.loc=unique(c(private,.libPaths())))
-dependencies <- unique(c("ps", unlist(tools::package_dependencies(
+# The Interactive setup installs rstudioapi beside sess although sess only suggests it.
+dependencies <- unique(c("ps", "rstudioapi", unlist(tools::package_dependencies(
     c("sess","ps"), database, which=c("Depends","Imports","LinkingTo"), recursive=TRUE))))
 for (package in dependencies) {
     if (!is.na(database[package,"Priority"]) || dir.exists(file.path(private,package))) next
@@ -90,65 +113,110 @@ stopifnot(file.exists(file.path(user,"vscrlibprobe","DESCRIPTION")),
           identical(before,.libPaths()))
 sess::interactive_stop()
 cat("Private bridge dependencies loaded; user package installed into the user library.")
-`);
+`,
+        );
         try {
             await new Promise<void>((resolve, reject) => {
                 server.once('error', reject);
                 server.listen(endpoint, resolve);
             });
             const stdout = await new Promise<string>((resolve, reject) => {
-                const child = execFile('R', ['--vanilla', '--quiet', '--interactive'], { timeout: 60000 },
-                    (error, stdout, stderr) => error ? reject(new Error(stderr, { cause: error })) : resolve(stdout));
+                const child = execFile(
+                    'R',
+                    ['--vanilla', '--quiet', '--interactive'],
+                    { timeout: 60000 },
+                    (error, stdout, stderr) =>
+                        error ? reject(new Error(stderr, { cause: error })) : resolve(stdout),
+                );
                 child.stdin!.end(`tryCatch(source(${rString(script)}), error=function(e) {
     message(conditionMessage(e)); quit(save="no",status=1)
 })
 quit(save="no")
 `);
             });
-            assert.match(stdout, /Private bridge dependencies loaded; user package installed into the user library/);
+            assert.match(
+                stdout,
+                /Private bridge dependencies loaded; user package installed into the user library/,
+            );
             assert.match(received, /"method":"attach"/);
         } finally {
-            for (const socket of sockets) { socket.destroy(); }
-            await new Promise<void>(resolve => server.close(() => resolve()));
+            for (const socket of sockets) {
+                socket.destroy();
+            }
+            await new Promise<void>((resolve) => server.close(() => resolve()));
             fs.rmSync(socketRoot, { recursive: true, force: true });
             fs.rmSync(path.join(userLibrary, 'vscrlibprobe'), { recursive: true, force: true });
         }
     });
 
     async function check(directory: string, renv: boolean): Promise<void> {
-        const previous = { R_PROFILE_USER: process.env.R_PROFILE_USER, R_LIBS: process.env.R_LIBS,
-            RENV_PATHS_ROOT: process.env.RENV_PATHS_ROOT };
+        const previous = {
+            R_PROFILE_USER: process.env.R_PROFILE_USER,
+            R_LIBS: process.env.R_LIBS,
+            RENV_PATHS_ROOT: process.env.RENV_PATHS_ROOT,
+        };
         // Let R discover this project's profile normally. Forcing R_PROFILE_USER
         // into R CMD INSTALL children makes renv recursively source that profile.
         delete process.env.R_PROFILE_USER;
         process.env.R_LIBS = [userLibrary, previous.R_LIBS].filter(Boolean).join(path.delimiter);
         process.env.RENV_PATHS_ROOT = path.join(root, 'renv-state');
         const id = randomUUID();
-        const agent = new SessionAgent({ id, generation: randomUUID(), label: 'Library test', directory,
-            storage: path.join(root, id), rPath: 'R', library: runtime.library, resources: runtime.resources,
-            provider: 'arf', arfPath: process.env.ARF_PATH ?? 'arf',
-            supervision: 'test', plotBackend: 'auto', historyLimit: 10, maxOutputBytes: 1048576, maxJournalBytes: 16777216 });
+        const agent = new SessionAgent({
+            id,
+            generation: randomUUID(),
+            label: 'Library test',
+            directory,
+            storage: path.join(root, id),
+            rPath: 'R',
+            library: runtime.library,
+            resources: runtime.resources,
+            provider: 'arf',
+            arfPath: process.env.ARF_PATH ?? 'arf',
+            supervision: 'test',
+            plotBackend: 'auto',
+            historyLimit: 10,
+            maxOutputBytes: 1048576,
+            maxJournalBytes: 16777216,
+        });
         let client: AgentClient | undefined;
         const events: SessionEvent[] = [];
         const until = async (predicate: () => boolean, timeout = 20000): Promise<void> => {
             const deadline = Date.now() + timeout;
             while (!predicate()) {
-                if (Date.now() > deadline) { assert.fail(JSON.stringify(events.slice(-10))); }
-                await new Promise(resolve => setTimeout(resolve, 25));
+                if (Date.now() > deadline) {
+                    assert.fail(JSON.stringify(events.slice(-10)));
+                }
+                await new Promise((resolve) => setTimeout(resolve, 25));
             }
         };
         try {
-            client = new AgentClient(await agent.start()); await client.connect();
-            client.on('event', (event: SessionEvent) => events.push(event)); await client.subscribe(0);
-            await until(() => events.some(event => event.type === 'state' && event.data.status === 'idle'));
+            client = new AgentClient(await agent.start());
+            await client.connect();
+            client.on('event', (event: SessionEvent) => events.push(event));
+            await client.subscribe(0);
+            await until(() =>
+                events.some((event) => event.type === 'state' && event.data.status === 'idle'),
+            );
             const execute = async (code: string): Promise<void> => {
                 const execution = randomUUID();
                 await client?.request('submit', { submission: { id: execution, code } });
                 // R/renv installations involve subprocesses and can take longer
                 // on shared CI runners than ordinary cell evaluation.
-                await until(() => events.some(event => event.type === 'finished' && event.executionId === execution), 60000);
-                const record = await client?.request<{ state: string }>('execution', { id: execution });
-                assert.strictEqual(record?.state, 'success', JSON.stringify(events.filter(event => event.executionId === execution)));
+                await until(
+                    () =>
+                        events.some(
+                            (event) => event.type === 'finished' && event.executionId === execution,
+                        ),
+                    60000,
+                );
+                const record = await client?.request<{ state: string }>('execution', {
+                    id: execution,
+                });
+                assert.strictEqual(
+                    record?.state,
+                    'success',
+                    JSON.stringify(events.filter((event) => event.executionId === execution)),
+                );
             };
             const libraries = (await client.snapshot()).manifest.libraryPaths;
             assert.ok(libraries?.length);
@@ -161,11 +229,15 @@ install.packages(${rString(probe)}, repos = NULL, type = "source")
 stopifnot(file.exists(file.path(startup_library_paths[[1L]], "vscrlibprobe", "DESCRIPTION")),
   identical(.libPaths(), startup_library_paths), vscrlibprobe::answer() == 42)
 plot(1:3, main = "Libraries preserved")`);
-            assert.ok(events.some(event => event.data.kind === 'plot' || event.data.kind === 'image'));
+            assert.ok(
+                events.some((event) => event.data.kind === 'plot' || event.data.kind === 'image'),
+            );
             if (renv) {
                 // The bridge must be able to use dependencies loaded lazily by
                 // processx on Linux without exposing the whole host library.
-                await execute('stopifnot(ps::ps_pid() == Sys.getpid(), identical(.libPaths(), startup_library_paths))');
+                await execute(
+                    'stopifnot(ps::ps_pid() == Sys.getpid(), identical(.libPaths(), startup_library_paths))',
+                );
                 // Record the local fixture's source so this also tests a real
                 // offline restore, rather than forcing an unreproducible lockfile.
                 await execute(`renv::install(${rString(probe)}, rebuild = TRUE, prompt = FALSE)
@@ -180,25 +252,47 @@ stopifnot(vscrlibprobe::answer() == 42, identical(.libPaths(), startup_library_p
             await execute('stopifnot(vscrlibprobe::answer() == 42); cat("still usable")');
             assert.ok(!fs.existsSync(path.join(runtime.library, 'vscrlibprobe')));
         } finally {
-            client?.close(); await agent.close();
-            await new Promise(resolve => setTimeout(resolve, 200));
+            client?.close();
+            await agent.close();
+            await new Promise((resolve) => setTimeout(resolve, 200));
             for (const [key, value] of Object.entries(previous)) {
-                if (value === undefined) { delete process.env[key]; } else { process.env[key] = value; }
+                if (value === undefined) {
+                    delete process.env[key];
+                } else {
+                    process.env[key] = value;
+                }
             }
         }
     }
 
     test('preserves profile library order and installs into the normal user library', async () => {
-        const directory = path.join(root, 'ordinary'); fs.mkdirSync(directory);
-        fs.writeFileSync(path.join(directory, '.Rprofile'), `cat("Starting profile λ\\n{\\"profile\\":true}\\n")\n.libPaths(c(${rString(userLibrary)}, .libPaths()))` + startup);
+        const directory = path.join(root, 'ordinary');
+        fs.mkdirSync(directory);
+        fs.writeFileSync(
+            path.join(directory, '.Rprofile'),
+            `cat("Starting profile λ\\n{\\"profile\\":true}\\n")\n.libPaths(c(${rString(userLibrary)}, .libPaths()))` +
+                startup,
+        );
         await check(directory, false);
     });
 
     test('preserves renv isolation, project installs and snapshots without adding the bridge', async () => {
-        const directory = path.join(root, 'project'); fs.mkdirSync(directory);
-        await run('R', ['--vanilla', '--slave', '-e', 'options(renv.consent=TRUE); renv::init(bare=TRUE, force=TRUE)'], {
-            cwd: directory, env: { ...process.env, RENV_PATHS_ROOT: path.join(root, 'renv-state') }, timeout: 30000,
-        });
+        const directory = path.join(root, 'project');
+        fs.mkdirSync(directory);
+        await run(
+            'R',
+            [
+                '--vanilla',
+                '--slave',
+                '-e',
+                'options(renv.consent=TRUE); renv::init(bare=TRUE, force=TRUE)',
+            ],
+            {
+                cwd: directory,
+                env: { ...process.env, RENV_PATHS_ROOT: path.join(root, 'renv-state') },
+                timeout: 30000,
+            },
+        );
         fs.appendFileSync(path.join(directory, '.Rprofile'), startup);
         await check(directory, true);
     });

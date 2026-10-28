@@ -7,6 +7,10 @@
         "out": true // set this to false to include "out" folder in search results
     },
     "r.lsp.diagnostics": true,
+    "[typescript][typescriptreact]": {
+        "editor.defaultFormatter": "oxc.oxc-vscode",
+        "editor.formatOnSave": true
+    },
     "editor.codeActionsOnSave": {
         "source.fixAll.markdownlint": "explicit"
     }

@@ -2,7 +2,7 @@
   "name": "r",
   "displayName": "R",
   "description": "R Extension for Visual Studio Code",
-  "version": "3.0.1",
+  "version": "3.2.1",
   "packageManager": "pnpm@11.27.1",
   "author": "REditorSupport",
   "license": "SEE LICENSE IN LICENSE",
@@ -27,7 +27,7 @@
     "R Markdown"
   ],
   "engines": {
-    "vscode": "^1.98.2"
+    "vscode": "^1.101.0"
   },
   "activationEvents": [
     "workspaceContains:**/*.{rproj,Rproj,r,R,rd,Rd,rmd,Rmd}",
@@ -2101,7 +2101,7 @@
         "r.session.emulateRStudioAPI": {
           "type": "boolean",
           "default": true,
-          "markdownDescription": "Emulate the RStudio API for addin support and other {rstudioapi} calls. Requires `#r.sessionWatcher#` to be set to `true`."
+          "markdownDescription": "Emulate the RStudio API for addin support and other {rstudioapi} calls. Requires `#r.sessionWatcher#` to be set to `true`. If {rstudioapi} is not installed, vscode-R can offer to install it into a vscode-R-managed library."
         },
         "r.session.data.pageSize": {
           "type": "integer",
@@ -2604,10 +2604,16 @@
     "test:node": "mocha \"out/test/node/**/*.test.js\" --config .mocharc.interactive.cjs",
     "test:extension": "vscode-test",
     "lint": "oxlint src",
+    "format": "oxfmt .",
+    "format:check": "oxfmt --check .",
     "typecheck": "tsc --noEmit -p ./",
     "test:sess-identity": "Rscript --vanilla R/tests/sess_source.R",
     "test:sess-attach": "Rscript --vanilla R/tests/attach_sess.R",
     "test:sess-source": "node --test scripts/sess-source.test.js && pnpm run test:sess-identity && pnpm run test:sess-attach",
+    "test:tool-library": "Rscript --vanilla R/tests/tool-library.R",
+    "test:tool-consent": "Rscript --vanilla R/tests/tool-consent.R",
+    "test:prepare-jgd": "Rscript --vanilla R/tests/prepare-jgd.R",
+    "test:prepare-rstudioapi": "Rscript --vanilla R/tests/prepare-rstudioapi.R",
     "test:interactive": "pnpm run pretest && pnpm run test:node",
     "test:interactive:examples": "pnpm run compile && tsc && node src/test/examples/run.cjs"
   },
@@ -2617,27 +2623,28 @@
     "@types/mocha": "^8.2.3",
     "@types/node": "^22.20.5",
     "@types/sinon": "^10.0.20",
-    "@types/vscode": "~1.94.0",
+    "@types/vscode": "~1.101.0",
     "@types/winreg": "^1.2.36",
-    "@vscode/test-cli": "^0.0.12",
+    "@vscode/test-cli": "^0.0.15",
     "@vscode/test-electron": "^3.1.0",
     "@vscode/vsce": "^3.6.0",
     "esbuild": "^0.28.1",
     "git-cliff": "^2.12.0",
     "glob": "^13.0.6",
-    "mocha": "^11.7.5",
+    "mocha": "^12.0.3",
     "ovsx": "^0.10.8",
+    "oxfmt": "0.73.0",
     "sinon": "^15.2.0",
     "typescript": "~7.0.2",
-    "oxlint": "^1.86.0",
-    "oxlint-tsgolint": "~7.0.2003"
+    "oxlint": "^1.88.0",
+    "oxlint-tsgolint": "~7.0.2004"
   },
   "dependencies": {
     "@vscode/codicons": "0.0.46-24",
     "ag-grid-community": "^36.2.0",
-    "cheerio": "1.0.0-rc.12",
-    "ejs": "^3.1.10",
-    "highlight.js": "^11.11.1",
+    "cheerio": "1.2.0",
+    "ejs": "^7.0.1",
+    "highlight.js": "^11.12.0",
     "js-yaml": "^4.3.2",
     "vscode-languageclient": "^10.1.2",
     "winreg": "^1.2.5"

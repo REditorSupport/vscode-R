@@ -39,7 +39,7 @@ export class LineCache {
 }
 
 function isQuote(c: string) {
-    return c === '"' || c === '\'' || c === '`';
+    return c === '"' || c === "'" || c === '`';
 }
 
 function isComment(c: string) {
@@ -51,6 +51,13 @@ export function cleanLine(text: string): string {
     let withinQuotes = null;
     for (let i = 0; i < text.length; i++) {
         const c = text[i];
+        if (withinQuotes && c === '\\') {
+            cleaned += c;
+            if (i + 1 < text.length) {
+                cleaned += text[++i];
+            }
+            continue;
+        }
         if (isQuote(c)) {
             if (withinQuotes === null) {
                 withinQuotes = c;
@@ -64,12 +71,14 @@ export function cleanLine(text: string): string {
 
         cleaned += c;
     }
-    return (cleaned.trimEnd());
+    return cleaned.trimEnd();
 }
 
 function doesLineEndInOperator(text: string) {
-    const endingOperatorIndex = text.search(/(\(|,|\+|!|\$|\^|&|\*|-|=|:|~|\||\/|\?|<|>|%.*%)(\s*|\s*#.*)$/);
+    const endingOperatorIndex = text.search(
+        /(\(|,|\+|!|\$|\^|&|\*|-|=|:|~|\||\/|\?|<|>|%.*%)(\s*|\s*#.*)$/,
+    );
     const spacesOnlyIndex = text.search(/^\s*$/);
 
-    return ((endingOperatorIndex >= 0) || (spacesOnlyIndex >= 0));
+    return endingOperatorIndex >= 0 || spacesOnlyIndex >= 0;
 }

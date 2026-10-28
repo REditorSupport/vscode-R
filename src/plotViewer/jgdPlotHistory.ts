@@ -85,7 +85,9 @@ export class PlotHistory {
             latest.ops.push(op);
         }
         latest.device = plot.device;
-        if (plot.frameExt) { latest.frameExt = plot.frameExt; }
+        if (plot.frameExt) {
+            latest.frameExt = plot.frameExt;
+        }
         this.activeSessionId = sessionId;
         this.emitter.emit('change');
         return true;
@@ -96,7 +98,7 @@ export class PlotHistory {
         if (!session) {
             return false;
         }
-        const idx = session.plots.findIndex(p => p.rIndex === rIndex);
+        const idx = session.plots.findIndex((p) => p.rIndex === rIndex);
         if (idx < 0) {
             return false;
         }
@@ -117,7 +119,11 @@ export class PlotHistory {
             return true;
         }
         const old = session.plots[session.plots.length - 1];
-        if (expectedRIndex !== undefined && old?.rIndex !== undefined && old.rIndex !== expectedRIndex) {
+        if (
+            expectedRIndex !== undefined &&
+            old?.rIndex !== undefined &&
+            old.rIndex !== expectedRIndex
+        ) {
             return false;
         }
         if (old?.rIndex !== undefined) {
@@ -202,7 +208,7 @@ export class PlotHistory {
         if (!session || session.plots.length === 0) {
             return null;
         }
-        const wasLatest = (session.currentIndex === session.plots.length - 1);
+        const wasLatest = session.currentIndex === session.plots.length - 1;
         session.plots.splice(session.currentIndex, 1);
         if (wasLatest) {
             session.latestDeleted = true;

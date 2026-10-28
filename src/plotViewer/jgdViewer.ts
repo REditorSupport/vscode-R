@@ -135,10 +135,16 @@ export class JgdManager {
         this.server.start();
 
         this.historyChangeDisposable = this.history.onDidChange(() => {
-            void vscode.commands.executeCommand('setContext', 'r.plot.canGoBack',
-                this.history.currentIndex() > 1);
-            void vscode.commands.executeCommand('setContext', 'r.plot.canGoForward',
-                this.history.currentIndex() < this.history.count());
+            void vscode.commands.executeCommand(
+                'setContext',
+                'r.plot.canGoBack',
+                this.history.currentIndex() > 1,
+            );
+            void vscode.commands.executeCommand(
+                'setContext',
+                'r.plot.canGoForward',
+                this.history.currentIndex() < this.history.count(),
+            );
         });
     }
 
@@ -205,7 +211,10 @@ export class JgdViewer implements PlotViewer {
                 if (plot) {
                     this.sendPlotToWebview(plot);
                     this.updateToolbar();
-                    if (plot.device.width !== this.panelWidth || plot.device.height !== this.panelHeight) {
+                    if (
+                        plot.device.width !== this.panelWidth ||
+                        plot.device.height !== this.panelHeight
+                    ) {
                         this.server.handleResize(this.panelWidth, this.panelHeight);
                     }
                 }
@@ -216,7 +225,10 @@ export class JgdViewer implements PlotViewer {
                 if (plot) {
                     this.sendPlotToWebview(plot);
                     this.updateToolbar();
-                    if (plot.device.width !== this.panelWidth || plot.device.height !== this.panelHeight) {
+                    if (
+                        plot.device.width !== this.panelWidth ||
+                        plot.device.height !== this.panelHeight
+                    ) {
                         this.server.handleResize(this.panelWidth, this.panelHeight);
                     }
                 }
@@ -303,7 +315,7 @@ export class JgdViewer implements PlotViewer {
         void this.panel?.webview.postMessage({
             type: 'toolbar',
             current: this.history.currentIndex(),
-            total: this.history.count()
+            total: this.history.count(),
         });
     }
 
@@ -379,7 +391,7 @@ export class JgdViewer implements PlotViewer {
                 const result: MetricsCacheEntry = {
                     width: baseCached.width * scale,
                     ascent: baseCached.ascent * scale,
-                    descent: baseCached.descent * scale
+                    descent: baseCached.descent * scale,
                 };
                 this.metricsCache.set(cacheKey, result);
                 return { type: 'metrics_response', id: request.id, ...result };
@@ -393,7 +405,11 @@ export class JgdViewer implements PlotViewer {
         return new Promise((resolve) => {
             const id = ++this.metricsIdCounter;
             this.pendingMetrics.set(id, (response: MetricsResponse) => {
-                this.metricsCache.set(cacheKey, { width: response.width, ascent: response.ascent, descent: response.descent });
+                this.metricsCache.set(cacheKey, {
+                    width: response.width,
+                    ascent: response.ascent,
+                    descent: response.descent,
+                });
                 resolve(response);
             });
             void this.panel!.webview.postMessage({
@@ -403,20 +419,27 @@ export class JgdViewer implements PlotViewer {
                 kind: request.kind,
                 str: request.str,
                 c: request.c,
-                gc: request.gc
+                gc: request.gc,
             });
 
             setTimeout(() => {
                 if (this.pendingMetrics.has(id)) {
                     this.pendingMetrics.delete(id);
-                    resolve({ type: 'metrics_response', id: request.id, width: 0, ascent: 0, descent: 0 });
+                    resolve({
+                        type: 'metrics_response',
+                        id: request.id,
+                        width: 0,
+                        ascent: 0,
+                        descent: 0,
+                    });
                 }
             }, 500);
         });
     }
 
     private createPanel(preserveFocus = false) {
-        const viewColumnConfig = config().get<Record<string, string>>('session.viewers.viewColumn') ?? {};
+        const viewColumnConfig =
+            config().get<Record<string, string>>('session.viewers.viewColumn') ?? {};
         const plotColumn = viewColumnConfig['plot'] ?? 'Two';
         let viewColumn = vscode.ViewColumn.Two;
         if (plotColumn === 'Active') {
@@ -432,7 +455,7 @@ export class JgdViewer implements PlotViewer {
             {
                 enableScripts: true,
                 retainContextWhenHidden: true,
-            }
+            },
         );
 
         this.panel.iconPath = new UriIcon('graph');
@@ -449,7 +472,7 @@ export class JgdViewer implements PlotViewer {
                             id: raw.originalId,
                             width: raw.width,
                             ascent: raw.ascent,
-                            descent: raw.descent
+                            descent: raw.descent,
                         });
                     }
                     break;
@@ -457,7 +480,11 @@ export class JgdViewer implements PlotViewer {
                 case 'metrics_warmup': {
                     if (raw.entries && Array.isArray(raw.entries)) {
                         for (const e of raw.entries) {
-                            this.metricsCache.set(e.key, { width: e.width, ascent: e.ascent, descent: e.descent });
+                            this.metricsCache.set(e.key, {
+                                width: e.width,
+                                ascent: e.ascent,
+                                descent: e.descent,
+                            });
                         }
                     }
                     break;
@@ -510,7 +537,9 @@ export class JgdViewer implements PlotViewer {
                 if (!m) {
                     return 'Enter as "7 x 5 @ 150" (inches @ DPI)';
                 }
-                const w = parseFloat(m[1]), h = parseFloat(m[2]), dpi = parseInt(m[3] || '150');
+                const w = parseFloat(m[1]),
+                    h = parseFloat(m[2]),
+                    dpi = parseInt(m[3] || '150');
                 if (w < 0.5 || h < 0.5 || w > 50 || h > 50) {
                     return 'Dimensions must be 0.5–50 inches';
                 }
@@ -518,7 +547,7 @@ export class JgdViewer implements PlotViewer {
                     return 'DPI must be 36–600';
                 }
                 return null;
-            }
+            },
         });
         if (!input) {
             return;
@@ -542,7 +571,7 @@ export class JgdViewer implements PlotViewer {
         const ext = msg.format;
         const uri = await vscode.window.showSaveDialog({
             filters: { [filters[ext]?.[0] ?? ext]: [ext] },
-            defaultUri: vscode.Uri.file(`plot.${ext}`)
+            defaultUri: vscode.Uri.file(`plot.${ext}`),
         });
         if (!uri) {
             return;

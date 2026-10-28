@@ -1,4 +1,3 @@
-
 export interface PlotViewer {
     readonly id: string;
     show(preserveFocus?: boolean): void;

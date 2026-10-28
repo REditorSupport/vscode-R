@@ -36,7 +36,32 @@ workspace_child_count <- function(object) {
   }
 }
 
-get_workspace_data <- function() {
+# Read structural metadata without invoking arbitrary S3 inspection methods.
+# Expensive/custom completion still runs through handle_complete() on demand.
+workspace_length <- function(object) {
+  if (is.environment(object)) return(length(workspace_env_names(object)))
+  if (isS4(object)) return(NULL)
+  if (inherits(object, "POSIXlt")) return(length(.subset2(object, 1L)))
+  if (is.data.frame(object)) return(length(attr(object, "names", exact = TRUE)))
+  if (!is.object(object)) return(length(object))
+  dimensions <- attr(object, "dim", exact = TRUE)
+  if (!is.null(dimensions)) return(prod(dimensions))
+  object_names <- attr(object, "names", exact = TRUE)
+  if (!is.null(object_names)) return(length(object_names))
+  if (typeof(object) %in% c("closure", "builtin")) return(1L)
+  # unclass() can copy an entire classed vector. Check dispatch before using the
+  # primitive length instead; unknown custom lengths belong to explicit queries.
+  registry <- get(".__S3MethodsTable__.", envir = .BaseNamespaceEnv, inherits = FALSE)
+  has_method <- any(vapply(paste0("length.", c(class(object), "default")), function(method) {
+    # exists(mode = "any") does not force active bindings or promises. Treat an
+    # ambiguous binding as a method; getS3method's function lookup would force it.
+    exists(method, envir = .GlobalEnv, mode = "any", inherits = TRUE) ||
+      exists(method, envir = registry, mode = "any", inherits = FALSE)
+  }, logical(1)))
+  if (has_method) NULL else length(object)
+}
+
+get_workspace_data <- function(revision = NULL) {
   env <- .GlobalEnv
   all_names <- workspace_env_names(env)
 
@@ -54,8 +79,12 @@ get_workspace_data <- function() {
     obj <- env[[name]]
     obj_class <- class(obj)
     obj_type <- typeof(obj)
-    obj_length <- length(obj)
-    obj_dim <- dim(obj)
+    obj_length <- workspace_length(obj)
+    obj_dim <- if (is.data.frame(obj)) {
+      c(.row_names_info(obj, 2L), obj_length)
+    } else {
+      attr(obj, "dim", exact = TRUE)
+    }
     first_class <- if (length(obj_class)) obj_class[[1]] else obj_type
     info <- list(
       class = class(obj),
@@ -66,17 +95,25 @@ get_workspace_data <- function() {
       } else if (obj_type == "environment") {
         "<environment>"
       } else if (obj_type %in% c("closure", "builtin")) {
-        trimws(try_capture_str(obj))
+        trimws(try_capture_str(if (is.object(obj)) unclass(obj) else obj))
+      } else if (is.null(obj_length)) {
+        first_class
       } else {
         paste0(first_class, ", length ", obj_length)
       },
-      has_children = workspace_child_count(obj) > 0L
+      has_children = if (is.environment(obj)) {
+        obj_length > 0L
+      } else if (isS4(obj)) {
+        length(methods::slotNames(obj)) > 0L
+      } else {
+        !inherits(obj, "POSIXlt") && obj_type %in% c("list", "pairlist") &&
+          (is.null(obj_length) || obj_length > 0L)
+      }
     )
+    if (is.null(obj_length)) info$length <- NULL
 
-    obj_names <- if (is.object(obj)) {
-      utils::.DollarNames(obj, pattern = "")
-    } else if (is.recursive(obj)) {
-      names(obj)
+    obj_names <- if (obj_type %in% c("list", "pairlist")) {
+      attr(obj, "names", exact = TRUE)
     } else {
       NULL
     }
@@ -95,11 +132,23 @@ get_workspace_data <- function() {
   })
   names(objs) <- all_names
 
-  list(
+  snapshot <- list(
     globalenv = objs,
     search = search()[-1],
     loaded_namespaces = loadedNamespaces()
   )
+  # Compare metadata after inspecting every binding: reference objects can mutate
+  # in place, and R task callbacks do not cover every embedding's evaluation.
+  if (!identical(snapshot, .sess_env$workspace_snapshot)) {
+    .sess_env$workspace_snapshot <- snapshot
+    .sess_env$workspace_revision <- (.sess_env$workspace_revision %||% 0) + 1
+  }
+  current_revision <- .sess_env$workspace_revision
+  if (length(revision) == 1L && is.numeric(revision) &&
+        is.finite(revision) && identical(as.numeric(revision), current_revision)) {
+    return(list(revision = current_revision, unchanged = TRUE))
+  }
+  c(snapshot, list(revision = current_revision))
 }
 
 workspace_object <- function(name, path = list()) {

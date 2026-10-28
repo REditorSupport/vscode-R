@@ -79,7 +79,7 @@ sess_load_namespace <- function(library, revision, normal_libraries = .libPaths(
     if ("processx" %in% imports) {
         loadNamespace("ps", lib.loc = support_paths)
     }
-    for (package in intersect(c("jsonlite", "later", "processx", "rstudioapi"), imports)) {
+    for (package in intersect(c("jsonlite", "later", "processx"), imports)) {
         loadNamespace(package, lib.loc = support_paths)
     }
     ns <- loadNamespace("sess", lib.loc = paths)

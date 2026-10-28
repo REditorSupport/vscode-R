@@ -13,16 +13,25 @@ import { SessionAgent } from '../../interactive/agentMain';
 import { AgentClient } from '../../interactive/client';
 import { InteractiveSerializer, DISPLAY_MIME } from '../../interactive/notebook';
 import { AgentConfig, SessionManifest } from '../../interactive/protocol';
+import type { SessionEvent } from '../../interactive/protocol';
+import type { Transcript, TranscriptCell } from '../../interactive/transcript';
+import type { NotebookOutputState } from '../../interactive/notebookOutput';
 import { AssetStorageStats, exportedAssetName, readAsset } from '../../interactive/assets';
 import { resolveExecutable } from '../../interactive/executable';
 import { shellQuote } from '../../interactive/launcher';
 import type { InteractiveManager } from '../../interactive/manager';
 import type { GlobalEnvItem, WorkspaceDataProvider } from '../../workspaceViewer';
 import type { WorkspaceData } from '../../session';
-import { LanguageClient, State, StreamMessageReader, StreamMessageWriter, createMessageConnection } from 'vscode-languageclient/node';
+import {
+    LanguageClient,
+    State,
+    StreamMessageReader,
+    StreamMessageWriter,
+    createMessageConnection,
+} from 'vscode-languageclient/node';
 
 function treeTooltip(item: vscode.TreeItem): string {
-    return typeof item.tooltip === 'string' ? item.tooltip : item.tooltip?.value ?? '';
+    return typeof item.tooltip === 'string' ? item.tooltip : (item.tooltip?.value ?? '');
 }
 
 (process.platform === 'win32' ? suite.skip : suite)('Interactive VS Code integration', function () {
@@ -39,24 +48,39 @@ function treeTooltip(item: vscode.TreeItem): string {
     let originalTabs: Set<vscode.Tab>;
     let originalLanguageClients: Set<LanguageClient>;
     suiteSetup(async () => {
-        originalTabs = new Set(vscode.window.tabGroups.all.flatMap(group => group.tabs));
+        originalTabs = new Set(vscode.window.tabGroups.all.flatMap((group) => group.tabs));
         // Match R's cwd and temporary root on macOS as well as Linux. Symlinked
         // /var or /tmp paths otherwise hide languageserver's temp-file filter.
         previousTmpdir = process.env.TMPDIR;
         process.env.TMPDIR = fs.realpathSync(os.tmpdir());
         root = fs.mkdtempSync(path.join(os.tmpdir(), 'r-interactive-editor-'));
-        previousStorage = vscode.workspace.getConfiguration('r').inspect<string>('interactive.storagePath')?.globalValue;
-        await vscode.workspace.getConfiguration('r').update('interactive.storagePath', root, vscode.ConfigurationTarget.Global);
+        previousStorage = vscode.workspace
+            .getConfiguration('r')
+            .inspect<string>('interactive.storagePath')?.globalValue;
+        await vscode.workspace
+            .getConfiguration('r')
+            .update('interactive.storagePath', root, vscode.ConfigurationTarget.Global);
         // Reproduce the user profile setting that makes lintr read virtual cell paths.
-        fs.writeFileSync(path.join(root, '.Rprofile'), 'options(languageserver.lint_cache = TRUE)\n');
+        fs.writeFileSync(
+            path.join(root, '.Rprofile'),
+            'options(languageserver.lint_cache = TRUE)\n',
+        );
         previousRProfile = process.env.R_PROFILE_USER;
         process.env.R_PROFILE_USER = path.join(root, '.Rprofile');
         fs.mkdirSync(path.join(root, 'library'));
         fs.cpSync(path.join(process.cwd(), 'sess'), path.join(root, 'sess'), { recursive: true });
-        await promisify(execFile)('R', ['CMD', 'INSTALL', '--clean', `--library=${path.join(root, 'library')}`, path.join(root, 'sess')]);
+        await promisify(execFile)('R', [
+            'CMD',
+            'INSTALL',
+            '--clean',
+            `--library=${path.join(root, 'library')}`,
+            path.join(root, 'sess'),
+        ]);
         await vscode.extensions.getExtension('REditorSupport.r')?.activate();
-        await until(() => [...languageService().clients.values()].some(client => client.isRunning()),
-            'Timed out starting the R language server for Interactive language-service integration tests');
+        await until(
+            () => [...languageService().clients.values()].some((client) => client.isRunning()),
+            'Timed out starting the R language server for Interactive language-service integration tests',
+        );
         originalLanguageClients = new Set(languageService().clients.values());
         // Startup restoration may activate R before this suite configures its private
         // registry. Recreate only the manager, just as a host reload would do.
@@ -64,36 +88,68 @@ function treeTooltip(item: vscode.TreeItem): string {
         previousConnections = context.workspaceState.get('r.interactive.connections');
         await context.workspaceState.update('r.interactive.connections', []);
         recreateManager(context);
-        agents = []; manifests = [];
+        agents = [];
+        manifests = [];
         for (let i = 0; i < 2; i++) {
             const id = randomUUID();
-            const config: AgentConfig = { id, generation: randomUUID(), label: `Editor test ${i}`,
-                directory: root, storage: path.join(root, id), library: path.join(root, 'library'),
-                rPath: 'R', resources: path.join(process.cwd(), 'R'), provider: 'arf', arfPath: process.env.ARF_PATH ?? 'arf', supervision: 'detached',
-                plotBackend: 'auto', historyLimit: 50, maxOutputBytes: 1048576, maxJournalBytes: 16777216 };
+            const config: AgentConfig = {
+                id,
+                generation: randomUUID(),
+                label: `Editor test ${i}`,
+                directory: root,
+                storage: path.join(root, id),
+                library: path.join(root, 'library'),
+                rPath: 'R',
+                resources: path.join(process.cwd(), 'R'),
+                provider: 'arf',
+                arfPath: process.env.ARF_PATH ?? 'arf',
+                supervision: 'detached',
+                plotBackend: 'auto',
+                historyLimit: 50,
+                maxOutputBytes: 1048576,
+                maxJournalBytes: 16777216,
+            };
             const agent = new SessionAgent(config);
-            agents.push(agent); manifests.push(await agent.start());
+            agents.push(agent);
+            manifests.push(await agent.start());
             fs.writeFileSync(path.join(config.storage, 'config.json'), JSON.stringify(config));
         }
     });
     suiteTeardown(async () => {
-        if (previousTmpdir === undefined) { delete process.env.TMPDIR; }
-        else { process.env.TMPDIR = previousTmpdir; }
-        if (previousRProfile === undefined) { delete process.env.R_PROFILE_USER; }
-        else { process.env.R_PROFILE_USER = previousRProfile; }
+        if (previousTmpdir === undefined) {
+            delete process.env.TMPDIR;
+        } else {
+            process.env.TMPDIR = previousTmpdir;
+        }
+        if (previousRProfile === undefined) {
+            delete process.env.R_PROFILE_USER;
+        } else {
+            process.env.R_PROFILE_USER = previousRProfile;
+        }
         await vscode.commands.executeCommand('r.interactive.detach');
-        await vscode.workspace.getConfiguration('r').update('interactive.storagePath', previousStorage, vscode.ConfigurationTarget.Global);
-        await bundleContext().workspaceState.update('r.interactive.connections', previousConnections);
-        await Promise.all(agents?.map(agent => agent.close()) ?? []);
+        await vscode.workspace
+            .getConfiguration('r')
+            .update('interactive.storagePath', previousStorage, vscode.ConfigurationTarget.Global);
+        await bundleContext().workspaceState.update(
+            'r.interactive.connections',
+            previousConnections,
+        );
+        await Promise.all(agents?.map((agent) => agent.close()) ?? []);
         const service = languageService();
         await Promise.all(service.clientUpdates.values());
-        const clients = new Set([...service.clients.values()].filter(client => !originalLanguageClients.has(client)));
+        const clients = new Set(
+            [...service.clients.values()].filter((client) => !originalLanguageClients.has(client)),
+        );
         // Await shutdown before tab-close handlers can start an unobserved stop.
         await Promise.all([...clients].map(stopLanguageClient));
         // Detach retains editors. Close this suite's tabs and await its language
         // servers before deleting directories that those R processes use as cwd.
-        await vscode.window.tabGroups.close(vscode.window.tabGroups.all.flatMap(group => group.tabs)
-            .filter(tab => !originalTabs.has(tab)), true);
+        await vscode.window.tabGroups.close(
+            vscode.window.tabGroups.all
+                .flatMap((group) => group.tabs)
+                .filter((tab) => !originalTabs.has(tab)),
+            true,
+        );
         await Promise.all(service.clientUpdates.values());
         for (const [key, client] of service.clients) {
             if (!originalLanguageClients.has(client)) {
@@ -102,9 +158,11 @@ function treeTooltip(item: vscode.TreeItem): string {
             }
         }
         await Promise.all([...clients].map(stopLanguageClient));
-        await new Promise(resolve => setTimeout(resolve, 200));
+        await new Promise((resolve) => setTimeout(resolve, 200));
         fs.rmSync(root, { recursive: true, force: true });
-        sourceDirectories.forEach(directory => fs.rmSync(directory, { recursive: true, force: true }));
+        sourceDirectories.forEach((directory) =>
+            fs.rmSync(directory, { recursive: true, force: true }),
+        );
     });
     const until = async (
         predicate: () => boolean,
@@ -113,51 +171,80 @@ function treeTooltip(item: vscode.TreeItem): string {
         const deadline = Date.now() + 20000;
         while (!predicate()) {
             if (Date.now() > deadline) {
-                throw new Error(typeof timeoutMessage === 'function' ? timeoutMessage() : timeoutMessage);
+                throw new Error(
+                    typeof timeoutMessage === 'function' ? timeoutMessage() : timeoutMessage,
+                );
             }
-            await new Promise(resolve => setTimeout(resolve, 50));
+            await new Promise((resolve) => setTimeout(resolve, 50));
         }
     };
     function bundleContext(): vscode.ExtensionContext {
-        return (createRequire(__filename)(path.join(process.cwd(), 'dist/extension')) as { extensionContext: vscode.ExtensionContext }).extensionContext;
+        return (
+            createRequire(__filename)(path.join(process.cwd(), 'dist/extension')) as {
+                extensionContext: vscode.ExtensionContext;
+            }
+        ).extensionContext;
     }
     function workspaceProvider(): WorkspaceDataProvider {
-        return (createRequire(__filename)(path.join(process.cwd(), 'dist/extension')) as { rWorkspace: WorkspaceDataProvider }).rWorkspace;
+        return (
+            createRequire(__filename)(path.join(process.cwd(), 'dist/extension')) as {
+                rWorkspace: WorkspaceDataProvider;
+            }
+        ).rWorkspace;
     }
-    function languageService(): { clients: Map<string, LanguageClient>; clientUpdates: Map<string, Promise<void>> } {
-        const service = bundleContext().subscriptions.find(item =>
-            (item as { clients?: unknown }).clients instanceof Map) as ReturnType<typeof languageService> | undefined;
+    function languageService(): {
+        clients: Map<string, LanguageClient>;
+        clientUpdates: Map<string, Promise<void>>;
+    } {
+        const service = bundleContext().subscriptions.find(
+            (item) => (item as { clients?: unknown }).clients instanceof Map,
+        ) as ReturnType<typeof languageService> | undefined;
         assert.ok(service, 'Language service must be registered');
         return service;
     }
     function interactiveManager(context = bundleContext()): InteractiveManager {
         // The HTML Viewer manager also exposes open(); identify the Interactive
         // manager by its session tree as well, including after it is recreated.
-        const manager = context.subscriptions.find(item =>
-            typeof (item as InteractiveManager).open === 'function'
-            && typeof (item as InteractiveManager).getChildren === 'function') as InteractiveManager | undefined;
+        const manager = context.subscriptions.find(
+            (item) =>
+                typeof (item as InteractiveManager).open === 'function' &&
+                typeof (item as InteractiveManager).getChildren === 'function',
+        ) as InteractiveManager | undefined;
         assert.ok(manager, 'Interactive manager must be registered');
         return manager;
     }
     function recreateManager(context: vscode.ExtensionContext): void {
         const manager = interactiveManager(context);
         assert.ok(manager);
-        const Manager = (Object.getPrototypeOf(manager) as { constructor: typeof InteractiveManager }).constructor;
-        manager.dispose(); context.subscriptions.splice(context.subscriptions.indexOf(manager), 1);
+        const Manager = (
+            Object.getPrototypeOf(manager) as { constructor: typeof InteractiveManager }
+        ).constructor;
+        manager.dispose();
+        context.subscriptions.splice(context.subscriptions.indexOf(manager), 1);
         context.subscriptions.push(new Manager(context));
     }
     function nodeOverride(name: string): { executable: string; log: string } {
-        const node = resolveExecutable('node', root); assert.ok(node);
-        const directory = path.join(root, name); fs.mkdirSync(directory);
-        const executable = path.join(directory, 'node'), log = path.join(directory, 'launches');
-        fs.writeFileSync(executable, `#!/bin/sh\n[ -z "$ELECTRON_RUN_AS_NODE" ] || exit 1\nprintf '%s\\n' "$1" >>${shellQuote(log)}\nexec ${shellQuote(node)} "$@"\n`, { mode: 0o700 });
+        const node = resolveExecutable('node', root);
+        assert.ok(node);
+        const directory = path.join(root, name);
+        fs.mkdirSync(directory);
+        const executable = path.join(directory, 'node'),
+            log = path.join(directory, 'launches');
+        fs.writeFileSync(
+            executable,
+            `#!/bin/sh\n[ -z "$ELECTRON_RUN_AS_NODE" ] || exit 1\nprintf '%s\\n' "$1" >>${shellQuote(log)}\nexec ${shellQuote(node)} "$@"\n`,
+            { mode: 0o700 },
+        );
         return { executable, log };
     }
     function assertNodeLaunched(log: string): void {
         const invocations = fs.readFileSync(log, 'utf8').split('\n').filter(Boolean);
         // Version probes use -p. Detached launches use -e; tmux/systemd launch
         // the agent file directly. Both must invoke the configured executable.
-        assert.ok(invocations.some(argument => argument !== '-p'), 'The configured Node must launch the session');
+        assert.ok(
+            invocations.some((argument) => argument !== '-p'),
+            'The configured Node must launch the session',
+        );
     }
     test('missing arf offers setup, with no failed session or runtime installation', async () => {
         const config = vscode.workspace.getConfiguration('r');
@@ -172,16 +259,27 @@ function treeTooltip(item: vscode.TreeItem): string {
         commands.withArgs('workbench.action.openSettings', 'r.interactive.arfPath').resolves();
         try {
             await vscode.commands.executeCommand('r.interactive.new');
-            const choices = picker.firstCall.args[0] as (vscode.QuickPickItem & { value: string })[];
-            assert.deepStrictEqual(choices.map(item => item.value), ['configure']);
+            const choices = picker.firstCall.args[0] as (vscode.QuickPickItem & {
+                value: string;
+            })[];
+            assert.deepStrictEqual(
+                choices.map((item) => item.value),
+                ['configure'],
+            );
             assert.ok(choices[0].detail?.includes(missing));
             picker.resolves(choices[0]);
             await vscode.commands.executeCommand('r.interactive.new');
-            sinon.assert.calledOnce(commands.withArgs('workbench.action.openSettings', 'r.interactive.arfPath'));
-            sinon.assert.notCalled(input); sinon.assert.notCalled(errors);
+            sinon.assert.calledOnce(
+                commands.withArgs('workbench.action.openSettings', 'r.interactive.arfPath'),
+            );
+            sinon.assert.notCalled(input);
+            sinon.assert.notCalled(errors);
             assert.deepStrictEqual(fs.readdirSync(root), entries);
         } finally {
-            commands.restore(); picker.restore(); input.restore(); errors.restore();
+            commands.restore();
+            picker.restore();
+            input.restore();
+            errors.restore();
             await config.update('interactive.arfPath', previous, vscode.ConfigurationTarget.Global);
         }
     });
@@ -190,35 +288,59 @@ function treeTooltip(item: vscode.TreeItem): string {
         const previous = config.inspect<string>('interactive.arfPath')?.globalValue;
         const executable = path.join(root, 'custom arf');
         fs.writeFileSync(executable, '#!/bin/sh\nexit 1\n', { mode: 0o700 });
-        await config.update('interactive.arfPath', `"${executable}"`, vscode.ConfigurationTarget.Global);
+        await config.update(
+            'interactive.arfPath',
+            `"${executable}"`,
+            vscode.ConfigurationTarget.Global,
+        );
         const picker = sinon.stub(vscode.window, 'showQuickPick').resolves(undefined);
         const input = sinon.stub(vscode.window, 'showInputBox').callsFake(() => {
-            fs.unlinkSync(executable); return Promise.resolve('Removed arf');
+            fs.unlinkSync(executable);
+            return Promise.resolve('Removed arf');
         });
         const warning = sinon.stub(vscode.window, 'showWarningMessage').resolves(undefined);
         const errors = sinon.stub(vscode.window, 'showErrorMessage').resolves(undefined);
         try {
             await vscode.commands.executeCommand('r.interactive.new');
-            const choices = picker.firstCall.args[0] as (vscode.QuickPickItem & { value: string })[];
-            assert.deepStrictEqual(choices.map(item => item.value), ['arf']);
-            assert.deepStrictEqual(choices.map(item => item.label), ['arf']);
-            assert.ok(choices.every(item => item.description === undefined));
+            const choices = picker.firstCall.args[0] as (vscode.QuickPickItem & {
+                value: string;
+            })[];
+            assert.deepStrictEqual(
+                choices.map((item) => item.value),
+                ['arf'],
+            );
+            assert.deepStrictEqual(
+                choices.map((item) => item.label),
+                ['arf'],
+            );
+            assert.ok(choices.every((item) => item.description === undefined));
             assert.strictEqual(choices[0].detail, executable);
             picker.resolves(choices[0]);
             await vscode.commands.executeCommand('r.interactive.new');
-            sinon.assert.calledOnce(warning); sinon.assert.notCalled(errors);
+            sinon.assert.calledOnce(warning);
+            sinon.assert.notCalled(errors);
             assert.match(warning.firstCall.args[0], /Cannot start Headless arf/);
-            assert.ok(!fs.existsSync(path.join(root, 'runtimes')), 'No runtime or agent should be created');
+            assert.ok(
+                !fs.existsSync(path.join(root, 'runtimes')),
+                'No runtime or agent should be created',
+            );
         } finally {
-            picker.restore(); input.restore(); warning.restore(); errors.restore();
+            picker.restore();
+            input.restore();
+            warning.restore();
+            errors.restore();
             fs.rmSync(executable, { force: true });
             await config.update('interactive.arfPath', previous, vscode.ConfigurationTarget.Global);
         }
     });
     test('a removed VS Code runtime is reported before installing a runtime or creating a session', async () => {
-        const executable = sinon.stub(process, 'execPath').value(path.join(root, 'removed-host-runtime'));
+        const executable = sinon
+            .stub(process, 'execPath')
+            .value(path.join(root, 'removed-host-runtime'));
         const entries = fs.readdirSync(root);
-        const picker = sinon.stub(vscode.window, 'showQuickPick').resolves({ label: 'arf', value: 'arf' } as vscode.QuickPickItem);
+        const picker = sinon
+            .stub(vscode.window, 'showQuickPick')
+            .resolves({ label: 'arf', value: 'arf' } as vscode.QuickPickItem);
         const input = sinon.stub(vscode.window, 'showInputBox').resolves('Missing Node');
         const errors = sinon.stub(vscode.window, 'showErrorMessage').resolves(undefined);
         try {
@@ -227,7 +349,9 @@ function treeTooltip(item: vscode.TreeItem): string {
             assert.match(errors.firstCall.args[0], /Reload VS Code.*VS Code Server/);
             assert.deepStrictEqual(fs.readdirSync(root), entries);
         } finally {
-            picker.restore(); input.restore(); errors.restore();
+            picker.restore();
+            input.restore();
+            errors.restore();
             executable.restore();
         }
     });
@@ -235,41 +359,69 @@ function treeTooltip(item: vscode.TreeItem): string {
         const settings = vscode.workspace.getConfiguration('r');
         const previous = settings.inspect<string>('interactive.nodePath')?.globalValue;
         const entries = fs.readdirSync(root);
-        const picker = sinon.stub(vscode.window, 'showQuickPick').resolves({ label: 'arf', value: 'arf' } as vscode.QuickPickItem);
+        const picker = sinon
+            .stub(vscode.window, 'showQuickPick')
+            .resolves({ label: 'arf', value: 'arf' } as vscode.QuickPickItem);
         const input = sinon.stub(vscode.window, 'showInputBox').resolves('Missing Node override');
         const errors = sinon.stub(vscode.window, 'showErrorMessage').resolves(undefined);
         try {
-            await settings.update('interactive.nodePath', path.join(root, 'missing-node'), vscode.ConfigurationTarget.Global);
+            await settings.update(
+                'interactive.nodePath',
+                path.join(root, 'missing-node'),
+                vscode.ConfigurationTarget.Global,
+            );
             await vscode.commands.executeCommand('r.interactive.new');
             sinon.assert.calledOnce(errors);
             assert.match(errors.firstCall.args[0], /r\.interactive\.nodePath.*remote server/);
             assert.deepStrictEqual(fs.readdirSync(root), entries);
         } finally {
-            picker.restore(); input.restore(); errors.restore();
-            await settings.update('interactive.nodePath', previous, vscode.ConfigurationTarget.Global);
+            picker.restore();
+            input.restore();
+            errors.restore();
+            await settings.update(
+                'interactive.nodePath',
+                previous,
+                vscode.ConfigurationTarget.Global,
+            );
         }
     });
     test('missing explicit tmux reports a recovery setting before installing or creating a session', async () => {
         const config = vscode.workspace.getConfiguration('r');
         const previous = config.inspect<string>('interactive.supervision')?.globalValue;
         const entries = fs.readdirSync(root);
-        const picker = sinon.stub(vscode.window, 'showQuickPick').resolves({ label: 'arf', value: 'arf' } as vscode.QuickPickItem);
+        const picker = sinon
+            .stub(vscode.window, 'showQuickPick')
+            .resolves({ label: 'arf', value: 'arf' } as vscode.QuickPickItem);
         const previousPath = process.env.PATH;
         // Resolve R normally, then simulate tmux disappearing before launch.
         const input = sinon.stub(vscode.window, 'showInputBox').callsFake(() => {
-            process.env.PATH = root; return Promise.resolve('Missing tmux');
+            process.env.PATH = root;
+            return Promise.resolve('Missing tmux');
         });
         const errors = sinon.stub(vscode.window, 'showErrorMessage').resolves(undefined);
         try {
-            await config.update('interactive.supervision', 'tmux', vscode.ConfigurationTarget.Global);
+            await config.update(
+                'interactive.supervision',
+                'tmux',
+                vscode.ConfigurationTarget.Global,
+            );
             await vscode.commands.executeCommand('r.interactive.new');
             sinon.assert.calledOnce(errors);
-            assert.match(errors.firstCall.args[0], /tmux.*remote server.*r\.interactive\.supervision/);
+            assert.match(
+                errors.firstCall.args[0],
+                /tmux.*remote server.*r\.interactive\.supervision/,
+            );
             assert.deepStrictEqual(fs.readdirSync(root), entries);
         } finally {
             process.env.PATH = previousPath;
-            picker.restore(); input.restore(); errors.restore();
-            await config.update('interactive.supervision', previous, vscode.ConfigurationTarget.Global);
+            picker.restore();
+            input.restore();
+            errors.restore();
+            await config.update(
+                'interactive.supervision',
+                previous,
+                vscode.ConfigurationTarget.Global,
+            );
         }
     });
     test('cancels Open Interactive Session from the command palette without opening a notebook or reporting an error', async () => {
@@ -281,11 +433,21 @@ function treeTooltip(item: vscode.TreeItem): string {
             sinon.assert.notCalled(errors);
             sinon.assert.calledOnce(picker);
             sinon.assert.notCalled(created);
-        } finally { picker.restore(); errors.restore(); created.restore(); }
+        } finally {
+            picker.restore();
+            errors.restore();
+            created.restore();
+        }
     });
     test('the status-bar picker excludes dead agents without deleting their retained history', async () => {
-        const stale = { ...manifests[0], id: randomUUID(), label: 'Stale session', endpoint: path.join(root, 'missing', 'control.sock') };
-        const storage = path.join(root, stale.id); fs.mkdirSync(storage);
+        const stale = {
+            ...manifests[0],
+            id: randomUUID(),
+            label: 'Stale session',
+            endpoint: path.join(root, 'missing', 'control.sock'),
+        };
+        const storage = path.join(root, stale.id);
+        fs.mkdirSync(storage);
         const manifest = path.join(storage, 'manifest.json');
         fs.writeFileSync(manifest, JSON.stringify(stale));
         fs.writeFileSync(path.join(storage, 'retained-history'), 'keep this history');
@@ -294,49 +456,103 @@ function treeTooltip(item: vscode.TreeItem): string {
         try {
             await vscode.commands.executeCommand('r.interactive.connect');
             sinon.assert.calledOnce(picker);
-            const choices = await picker.firstCall.args[0] as (vscode.QuickPickItem & { manifest?: SessionManifest })[];
-            assert.ok(!choices.some(choice => choice.manifest?.id === stale.id), 'A saved idle status does not make a dead agent connectable');
+            const choices = (await picker.firstCall.args[0]) as (vscode.QuickPickItem & {
+                manifest?: SessionManifest;
+            })[];
+            assert.ok(
+                !choices.some((choice) => choice.manifest?.id === stale.id),
+                'A saved idle status does not make a dead agent connectable',
+            );
             for (const live of manifests) {
-                const choice = choices.find(choice => choice.manifest?.id === live.id); assert.ok(choice);
-                assert.ok(choice.description?.includes(`PID ${choice.manifest?.rPid ?? 'starting'}`), 'Identical session names must be distinguishable by PID');
+                const choice = choices.find((choice) => choice.manifest?.id === live.id);
+                assert.ok(choice);
+                assert.ok(
+                    choice.description?.includes(`PID ${choice.manifest?.rPid ?? 'starting'}`),
+                    'Identical session names must be distinguishable by PID',
+                );
             }
-            assert.ok(choices.some(choice => choice.label.includes('New persistent R session')));
-            assert.strictEqual(fs.readFileSync(path.join(storage, 'retained-history'), 'utf8'), 'keep this history');
+            assert.ok(choices.some((choice) => choice.label.includes('New persistent R session')));
+            assert.strictEqual(
+                fs.readFileSync(path.join(storage, 'retained-history'), 'utf8'),
+                'keep this history',
+            );
             assert.ok(fs.existsSync(manifest));
             sinon.assert.notCalled(errors);
-        } finally { picker.restore(); errors.restore(); fs.rmSync(storage, { recursive: true, force: true }); }
+        } finally {
+            picker.restore();
+            errors.restore();
+            fs.rmSync(storage, { recursive: true, force: true });
+        }
     });
     test('opens native Interactive without Jupyter and executes through its R kernel', async () => {
         const created = sinon.spy(vscode.notebooks, 'createNotebookController');
         try {
             await vscode.commands.executeCommand('r.interactive.open', manifests[0]);
-            const native = created.returnValues.find(value => value.notebookType === 'interactive');
-            assert.ok(native); controller = native;
-        } finally { created.restore(); }
-        const notebook = vscode.workspace.notebookDocuments.find(doc => doc.metadata.rSessionId === manifests[0].id);
+            const native = created.returnValues.find(
+                (value) => value.notebookType === 'interactive',
+            );
+            assert.ok(native);
+            controller = native;
+        } finally {
+            created.restore();
+        }
+        const notebook = vscode.workspace.notebookDocuments.find(
+            (doc) => doc.metadata.rSessionId === manifests[0].id,
+        );
         assert.ok(notebook, 'Session notebook was opened');
-        assert.strictEqual(notebook.notebookType, 'interactive', 'Native Interactive API is available');
+        assert.strictEqual(
+            notebook.notebookType,
+            'interactive',
+            'Native Interactive API is available',
+        );
         const edit = new vscode.WorkspaceEdit();
-        edit.set(notebook.uri, [vscode.NotebookEdit.insertCells(0, [new vscode.NotebookCellData(vscode.NotebookCellKind.Code,
-            'editor_value <- 42; cat("editor-stream"); data.frame(x=1:3); plot(1:3)', 'r')])]);
+        edit.set(notebook.uri, [
+            vscode.NotebookEdit.insertCells(0, [
+                new vscode.NotebookCellData(
+                    vscode.NotebookCellKind.Code,
+                    'editor_value <- 42; cat("editor-stream"); data.frame(x=1:3); plot(1:3)',
+                    'r',
+                ),
+            ]),
+        ]);
         await vscode.workspace.applyEdit(edit);
-        await vscode.commands.executeCommand('notebook.cell.execute', { ranges: [{ start: 0, end: 1 }], document: notebook.uri });
-        await until(() => notebook.getCells().some(cell => cell.executionSummary?.success === true));
-        const items = notebook.cellAt(0).outputs.flatMap(output => output.items);
-        assert.ok(items.some(item => Buffer.from(item.data).toString().includes('editor-stream')));
-        assert.ok(items.some(item => item.mime === 'application/vnd.vscode-r.display+json'));
+        await vscode.commands.executeCommand('notebook.cell.execute', {
+            ranges: [{ start: 0, end: 1 }],
+            document: notebook.uri,
+        });
+        await until(() =>
+            notebook.getCells().some((cell) => cell.executionSummary?.success === true),
+        );
+        const items = notebook.cellAt(0).outputs.flatMap((output) => output.items);
+        assert.ok(
+            items.some((item) => Buffer.from(item.data).toString().includes('editor-stream')),
+        );
+        assert.ok(items.some((item) => item.mime === 'application/vnd.vscode-r.display+json'));
     });
     test('shows the error message alongside user calls in native cells and portable exports', async () => {
-        const notebook = vscode.workspace.notebookDocuments.find(doc => doc.metadata.rSessionId === manifests[0].id);
+        const notebook = vscode.workspace.notebookDocuments.find(
+            (doc) => doc.metadata.rSessionId === manifests[0].id,
+        );
         assert.ok(notebook);
         const index = notebook.cellCount;
-        const code = 'error_inner <- function(x) sqrt(x); error_wrapper <- function(x) error_inner(x); error_wrapper("bad")';
+        const code =
+            'error_inner <- function(x) sqrt(x); error_wrapper <- function(x) error_inner(x); error_wrapper("bad")';
         await vscode.commands.executeCommand('r.runSelection', code);
-        await until(() => notebook.cellCount > index && notebook.cellAt(index).executionSummary?.success === false);
+        await until(
+            () =>
+                notebook.cellCount > index &&
+                notebook.cellAt(index).executionSummary?.success === false,
+        );
         const cell = notebook.cellAt(index);
-        const item = cell.outputs.flatMap(output => output.items).find(output => output.mime === 'application/vnd.code.notebook.error');
+        const item = cell.outputs
+            .flatMap((output) => output.items)
+            .find((output) => output.mime === 'application/vnd.code.notebook.error');
         assert.ok(item);
-        const error = JSON.parse(Buffer.from(item.data).toString()) as { name: string; message: string; stack: string };
+        const error = JSON.parse(Buffer.from(item.data).toString()) as {
+            name: string;
+            message: string;
+            stack: string;
+        };
         assert.match(error.message, /non-numeric argument/);
         assert.ok(!code.includes(error.message), 'The call text alone cannot explain this failure');
         assert.ok(error.stack.startsWith(`R error: ${error.message}\n`));
@@ -355,40 +571,81 @@ function treeTooltip(item: vscode.TreeItem): string {
                 await vscode.commands.executeCommand('r.interactive.export', notebook.uri);
                 sinon.assert.notCalled(errors);
                 if (extension === 'rnb') {
-                    const restored = new InteractiveSerializer().deserializeNotebook(fs.readFileSync(file));
-                    const restoredError: vscode.NotebookCellOutputItem | undefined = restored.cells[index].outputs?.flatMap(output => output.items)
-                        .find(output => output.mime === item.mime);
+                    const restored = new InteractiveSerializer().deserializeNotebook(
+                        fs.readFileSync(file),
+                    );
+                    const restoredError: vscode.NotebookCellOutputItem | undefined = restored.cells[
+                        index
+                    ].outputs
+                        ?.flatMap((output) => output.items)
+                        .find((output) => output.mime === item.mime);
                     assert.ok(restoredError);
-                    assert.deepStrictEqual(JSON.parse(Buffer.from(restoredError.data).toString()), error);
+                    assert.deepStrictEqual(
+                        JSON.parse(Buffer.from(restoredError.data).toString()),
+                        error,
+                    );
                 } else {
                     const exported = JSON.parse(fs.readFileSync(file, 'utf8')) as {
-                        cells: { outputs: { output_type: string; evalue: string; traceback: string[] }[] }[];
+                        cells: {
+                            outputs: { output_type: string; evalue: string; traceback: string[] }[];
+                        }[];
                     };
-                    const exportedError = exported.cells[index].outputs.find(output => output.output_type === 'error');
+                    const exportedError = exported.cells[index].outputs.find(
+                        (output) => output.output_type === 'error',
+                    );
                     assert.ok(exportedError);
                     assert.strictEqual(exportedError.evalue, error.message);
                     assert.strictEqual(exportedError.traceback.join('\n'), error.stack);
                 }
             }
-        } finally { format.restore(); save.restore(); errors.restore(); }
+        } finally {
+            format.restore();
+            save.restore();
+            errors.restore();
+        }
     });
     test('Open Interactive Session without arguments opens the chosen session even when another is active', async () => {
-        const picker = sinon.stub(vscode.window, 'showQuickPick').resolves({ label: manifests[1].label, manifest: manifests[1] } as vscode.QuickPickItem);
+        const picker = sinon.stub(vscode.window, 'showQuickPick').resolves({
+            label: manifests[1].label,
+            manifest: manifests[1],
+        } as vscode.QuickPickItem);
         const errors = sinon.stub(vscode.window, 'showErrorMessage').resolves(undefined);
         try {
             await vscode.commands.executeCommand('r.interactive.open');
             sinon.assert.notCalled(errors);
             sinon.assert.calledOnce(picker);
-            const choices = await picker.firstCall.args[0] as (vscode.QuickPickItem & { manifest?: SessionManifest })[];
-            for (const manifest of manifests) { assert.ok(choices.some(choice => choice.manifest?.id === manifest.id)); }
-            assert.ok(vscode.workspace.notebookDocuments.some(document => document.metadata.rSessionId === manifests[1].id));
-            await vscode.commands.executeCommand('r.runSelection', 'cat("selected through Open Interactive Session")');
-            const second = vscode.workspace.notebookDocuments.find(document => document.metadata.rSessionId === manifests[1].id);
+            const choices = (await picker.firstCall.args[0]) as (vscode.QuickPickItem & {
+                manifest?: SessionManifest;
+            })[];
+            for (const manifest of manifests) {
+                assert.ok(choices.some((choice) => choice.manifest?.id === manifest.id));
+            }
+            assert.ok(
+                vscode.workspace.notebookDocuments.some(
+                    (document) => document.metadata.rSessionId === manifests[1].id,
+                ),
+            );
+            await vscode.commands.executeCommand(
+                'r.runSelection',
+                'cat("selected through Open Interactive Session")',
+            );
+            const second = vscode.workspace.notebookDocuments.find(
+                (document) => document.metadata.rSessionId === manifests[1].id,
+            );
             assert.ok(second);
-            await until(() => second.getCells().some(cell => cell.executionSummary?.success === true &&
-                cell.document.getText() === 'cat("selected through Open Interactive Session")'));
+            await until(() =>
+                second
+                    .getCells()
+                    .some(
+                        (cell) =>
+                            cell.executionSummary?.success === true &&
+                            cell.document.getText() ===
+                                'cat("selected through Open Interactive Session")',
+                    ),
+            );
         } finally {
-            picker.restore(); errors.restore();
+            picker.restore();
+            errors.restore();
             await vscode.commands.executeCommand('r.interactive.open', manifests[0]);
         }
     });
@@ -400,40 +657,66 @@ function treeTooltip(item: vscode.TreeItem): string {
         assert.ok(controller.description?.includes(`PID ${manifest.rPid ?? ''}`));
         assert.ok(controller.detail?.includes(manifest.directory));
         assert.match(controller.description ?? '', /^R \d/);
-        await new Promise<void>(resolve => setImmediate(resolve));
+        await new Promise<void>((resolve) => setImmediate(resolve));
         const refreshed: string[] = [];
         const update = controller.updateNotebookAffinity.bind(controller);
-        const affinity = sinon.stub(controller, 'updateNotebookAffinity').callsFake((notebook, value) => {
-            assert.strictEqual(notebook.metadata.rSessionId, manifest.id);
-            assert.strictEqual(value, vscode.NotebookControllerAffinity.Preferred);
-            refreshed.push(controller.label);
-            update(notebook, value);
-        });
+        const affinity = sinon
+            .stub(controller, 'updateNotebookAffinity')
+            .callsFake((notebook, value) => {
+                assert.strictEqual(notebook.metadata.rSessionId, manifest.id);
+                assert.strictEqual(value, vscode.NotebookControllerAffinity.Preferred);
+                refreshed.push(controller.label);
+                update(notebook, value);
+            });
         const selectionEvents: boolean[] = [];
-        const listener = controller.onDidChangeSelectedNotebooks(event => selectionEvents.push(event.selected));
+        const listener = controller.onDidChangeSelectedNotebooks((event) =>
+            selectionEvents.push(event.selected),
+        );
         try {
             await vscode.commands.executeCommand('r.runSelection', 'Sys.sleep(0.4)');
-            await until(() => refreshed.some(label => label.endsWith(' · busy')));
+            await until(() => refreshed.some((label) => label.endsWith(' · busy')));
             await until(() => refreshed.at(-1)?.endsWith(' · idle') === true);
-            assert.deepStrictEqual(selectionEvents, [], 'Presentation refresh must not deselect the execution kernel');
+            assert.deepStrictEqual(
+                selectionEvents,
+                [],
+                'Presentation refresh must not deselect the execution kernel',
+            );
             affinity.resetHistory();
             // Repeated unchanged status updates must not continually rebuild the picker.
             const manager = interactiveManager();
             const status = manager as unknown as { updateStatus(): void };
-            status.updateStatus(); status.updateStatus();
-            await new Promise<void>(resolve => setImmediate(resolve));
+            status.updateStatus();
+            status.updateStatus();
+            await new Promise<void>((resolve) => setImmediate(resolve));
             sinon.assert.notCalled(affinity);
-        } finally { listener.dispose(); affinity.restore(); }
+        } finally {
+            listener.dispose();
+            affinity.restore();
+        }
     });
 
     test('refreshes a controller opened during startup when R becomes ready', async () => {
         const id = randomUUID();
         const ready = path.join(root, 'release-startup');
-        const arf = resolveExecutable(process.env.ARF_PATH ?? 'arf', root); assert.ok(arf);
+        const arf = resolveExecutable(process.env.ARF_PATH ?? 'arf', root);
+        assert.ok(arf);
         const delayedArf = path.join(root, 'delayed-arf');
-        fs.writeFileSync(delayedArf, `#!/bin/sh\nwhile [ ! -f ${shellQuote(ready)} ]; do sleep 0.02; done\nexec ${shellQuote(arf)} "$@"\n`, { mode: 0o700 });
-        const config = JSON.parse(fs.readFileSync(path.join(root, manifests[0].id, 'config.json'), 'utf8')) as AgentConfig;
-        const agent = new SessionAgent({ ...config, id, generation: randomUUID(), label: 'Delayed startup', storage: path.join(root, id), arfPath: delayedArf });
+        fs.writeFileSync(
+            delayedArf,
+            `#!/bin/sh\nwhile [ ! -f ${shellQuote(ready)} ]; do sleep 0.02; done\nexec ${shellQuote(arf)} "$@"\n`,
+            { mode: 0o700 },
+        );
+        const config = JSON.parse(
+            fs.readFileSync(path.join(root, manifests[0].id, 'config.json'), 'utf8'),
+        ) as AgentConfig;
+        const agent = new SessionAgent({
+            ...config,
+            id,
+            generation: randomUUID(),
+            label: 'Delayed startup',
+            storage: path.join(root, id),
+            arfPath: delayedArf,
+        });
         const created = sinon.spy(vscode.notebooks, 'createNotebookController');
         const starting = agent.start();
         let affinity: sinon.SinonSpy | undefined;
@@ -442,10 +725,12 @@ function treeTooltip(item: vscode.TreeItem): string {
             await until(() => fs.existsSync(manifestFile));
             const manifest = JSON.parse(fs.readFileSync(manifestFile, 'utf8')) as SessionManifest;
             await vscode.commands.executeCommand('r.interactive.open', manifest);
-            const native = created.returnValues.find(value => value.notebookType === 'interactive');
+            const native = created.returnValues.find(
+                (value) => value.notebookType === 'interactive',
+            );
             assert.ok(native);
             assert.match(native.label, / · starting$/);
-            await new Promise<void>(resolve => setImmediate(resolve));
+            await new Promise<void>((resolve) => setImmediate(resolve));
             affinity = sinon.spy(native, 'updateNotebookAffinity');
             fs.writeFileSync(ready, 'ready');
             await starting;
@@ -453,21 +738,33 @@ function treeTooltip(item: vscode.TreeItem): string {
             assert.match(native.description ?? '', /^R \d.*PID \d/);
             // Selection must still execute in this same session after the refresh.
             await vscode.commands.executeCommand('r.runSelection', 'cat("startup refreshed")');
-            const notebook = vscode.workspace.notebookDocuments.find(doc => doc.metadata.rSessionId === id);
+            const notebook = vscode.workspace.notebookDocuments.find(
+                (doc) => doc.metadata.rSessionId === id,
+            );
             assert.ok(notebook);
-            await until(() => notebook.getCells().some(cell => cell.executionSummary?.success === true));
+            await until(() =>
+                notebook.getCells().some((cell) => cell.executionSummary?.success === true),
+            );
             await vscode.commands.executeCommand('r.interactive.detach', notebook.uri);
         } finally {
             fs.writeFileSync(ready, 'ready');
             await starting.catch(() => undefined);
-            affinity?.restore(); created.restore();
-            const notebook = vscode.workspace.notebookDocuments.find(doc => doc.metadata.rSessionId === id);
+            affinity?.restore();
+            created.restore();
+            const notebook = vscode.workspace.notebookDocuments.find(
+                (doc) => doc.metadata.rSessionId === id,
+            );
             if (notebook) {
                 await vscode.commands.executeCommand('r.interactive.detach', notebook.uri);
                 // Detached native tabs remain open. Remove this fixture's association
                 // so later tests cannot mistake it for a newly created live session.
                 const edit = new vscode.WorkspaceEdit();
-                edit.set(notebook.uri, [vscode.NotebookEdit.updateNotebookMetadata({ rSessionId: null, rGeneration: null })]);
+                edit.set(notebook.uri, [
+                    vscode.NotebookEdit.updateNotebookMetadata({
+                        rSessionId: null,
+                        rGeneration: null,
+                    }),
+                ]);
                 await vscode.workspace.applyEdit(edit);
                 await until(() => !notebook.metadata.rSessionId);
             }
@@ -481,114 +778,261 @@ function treeTooltip(item: vscode.TreeItem): string {
         const context = bundleContext();
         const manager = interactiveManager(context) as InteractiveManager;
         assert.ok(manager);
-        const Manager = (Object.getPrototypeOf(manager) as { constructor: typeof InteractiveManager }).constructor;
-        for (const manifest of manifests) { await vscode.commands.executeCommand('r.interactive.open', manifest); }
-        const notebooks = manifests.map(manifest => {
-            const notebook = vscode.workspace.notebookDocuments.find(doc => doc.metadata.rSessionId === manifest.id);
-            assert.ok(notebook); return notebook;
+        const Manager = (
+            Object.getPrototypeOf(manager) as { constructor: typeof InteractiveManager }
+        ).constructor;
+        for (const manifest of manifests) {
+            await vscode.commands.executeCommand('r.interactive.open', manifest);
+        }
+        const notebooks = manifests.map((manifest) => {
+            const notebook = vscode.workspace.notebookDocuments.find(
+                (doc) => doc.metadata.rSessionId === manifest.id,
+            );
+            assert.ok(notebook);
+            return notebook;
         });
-        const originalUris = notebooks.map(notebook => notebook.uri.toString());
+        const originalUris = notebooks.map((notebook) => notebook.uri.toString());
         const groupCount = vscode.window.tabGroups.all.length;
-        const saved = context.workspaceState.get<{ id: string; notebookUri: string }[]>('r.interactive.connections', []);
+        const saved = context.workspaceState.get<{ id: string; notebookUri: string }[]>(
+            'r.interactive.connections',
+            [],
+        );
         for (let i = 0; i < manifests.length; i++) {
-            assert.strictEqual(saved.find(item => item.id === manifests[i].id)?.notebookUri, originalUris[i]);
+            assert.strictEqual(
+                saved.find((item) => item.id === manifests[i].id)?.notebookUri,
+                originalUris[i],
+            );
         }
         await vscode.commands.executeCommand('r.runSelection', 'survives_editor_reload <- 73');
-        await until(() => notebooks[1].getCells().some(cell => cell.document.getText() === 'survives_editor_reload <- 73' && cell.executionSummary?.success));
-        const inputResult = await vscode.commands.executeCommand<{ inputUri: vscode.Uri }>('interactive.open', { preserveFocus: true }, notebooks[0].uri);
+        await until(() =>
+            notebooks[1]
+                .getCells()
+                .some(
+                    (cell) =>
+                        cell.document.getText() === 'survives_editor_reload <- 73' &&
+                        cell.executionSummary?.success,
+                ),
+        );
+        const inputResult = await vscode.commands.executeCommand<{ inputUri: vscode.Uri }>(
+            'interactive.open',
+            { preserveFocus: true },
+            notebooks[0].uri,
+        );
         const originalInput = await vscode.workspace.openTextDocument(inputResult.inputUri);
         // Include invisible assignments and repeated commands: neither output presence
         // nor a set of source strings is enough to distinguish executions from drafts.
-        for (const code of ['1:10', 'mtcars', 'reload_list <- list(a = 1, b = rnorm(10))', 'reload_list',
-            'reload_model <- lm(mpg ~ wt + hp, data = mtcars)', 'summary(reload_model)', '1:10', 'plot(reload_model)']) {
+        for (const code of [
+            '1:10',
+            'mtcars',
+            'reload_list <- list(a = 1, b = rnorm(10))',
+            'reload_list',
+            'reload_model <- lm(mpg ~ wt + hp, data = mtcars)',
+            'summary(reload_model)',
+            '1:10',
+            'plot(reload_model)',
+        ]) {
             const index = notebooks[0].cellCount;
             const edit = new vscode.WorkspaceEdit();
-            edit.replace(originalInput.uri, new vscode.Range(0, 0, originalInput.lineCount, 0), code);
+            edit.replace(
+                originalInput.uri,
+                new vscode.Range(0, 0, originalInput.lineCount, 0),
+                code,
+            );
             await vscode.workspace.applyEdit(edit);
             await vscode.commands.executeCommand('interactive.execute', notebooks[0].uri);
-            await until(() => notebooks[0].cellCount > index && notebooks[0].cellAt(index).executionSummary?.success === true);
+            await until(
+                () =>
+                    notebooks[0].cellCount > index &&
+                    notebooks[0].cellAt(index).executionSummary?.success === true,
+            );
         }
-        const editedCell = notebooks[0].getCells().find(cell => cell.document.getText() === 'mtcars'); assert.ok(editedCell);
+        const editedCell = notebooks[0]
+            .getCells()
+            .find((cell) => cell.document.getText() === 'mtcars');
+        assert.ok(editedCell);
         const draft = new vscode.WorkspaceEdit();
-        draft.replace(editedCell.document.uri, new vscode.Range(0, 0, editedCell.document.lineCount, 0), 'mtcars # edited after execution');
+        draft.replace(
+            editedCell.document.uri,
+            new vscode.Range(0, 0, editedCell.document.lineCount, 0),
+            'mtcars # edited after execution',
+        );
         const middleIndex = editedCell.index + 1;
         draft.set(notebooks[0].uri, [
             vscode.NotebookEdit.insertCells(middleIndex, [
                 new vscode.NotebookCellData(vscode.NotebookCellKind.Code, '1:10', 'r'),
-                new vscode.NotebookCellData(vscode.NotebookCellKind.Code, '# unfinished middle draft', 'r'),
+                new vscode.NotebookCellData(
+                    vscode.NotebookCellKind.Code,
+                    '# unfinished middle draft',
+                    'r',
+                ),
             ]),
             vscode.NotebookEdit.insertCells(notebooks[0].cellCount, [
-                new vscode.NotebookCellData(vscode.NotebookCellKind.Code, '# unfinished notebook draft', 'r'),
+                new vscode.NotebookCellData(
+                    vscode.NotebookCellKind.Code,
+                    '# unfinished notebook draft',
+                    'r',
+                ),
             ]),
         ]);
-        draft.replace(originalInput.uri, new vscode.Range(0, 0, originalInput.lineCount, 0), '# unfinished input');
+        draft.replace(
+            originalInput.uri,
+            new vscode.Range(0, 0, originalInput.lineCount, 0),
+            '# unfinished input',
+        );
         await vscode.workspace.applyEdit(draft);
-        const contents = (notebook: vscode.NotebookDocument): unknown => notebook.getCells().map(cell => ({
-            kind: cell.kind, value: cell.document.getText(), language: cell.document.languageId,
-            executionId: cell.metadata.rExecutionId as string | undefined,
-            summary: { executionOrder: cell.executionSummary?.executionOrder, success: cell.executionSummary?.success },
-            outputs: cell.outputs.map(output => output.items.map(item => ({ mime: item.mime, data: Buffer.from(item.data).toString('base64') }))),
-        }));
+        const contents = (notebook: vscode.NotebookDocument): unknown =>
+            notebook.getCells().map((cell) => ({
+                kind: cell.kind,
+                value: cell.document.getText(),
+                language: cell.document.languageId,
+                executionId: cell.metadata.rExecutionId as string | undefined,
+                summary: {
+                    executionOrder: cell.executionSummary?.executionOrder,
+                    success: cell.executionSummary?.success,
+                },
+                outputs: cell.outputs.map((output) =>
+                    output.items.map((item) => ({
+                        mime: item.mime,
+                        data: Buffer.from(item.data).toString('base64'),
+                    })),
+                ),
+            }));
         const before = notebooks.map(contents);
         manager.dispose();
         context.subscriptions.splice(context.subscriptions.indexOf(manager), 1);
-        assert.deepStrictEqual(context.workspaceState.get('r.interactive.connections'), saved, 'Shutdown must retain saved connections');
+        assert.deepStrictEqual(
+            context.workspaceState.get('r.interactive.connections'),
+            saved,
+            'Shutdown must retain saved connections',
+        );
         // Round-trip through VS Code's actual native serializer, which drops
         // top-level custom metadata (and preserves only IPython metadata).
         const reset = new vscode.WorkspaceEdit();
         for (const notebook of notebooks) {
-            const data = new vscode.NotebookData(notebook.getCells().map(cell => {
-                const data = new vscode.NotebookCellData(cell.kind, cell.document.getText(), cell.document.languageId);
-                data.metadata = cell.metadata;
-                data.executionSummary = cell.executionSummary; data.outputs = [...cell.outputs];
-                return data;
-            }));
+            const data = new vscode.NotebookData(
+                notebook.getCells().map((cell) => {
+                    const data = new vscode.NotebookCellData(
+                        cell.kind,
+                        cell.document.getText(),
+                        cell.document.languageId,
+                    );
+                    data.metadata = cell.metadata;
+                    data.executionSummary = cell.executionSummary;
+                    data.outputs = [...cell.outputs];
+                    return data;
+                }),
+            );
             data.metadata = notebook.metadata;
-            const ipynb = await vscode.extensions.getExtension<{ exportNotebook(data: vscode.NotebookData): Promise<string> }>('vscode.ipynb')?.activate();
+            const ipynb = await vscode.extensions
+                .getExtension<{ exportNotebook(data: vscode.NotebookData): Promise<string> }>(
+                    'vscode.ipynb',
+                )
+                ?.activate();
             assert.ok(ipynb);
             const bytes = Buffer.from(await ipynb.exportNotebook(data));
-            const restored = await vscode.commands.executeCommand<vscode.NotebookData>('vscode.executeDataToNotebook', 'interactive', bytes);
-            assert.ok(restored.cells.every(cell => !cell.metadata?.rExecutionId));
-            assert.deepStrictEqual(restored.cells.map(cell => (cell.metadata?.metadata as Record<string, unknown> | undefined)?.rExecutionId),
-                notebook.getCells().map(cell => cell.metadata.rExecutionId as string | undefined), 'Execution IDs must survive the native serializer');
-            assert.ok(restored.cells.every(cell => cell.languageId === 'r'));
-            reset.set(notebook.uri, [vscode.NotebookEdit.replaceCells(new vscode.NotebookRange(0, notebook.cellCount), restored.cells),
-                vscode.NotebookEdit.updateNotebookMetadata({ ...restored.metadata, rSessionId: null, rGeneration: null })]);
+            const restored = await vscode.commands.executeCommand<vscode.NotebookData>(
+                'vscode.executeDataToNotebook',
+                'interactive',
+                bytes,
+            );
+            assert.ok(restored.cells.every((cell) => !cell.metadata?.rExecutionId));
+            assert.deepStrictEqual(
+                restored.cells.map(
+                    (cell) =>
+                        (cell.metadata?.metadata as Record<string, unknown> | undefined)
+                            ?.rExecutionId,
+                ),
+                notebook.getCells().map((cell) => cell.metadata.rExecutionId as string | undefined),
+                'Execution IDs must survive the native serializer',
+            );
+            assert.ok(restored.cells.every((cell) => cell.languageId === 'r'));
+            reset.set(notebook.uri, [
+                vscode.NotebookEdit.replaceCells(
+                    new vscode.NotebookRange(0, notebook.cellCount),
+                    restored.cells,
+                ),
+                vscode.NotebookEdit.updateNotebookMetadata({
+                    ...restored.metadata,
+                    rSessionId: null,
+                    rGeneration: null,
+                }),
+            ]);
         }
         await vscode.workspace.applyEdit(reset);
-        await until(() => notebooks.every(notebook => !notebook.metadata.rSessionId));
+        await until(() => notebooks.every((notebook) => !notebook.metadata.rSessionId));
         const created = sinon.spy(vscode.notebooks, 'createNotebookController');
         const errors = sinon.stub(vscode.window, 'showErrorMessage').resolves(undefined);
         try {
             const restoredManager = new Manager(context);
             context.subscriptions.push(restoredManager);
-            await until(() => notebooks.every((notebook, i) => notebook.metadata.rSessionId === manifests[i].id));
-            await Promise.all(manifests.map(manifest => restoredManager.open(manifest)));
-            assert.deepStrictEqual(notebooks.map(contents), before, 'Reload must preserve cell order, code, language, execution summaries and outputs');
+            await until(() =>
+                notebooks.every((notebook, i) => notebook.metadata.rSessionId === manifests[i].id),
+            );
+            await Promise.all(manifests.map((manifest) => restoredManager.open(manifest)));
+            assert.deepStrictEqual(
+                notebooks.map(contents),
+                before,
+                'Reload must preserve cell order, code, language, execution summaries and outputs',
+            );
             for (const index of [middleIndex, middleIndex + 1]) {
                 const cell = notebooks[0].cellAt(index);
-                assert.strictEqual(cell.metadata.rExecutionId, undefined, 'A middle draft must remain unexecuted');
+                assert.strictEqual(
+                    cell.metadata.rExecutionId,
+                    undefined,
+                    'A middle draft must remain unexecuted',
+                );
                 assert.deepStrictEqual(cell.outputs, []);
             }
             assert.strictEqual(notebooks[0].cellAt(middleIndex).document.getText(), '1:10');
-            assert.strictEqual(notebooks[0].cellAt(middleIndex + 1).document.getText(), '# unfinished middle draft');
+            assert.strictEqual(
+                notebooks[0].cellAt(middleIndex + 1).document.getText(),
+                '# unfinished middle draft',
+            );
             assert.strictEqual(originalInput.getText(), '# unfinished input');
-            const native = created.returnValues.find(item => item.notebookType === 'interactive' && item.id.includes(manifests[0].id));
-            assert.ok(native); controller = native;
+            const native = created.returnValues.find(
+                (item) => item.notebookType === 'interactive' && item.id.includes(manifests[0].id),
+            );
+            assert.ok(native);
+            controller = native;
             await vscode.commands.executeCommand('r.interactive.open', manifests[1]);
             // Execute in that native input explicitly: preserved source/input focus
             // can legitimately remain bound to another session after a background open.
-            const result = await vscode.commands.executeCommand<{ inputUri: vscode.Uri }>('interactive.open', { preserveFocus: true }, notebooks[1].uri);
+            const result = await vscode.commands.executeCommand<{ inputUri: vscode.Uri }>(
+                'interactive.open',
+                { preserveFocus: true },
+                notebooks[1].uri,
+            );
             const input = await vscode.workspace.openTextDocument(result.inputUri);
             const code = new vscode.WorkspaceEdit();
-            code.replace(input.uri, new vscode.Range(0, 0, input.lineCount, 0), 'stopifnot(survives_editor_reload == 73)');
+            code.replace(
+                input.uri,
+                new vscode.Range(0, 0, input.lineCount, 0),
+                'stopifnot(survives_editor_reload == 73)',
+            );
             await vscode.workspace.applyEdit(code);
             await vscode.commands.executeCommand('interactive.execute', notebooks[1].uri);
-            await until(() => notebooks[1].getCells().some(cell => cell.document.getText() === 'stopifnot(survives_editor_reload == 73)' && cell.executionSummary?.success));
-            assert.strictEqual(vscode.window.tabGroups.all.length, groupCount, 'Restoration must reuse existing editor groups');
+            await until(() =>
+                notebooks[1]
+                    .getCells()
+                    .some(
+                        (cell) =>
+                            cell.document.getText() === 'stopifnot(survives_editor_reload == 73)' &&
+                            cell.executionSummary?.success,
+                    ),
+            );
+            assert.strictEqual(
+                vscode.window.tabGroups.all.length,
+                groupCount,
+                'Restoration must reuse existing editor groups',
+            );
             for (let i = 0; i < manifests.length; i++) {
-                const matching = vscode.workspace.notebookDocuments.filter(doc => doc.metadata.rSessionId === manifests[i].id);
-                assert.deepStrictEqual(matching.map(doc => doc.uri.toString()), [originalUris[i]]);
+                const matching = vscode.workspace.notebookDocuments.filter(
+                    (doc) => doc.metadata.rSessionId === manifests[i].id,
+                );
+                assert.deepStrictEqual(
+                    matching.map((doc) => doc.uri.toString()),
+                    [originalUris[i]],
+                );
                 const item = restoredManager.getTreeItem(manifests[i]);
                 assert.match(treeTooltip(item), /Connection: Connected · controlling/);
                 assert.match(treeTooltip(item), /Process supervision: Independent process/);
@@ -598,59 +1042,111 @@ function treeTooltip(item: vscode.TreeItem): string {
             }
             sinon.assert.notCalled(errors);
         } finally {
-            created.restore(); errors.restore();
+            created.restore();
+            errors.restore();
             await vscode.commands.executeCommand('r.interactive.open', manifests[0]);
         }
     });
     test('refreshes session tree connection and control details after reconnect and Take Control', async () => {
         const manager = interactiveManager() as InteractiveManager;
-        const view = (manager as unknown as { views: Map<string, { client: AgentClient }> }).views.get(`${manifests[0].id}:${manifests[0].generation}`);
+        const view = (
+            manager as unknown as { views: Map<string, { client: AgentClient }> }
+        ).views.get(`${manifests[0].id}:${manifests[0].generation}`);
         assert.ok(view);
         let refreshes = 0;
         const listener = manager.onDidChangeTreeData(() => refreshes++);
         const other = new AgentClient(manifests[0]);
         try {
-            await other.connect(); await other.request('claim', { force: true });
+            await other.connect();
+            await other.request('claim', { force: true });
             await view.client.connect();
-            assert.ok(refreshes > 0, 'Connecting updates the session tree even without a state event');
-            assert.match(treeTooltip(manager.getTreeItem(manifests[0])), /Connection: Connected · observing/);
+            assert.ok(
+                refreshes > 0,
+                'Connecting updates the session tree even without a state event',
+            );
+            assert.match(
+                treeTooltip(manager.getTreeItem(manifests[0])),
+                /Connection: Connected · observing/,
+            );
             refreshes = 0;
             await vscode.commands.executeCommand('r.interactive.takeControl', manifests[0]);
             assert.ok(refreshes > 0, 'Taking control updates the tree immediately');
-            assert.match(treeTooltip(manager.getTreeItem(manifests[0])), /Connection: Connected · controlling/);
+            assert.match(
+                treeTooltip(manager.getTreeItem(manifests[0])),
+                /Connection: Connected · controlling/,
+            );
             view.client.close();
-            assert.match(treeTooltip(manager.getTreeItem(manifests[0])), /Connection: Disconnected/);
+            assert.match(
+                treeTooltip(manager.getTreeItem(manifests[0])),
+                /Connection: Disconnected/,
+            );
         } finally {
-            other.close(); await view.client.connect(); await view.client.subscribe(0); listener.dispose();
+            other.close();
+            await view.client.connect();
+            await view.client.subscribe(0);
+            listener.dispose();
         }
     });
     test('observer execution consistently reports errors from native input, cells and source commands', async () => {
         await vscode.commands.executeCommand('r.interactive.open', manifests[0]);
         const manager = interactiveManager() as InteractiveManager;
-        const view = (manager as unknown as { views: Map<string, { client: AgentClient; controller: vscode.NotebookController; notebook: vscode.NotebookDocument }> }).views.get(`${manifests[0].id}:${manifests[0].generation}`);
+        const view = (
+            manager as unknown as {
+                views: Map<
+                    string,
+                    {
+                        client: AgentClient;
+                        controller: vscode.NotebookController;
+                        notebook: vscode.NotebookDocument;
+                    }
+                >;
+            }
+        ).views.get(`${manifests[0].id}:${manifests[0].generation}`);
         assert.ok(view);
         const other = new AgentClient(manifests[0]);
         const errors = sinon.stub(vscode.window, 'showErrorMessage').resolves(undefined);
         try {
-            await other.connect(); await other.request('claim', { force: true });
+            await other.connect();
+            await other.request('claim', { force: true });
             const before = (await other.snapshot()).executions.length;
             // Test both a stale local lease and an already-known observer.
             for (const stale of [true, false]) {
                 view.client.control = stale;
                 const edit = new vscode.WorkspaceEdit();
-                edit.set(view.notebook.uri, [vscode.NotebookEdit.insertCells(view.notebook.cellCount, [
-                    new vscode.NotebookCellData(vscode.NotebookCellKind.Code, 'stop("observer must not execute")', 'r'),
-                ])]);
+                edit.set(view.notebook.uri, [
+                    vscode.NotebookEdit.insertCells(view.notebook.cellCount, [
+                        new vscode.NotebookCellData(
+                            vscode.NotebookCellKind.Code,
+                            'stop("observer must not execute")',
+                            'r',
+                        ),
+                    ]),
+                ]);
                 await vscode.workspace.applyEdit(edit);
                 const count = errors.callCount;
-                await view.controller.executeHandler([view.notebook.cellAt(view.notebook.cellCount - 1)], view.notebook, view.controller);
+                await view.controller.executeHandler(
+                    [view.notebook.cellAt(view.notebook.cellCount - 1)],
+                    view.notebook,
+                    view.controller,
+                );
                 assert.strictEqual(errors.callCount, count + 1);
                 assert.match(errors.lastCall.args[0], /observing.*[Tt]ake [Cc]ontrol/);
             }
-            const input = await vscode.commands.executeCommand<{ inputUri: vscode.Uri }>('interactive.open', { preserveFocus: false }, view.notebook.uri);
+            const input = await vscode.commands.executeCommand<{ inputUri: vscode.Uri }>(
+                'interactive.open',
+                { preserveFocus: false },
+                view.notebook.uri,
+            );
             const document = await vscode.workspace.openTextDocument(input.inputUri);
             const edit = new vscode.WorkspaceEdit();
-            edit.replace(document.uri, new vscode.Range(document.positionAt(0), document.positionAt(document.getText().length)), 'stop("native observer")');
+            edit.replace(
+                document.uri,
+                new vscode.Range(
+                    document.positionAt(0),
+                    document.positionAt(document.getText().length),
+                ),
+                'stop("native observer")',
+            );
             await vscode.workspace.applyEdit(edit);
             const count = errors.callCount;
             await vscode.commands.executeCommand('interactive.execute', view.notebook.uri);
@@ -659,13 +1155,21 @@ function treeTooltip(item: vscode.TreeItem): string {
             assert.strictEqual(errors.callCount, count + 2);
             assert.strictEqual((await other.snapshot()).executions.length, before);
         } finally {
-            errors.restore(); other.close();
+            errors.restore();
+            other.close();
             await vscode.commands.executeCommand('r.interactive.takeControl', manifests[0]);
         }
     });
     test('a session that disappears after selection reports a useful recovery message', async () => {
-        const stale = { ...manifests[0], id: randomUUID(), label: 'Closed session', endpoint: path.join(root, 'missing.sock') };
-        const picker = sinon.stub(vscode.window, 'showQuickPick').resolves({ label: stale.label, manifest: stale } as vscode.QuickPickItem);
+        const stale = {
+            ...manifests[0],
+            id: randomUUID(),
+            label: 'Closed session',
+            endpoint: path.join(root, 'missing.sock'),
+        };
+        const picker = sinon
+            .stub(vscode.window, 'showQuickPick')
+            .resolves({ label: stale.label, manifest: stale } as vscode.QuickPickItem);
         const errors = sinon.stub(vscode.window, 'showErrorMessage').resolves(undefined);
         const count = vscode.workspace.notebookDocuments.length;
         try {
@@ -675,61 +1179,119 @@ function treeTooltip(item: vscode.TreeItem): string {
             assert.match(errors.firstCall.args[0], /Refresh the session list/);
             assert.ok(!errors.firstCall.args[0].includes('ENOENT'));
             assert.strictEqual(vscode.workspace.notebookDocuments.length, count);
-        } finally { picker.restore(); errors.restore(); }
+        } finally {
+            picker.restore();
+            errors.restore();
+        }
     });
     test('lints Interactive cells and clears diagnostics after an edit', async () => {
-        const notebook = vscode.workspace.notebookDocuments.find(doc => doc.metadata.rSessionId === manifests[0].id);
+        const notebook = vscode.workspace.notebookDocuments.find(
+            (doc) => doc.metadata.rSessionId === manifests[0].id,
+        );
         assert.ok(notebook);
         const edit = new vscode.WorkspaceEdit();
-        edit.set(notebook.uri, [vscode.NotebookEdit.insertCells(notebook.cellCount, [
-            new vscode.NotebookCellData(vscode.NotebookCellKind.Code, 'diagnostic_value<-1\n', 'r'),
-        ])]);
+        edit.set(notebook.uri, [
+            vscode.NotebookEdit.insertCells(notebook.cellCount, [
+                new vscode.NotebookCellData(
+                    vscode.NotebookCellKind.Code,
+                    'diagnostic_value<-1\n',
+                    'r',
+                ),
+            ]),
+        ]);
         await vscode.workspace.applyEdit(edit);
         const document = notebook.cellAt(notebook.cellCount - 1).document;
         await until(() => vscode.languages.getDiagnostics(document.uri).length > 0);
         const diagnostics = vscode.languages.getDiagnostics(document.uri);
-        assert.ok(!diagnostics.some(item => item.message.includes('Failed to run diagnostics')), JSON.stringify(diagnostics));
-        assert.ok(diagnostics.some(item => item.message.includes('spaces around')));
+        assert.ok(
+            !diagnostics.some((item) => item.message.includes('Failed to run diagnostics')),
+            JSON.stringify(diagnostics),
+        );
+        assert.ok(diagnostics.some((item) => item.message.includes('spaces around')));
         const fix = new vscode.WorkspaceEdit();
-        fix.replace(document.uri, new vscode.Range(0, 0, document.lineCount, 0), 'diagnostic_value <- 1\n');
+        fix.replace(
+            document.uri,
+            new vscode.Range(0, 0, document.lineCount, 0),
+            'diagnostic_value <- 1\n',
+        );
         await vscode.workspace.applyEdit(fix);
         await until(() => vscode.languages.getDiagnostics(document.uri).length === 0);
     });
     test('namespace linters work on virtual cells and diagnostics keep their cell identity', async () => {
-        const notebook = vscode.workspace.notebookDocuments.find(doc => doc.metadata.rSessionId === manifests[0].id);
+        const notebook = vscode.workspace.notebookDocuments.find(
+            (doc) => doc.metadata.rSessionId === manifests[0].id,
+        );
         assert.ok(notebook);
         const index = notebook.cellCount;
         const edit = new vscode.WorkspaceEdit();
-        edit.set(notebook.uri, [vscode.NotebookEdit.insertCells(index, [
-            new vscode.NotebookCellData(vscode.NotebookCellKind.Code, 'base::sum(1:3)\nnamespace_value<-1\n', 'r'),
-            new vscode.NotebookCellData(vscode.NotebookCellKind.Code, 'base::sum(1:3)\n', 'r'),
-        ])]);
+        edit.set(notebook.uri, [
+            vscode.NotebookEdit.insertCells(index, [
+                new vscode.NotebookCellData(
+                    vscode.NotebookCellKind.Code,
+                    'base::sum(1:3)\nnamespace_value<-1\n',
+                    'r',
+                ),
+                new vscode.NotebookCellData(vscode.NotebookCellKind.Code, 'base::sum(1:3)\n', 'r'),
+            ]),
+        ]);
         await vscode.workspace.applyEdit(edit);
-        const bad = notebook.cellAt(index).document, good = notebook.cellAt(index + 1).document;
+        const bad = notebook.cellAt(index).document,
+            good = notebook.cellAt(index + 1).document;
         await until(() => vscode.languages.getDiagnostics(bad.uri).length > 0);
         const diagnostics = vscode.languages.getDiagnostics(bad.uri);
-        assert.ok(!diagnostics.some(item => item.message.includes('Failed to run diagnostics')), JSON.stringify(diagnostics));
-        assert.ok(diagnostics.some(item => item.message.includes('spaces around') && item.range.start.line === 1));
+        assert.ok(
+            !diagnostics.some((item) => item.message.includes('Failed to run diagnostics')),
+            JSON.stringify(diagnostics),
+        );
+        assert.ok(
+            diagnostics.some(
+                (item) => item.message.includes('spaces around') && item.range.start.line === 1,
+            ),
+        );
         assert.deepStrictEqual(vscode.languages.getDiagnostics(good.uri), []);
         const fix = new vscode.WorkspaceEdit();
-        fix.replace(bad.uri, new vscode.Range(0, 0, bad.lineCount, 0), 'base::sum(1:3)\nnamespace_value <- 1\n');
+        fix.replace(
+            bad.uri,
+            new vscode.Range(0, 0, bad.lineCount, 0),
+            'base::sum(1:3)\nnamespace_value <- 1\n',
+        );
         await vscode.workspace.applyEdit(fix);
         await until(() => vscode.languages.getDiagnostics(bad.uri).length === 0);
     });
 
     test('lints the Interactive input before execution', async () => {
-        const document = vscode.workspace.textDocuments.find(doc => doc.uri.scheme === 'vscode-interactive-input' && doc.languageId === 'r');
+        const document = vscode.workspace.textDocuments.find(
+            (doc) => doc.uri.scheme === 'vscode-interactive-input' && doc.languageId === 'r',
+        );
         assert.ok(document);
         const edit = new vscode.WorkspaceEdit();
-        edit.replace(document.uri, new vscode.Range(0, 0, document.lineCount, 0), 'input_value<-1\n');
+        edit.replace(
+            document.uri,
+            new vscode.Range(0, 0, document.lineCount, 0),
+            'input_value<-1\n',
+        );
         await vscode.workspace.applyEdit(edit);
-        await until(() => vscode.languages.getDiagnostics(document.uri).some(item =>
-            item.message.includes('spaces around') || item.message.includes('Failed to run diagnostics')));
+        await until(() =>
+            vscode.languages
+                .getDiagnostics(document.uri)
+                .some(
+                    (item) =>
+                        item.message.includes('spaces around') ||
+                        item.message.includes('Failed to run diagnostics'),
+                ),
+        );
         const diagnostics = vscode.languages.getDiagnostics(document.uri);
-        assert.ok(!diagnostics.some(item => item.message.includes('Failed to run diagnostics')), JSON.stringify(diagnostics));
-        assert.ok(diagnostics.some(item => item.message.includes('spaces around')));
+        assert.ok(
+            !diagnostics.some((item) => item.message.includes('Failed to run diagnostics')),
+            JSON.stringify(diagnostics),
+        );
+        assert.ok(diagnostics.some((item) => item.message.includes('spaces around')));
         const clear = new vscode.WorkspaceEdit();
-        clear.replace(document.uri, new vscode.Range(0, 0, document.lineCount, 0), 'input_value <- 1\n');
+        clear.replace(
+            document.uri,
+            new vscode.Range(0, 0, document.lineCount, 0),
+            'input_value <- 1\n',
+        );
         await vscode.workspace.applyEdit(clear);
         await until(() => vscode.languages.getDiagnostics(document.uri).length === 0);
         const reset = new vscode.WorkspaceEdit();
@@ -743,19 +1305,37 @@ function treeTooltip(item: vscode.TreeItem): string {
         try {
             const manifest = manifests[0];
             await vscode.commands.executeCommand('r.interactive.open', manifest);
-            const notebook = vscode.workspace.notebookDocuments.find(doc => doc.metadata.rSessionId === manifest.id);
+            const notebook = vscode.workspace.notebookDocuments.find(
+                (doc) => doc.metadata.rSessionId === manifest.id,
+            );
             assert.ok(notebook);
-            const opened = await vscode.commands.executeCommand<{ inputUri: vscode.Uri }>('interactive.open', { preserveFocus: false }, notebook.uri);
+            const opened = await vscode.commands.executeCommand<{ inputUri: vscode.Uri }>(
+                'interactive.open',
+                { preserveFocus: false },
+                notebook.uri,
+            );
             await vscode.commands.executeCommand('interactive.input.focus');
-            await until(() => vscode.window.activeTextEditor?.document.uri.toString() === opened.inputUri.toString());
+            await until(
+                () =>
+                    vscode.window.activeTextEditor?.document.uri.toString() ===
+                    opened.inputUri.toString(),
+            );
             const editor = vscode.window.activeTextEditor!;
-            const document = editor.document, original = document.getText(), originalOptions = editor.options;
+            const document = editor.document,
+                original = document.getText(),
+                originalOptions = editor.options;
             editor.options = { tabSize: 2, insertSpaces: true };
             // This integration case intentionally verifies languageserver;
             // independent-provider behavior is tested with the built-in LSP off.
-            await until(() => languageService().clients.get(opened.inputUri.toString())?.isRunning() === true);
-            assert.ok(languageService().clients.get(opened.inputUri.toString())?.initializeResult?.capabilities.documentOnTypeFormattingProvider,
-                'languageserver must advertise on-type formatting');
+            await until(
+                () =>
+                    languageService().clients.get(opened.inputUri.toString())?.isRunning() === true,
+            );
+            assert.ok(
+                languageService().clients.get(opened.inputUri.toString())?.initializeResult
+                    ?.capabilities.documentOnTypeFormattingProvider,
+                'languageserver must advertise on-type formatting',
+            );
             try {
                 for (const [text, ch, expected] of [
                     ['typed_value<-sum(1,2', ')', 'typed_value <- sum(1, 2)'],
@@ -764,15 +1344,25 @@ function treeTooltip(item: vscode.TreeItem): string {
                     ['typed_value<-1', '\n', 'typed_value <- 1\n'],
                     ['if(TRUE){', '\n', 'if (TRUE) {\n  '],
                 ]) {
-                    await editor.edit(builder => builder.replace(new vscode.Range(0, 0, document.lineCount, 0), text));
+                    await editor.edit((builder) =>
+                        builder.replace(new vscode.Range(0, 0, document.lineCount, 0), text),
+                    );
                     const end = document.positionAt(document.getText().length);
                     editor.selection = new vscode.Selection(end, end);
                     await vscode.commands.executeCommand('type', { text: ch });
-                    await until(() => document.getText() === expected,
-                        () => `Expected ${JSON.stringify(expected)}, got ${JSON.stringify(document.getText())}`);
+                    await until(
+                        () => document.getText() === expected,
+                        () =>
+                            `Expected ${JSON.stringify(expected)}, got ${JSON.stringify(document.getText())}`,
+                    );
                     // VS Code sends selection updates after the document change.
-                    await until(() => editor.selection.isEmpty && document.offsetAt(editor.selection.active) === expected.length,
-                        () => `Expected cursor at ${expected.length} after formatting, got ${document.offsetAt(editor.selection.active)}`);
+                    await until(
+                        () =>
+                            editor.selection.isEmpty &&
+                            document.offsetAt(editor.selection.active) === expected.length,
+                        () =>
+                            `Expected cursor at ${expected.length} after formatting, got ${document.offsetAt(editor.selection.active)}`,
+                    );
                     if (ch === ')') {
                         await vscode.commands.executeCommand('undo');
                         await until(() => document.getText() === text);
@@ -782,126 +1372,250 @@ function treeTooltip(item: vscode.TreeItem): string {
                     ['(1+1)', '(1 + 1)'],
                     ['typed_value<-sum(1,2)', 'typed_value <- sum(1, 2)'],
                 ]) {
-                    await editor.edit(builder => builder.replace(new vscode.Range(0, 0, document.lineCount, 0), ''));
+                    await editor.edit((builder) =>
+                        builder.replace(new vscode.Range(0, 0, document.lineCount, 0), ''),
+                    );
                     editor.selection = new vscode.Selection(0, 0, 0, 0);
-                    for (const ch of text) { await vscode.commands.executeCommand('type', { text: ch }); }
-                    await until(() => document.getText() === expected,
-                        () => `Typing with auto-closing brackets produced ${JSON.stringify(document.getText())}`);
-                    await until(() => editor.selection.isEmpty && document.offsetAt(editor.selection.active) === expected.length,
-                        () => `Expected cursor at ${expected.length} after formatting, got ${document.offsetAt(editor.selection.active)}`);
+                    for (const ch of text) {
+                        await vscode.commands.executeCommand('type', { text: ch });
+                    }
+                    await until(
+                        () => document.getText() === expected,
+                        () =>
+                            `Typing with auto-closing brackets produced ${JSON.stringify(document.getText())}`,
+                    );
+                    await until(
+                        () =>
+                            editor.selection.isEmpty &&
+                            document.offsetAt(editor.selection.active) === expected.length,
+                        () =>
+                            `Expected cursor at ${expected.length} after formatting, got ${document.offsetAt(editor.selection.active)}`,
+                    );
                 }
             } finally {
-                await editor.edit(builder => builder.replace(new vscode.Range(0, 0, document.lineCount, 0), original));
+                await editor.edit((builder) =>
+                    builder.replace(new vscode.Range(0, 0, document.lineCount, 0), original),
+                );
                 editor.options = originalOptions;
             }
         } finally {
-            await settings.update('formatOnType', previous, vscode.ConfigurationTarget.Global, true);
+            await settings.update(
+                'formatOnType',
+                previous,
+                vscode.ConfigurationTarget.Global,
+                true,
+            );
             await vscode.commands.executeCommand('r.interactive.open', manifests[0]);
         }
     });
     test('provides live function hover in Interactive inputs as well as source documents', async () => {
         await vscode.commands.executeCommand('r.interactive.open', manifests[0]);
-        const notebook = vscode.workspace.notebookDocuments.find(doc => doc.metadata.rSessionId === manifests[0].id);
+        const notebook = vscode.workspace.notebookDocuments.find(
+            (doc) => doc.metadata.rSessionId === manifests[0].id,
+        );
         assert.ok(notebook);
         const index = notebook.cellCount;
         const edit = new vscode.WorkspaceEdit();
-        edit.set(notebook.uri, [vscode.NotebookEdit.insertCells(index, [new vscode.NotebookCellData(vscode.NotebookCellKind.Code,
-            'interactive_signature <- function(x, y) x + y', 'r')])]);
+        edit.set(notebook.uri, [
+            vscode.NotebookEdit.insertCells(index, [
+                new vscode.NotebookCellData(
+                    vscode.NotebookCellKind.Code,
+                    'interactive_signature <- function(x, y) x + y',
+                    'r',
+                ),
+            ]),
+        ]);
         await vscode.workspace.applyEdit(edit);
-        await vscode.commands.executeCommand('notebook.cell.execute', { ranges: [{ start: index, end: index + 1 }], document: notebook.uri });
+        await vscode.commands.executeCommand('notebook.cell.execute', {
+            ranges: [{ start: index, end: index + 1 }],
+            document: notebook.uri,
+        });
         await until(() => notebook.cellAt(index).executionSummary?.success === true);
         const workspace = workspaceProvider();
         const expectedOwner = `${manifests[0].id}:${manifests[0].generation}`;
-        const state = (): string => JSON.stringify({
-            expectedOwner,
-            actualOwner: workspace.owner?.sessionId,
-            function: workspace.data?.globalenv.interactive_signature,
-        });
-        await until(() => workspace.owner?.sessionId === expectedOwner, () => `Timed out waiting for Interactive owner: ${state()}`);
-        await until(() => workspace.owner?.sessionId === expectedOwner
-            && workspace.data?.globalenv.interactive_signature?.type === 'closure',
-            () => `Timed out waiting for Interactive workspace snapshot: ${state()}`);
-        const result = await vscode.commands.executeCommand<{ inputUri: vscode.Uri }>('interactive.open', { preserveFocus: true }, notebook.uri);
+        const state = (): string =>
+            JSON.stringify({
+                expectedOwner,
+                actualOwner: workspace.owner?.sessionId,
+                function: workspace.data?.globalenv.interactive_signature,
+            });
+        await until(
+            () => workspace.owner?.sessionId === expectedOwner,
+            () => `Timed out waiting for Interactive owner: ${state()}`,
+        );
+        await until(
+            () =>
+                workspace.owner?.sessionId === expectedOwner &&
+                workspace.data?.globalenv.interactive_signature?.type === 'closure',
+            () => `Timed out waiting for Interactive workspace snapshot: ${state()}`,
+        );
+        const result = await vscode.commands.executeCommand<{ inputUri: vscode.Uri }>(
+            'interactive.open',
+            { preserveFocus: true },
+            notebook.uri,
+        );
         const input = await vscode.workspace.openTextDocument(result.inputUri);
         const previous = input.getText();
         const text = new vscode.WorkspaceEdit();
-        text.replace(input.uri, new vscode.Range(0, 0, input.lineCount, 0), 'interactive_signature');
+        text.replace(
+            input.uri,
+            new vscode.Range(0, 0, input.lineCount, 0),
+            'interactive_signature',
+        );
         await vscode.workspace.applyEdit(text);
         try {
-            const source = await vscode.workspace.openTextDocument({ language: 'r', content: 'interactive_signature' });
+            const source = await vscode.workspace.openTextDocument({
+                language: 'r',
+                content: 'interactive_signature',
+            });
             for (const document of [source, input]) {
-                const hovers = await vscode.commands.executeCommand<vscode.Hover[]>('vscode.executeHoverProvider', document.uri, new vscode.Position(0, 3));
-                const text = hovers.flatMap(hover => hover.contents.map(content => typeof content === 'string' ? content : content.value)).join('\n');
-                assert.ok(text.includes('function (x, y)'), `Missing live function hover in ${document.uri.scheme}: ${text}`);
+                const hovers = await vscode.commands.executeCommand<vscode.Hover[]>(
+                    'vscode.executeHoverProvider',
+                    document.uri,
+                    new vscode.Position(0, 3),
+                );
+                const text = hovers
+                    .flatMap((hover) =>
+                        hover.contents.map((content) =>
+                            typeof content === 'string' ? content : content.value,
+                        ),
+                    )
+                    .join('\n');
+                assert.ok(
+                    text.includes('function (x, y)'),
+                    `Missing live function hover in ${document.uri.scheme}: ${text}`,
+                );
             }
         } finally {
-            const reset = new vscode.WorkspaceEdit(); reset.replace(input.uri, new vscode.Range(0, 0, input.lineCount, 0), previous);
+            const reset = new vscode.WorkspaceEdit();
+            reset.replace(input.uri, new vscode.Range(0, 0, input.lineCount, 0), previous);
             await vscode.workspace.applyEdit(reset);
         }
     });
     test('keeps blank Interactive prompts free of diagnostics while still linting nonempty input', async () => {
         await vscode.commands.executeCommand('r.interactive.open', manifests[0]);
-        const notebook = vscode.workspace.notebookDocuments.find(doc => doc.metadata.rSessionId === manifests[0].id);
+        const notebook = vscode.workspace.notebookDocuments.find(
+            (doc) => doc.metadata.rSessionId === manifests[0].id,
+        );
         assert.ok(notebook);
-        const result = await vscode.commands.executeCommand<{ inputUri: vscode.Uri }>('interactive.open', { preserveFocus: true }, notebook.uri);
+        const result = await vscode.commands.executeCommand<{ inputUri: vscode.Uri }>(
+            'interactive.open',
+            { preserveFocus: true },
+            notebook.uri,
+        );
         const document = await vscode.workspace.openTextDocument(result.inputUri);
         const previous = document.getText();
         const replace = async (text: string): Promise<void> => {
-            const edit = new vscode.WorkspaceEdit(); edit.replace(document.uri, new vscode.Range(0, 0, document.lineCount, 0), text);
+            const edit = new vscode.WorkspaceEdit();
+            edit.replace(document.uri, new vscode.Range(0, 0, document.lineCount, 0), text);
             await vscode.workspace.applyEdit(edit);
         };
         try {
             // Expression diagnostics also work with lintr versions that filter
             // file-level whitespace lints for synthetic document paths.
             await replace('input_value<-2\n');
-            await until(() => vscode.languages.getDiagnostics(document.uri).some(item => item.message.includes('spaces around')));
+            await until(() =>
+                vscode.languages
+                    .getDiagnostics(document.uri)
+                    .some((item) => item.message.includes('spaces around')),
+            );
             await replace(' \n\t\n');
             await until(() => vscode.languages.getDiagnostics(document.uri).length === 0);
             // Let the server publish its whitespace diagnostics after the immediate clear.
-            await new Promise(resolve => setTimeout(resolve, 1500));
+            await new Promise((resolve) => setTimeout(resolve, 1500));
             assert.deepStrictEqual(vscode.languages.getDiagnostics(document.uri), []);
             await replace('input_value<-1\n');
-            await until(() => vscode.languages.getDiagnostics(document.uri).some(item => item.message.includes('spaces around')));
+            await until(() =>
+                vscode.languages
+                    .getDiagnostics(document.uri)
+                    .some((item) => item.message.includes('spaces around')),
+            );
             await replace('');
             await until(() => vscode.languages.getDiagnostics(document.uri).length === 0);
-        } finally { await replace(previous); }
+        } finally {
+            await replace(previous);
+        }
     });
     test('uses each input owner for parameter hints and keeps live signatures available while R is busy', async () => {
         const inputs: vscode.TextDocument[] = [];
         const previous: string[] = [];
         const notebooks: vscode.NotebookDocument[] = [];
         const replace = async (document: vscode.TextDocument, code: string): Promise<void> => {
-            const edit = new vscode.WorkspaceEdit(); edit.replace(document.uri, new vscode.Range(0, 0, document.lineCount, 0), code);
+            const edit = new vscode.WorkspaceEdit();
+            edit.replace(document.uri, new vscode.Range(0, 0, document.lineCount, 0), code);
             await vscode.workspace.applyEdit(edit);
         };
-        const execute = async (notebook: vscode.NotebookDocument, code: string, wait = true): Promise<void> => {
+        const execute = async (
+            notebook: vscode.NotebookDocument,
+            code: string,
+            wait = true,
+        ): Promise<void> => {
             const index = notebook.cellCount;
             const edit = new vscode.WorkspaceEdit();
-            edit.set(notebook.uri, [vscode.NotebookEdit.insertCells(index, [new vscode.NotebookCellData(vscode.NotebookCellKind.Code, code, 'r')])]);
+            edit.set(notebook.uri, [
+                vscode.NotebookEdit.insertCells(index, [
+                    new vscode.NotebookCellData(vscode.NotebookCellKind.Code, code, 'r'),
+                ]),
+            ]);
             await vscode.workspace.applyEdit(edit);
-            await vscode.commands.executeCommand('notebook.cell.execute', { ranges: [{ start: index, end: index + 1 }], document: notebook.uri });
-            if (wait) { await until(() => notebook.cellAt(index).executionSummary?.success === true); }
+            await vscode.commands.executeCommand('notebook.cell.execute', {
+                ranges: [{ start: index, end: index + 1 }],
+                document: notebook.uri,
+            });
+            if (wait) {
+                await until(() => notebook.cellAt(index).executionSummary?.success === true);
+            }
         };
-        const help = async (document: vscode.TextDocument, expected: string, activeParameter: number, endOffset = 0): Promise<void> => {
+        const help = async (
+            document: vscode.TextDocument,
+            expected: string,
+            activeParameter: number,
+            endOffset = 0,
+        ): Promise<void> => {
             const deadline = Date.now() + 10000;
             for (;;) {
-                const result = await vscode.commands.executeCommand<vscode.SignatureHelp | undefined>('vscode.executeSignatureHelpProvider',
-                    document.uri, document.positionAt(document.getText().length + endOffset), ',');
-                if (result?.signatures[0]?.label === expected) { assert.strictEqual(result.activeParameter, activeParameter); return; }
-                if (Date.now() > deadline) { assert.fail(`Missing ${expected} in ${document.uri.scheme}: ${JSON.stringify(result)}`); }
-                await new Promise(resolve => setTimeout(resolve, 100));
+                const result = await vscode.commands.executeCommand<
+                    vscode.SignatureHelp | undefined
+                >(
+                    'vscode.executeSignatureHelpProvider',
+                    document.uri,
+                    document.positionAt(document.getText().length + endOffset),
+                    ',',
+                );
+                if (result?.signatures[0]?.label === expected) {
+                    assert.strictEqual(result.activeParameter, activeParameter);
+                    return;
+                }
+                if (Date.now() > deadline) {
+                    assert.fail(
+                        `Missing ${expected} in ${document.uri.scheme}: ${JSON.stringify(result)}`,
+                    );
+                }
+                await new Promise((resolve) => setTimeout(resolve, 100));
             }
         };
         try {
             for (let i = 0; i < 2; i++) {
                 await vscode.commands.executeCommand('r.interactive.open', manifests[i]);
-                const notebook = vscode.workspace.notebookDocuments.find(doc => doc.metadata.rSessionId === manifests[i].id);
-                assert.ok(notebook); notebooks.push(notebook);
-                await execute(notebook, i === 0 ? 'interactive_signature <- function(x, y) x + y'
-                    : 'interactive_signature <- function(alpha, beta, gamma = 3) alpha + beta + gamma');
-                const opened = await vscode.commands.executeCommand<{ inputUri: vscode.Uri }>('interactive.open', { preserveFocus: true }, notebook.uri);
+                const notebook = vscode.workspace.notebookDocuments.find(
+                    (doc) => doc.metadata.rSessionId === manifests[i].id,
+                );
+                assert.ok(notebook);
+                notebooks.push(notebook);
+                await execute(
+                    notebook,
+                    i === 0
+                        ? 'interactive_signature <- function(x, y) x + y'
+                        : 'interactive_signature <- function(alpha, beta, gamma = 3) alpha + beta + gamma',
+                );
+                const opened = await vscode.commands.executeCommand<{ inputUri: vscode.Uri }>(
+                    'interactive.open',
+                    { preserveFocus: true },
+                    notebook.uri,
+                );
                 const input = await vscode.workspace.openTextDocument(opened.inputUri);
-                inputs.push(input); previous.push(input.getText());
+                inputs.push(input);
+                previous.push(input.getText());
                 await replace(input, 'interactive_signature(1, ');
             }
             await help(inputs[0], 'interactive_signature(x, y)', 1);
@@ -911,13 +1625,31 @@ function treeTooltip(item: vscode.TreeItem): string {
             await execute(notebooks[0], 'Sys.sleep(1)', false);
             await until(() => manifests[0].status === 'busy');
             await help(inputs[0], 'interactive_signature(x, y)', 1);
-            const hovers = await vscode.commands.executeCommand<vscode.Hover[]>('vscode.executeHoverProvider', inputs[0].uri, new vscode.Position(0, 3));
-            assert.ok(hovers.some(hover => hover.contents.some(content => typeof content !== 'string' && content.value.includes('function (x, y)'))));
+            const hovers = await vscode.commands.executeCommand<vscode.Hover[]>(
+                'vscode.executeHoverProvider',
+                inputs[0].uri,
+                new vscode.Position(0, 3),
+            );
+            assert.ok(
+                hovers.some((hover) =>
+                    hover.contents.some(
+                        (content) =>
+                            typeof content !== 'string' &&
+                            content.value.includes('function (x, y)'),
+                    ),
+                ),
+            );
             await until(() => manifests[0].status === 'idle');
-            const source = await vscode.workspace.openTextDocument({ language: 'r', content: 'interactive_signature <- function(local_arg) local_arg\ninteractive_signature()' });
+            const source = await vscode.workspace.openTextDocument({
+                language: 'r',
+                content:
+                    'interactive_signature <- function(local_arg) local_arg\ninteractive_signature()',
+            });
             await help(source, 'interactive_signature(local_arg)', 0, -1);
         } finally {
-            for (let i = 0; i < inputs.length; i++) { await replace(inputs[i], previous[i]); }
+            for (let i = 0; i < inputs.length; i++) {
+                await replace(inputs[i], previous[i]);
+            }
             await vscode.commands.executeCommand('r.interactive.open', manifests[0]);
         }
     });
@@ -927,17 +1659,29 @@ function treeTooltip(item: vscode.TreeItem): string {
         try {
             const file = path.join(directory, 'diagnostics.R');
             fs.writeFileSync(file, 'file_value<-1\n');
-            const document = await vscode.languages.setTextDocumentLanguage(await vscode.workspace.openTextDocument(file), 'r');
+            const document = await vscode.languages.setTextDocumentLanguage(
+                await vscode.workspace.openTextDocument(file),
+                'r',
+            );
             await until(() => vscode.languages.getDiagnostics(document.uri).length > 0);
             const diagnostics = vscode.languages.getDiagnostics(document.uri);
-            assert.ok(!diagnostics.some(item => item.message.includes('Failed to run diagnostics')), JSON.stringify(diagnostics));
-            assert.ok(diagnostics.some(item => item.message.includes('spaces around')));
+            assert.ok(
+                !diagnostics.some((item) => item.message.includes('Failed to run diagnostics')),
+                JSON.stringify(diagnostics),
+            );
+            assert.ok(diagnostics.some((item) => item.message.includes('spaces around')));
             const fix = new vscode.WorkspaceEdit();
-            fix.replace(document.uri, new vscode.Range(0, 0, document.lineCount, 0), 'file_value <- 1\n');
+            fix.replace(
+                document.uri,
+                new vscode.Range(0, 0, document.lineCount, 0),
+                'file_value <- 1\n',
+            );
             await vscode.workspace.applyEdit(fix);
             await until(() => vscode.languages.getDiagnostics(document.uri).length === 0);
             await document.save();
-        } finally { sourceDirectories.push(directory); }
+        } finally {
+            sourceDirectories.push(directory);
+        }
     });
     test('reopening a native input restores R language after its document is recreated', async () => {
         await vscode.commands.executeCommand('r.interactive.open', manifests[0]);
@@ -959,14 +1703,23 @@ function treeTooltip(item: vscode.TreeItem): string {
         try {
             for (const manifest of manifests) {
                 await vscode.commands.executeCommand('r.interactive.open', manifest);
-                const notebook = vscode.workspace.notebookDocuments.find(doc => doc.metadata.rSessionId === manifest.id);
+                const notebook = vscode.workspace.notebookDocuments.find(
+                    (doc) => doc.metadata.rSessionId === manifest.id,
+                );
                 assert.ok(notebook);
-                const result = await vscode.commands.executeCommand<{ inputUri: vscode.Uri }>('interactive.open', { preserveFocus: true }, notebook.uri);
+                const result = await vscode.commands.executeCommand<{ inputUri: vscode.Uri }>(
+                    'interactive.open',
+                    { preserveFocus: true },
+                    notebook.uri,
+                );
                 const input = await vscode.workspace.openTextDocument(result.inputUri);
                 assert.strictEqual(input.languageId, 'r', 'An owning session must restore its input language');
                 await until(() => {
                     const client = service.clients.get(result.inputUri.toString());
-                    return client?.isRunning() === true && client.clientOptions.workspaceFolder?.uri.fsPath === manifest.directory;
+                    return (
+                        client?.isRunning() === true &&
+                        client.clientOptions.workspaceFolder?.uri.fsPath === manifest.directory
+                    );
                 }, () => {
                     const client = service.clients.get(result.inputUri.toString());
                     return `Interactive input language server ${result.inputUri.toString()}: ${JSON.stringify({
@@ -976,51 +1729,84 @@ function treeTooltip(item: vscode.TreeItem): string {
                     })}`;
                 });
             }
-        } finally { await vscode.commands.executeCommand('r.interactive.open', manifests[0]); }
+        } finally {
+            await vscode.commands.executeCommand('r.interactive.open', manifests[0]);
+        }
     });
     test('reuses cell code in the input without executing it or replacing a draft', async () => {
-        const notebook = vscode.workspace.notebookDocuments.find(doc => doc.metadata.rSessionId === manifests[0].id);
+        const notebook = vscode.workspace.notebookDocuments.find(
+            (doc) => doc.metadata.rSessionId === manifests[0].id,
+        );
         assert.ok(notebook);
-        const input = vscode.workspace.textDocuments.find(doc => doc.uri.scheme === 'vscode-interactive-input' && doc.languageId === 'r');
+        const input = vscode.workspace.textDocuments.find(
+            (doc) => doc.uri.scheme === 'vscode-interactive-input' && doc.languageId === 'r',
+        );
         assert.ok(input);
-        const draft = new vscode.WorkspaceEdit(); draft.insert(input.uri, new vscode.Position(0, 0), '# keep my draft');
+        const draft = new vscode.WorkspaceEdit();
+        draft.insert(input.uri, new vscode.Position(0, 0), '# keep my draft');
         await vscode.workspace.applyEdit(draft);
-        const client = new AgentClient(manifests[0]); await client.connect();
+        const client = new AgentClient(manifests[0]);
+        await client.connect();
         try {
             const count = (await client.snapshot()).executions.length;
-            const tabs = () => vscode.window.tabGroups.all.flatMap(group => group.tabs.map(tab => `${group.viewColumn}:${tab.label}`)).sort();
+            const tabs = () =>
+                vscode.window.tabGroups.all
+                    .flatMap((group) => group.tabs.map((tab) => `${group.viewColumn}:${tab.label}`))
+                    .sort();
             const before = tabs();
             await vscode.commands.executeCommand('r.interactive.reuseCell', notebook.cellAt(0));
-            assert.deepStrictEqual(tabs(), before, 'Cell reuse must keep the existing native Interactive tab');
+            assert.deepStrictEqual(
+                tabs(),
+                before,
+                'Cell reuse must keep the existing native Interactive tab',
+            );
             assert.ok(input.getText().startsWith('# keep my draft\n'));
             assert.ok(input.getText().includes('editor_value <- 42'));
             assert.strictEqual((await client.snapshot()).executions.length, count);
         } finally {
             client.close();
-            const reset = new vscode.WorkspaceEdit(); reset.delete(input.uri, new vscode.Range(0, 0, input.lineCount, 0));
+            const reset = new vscode.WorkspaceEdit();
+            reset.delete(input.uri, new vscode.Range(0, 0, input.lineCount, 0));
             await vscode.workspace.applyEdit(reset);
         }
     });
     test('late plot updates preserve the cell document, edited code, and execution summary', async function () {
-        if (!manifests[0].capabilities.jgd) { this.skip(); }
-        const notebook = vscode.workspace.notebookDocuments.find(doc => doc.metadata.rSessionId === manifests[0].id);
+        if (!manifests[0].capabilities.jgd) {
+            this.skip();
+        }
+        const notebook = vscode.workspace.notebookDocuments.find(
+            (doc) => doc.metadata.rSessionId === manifests[0].id,
+        );
         assert.ok(notebook);
         const cell = notebook.cellAt(0);
-        const plot = (): Record<string, unknown> | undefined => cell.outputs.flatMap(output => output.items)
-            .filter(item => item.mime === DISPLAY_MIME).map(item => JSON.parse(Buffer.from(item.data).toString()) as Record<string, unknown>)
-            .find(data => data.kind === 'plot');
+        const plot = (): Record<string, unknown> | undefined =>
+            cell.outputs
+                .flatMap((output) => output.items)
+                .filter((item) => item.mime === DISPLAY_MIME)
+                .map(
+                    (item) =>
+                        JSON.parse(Buffer.from(item.data).toString()) as Record<string, unknown>,
+                )
+                .find((data) => data.kind === 'plot');
         await until(() => !!plot());
         const initial = plot();
         assert.ok(initial);
-        const uri = cell.document.uri.toString(), summary = cell.executionSummary;
+        const uri = cell.document.uri.toString(),
+            summary = cell.executionSummary;
         const code = cell.document.getText() + '\n# unsubmitted edit';
         const edit = new vscode.WorkspaceEdit();
         edit.replace(cell.document.uri, new vscode.Range(0, 0, cell.document.lineCount, 0), code);
         await vscode.workspace.applyEdit(edit);
-        const client = new AgentClient(manifests[0]); await client.connect();
+        const client = new AgentClient(manifests[0]);
+        await client.connect();
         try {
             await client.request('claim', { force: true });
-            await client.request('resize', { device: initial.device, plot: initial.plot, width: 500, height: 350 });
+            await client.request('resize', {
+                device: initial.device,
+                plot: initial.plot,
+                width: 500,
+                height: 350,
+            });
             await until(() => plot()?.svg !== initial.svg);
             assert.strictEqual(notebook.cellAt(0).document.uri.toString(), uri);
             assert.strictEqual(notebook.cellAt(0).document.getText(), code);
@@ -1032,57 +1818,113 @@ function treeTooltip(item: vscode.TreeItem): string {
         }
     });
     test('queued cells wait for R to start before refreshing their output', async () => {
-        const notebook = vscode.workspace.notebookDocuments.find(doc => doc.metadata.rSessionId === manifests[0].id);
+        const notebook = vscode.workspace.notebookDocuments.find(
+            (doc) => doc.metadata.rSessionId === manifests[0].id,
+        );
         assert.ok(notebook);
         const errors = sinon.stub(vscode.window, 'showErrorMessage').resolves(undefined);
         try {
             const index = notebook.cellCount;
             const edit = new vscode.WorkspaceEdit();
-            edit.set(notebook.uri, [vscode.NotebookEdit.insertCells(index, [
-                new vscode.NotebookCellData(vscode.NotebookCellKind.Code, 'Sys.sleep(0.8); cat("first-complete")', 'r'),
-                new vscode.NotebookCellData(vscode.NotebookCellKind.Code, 'cat("queued-complete"); data.frame(x=1:3)', 'r'),
-            ])]);
+            edit.set(notebook.uri, [
+                vscode.NotebookEdit.insertCells(index, [
+                    new vscode.NotebookCellData(
+                        vscode.NotebookCellKind.Code,
+                        'Sys.sleep(0.8); cat("first-complete")',
+                        'r',
+                    ),
+                    new vscode.NotebookCellData(
+                        vscode.NotebookCellKind.Code,
+                        'cat("queued-complete"); data.frame(x=1:3)',
+                        'r',
+                    ),
+                ]),
+            ]);
             await vscode.workspace.applyEdit(edit);
-            await vscode.commands.executeCommand('notebook.cell.execute', { ranges: [{ start: index, end: index + 2 }], document: notebook.uri });
+            await vscode.commands.executeCommand('notebook.cell.execute', {
+                ranges: [{ start: index, end: index + 2 }],
+                document: notebook.uri,
+            });
             await until(() => notebook.cellAt(index + 1).executionSummary?.success === true);
-            assert.ok(notebook.cellAt(index + 1).outputs.some(output => output.items.some(item =>
-                Buffer.from(item.data).toString().includes('queued-complete'))));
+            assert.ok(
+                notebook
+                    .cellAt(index + 1)
+                    .outputs.some((output) =>
+                        output.items.some((item) =>
+                            Buffer.from(item.data).toString().includes('queued-complete'),
+                        ),
+                    ),
+            );
             sinon.assert.notCalled(errors);
-        } finally { errors.restore(); }
+        } finally {
+            errors.restore();
+        }
     });
     test('cancelling queued cells completes their notebook execution without a start event', async () => {
-        const notebook = vscode.workspace.notebookDocuments.find(doc => doc.metadata.rSessionId === manifests[0].id);
+        const notebook = vscode.workspace.notebookDocuments.find(
+            (doc) => doc.metadata.rSessionId === manifests[0].id,
+        );
         assert.ok(notebook);
         const errors = sinon.stub(vscode.window, 'showErrorMessage').resolves(undefined);
-        const client = new AgentClient(manifests[0]); await client.connect();
+        const client = new AgentClient(manifests[0]);
+        await client.connect();
         try {
             const index = notebook.cellCount;
             const edit = new vscode.WorkspaceEdit();
-            edit.set(notebook.uri, [vscode.NotebookEdit.insertCells(index, [
-                new vscode.NotebookCellData(vscode.NotebookCellKind.Code, 'Sys.sleep(1); cat("running-complete")', 'r'),
-                new vscode.NotebookCellData(vscode.NotebookCellKind.Code, 'stop("cancelled code must not run")', 'r'),
-            ])]);
+            edit.set(notebook.uri, [
+                vscode.NotebookEdit.insertCells(index, [
+                    new vscode.NotebookCellData(
+                        vscode.NotebookCellKind.Code,
+                        'Sys.sleep(1); cat("running-complete")',
+                        'r',
+                    ),
+                    new vscode.NotebookCellData(
+                        vscode.NotebookCellKind.Code,
+                        'stop("cancelled code must not run")',
+                        'r',
+                    ),
+                ]),
+            ]);
             await vscode.workspace.applyEdit(edit);
-            await vscode.commands.executeCommand('notebook.cell.execute', { ranges: [{ start: index, end: index + 2 }], document: notebook.uri });
+            await vscode.commands.executeCommand('notebook.cell.execute', {
+                ranges: [{ start: index, end: index + 2 }],
+                document: notebook.uri,
+            });
             const cancelled = notebook.cellAt(index + 1);
             await until(() => !!cancelled.metadata.rExecutionId && manifests[0].status === 'busy');
             // Let the normal output-refresh timer run while the second cell is queued.
-            await new Promise(resolve => setTimeout(resolve, 150));
+            await new Promise((resolve) => setTimeout(resolve, 150));
             await vscode.commands.executeCommand('r.interactive.cancelQueued', notebook.uri);
             await until(() => notebook.cellAt(index).executionSummary?.success === true);
-            assert.strictEqual((await client.request<{ state: string }>('execution', { id: cancelled.metadata.rExecutionId })).state, 'cancelled');
+            assert.strictEqual(
+                (
+                    await client.request<{ state: string }>('execution', {
+                        id: cancelled.metadata.rExecutionId,
+                    })
+                ).state,
+                'cancelled',
+            );
             assert.strictEqual(cancelled.executionSummary?.success, undefined);
             assert.strictEqual(cancelled.outputs.length, 0);
             // A fresh handle is only allowed once the pending execution has ended.
             controller.createNotebookCellExecution(cancelled).end(undefined);
             sinon.assert.notCalled(errors);
-        } finally { client.close(); errors.restore(); }
+        } finally {
+            client.close();
+            errors.restore();
+        }
     });
     test('runs the diamonds data.table example through Send Selection without lifecycle errors', async function () {
-        const packages = await promisify(execFile)('Rscript', ['-e',
-            'cat(all(vapply(c("data.table", "ggplot2", "dplyr"), requireNamespace, logical(1), quietly=TRUE)))']);
-        if (packages.stdout.trim() !== 'TRUE') { this.skip(); }
-        const notebook = vscode.workspace.notebookDocuments.find(doc => doc.metadata.rSessionId === manifests[0].id);
+        const packages = await promisify(execFile)('Rscript', [
+            '-e',
+            'cat(all(vapply(c("data.table", "ggplot2", "dplyr"), requireNamespace, logical(1), quietly=TRUE)))',
+        ]);
+        if (packages.stdout.trim() !== 'TRUE') {
+            this.skip();
+        }
+        const notebook = vscode.workspace.notebookDocuments.find(
+            (doc) => doc.metadata.rSessionId === manifests[0].id,
+        );
         assert.ok(notebook);
         const code = String.raw`# R Script for Testing data.table with ggplot2 Diamonds Data
 # ============================================================
@@ -1111,17 +1953,29 @@ cat("\n")`;
             await vscode.commands.executeCommand('r.runSelection', 'Sys.sleep(0.8)');
             await until(() => notebook.cellCount > index && manifests[0].status === 'busy');
             await vscode.commands.executeCommand('r.runSelection', code);
-            await until(() => notebook.cellCount > index + 1 && notebook.cellAt(index + 1).executionSummary?.success === true);
-            const output = notebook.cellAt(index + 1).outputs.flatMap(item => item.items)
-                .map(item => Buffer.from(item.data).toString()).join('\n');
+            await until(
+                () =>
+                    notebook.cellCount > index + 1 &&
+                    notebook.cellAt(index + 1).executionSummary?.success === true,
+            );
+            const output = notebook
+                .cellAt(index + 1)
+                .outputs.flatMap((item) => item.items)
+                .map((item) => Buffer.from(item.data).toString())
+                .join('\n');
             assert.match(output, /53940 rows x 10 columns/);
             assert.match(output, /First few rows/);
             assert.match(output, /0\.23/);
             sinon.assert.notCalled(errors);
-        } finally { errors.restore(); }
+        } finally {
+            errors.restore();
+        }
     });
     test('Run Selection with no target offers live sessions and cancellation preserves the document and cursor', async () => {
-        const document = await vscode.workspace.openTextDocument({ language: 'r', content: 'choice_cancelled <- 1\n2' });
+        const document = await vscode.workspace.openTextDocument({
+            language: 'r',
+            content: 'choice_cancelled <- 1\n2',
+        });
         const editor = await vscode.window.showTextDocument(document);
         editor.selection = new vscode.Selection(0, 0, 0, 0);
         await vscode.commands.executeCommand('r.interactive.useTerminal');
@@ -1131,32 +1985,62 @@ cat("\n")`;
         const create = sinon.spy(vscode.window, 'createTerminal');
         try {
             await vscode.commands.executeCommand('r.runSelection');
-            sinon.assert.calledOnce(picker); sinon.assert.notCalled(create);
+            sinon.assert.calledOnce(picker);
+            sinon.assert.notCalled(create);
             assert.strictEqual(picker.firstCall.args[1]?.title, 'Run R code');
-            const choices = await picker.firstCall.args[0] as (vscode.QuickPickItem & { manifest?: SessionManifest; create?: boolean; terminal?: boolean })[];
-            assert.ok(choices.some(item => item.create)); assert.ok(choices.some(item => item.terminal));
-            for (const manifest of manifests) { assert.ok(choices.some(item => item.manifest?.id === manifest.id)); }
+            const choices = (await picker.firstCall.args[0]) as (vscode.QuickPickItem & {
+                manifest?: SessionManifest;
+                create?: boolean;
+                terminal?: boolean;
+            })[];
+            assert.ok(choices.some((item) => item.create));
+            assert.ok(choices.some((item) => item.terminal));
+            for (const manifest of manifests) {
+                assert.ok(choices.some((item) => item.manifest?.id === manifest.id));
+            }
             assert.strictEqual(document.getText(), 'choice_cancelled <- 1\n2');
             assert.strictEqual(editor.selection.active.line, 0);
             assert.strictEqual(editor.selection.active.character, 0);
-        } finally { terminals.restore(); active.restore(); picker.restore(); create.restore(); }
+        } finally {
+            terminals.restore();
+            active.restore();
+            picker.restore();
+            create.restore();
+        }
     });
 
     test('Run Selection connects the chosen existing session and submits the captured code once', async () => {
         await vscode.commands.executeCommand('r.interactive.useTerminal');
         const terminals = sinon.stub(vscode.window, 'terminals').value([]);
-        const picker = sinon.stub(vscode.window, 'showQuickPick').resolves({ label: manifests[1].label, manifest: manifests[1] } as vscode.QuickPickItem);
+        const picker = sinon.stub(vscode.window, 'showQuickPick').resolves({
+            label: manifests[1].label,
+            manifest: manifests[1],
+        } as vscode.QuickPickItem);
         try {
             await vscode.commands.executeCommand('r.runSelection', 'chosen_target_value <- 42');
             await vscode.commands.executeCommand('r.runSelection', 'chosen_target_value + 1');
             sinon.assert.calledOnce(picker);
-            const client = new AgentClient(manifests[1]); await client.connect();
+            const client = new AgentClient(manifests[1]);
+            await client.connect();
             try {
                 const snapshot = await client.snapshot();
-                assert.strictEqual(snapshot.executions.filter(record => record.code === 'chosen_target_value <- 42').length, 1);
-                assert.ok(snapshot.executions.some(record => record.code === 'chosen_target_value + 1'));
-            } finally { client.close(); }
-        } finally { terminals.restore(); picker.restore(); await vscode.commands.executeCommand('r.interactive.open', manifests[0]); }
+                assert.strictEqual(
+                    snapshot.executions.filter(
+                        (record) => record.code === 'chosen_target_value <- 42',
+                    ).length,
+                    1,
+                );
+                assert.ok(
+                    snapshot.executions.some((record) => record.code === 'chosen_target_value + 1'),
+                );
+            } finally {
+                client.close();
+            }
+        } finally {
+            terminals.restore();
+            picker.restore();
+            await vscode.commands.executeCommand('r.interactive.open', manifests[0]);
+        }
     });
 
     test('concurrent submissions share the target chooser and create only one R terminal', async () => {
@@ -1164,27 +2048,53 @@ cat("\n")`;
         const terminals = sinon.stub(vscode.window, 'terminals').value([]);
         const active = sinon.stub(vscode.window, 'activeTerminal').value(undefined);
         const picker = sinon.stub(vscode.window, 'showQuickPick').callsFake(async () => {
-            await new Promise(resolve => setTimeout(resolve, 20));
+            await new Promise((resolve) => setTimeout(resolve, 20));
             return { label: 'Create R terminal', terminal: true } as vscode.QuickPickItem;
         });
         const sendText = sinon.spy();
-        const terminal = { name: 'R Interactive', processId: Promise.resolve(undefined), show: () => undefined, sendText, dispose: () => undefined } as unknown as vscode.Terminal;
+        const terminal = {
+            name: 'R Interactive',
+            processId: Promise.resolve(undefined),
+            show: () => undefined,
+            sendText,
+            dispose: () => undefined,
+        } as unknown as vscode.Terminal;
         const create = sinon.stub(vscode.window, 'createTerminal').returns(terminal);
         const configuration = vscode.workspace.getConfiguration('r');
         const watcher = configuration.inspect<boolean>('sessionWatcher')?.globalValue;
         await configuration.update('sessionWatcher', false, vscode.ConfigurationTarget.Global);
         try {
             await Promise.all([
-                vscode.commands.executeCommand('r.runSelection', 'terminal_choice_one <- 1\nterminal_choice_one + 1'),
-                vscode.commands.executeCommand('r.runSelection', 'terminal_choice_two <- 2\nterminal_choice_two + 1'),
+                vscode.commands.executeCommand(
+                    'r.runSelection',
+                    'terminal_choice_one <- 1\nterminal_choice_one + 1',
+                ),
+                vscode.commands.executeCommand(
+                    'r.runSelection',
+                    'terminal_choice_two <- 2\nterminal_choice_two + 1',
+                ),
             ]);
-            sinon.assert.calledOnce(picker); sinon.assert.calledOnce(create);
-            assert.deepStrictEqual(sendText.args.map(args => args[0] as string), [
-                'terminal_choice_one <- 1', 'terminal_choice_one + 1', 'terminal_choice_two <- 2', 'terminal_choice_two + 1',
-            ]);
+            sinon.assert.calledOnce(picker);
+            sinon.assert.calledOnce(create);
+            assert.deepStrictEqual(
+                sendText.args.map((args) => args[0] as string),
+                [
+                    'terminal_choice_one <- 1',
+                    'terminal_choice_one + 1',
+                    'terminal_choice_two <- 2',
+                    'terminal_choice_two + 1',
+                ],
+            );
         } finally {
-            terminals.restore(); active.restore(); picker.restore(); create.restore();
-            await configuration.update('sessionWatcher', watcher, vscode.ConfigurationTarget.Global);
+            terminals.restore();
+            active.restore();
+            picker.restore();
+            create.restore();
+            await configuration.update(
+                'sessionWatcher',
+                watcher,
+                vscode.ConfigurationTarget.Global,
+            );
             await vscode.commands.executeCommand('r.interactive.open', manifests[0]);
         }
     });
@@ -1194,47 +2104,109 @@ cat("\n")`;
         const previousNode = settings.inspect<string>('interactive.nodePath')?.globalValue;
         await vscode.commands.executeCommand('r.interactive.useTerminal');
         const terminals = sinon.stub(vscode.window, 'terminals').value([]);
-        const picker = sinon.stub(vscode.window, 'showQuickPick').callsFake((_items, options) => Promise.resolve(
-            options?.title === 'Run R code' ? { label: 'New R Interactive window', create: true } : { label: 'arf', value: 'arf' }
-        ) as ReturnType<typeof vscode.window.showQuickPick>);
-        const input = sinon.stub(vscode.window, 'showInputBox').resolves('Created by Run Selection');
+        const picker = sinon
+            .stub(vscode.window, 'showQuickPick')
+            .callsFake(
+                (_items, options) =>
+                    Promise.resolve(
+                        options?.title === 'Run R code'
+                            ? { label: 'New R Interactive window', create: true }
+                            : { label: 'arf', value: 'arf' },
+                    ) as ReturnType<typeof vscode.window.showQuickPick>,
+            );
+        const input = sinon
+            .stub(vscode.window, 'showInputBox')
+            .resolves('Created by Run Selection');
         let client: AgentClient | undefined;
         let notebook: vscode.NotebookDocument | undefined;
         try {
             // Exercise successful agent creation with the default VS Code runtime.
             await settings.update('interactive.nodePath', '', vscode.ConfigurationTarget.Global);
             await vscode.commands.executeCommand('r.runSelection', 'created_target_value <- 123');
-            notebook = vscode.workspace.notebookDocuments.find(doc => doc.metadata.rSessionId && !manifests.some(item => item.id === doc.metadata.rSessionId));
+            notebook = vscode.workspace.notebookDocuments.find(
+                (doc) =>
+                    doc.metadata.rSessionId &&
+                    !manifests.some((item) => item.id === doc.metadata.rSessionId),
+            );
             assert.ok(notebook);
-            const manifest = JSON.parse(fs.readFileSync(path.join(root, String(notebook.metadata.rSessionId), 'manifest.json'), 'utf8')) as SessionManifest;
-            const config = JSON.parse(fs.readFileSync(path.join(root, manifest.id, 'config.json'), 'utf8')) as AgentConfig;
+            const manifest = JSON.parse(
+                fs.readFileSync(
+                    path.join(root, String(notebook.metadata.rSessionId), 'manifest.json'),
+                    'utf8',
+                ),
+            ) as SessionManifest;
+            const config = JSON.parse(
+                fs.readFileSync(path.join(root, manifest.id, 'config.json'), 'utf8'),
+            ) as AgentConfig;
             assert.strictEqual(config.maxOutputBytes, 4 * 1024 * 1024);
             assert.strictEqual(config.maxJournalBytes, 128 * 1024 * 1024);
             assert.strictEqual(config.maxAssetBytes, 1024 * 1024 * 1024);
-            client = new AgentClient(manifest); await client.connect();
+            client = new AgentClient(manifest);
+            await client.connect();
             const snapshot = await client.snapshot();
-            assert.strictEqual(snapshot.executions.filter(record => record.code === 'created_target_value <- 123').length, 1);
-            await until(() => notebook?.getCells().some(cell => cell.executionSummary?.success === true) ?? false);
+            assert.strictEqual(
+                snapshot.executions.filter(
+                    (record) => record.code === 'created_target_value <- 123',
+                ).length,
+                1,
+            );
+            await until(
+                () =>
+                    notebook?.getCells().some((cell) => cell.executionSummary?.success === true) ??
+                    false,
+            );
             await vscode.commands.executeCommand('r.runSelection', 'q("no")');
-            await until(() => notebook?.getCells().some(cell => cell.metadata.rNoticeKind === 'stopped') ?? false);
+            await until(
+                () =>
+                    notebook?.getCells().some((cell) => cell.metadata.rNoticeKind === 'stopped') ??
+                    false,
+            );
             const uri = notebook.uri;
             await vscode.commands.executeCommand('r.interactive.detach', uri);
             await vscode.commands.executeCommand('r.interactive.open', manifest);
-            assert.strictEqual(notebook.getCells().filter(cell => cell.metadata.rNoticeKind === 'stopped').length, 1);
-            assert.ok(notebook.getCells().some(cell => cell.document.getText().includes('R session stopped')));
-            assert.ok(notebook.getCells().some(cell => cell.document.getText().includes('The transcript is retained.')),
-                'Notice body must keep breakable spaces so it wraps in narrow windows');
+            assert.strictEqual(
+                notebook.getCells().filter((cell) => cell.metadata.rNoticeKind === 'stopped')
+                    .length,
+                1,
+            );
+            assert.ok(
+                notebook
+                    .getCells()
+                    .some((cell) => cell.document.getText().includes('R session stopped')),
+            );
+            assert.ok(
+                notebook
+                    .getCells()
+                    .some((cell) =>
+                        cell.document.getText().includes('The transcript is retained.'),
+                    ),
+                'Notice body must keep breakable spaces so it wraps in narrow windows',
+            );
         } finally {
-            terminals.restore(); picker.restore(); input.restore();
-            await settings.update('interactive.nodePath', previousNode, vscode.ConfigurationTarget.Global);
-            if (notebook) { await vscode.commands.executeCommand('r.interactive.detach', notebook.uri); }
+            terminals.restore();
+            picker.restore();
+            input.restore();
+            await settings.update(
+                'interactive.nodePath',
+                previousNode,
+                vscode.ConfigurationTarget.Global,
+            );
+            if (notebook) {
+                await vscode.commands.executeCommand('r.interactive.detach', notebook.uri);
+            }
             if (client) {
                 await client.request('claim', { force: true });
                 await client.request('stop');
-                for (let i = 0; i < 100 && (await client.request<{ status: string }>('heartbeat')).status !== 'exited'; i++) {
-                    await new Promise(resolve => setTimeout(resolve, 50));
+                for (
+                    let i = 0;
+                    i < 100 &&
+                    (await client.request<{ status: string }>('heartbeat')).status !== 'exited';
+                    i++
+                ) {
+                    await new Promise((resolve) => setTimeout(resolve, 50));
                 }
-                await client.request('shutdown'); client.close();
+                await client.request('shutdown');
+                client.close();
             }
             await vscode.commands.executeCommand('r.interactive.open', manifests[0]);
         }
@@ -1246,198 +2218,448 @@ cat("\n")`;
         const previousNode = settings.inspect<string>('interactive.nodePath')?.globalValue;
         const override = nodeOverride('custom Node for creation');
         await vscode.commands.executeCommand('r.interactive.open', manifests[0]);
-        const original = vscode.workspace.notebookDocuments.find(doc => doc.metadata.rSessionId === manifests[0].id);
+        const original = vscode.workspace.notebookDocuments.find(
+            (doc) => doc.metadata.rSessionId === manifests[0].id,
+        );
         assert.ok(original);
-        const originalResult = await vscode.commands.executeCommand<{ inputUri: vscode.Uri }>('interactive.open', { preserveFocus: false }, original.uri);
+        const originalResult = await vscode.commands.executeCommand<{ inputUri: vscode.Uri }>(
+            'interactive.open',
+            { preserveFocus: false },
+            original.uri,
+        );
         await vscode.commands.executeCommand('interactive.input.focus');
-        await until(() => vscode.window.activeTextEditor?.document.uri.toString() === originalResult.inputUri.toString());
+        await until(
+            () =>
+                vscode.window.activeTextEditor?.document.uri.toString() ===
+                originalResult.inputUri.toString(),
+        );
         const originalInput = vscode.window.activeTextEditor?.document;
         assert.strictEqual(originalInput?.uri.scheme, 'vscode-interactive-input');
         assert.ok(originalInput);
         const originalText = originalInput.getText();
         const draft = new vscode.WorkspaceEdit();
-        draft.replace(originalInput.uri, new vscode.Range(0, 0, originalInput.lineCount, 0), '# unfinished work in the previous session');
+        draft.replace(
+            originalInput.uri,
+            new vscode.Range(0, 0, originalInput.lineCount, 0),
+            '# unfinished work in the previous session',
+        );
         await vscode.workspace.applyEdit(draft);
-        const before = new Set(vscode.workspace.notebookDocuments.map(doc => doc.uri.toString()));
-        const inputsBefore = new Set(vscode.workspace.textDocuments.map(doc => doc.uri.toString()));
-        const picker = sinon.stub(vscode.window, 'showQuickPick').resolves({ label: 'arf', value: 'arf' } as vscode.QuickPickItem);
+        const before = new Set(vscode.workspace.notebookDocuments.map((doc) => doc.uri.toString()));
+        const inputsBefore = new Set(
+            vscode.workspace.textDocuments.map((doc) => doc.uri.toString()),
+        );
+        const picker = sinon
+            .stub(vscode.window, 'showQuickPick')
+            .resolves({ label: 'arf', value: 'arf' } as vscode.QuickPickItem);
         const name = sinon.stub(vscode.window, 'showInputBox').resolves('New session focus');
         const execute = vscode.commands.executeCommand.bind(vscode.commands);
         const commands = sinon.stub(vscode.commands, 'executeCommand').callThrough();
-        commands.withArgs('interactive.open').callsFake(async (command: string, ...args: unknown[]) => {
-            const result = await execute<{ notebookUri: vscode.Uri; inputUri: vscode.Uri }>(command, ...args);
-            if (args[3] === 'R: New session focus') {
-                // Emulate native models retained under a recycled numbered URI.
-                const retained = new vscode.WorkspaceEdit();
-                retained.set(result.notebookUri, [vscode.NotebookEdit.insertCells(0, [
-                    new vscode.NotebookCellData(vscode.NotebookCellKind.Code, '# previous window draft', 'r'),
-                ])]);
-                retained.insert(result.inputUri, new vscode.Position(0, 0), '# previous window input');
-                await vscode.workspace.applyEdit(retained);
-            }
-            return result;
-        });
+        commands
+            .withArgs('interactive.open')
+            .callsFake(async (command: string, ...args: unknown[]) => {
+                const result = await execute<{ notebookUri: vscode.Uri; inputUri: vscode.Uri }>(
+                    command,
+                    ...args,
+                );
+                if (args[3] === 'R: New session focus') {
+                    // Emulate native models retained under a recycled numbered URI.
+                    const retained = new vscode.WorkspaceEdit();
+                    retained.set(result.notebookUri, [
+                        vscode.NotebookEdit.insertCells(0, [
+                            new vscode.NotebookCellData(
+                                vscode.NotebookCellKind.Code,
+                                '# previous window draft',
+                                'r',
+                            ),
+                        ]),
+                    ]);
+                    retained.insert(
+                        result.inputUri,
+                        new vscode.Position(0, 0),
+                        '# previous window input',
+                    );
+                    await vscode.workspace.applyEdit(retained);
+                }
+                return result;
+            });
         let notebook: vscode.NotebookDocument | undefined;
         let client: AgentClient | undefined;
         try {
-            await settings.update('interactive.arfPath', process.env.ARF_PATH ?? 'arf', vscode.ConfigurationTarget.Global);
-            await settings.update('interactive.nodePath', `"\${userHome}/${path.relative(os.homedir(), override.executable)}"`, vscode.ConfigurationTarget.Global);
+            await settings.update(
+                'interactive.arfPath',
+                process.env.ARF_PATH ?? 'arf',
+                vscode.ConfigurationTarget.Global,
+            );
+            await settings.update(
+                'interactive.nodePath',
+                `"\${userHome}/${path.relative(os.homedir(), override.executable)}"`,
+                vscode.ConfigurationTarget.Global,
+            );
             await vscode.commands.executeCommand('r.interactive.new');
-            notebook = vscode.workspace.notebookDocuments.find(doc => !before.has(doc.uri.toString()) && doc.metadata.rSessionId);
+            notebook = vscode.workspace.notebookDocuments.find(
+                (doc) => !before.has(doc.uri.toString()) && doc.metadata.rSessionId,
+            );
             assert.ok(notebook);
-            const manifest = JSON.parse(fs.readFileSync(path.join(root, String(notebook.metadata.rSessionId), 'manifest.json'), 'utf8')) as SessionManifest;
+            const manifest = JSON.parse(
+                fs.readFileSync(
+                    path.join(root, String(notebook.metadata.rSessionId), 'manifest.json'),
+                    'utf8',
+                ),
+            ) as SessionManifest;
             // Acquire cleanup handles before assertions so a failure cannot leave
             // an extra session or notebook to affect subsequent tests.
-            client = new AgentClient(manifest); await client.connect();
+            client = new AgentClient(manifest);
+            await client.connect();
             assertNodeLaunched(override.log);
-            assert.strictEqual(vscode.window.tabGroups.all.flatMap(group => group.tabs).filter(tab => tab.label === 'R: New session focus').length, 1,
-                'Focusing the new native input must not open a duplicate tab in the previous editor group');
-            const input = vscode.workspace.textDocuments.find(doc => doc.uri.scheme === 'vscode-interactive-input' && !inputsBefore.has(doc.uri.toString()));
+            assert.strictEqual(
+                vscode.window.tabGroups.all
+                    .flatMap((group) => group.tabs)
+                    .filter((tab) => tab.label === 'R: New session focus').length,
+                1,
+                'Focusing the new native input must not open a duplicate tab in the previous editor group',
+            );
+            const input = vscode.workspace.textDocuments.find(
+                (doc) =>
+                    doc.uri.scheme === 'vscode-interactive-input' &&
+                    !inputsBefore.has(doc.uri.toString()),
+            );
             assert.ok(input);
-            await until(() => vscode.window.activeTextEditor?.document.uri.toString() === input.uri.toString());
+            await until(
+                () =>
+                    vscode.window.activeTextEditor?.document.uri.toString() ===
+                    input.uri.toString(),
+            );
             assert.notStrictEqual(input.uri.toString(), originalInput.uri.toString());
-            assert.strictEqual(originalInput.getText(), '# unfinished work in the previous session');
-            assert.strictEqual(input.getText(), '', 'A new session must not inherit a recycled input model');
-            assert.strictEqual(notebook.cellCount, 0, 'A new session must not inherit old notebook drafts');
+            assert.strictEqual(
+                originalInput.getText(),
+                '# unfinished work in the previous session',
+            );
+            assert.strictEqual(
+                input.getText(),
+                '',
+                'A new session must not inherit a recycled input model',
+            );
+            assert.strictEqual(
+                notebook.cellCount,
+                0,
+                'A new session must not inherit old notebook drafts',
+            );
             const code = 'new_session_focus_value <- 123';
-            const edit = new vscode.WorkspaceEdit(); edit.insert(input.uri, new vscode.Position(0, 0), code);
+            const edit = new vscode.WorkspaceEdit();
+            edit.insert(input.uri, new vscode.Position(0, 0), code);
             await vscode.workspace.applyEdit(edit);
             await vscode.commands.executeCommand('interactive.execute', notebook.uri);
-            await until(() => notebook?.getCells().some(cell => cell.document.getText() === code && cell.executionSummary?.success === true) ?? false);
-            assert.ok(!original.getCells().some(cell => cell.document.getText() === code));
+            await until(
+                () =>
+                    notebook
+                        ?.getCells()
+                        .some(
+                            (cell) =>
+                                cell.document.getText() === code &&
+                                cell.executionSummary?.success === true,
+                        ) ?? false,
+            );
+            assert.ok(!original.getCells().some((cell) => cell.document.getText() === code));
         } finally {
-            commands.restore(); picker.restore(); name.restore();
-            await settings.update('interactive.arfPath', previousArf, vscode.ConfigurationTarget.Global);
-            await settings.update('interactive.nodePath', previousNode, vscode.ConfigurationTarget.Global);
-            if (notebook) { await vscode.commands.executeCommand('r.interactive.detach', notebook.uri); }
+            commands.restore();
+            picker.restore();
+            name.restore();
+            await settings.update(
+                'interactive.arfPath',
+                previousArf,
+                vscode.ConfigurationTarget.Global,
+            );
+            await settings.update(
+                'interactive.nodePath',
+                previousNode,
+                vscode.ConfigurationTarget.Global,
+            );
+            if (notebook) {
+                await vscode.commands.executeCommand('r.interactive.detach', notebook.uri);
+            }
             if (client) {
                 await client.request('claim', { force: true });
                 await client.request('stop');
-                for (let i = 0; i < 100 && (await client.request<{ status: string }>('heartbeat')).status !== 'exited'; i++) {
-                    await new Promise(resolve => setTimeout(resolve, 50));
+                for (
+                    let i = 0;
+                    i < 100 &&
+                    (await client.request<{ status: string }>('heartbeat')).status !== 'exited';
+                    i++
+                ) {
+                    await new Promise((resolve) => setTimeout(resolve, 50));
                 }
-                await client.request('shutdown'); client.close();
+                await client.request('shutdown');
+                client.close();
             }
             const restore = new vscode.WorkspaceEdit();
-            restore.replace(originalInput.uri, new vscode.Range(0, 0, originalInput.lineCount, 0), originalText);
+            restore.replace(
+                originalInput.uri,
+                new vscode.Range(0, 0, originalInput.lineCount, 0),
+                originalText,
+            );
             await vscode.workspace.applyEdit(restore);
             await vscode.commands.executeCommand('r.interactive.open', manifests[0]);
         }
     });
 
     test('history export chooses one format before saving and supports cancelling either step', async () => {
-        const notebook = vscode.workspace.notebookDocuments.find(doc => doc.metadata.rSessionId === manifests[0].id);
+        const notebook = vscode.workspace.notebookDocuments.find(
+            (doc) => doc.metadata.rSessionId === manifests[0].id,
+        );
         assert.ok(notebook);
         const picker = sinon.stub(vscode.window, 'showQuickPick').resolves(undefined);
         const save = sinon.stub(vscode.window, 'showSaveDialog').resolves(undefined);
         try {
             await vscode.commands.executeCommand('r.interactive.export', notebook.uri);
             sinon.assert.notCalled(save);
-            const choices = picker.firstCall.args[0] as (vscode.QuickPickItem & { format: string })[];
-            assert.deepStrictEqual(choices.map(choice => choice.format), ['rnb', 'ipynb', 'R', 'html']);
+            const choices = picker.firstCall.args[0] as (vscode.QuickPickItem & {
+                format: string;
+            })[];
+            assert.deepStrictEqual(
+                choices.map((choice) => choice.format),
+                ['rnb', 'ipynb', 'R', 'html'],
+            );
             for (const choice of choices) {
                 picker.resolves(choice);
                 await vscode.commands.executeCommand('r.interactive.export', notebook.uri);
                 const options = save.lastCall.args[0];
                 assert.deepStrictEqual(options?.filters, { [choice.label]: [choice.format] });
-                assert.strictEqual(options?.defaultUri?.fsPath, path.join(root, `${manifests[0].label}-history.${choice.format}`));
+                assert.strictEqual(
+                    options?.defaultUri?.fsPath,
+                    path.join(root, `${manifests[0].label}-history.${choice.format}`),
+                );
             }
             assert.strictEqual(save.callCount, 4);
-        } finally { picker.restore(); save.restore(); }
+        } finally {
+            picker.restore();
+            save.restore();
+        }
     });
 
     test('exports R-formatted numeric labels to HTML and retains raw numbers in saved notebooks', async () => {
-        const notebook = vscode.workspace.notebookDocuments.find(doc => doc.metadata.rSessionId === manifests[0].id);
+        const notebook = vscode.workspace.notebookDocuments.find(
+            (doc) => doc.metadata.rSessionId === manifests[0].id,
+        );
         assert.ok(notebook);
         const errors = sinon.stub(vscode.window, 'showErrorMessage').resolves(undefined);
         const saved = sinon.stub(vscode.window, 'showSaveDialog');
-        const format = sinon.stub(vscode.window, 'showQuickPick').resolves({ label: 'HTML report', format: 'html' } as vscode.QuickPickItem);
+        const format = sinon
+            .stub(vscode.window, 'showQuickPick')
+            .resolves({ label: 'HTML report', format: 'html' } as vscode.QuickPickItem);
         try {
             await vscode.commands.executeCommand('r.interactive.open', manifests[0]);
             const index = notebook.cellCount;
-            await vscode.commands.executeCommand('r.runSelection', 'options(digits=7, scipen=0); data.frame(price_per_carat=c(326/0.23, 326/0.21, 1400))');
-            await until(() => notebook.cellCount > index && notebook.cellAt(index).executionSummary?.success === true);
-            const htmlFile = path.join(root, 'numeric.html'); saved.resolves(vscode.Uri.file(htmlFile));
+            await vscode.commands.executeCommand(
+                'r.runSelection',
+                'options(digits=7, scipen=0); data.frame(price_per_carat=c(326/0.23, 326/0.21, 1400))',
+            );
+            await until(
+                () =>
+                    notebook.cellCount > index &&
+                    notebook.cellAt(index).executionSummary?.success === true,
+            );
+            const htmlFile = path.join(root, 'numeric.html');
+            saved.resolves(vscode.Uri.file(htmlFile));
             await vscode.commands.executeCommand('r.interactive.export', notebook.uri);
             const html = fs.readFileSync(htmlFile, 'utf8');
-            assert.ok(html.includes('<td style="text-align:right">1417.391</td>') && html.includes('<td style="text-align:right">1400.000</td>'));
-            const notebookFile = path.join(root, 'numeric.rnb'); saved.resolves(vscode.Uri.file(notebookFile));
-            format.resolves({ label: 'R Interactive notebook', format: 'rnb' } as vscode.QuickPickItem);
+            assert.ok(
+                html.includes('<td style="text-align:right">1417.391</td>') &&
+                    html.includes('<td style="text-align:right">1400.000</td>'),
+            );
+            const notebookFile = path.join(root, 'numeric.rnb');
+            saved.resolves(vscode.Uri.file(notebookFile));
+            format.resolves({
+                label: 'R Interactive notebook',
+                format: 'rnb',
+            } as vscode.QuickPickItem);
             await vscode.commands.executeCommand('r.interactive.export', notebook.uri);
-            const report = new InteractiveSerializer().deserializeNotebook(fs.readFileSync(notebookFile));
-            const table = report.cells.at(-1)?.outputs?.flatMap(output => output.items)
-                .filter(item => item.mime === DISPLAY_MIME).map(item => JSON.parse(Buffer.from(item.data).toString()) as Record<string, unknown>)
-                .find(data => data.kind === 'table');
+            const report = new InteractiveSerializer().deserializeNotebook(
+                fs.readFileSync(notebookFile),
+            );
+            const table = report.cells
+                .at(-1)
+                ?.outputs?.flatMap((output) => output.items)
+                .filter((item) => item.mime === DISPLAY_MIME)
+                .map(
+                    (item) =>
+                        JSON.parse(Buffer.from(item.data).toString()) as Record<string, unknown>,
+                )
+                .find((data) => data.kind === 'table');
             assert.ok(table);
-            assert.deepStrictEqual(table.formattedColumns, { '1': ['1417.391', '1552.381', '1400.000'] });
-            assert.ok(Math.abs((table.rows as Record<string, number>[])[0]['1'] - 326 / 0.23) < 1e-10);
+            assert.deepStrictEqual(table.formattedColumns, {
+                '1': ['1417.391', '1552.381', '1400.000'],
+            });
+            assert.ok(
+                Math.abs((table.rows as Record<string, number>[])[0]['1'] - 326 / 0.23) < 1e-10,
+            );
             assert.strictEqual(table.connected, false);
             assert.match(String(table.printedText), /price_per_carat/);
-            const plain = report.cells.at(-1)?.outputs?.flatMap(output => output.items).find(item => item.mime === 'text/plain');
-            assert.ok(plain); assert.strictEqual(Buffer.from(plain.data).toString(), table.printedText);
+            const plain = report.cells
+                .at(-1)
+                ?.outputs?.flatMap((output) => output.items)
+                .find((item) => item.mime === 'text/plain');
+            assert.ok(plain);
+            assert.strictEqual(Buffer.from(plain.data).toString(), table.printedText);
             const context = bundleContext();
             const manager = interactiveManager(context) as unknown as {
-                rendererMessage(editor: vscode.NotebookEditor, message: Record<string, unknown>): Promise<void>;
+                rendererMessage(
+                    editor: vscode.NotebookEditor,
+                    message: Record<string, unknown>,
+                ): Promise<void>;
             };
-            const editor = vscode.window.visibleNotebookEditors.find(editor => editor.notebook === notebook); assert.ok(editor);
+            const editor = vscode.window.visibleNotebookEditors.find(
+                (editor) => editor.notebook === notebook,
+            );
+            assert.ok(editor);
             const before = notebook.cellCount;
-            await manager.rendererMessage(editor, { displayId: table.displayId, generation: table.generation, action: 'tableView', mode: 'text' });
-            assert.strictEqual(notebook.cellCount, before, 'Selecting a view must not execute another cell');
+            await manager.rendererMessage(editor, {
+                displayId: table.displayId,
+                generation: table.generation,
+                action: 'tableView',
+                mode: 'text',
+            });
+            assert.strictEqual(
+                notebook.cellCount,
+                before,
+                'Selecting a view must not execute another cell',
+            );
             saved.resolves(vscode.Uri.file(htmlFile));
             format.resolves({ label: 'HTML report', format: 'html' } as vscode.QuickPickItem);
             await vscode.commands.executeCommand('r.interactive.export', notebook.uri);
-            assert.ok(fs.readFileSync(htmlFile, 'utf8').includes(`<pre>${String(table.printedText)}</pre>`));
+            assert.ok(
+                fs
+                    .readFileSync(htmlFile, 'utf8')
+                    .includes(`<pre>${String(table.printedText)}</pre>`),
+            );
             saved.resolves(vscode.Uri.file(notebookFile));
-            format.resolves({ label: 'R Interactive notebook', format: 'rnb' } as vscode.QuickPickItem);
+            format.resolves({
+                label: 'R Interactive notebook',
+                format: 'rnb',
+            } as vscode.QuickPickItem);
             await vscode.commands.executeCommand('r.interactive.export', notebook.uri);
-            const updated = new InteractiveSerializer().deserializeNotebook(fs.readFileSync(notebookFile));
-            const custom = updated.cells.at(-1)?.outputs?.flatMap(output => output.items).find(item => item.mime === DISPLAY_MIME); assert.ok(custom);
-            assert.strictEqual((JSON.parse(Buffer.from(custom.data).toString()) as Record<string, unknown>).tableView, 'text');
+            const updated = new InteractiveSerializer().deserializeNotebook(
+                fs.readFileSync(notebookFile),
+            );
+            const custom = updated.cells
+                .at(-1)
+                ?.outputs?.flatMap((output) => output.items)
+                .find((item) => item.mime === DISPLAY_MIME);
+            assert.ok(custom);
+            assert.strictEqual(
+                (JSON.parse(Buffer.from(custom.data).toString()) as Record<string, unknown>)
+                    .tableView,
+                'text',
+            );
             sinon.assert.notCalled(errors);
-        } finally { errors.restore(); saved.restore(); format.restore(); }
+        } finally {
+            errors.restore();
+            saved.restore();
+            format.restore();
+        }
     });
     test('unclassed list cells route browsing to their owner and save text preferences', async () => {
         await vscode.commands.executeCommand('r.interactive.open', manifests[0]);
-        const notebook = vscode.workspace.notebookDocuments.find(doc => doc.metadata.rSessionId === manifests[0].id); assert.ok(notebook);
+        const notebook = vscode.workspace.notebookDocuments.find(
+            (doc) => doc.metadata.rSessionId === manifests[0].id,
+        );
+        assert.ok(notebook);
         const index = notebook.cellCount;
-        await vscode.commands.executeCommand('r.runSelection', 'list(nested=list(value=1:2), table=data.frame(value=1:2))');
-        await until(() => notebook.cellCount > index && notebook.cellAt(index).executionSummary?.success === true);
-        const custom = notebook.cellAt(index).outputs.flatMap(output => output.items).find(item => item.mime === DISPLAY_MIME); assert.ok(custom);
+        await vscode.commands.executeCommand(
+            'r.runSelection',
+            'list(nested=list(value=1:2), table=data.frame(value=1:2))',
+        );
+        await until(
+            () =>
+                notebook.cellCount > index &&
+                notebook.cellAt(index).executionSummary?.success === true,
+        );
+        const custom = notebook
+            .cellAt(index)
+            .outputs.flatMap((output) => output.items)
+            .find((item) => item.mime === DISPLAY_MIME);
+        assert.ok(custom);
         const list = JSON.parse(Buffer.from(custom.data).toString()) as Record<string, unknown>;
-        assert.strictEqual(list.kind, 'list'); assert.strictEqual((list.children as unknown[]).length, 2);
-        const plain = notebook.cellAt(index).outputs.flatMap(output => output.items).find(item => item.mime === 'text/plain'); assert.ok(plain);
+        assert.strictEqual(list.kind, 'list');
+        assert.strictEqual((list.children as unknown[]).length, 2);
+        const plain = notebook
+            .cellAt(index)
+            .outputs.flatMap((output) => output.items)
+            .find((item) => item.mime === 'text/plain');
+        assert.ok(plain);
         assert.strictEqual(Buffer.from(plain.data).toString(), list.printedText);
         const context = bundleContext();
         const manager = interactiveManager(context) as unknown as {
             messages: vscode.NotebookRendererMessaging;
-            rendererMessage(editor: vscode.NotebookEditor, message: Record<string, unknown>): Promise<void>;
+            rendererMessage(
+                editor: vscode.NotebookEditor,
+                message: Record<string, unknown>,
+            ): Promise<void>;
         };
-        const editor = vscode.window.visibleNotebookEditors.find(editor => editor.notebook === notebook); assert.ok(editor);
+        const editor = vscode.window.visibleNotebookEditors.find(
+            (editor) => editor.notebook === notebook,
+        );
+        assert.ok(editor);
         const replies = sinon.spy(manager.messages, 'postMessage');
         const panels = sinon.spy(vscode.window, 'createWebviewPanel');
-        const saved = sinon.stub(vscode.window, 'showSaveDialog').resolves(vscode.Uri.file(path.join(root, 'list.rnb')));
-        const format = sinon.stub(vscode.window, 'showQuickPick').resolves({label:'Notebook',format:'rnb'} as vscode.QuickPickItem);
-        const message = {displayId:list.displayId,generation:list.generation,outputId:'list-test'};
+        const saved = sinon
+            .stub(vscode.window, 'showSaveDialog')
+            .resolves(vscode.Uri.file(path.join(root, 'list.rnb')));
+        const format = sinon
+            .stub(vscode.window, 'showQuickPick')
+            .resolves({ label: 'Notebook', format: 'rnb' } as vscode.QuickPickItem);
+        const message = {
+            displayId: list.displayId,
+            generation: list.generation,
+            outputId: 'list-test',
+        };
         try {
             await vscode.commands.executeCommand('r.interactive.open', manifests[1]);
-            await manager.rendererMessage(editor, {...message,action:'listPage',path:[1],start:1,requestId:1});
-            const page = replies.lastCall.args[0] as {result:{children:{label:string}[]}};
+            await manager.rendererMessage(editor, {
+                ...message,
+                action: 'listPage',
+                path: [1],
+                start: 1,
+                requestId: 1,
+            });
+            const page = replies.lastCall.args[0] as { result: { children: { label: string }[] } };
             assert.strictEqual(page.result.children[0].label, '$ value');
-            await manager.rendererMessage(editor, {...message,action:'listItem',path:[],index:2,requestId:2});
-            await until(() => panels.calledOnce); assert.strictEqual(panels.firstCall.args[1], 'List$table');
-            await manager.rendererMessage(editor, {...message,action:'list',path:[]});
+            await manager.rendererMessage(editor, {
+                ...message,
+                action: 'listItem',
+                path: [],
+                index: 2,
+                requestId: 2,
+            });
+            await until(() => panels.calledOnce);
+            assert.strictEqual(panels.firstCall.args[1], 'List$table');
+            await manager.rendererMessage(editor, { ...message, action: 'list', path: [] });
             assert.strictEqual(panels.callCount, 2);
-            assert.strictEqual(notebook.cellCount, index+1, 'Browsing must not run another cell');
-            await manager.rendererMessage(editor, {...message,action:'listView',mode:'text'});
+            assert.strictEqual(notebook.cellCount, index + 1, 'Browsing must not run another cell');
+            await manager.rendererMessage(editor, { ...message, action: 'listView', mode: 'text' });
             await vscode.commands.executeCommand('r.interactive.export', notebook.uri);
-            const report = new InteractiveSerializer().deserializeNotebook(fs.readFileSync(path.join(root,'list.rnb')));
-            const item = report.cells.at(-1)?.outputs?.flatMap(output=>output.items).find(item=>item.mime===DISPLAY_MIME); assert.ok(item);
-            const exported = JSON.parse(Buffer.from(item.data).toString()) as Record<string,unknown>;
-            assert.strictEqual(exported.listView,'text'); assert.strictEqual(exported.connected,false);
-            assert.strictEqual(exported.printedText,list.printedText);
+            const report = new InteractiveSerializer().deserializeNotebook(
+                fs.readFileSync(path.join(root, 'list.rnb')),
+            );
+            const item = report.cells
+                .at(-1)
+                ?.outputs?.flatMap((output) => output.items)
+                .find((item) => item.mime === DISPLAY_MIME);
+            assert.ok(item);
+            const exported = JSON.parse(Buffer.from(item.data).toString()) as Record<
+                string,
+                unknown
+            >;
+            assert.strictEqual(exported.listView, 'text');
+            assert.strictEqual(exported.connected, false);
+            assert.strictEqual(exported.printedText, list.printedText);
         } finally {
             replies.restore();
-            panels.returnValues.forEach(panel => { panel.dispose(); }); panels.restore(); saved.restore(); format.restore();
+            panels.returnValues.forEach((panel) => {
+                panel.dispose();
+            });
+            panels.restore();
+            saved.restore();
+            format.restore();
         }
     });
 
@@ -1446,79 +2668,539 @@ cat("\n")`;
         const original = vscode.window.createWebviewPanel;
         const panels: vscode.WebviewPanel[] = [];
         const receivers: sinon.SinonSpy[] = [];
-        const create = sinon.stub(vscode.window, 'createWebviewPanel').callsFake((type, title, column, options) => {
-            const panel = original(type, title, column, options);
-            panels.push(panel);
-            receivers.push(sinon.spy(panel.webview, 'onDidReceiveMessage'));
-            return panel;
-        });
+        const create = sinon
+            .stub(vscode.window, 'createWebviewPanel')
+            .callsFake((type, title, column, options) => {
+                const panel = original(type, title, column, options);
+                panels.push(panel);
+                receivers.push(sinon.spy(panel.webview, 'onDidReceiveMessage'));
+                return panel;
+            });
         try {
-            await vscode.commands.executeCommand('r.runSelection', 'rebase_view <- structure(list(table=data.frame(value=1:2)), class="test_list"); View(rebase_view)');
-            await until(() => panels.length === 1 && /const documentGeneration = \d+/.test(panels[0].webview.html));
+            await vscode.commands.executeCommand(
+                'r.runSelection',
+                'rebase_view <- structure(list(table=data.frame(value=1:2)), class="test_list"); View(rebase_view)',
+            );
+            await until(
+                () =>
+                    panels.length === 1 &&
+                    /const documentGeneration = \d+/.test(panels[0].webview.html),
+            );
             assert.strictEqual(panels[0].title, 'rebase_view');
             await vscode.commands.executeCommand('r.interactive.open', manifests[1]);
-            const documentGeneration = Number(/const documentGeneration = (\d+)/.exec(panels[0].webview.html)?.[1]);
+            const documentGeneration = Number(
+                /const documentGeneration = (\d+)/.exec(panels[0].webview.html)?.[1],
+            );
             // VS Code delivers webview messages to every registered listener,
             // including the session tooltip and list navigation listeners.
-            await Promise.all(receivers[0].getCalls().map(call => {
-                const receive = call.args[0] as (message: unknown) => unknown;
-                return receive({ message: 'listview/view', documentGeneration, requestId: 1, path: [], index: 1 });
-            }));
+            await Promise.all(
+                receivers[0].getCalls().map((call) => {
+                    const receive = call.args[0] as (message: unknown) => unknown;
+                    return receive({
+                        message: 'listview/view',
+                        documentGeneration,
+                        requestId: 1,
+                        path: [],
+                        index: 1,
+                    });
+                }),
+            );
             await until(() => panels.length === 2);
             assert.strictEqual(panels[1].title, 'rebase_view$table');
         } finally {
-            panels.forEach(panel => { panel.dispose(); });
-            receivers.forEach(receiver => { receiver.restore(); });
+            panels.forEach((panel) => {
+                panel.dispose();
+            });
+            receivers.forEach((receiver) => {
+                receiver.restore();
+            });
             create.restore();
         }
     });
 
     test('large native cells export their snapshot scope and open the full data viewer', async () => {
         await vscode.commands.executeCommand('r.interactive.open', manifests[0]);
-        const notebook = vscode.workspace.notebookDocuments.find(doc => doc.metadata.rSessionId === manifests[0].id); assert.ok(notebook);
+        const notebook = vscode.workspace.notebookDocuments.find(
+            (doc) => doc.metadata.rSessionId === manifests[0].id,
+        );
+        assert.ok(notebook);
         const index = notebook.cellCount;
-        await vscode.commands.executeCommand('r.runSelection', 'data.frame(id=seq_len(832976871L))');
-        await until(() => notebook.cellCount > index && notebook.cellAt(index).executionSummary?.success === true);
-        const custom = notebook.cellAt(index).outputs.flatMap(output => output.items).find(item => item.mime === DISPLAY_MIME); assert.ok(custom);
+        await vscode.commands.executeCommand(
+            'r.runSelection',
+            'data.frame(id=seq_len(832976871L))',
+        );
+        await until(
+            () =>
+                notebook.cellCount > index &&
+                notebook.cellAt(index).executionSummary?.success === true,
+        );
+        const custom = notebook
+            .cellAt(index)
+            .outputs.flatMap((output) => output.items)
+            .find((item) => item.mime === DISPLAY_MIME);
+        assert.ok(custom);
         const table = JSON.parse(Buffer.from(custom.data).toString()) as Record<string, unknown>;
         assert.strictEqual(table.totalRows, 1000);
         assert.strictEqual(table.sourceRows, 832976871);
         assert.ok(table.fullViewId && table.fullViewId !== table.viewId);
         const file = path.join(root, 'large-preview.html');
         const saved = sinon.stub(vscode.window, 'showSaveDialog').resolves(vscode.Uri.file(file));
-        const format = sinon.stub(vscode.window, 'showQuickPick').resolves({ label: 'HTML report', format: 'html' } as vscode.QuickPickItem);
+        const format = sinon
+            .stub(vscode.window, 'showQuickPick')
+            .resolves({ label: 'HTML report', format: 'html' } as vscode.QuickPickItem);
         const panels = sinon.spy(vscode.window, 'createWebviewPanel');
         try {
             await vscode.commands.executeCommand('r.interactive.export', notebook.uri);
-            assert.ok(fs.readFileSync(file, 'utf8').includes('Snapshot: first 1,000 of 832,976,871 rows'));
+            assert.ok(
+                fs.readFileSync(file, 'utf8').includes('Snapshot: first 1,000 of 832,976,871 rows'),
+            );
             const manager = interactiveManager() as unknown as {
                 messages: vscode.NotebookRendererMessaging;
-                rendererMessage(editor: vscode.NotebookEditor, message: Record<string, unknown>): Promise<void>;
+                rendererMessage(
+                    editor: vscode.NotebookEditor,
+                    message: Record<string, unknown>,
+                ): Promise<void>;
             };
-            const editor = vscode.window.visibleNotebookEditors.find(editor => editor.notebook === notebook); assert.ok(editor);
+            const editor = vscode.window.visibleNotebookEditors.find(
+                (editor) => editor.notebook === notebook,
+            );
+            assert.ok(editor);
             const replies = sinon.spy(manager.messages, 'postMessage');
             try {
-                await manager.rendererMessage(editor, { displayId: table.displayId, generation: table.generation, action: 'page', start: 832976860, size: 20, live: true, refresh: true, requestId: 77 });
-                const response = replies.lastCall.args[0] as { requestId: number; result: { startRow: number; live: boolean; rows: Record<string, number>[] }; error?: string };
+                await manager.rendererMessage(editor, {
+                    displayId: table.displayId,
+                    generation: table.generation,
+                    action: 'page',
+                    start: 832976860,
+                    size: 20,
+                    live: true,
+                    refresh: true,
+                    requestId: 77,
+                });
+                const response = replies.lastCall.args[0] as {
+                    requestId: number;
+                    result: { startRow: number; live: boolean; rows: Record<string, number>[] };
+                    error?: string;
+                };
                 assert.strictEqual(response.error, undefined);
                 assert.strictEqual(response.requestId, 77);
                 assert.strictEqual(response.result.live, true);
                 assert.strictEqual(response.result.rows[10]['1'], 832976871);
-                assert.strictEqual(notebook.cellAt(index).outputs.flatMap(output => output.items).find(item => item.mime === DISPLAY_MIME), custom, 'Browsing must not replace the saved output');
-            } finally { replies.restore(); }
-            await manager.rendererMessage(editor, { displayId: table.displayId, generation: table.generation, action: 'table' });
+                assert.strictEqual(
+                    notebook
+                        .cellAt(index)
+                        .outputs.flatMap((output) => output.items)
+                        .find((item) => item.mime === DISPLAY_MIME),
+                    custom,
+                    'Browsing must not replace the saved output',
+                );
+            } finally {
+                replies.restore();
+            }
+            await manager.rendererMessage(editor, {
+                displayId: table.displayId,
+                generation: table.generation,
+                action: 'table',
+            });
             sinon.assert.calledOnce(panels);
             assert.match(panels.firstCall.args[1], /full table$/);
-            assert.strictEqual(notebook.cellCount, index + 1, 'Opening the full viewer must not execute another cell');
+            assert.strictEqual(
+                notebook.cellCount,
+                index + 1,
+                'Opening the full viewer must not execute another cell',
+            );
         } finally {
-            for (const panel of panels.returnValues) { panel.dispose(); }
-            saved.restore(); format.restore(); panels.restore();
+            for (const panel of panels.returnValues) {
+                panel.dispose();
+            }
+            saved.restore();
+            format.restore();
+            panels.restore();
+        }
+    });
+
+    test('coalesces timing storage writes without blocking completed cells', async () => {
+        await vscode.commands.executeCommand('r.interactive.open', manifests[0]);
+        const context = bundleContext();
+        const manager = interactiveManager(context) as unknown as {
+            timingWrites?: { flush(): Promise<void> };
+        };
+        await manager.timingWrites?.flush();
+        const notebook = vscode.workspace.notebookDocuments.find(
+            (doc) => doc.metadata.rSessionId === manifests[0].id,
+        );
+        assert.ok(notebook);
+        type Timings = [string, { startTime: number; endTime: number }][];
+        const snapshots: Timings[] = [],
+            keys: string[] = [];
+        let release!: () => void;
+        const delayed = new Promise<void>((resolve) => {
+            release = resolve;
+        });
+        const original = context.workspaceState.update.bind(context.workspaceState);
+        const storage = sinon
+            .stub(context.workspaceState, 'update')
+            .callsFake(async (key, value) => {
+                if (key === 'r.interactive.executionTimings') {
+                    snapshots.push(value as Timings);
+                    if (snapshots.length === 1) {
+                        await delayed;
+                    }
+                }
+                await original(key, value);
+            });
+        try {
+            for (let index = 0; index < 3; index++) {
+                const position = notebook.cellCount;
+                await vscode.commands.executeCommand(
+                    'r.runSelection',
+                    `timing_storage_cell <- ${index}`,
+                );
+                await until(
+                    () =>
+                        notebook.cellCount > position &&
+                        notebook.cellAt(position).executionSummary?.success === true,
+                );
+                const cell = notebook.cellAt(position);
+                keys.push(
+                    `${manifests[0].id}:${manifests[0].generation}:${String(cell.metadata.rExecutionId)}`,
+                );
+            }
+            assert.strictEqual(
+                snapshots.length,
+                1,
+                'Timing writes must not overlap while cells continue completing',
+            );
+        } finally {
+            release();
+            await manager.timingWrites?.flush();
+            await Promise.all(storage.returnValues);
+            storage.restore();
+        }
+        assert.strictEqual(
+            snapshots.length,
+            2,
+            'The next write must coalesce intervening completions',
+        );
+        const saved = new Map(
+            context.workspaceState.get<Timings>('r.interactive.executionTimings', []),
+        );
+        for (const key of keys) {
+            assert.ok(saved.has(key), `Missing completed execution ${key}`);
+        }
+    });
+
+    test('reports final output failures while preserving R success and allowing the next cell', async () => {
+        await vscode.commands.executeCommand('r.interactive.open', manifests[0]);
+        const manager = interactiveManager() as unknown as {
+            views: Map<
+                string,
+                {
+                    client: AgentClient;
+                    model: Transcript;
+                    executions: Map<string, unknown>;
+                    outputQueue: { flush(): Promise<void> };
+                }
+            >;
+            renderOutputs(view: unknown, id: string): Promise<void>;
+        };
+        const view = [...manager.views.values()].find(
+            (view) => view.client.manifest.id === manifests[0].id,
+        );
+        assert.ok(view);
+        const notebook = vscode.workspace.notebookDocuments.find(
+            (doc) => doc.metadata.rSessionId === manifests[0].id,
+        );
+        assert.ok(notebook);
+        const original = manager.renderOutputs.bind(manager);
+        const failure = new Error('Final notebook output could not be delivered');
+        const errors = sinon.stub(vscode.window, 'showErrorMessage').resolves(undefined);
+        let failedId: string | undefined;
+        const render = sinon.stub(manager, 'renderOutputs').callsFake((current, id) => {
+            const record = view.model.cells.get(id)?.record;
+            if (
+                current === view &&
+                record?.code.startsWith('final_output_failure_runs <-') &&
+                record.state === 'success'
+            ) {
+                failedId = id;
+                return Promise.reject(failure);
+            }
+            return original(current, id);
+        });
+        try {
+            const position = notebook.cellCount;
+            await vscode.commands.executeCommand(
+                'r.runSelection',
+                'final_output_failure_runs <- get0("final_output_failure_runs", ifnotfound=0L) + 1L; cat("before failure\\n"); Sys.sleep(0.4); cat("final output\\n")',
+            );
+            await until(
+                () =>
+                    notebook.cellCount > position &&
+                    notebook.cellAt(position).executionSummary?.success === true &&
+                    errors.called,
+            );
+            await view.outputQueue.flush();
+            const cell = notebook.cellAt(position),
+                id = String(cell.metadata.rExecutionId);
+            assert.strictEqual(failedId, id, 'Exercise the final output update');
+            assert.strictEqual(
+                view.model.cells.get(id)?.record.state,
+                'success',
+                'The evaluation result must remain R success',
+            );
+            assert.ok(
+                !view.executions.has(id),
+                'A failed output update must release the execution handle',
+            );
+            assert.ok(
+                cell.executionSummary?.timing,
+                'Failed delivery must still finish the elapsed timer',
+            );
+            assert.ok(
+                errors.getCalls().some((call) => String(call.args[0]).includes(failure.message)),
+                'Delivery failures must be reported',
+            );
+            const next = notebook.cellCount;
+            await vscode.commands.executeCommand(
+                'r.runSelection',
+                'cat("runs=", final_output_failure_runs, sep="")',
+            );
+            await until(
+                () =>
+                    notebook.cellCount > next &&
+                    notebook.cellAt(next).executionSummary?.success === true,
+            );
+            const text = notebook
+                .cellAt(next)
+                .outputs.flatMap((output) => output.items)
+                .filter((item) => item.mime === 'application/vnd.code.notebook.stdout')
+                .map((item) => Buffer.from(item.data).toString())
+                .join('');
+            assert.strictEqual(text, 'runs=1', 'Recovery must not rerun successful R code');
+        } finally {
+            await view.outputQueue.flush();
+            render.restore();
+            errors.restore();
+        }
+    });
+
+    test('continues processing runtime events while a plot update is delayed', async function () {
+        if (!manifests[0].capabilities.jgd) {
+            this.skip();
+        }
+        await vscode.commands.executeCommand('r.interactive.open', manifests[0]);
+        const manager = interactiveManager(bundleContext()) as unknown as {
+            views: Map<
+                string,
+                {
+                    client: AgentClient;
+                    model: Transcript;
+                    chain: Promise<void>;
+                    outputQueue: { flush(): Promise<void> };
+                }
+            >;
+            outputs(view: unknown, cell: TranscriptCell): Promise<vscode.NotebookCellOutput[]>;
+        };
+        const view = [...manager.views.values()].find(
+            (view) => view.client.manifest.id === manifests[0].id,
+        );
+        assert.ok(view);
+        let release!: () => void;
+        const delayed = new Promise<void>((resolve) => {
+            release = resolve;
+        });
+        let executionId: string | undefined, completed: SessionEvent | undefined;
+        const original = manager.outputs.bind(manager);
+        const output = sinon.stub(manager, 'outputs').callsFake(async (current, cell) => {
+            if (
+                current === view &&
+                cell.record.code.includes('delayed_plot_update') &&
+                cell.outputs.some((item) => item.data.kind === 'plot') &&
+                !executionId
+            ) {
+                executionId = cell.record.id;
+                await delayed;
+            }
+            return original(current, cell);
+        });
+        const listener = (event: SessionEvent): void => {
+            if (event.executionId === executionId && event.type === 'finished') {
+                completed = event;
+            }
+        };
+        view.client.on('event', listener);
+        let observed: string | undefined,
+            released = 0;
+        try {
+            await vscode.commands.executeCommand(
+                'r.runSelection',
+                'delayed_plot_update <- TRUE; plot(1:3); Sys.sleep(0.7); title("final delayed plot"); cat("tail after plot\\n")',
+            );
+            await until(
+                () => !!completed,
+                'The R execution must finish while the output update is still pending',
+            );
+            await new Promise((resolve) => setTimeout(resolve, 350));
+            observed = view.model.cells.get(executionId!)?.record.state;
+        } finally {
+            released = Date.now();
+            release();
+            view.client.off('event', listener);
+            await view.chain;
+            await view.outputQueue.flush();
+            output.restore();
+        }
+        assert.strictEqual(
+            observed,
+            'success',
+            'Output delivery must not block processing the runtime completion event',
+        );
+        const notebook = vscode.workspace.notebookDocuments.find(
+            (doc) => doc.metadata.rSessionId === manifests[0].id,
+        );
+        assert.ok(notebook);
+        const cell = notebook.getCells().find((cell) => cell.metadata.rExecutionId === executionId);
+        assert.ok(cell);
+        await until(() => cell.executionSummary?.success === true);
+        const timing = cell.executionSummary?.timing;
+        assert.ok(timing);
+        assert.ok(
+            timing.endTime >= released,
+            'The completed timer must include the delayed output delivery',
+        );
+        assert.ok(
+            completed && timing.endTime - completed.time >= 300,
+            'Completion must not backdate the live timer to R finishing',
+        );
+        const finalSvg = cell.outputs
+            .flatMap((output) => output.items)
+            .find((item) => item.mime === 'image/svg+xml');
+        assert.ok(finalSvg);
+        assert.match(Buffer.from(finalSvg.data).toString(), /final delayed plot/);
+        const text = cell.outputs
+            .flatMap((output) => output.items)
+            .filter((item) => item.mime === 'application/vnd.code.notebook.stdout')
+            .map((item) => Buffer.from(item.data).toString())
+            .join('');
+        assert.strictEqual(
+            text,
+            'tail after plot\n',
+            'Events arriving during the delayed update must retain their console output',
+        );
+        const key = `${manifests[0].id}:${view.model.generation}:${executionId!}`;
+        const saved = new Map(
+            bundleContext().workspaceState.get<[string, typeof timing][]>(
+                'r.interactive.executionTimings',
+                [],
+            ),
+        );
+        assert.deepStrictEqual(
+            saved.get(key),
+            timing,
+            'Total timing must be saved for reconnect and restore',
+        );
+        await vscode.commands.executeCommand('r.interactive.detach', notebook.uri);
+        await vscode.commands.executeCommand('r.interactive.open', manifests[0]);
+        const restored = vscode.workspace.notebookDocuments
+            .find((doc) => doc.metadata.rSessionId === manifests[0].id)
+            ?.getCells()
+            .find((cell) => cell.metadata.rExecutionId === executionId);
+        assert.deepStrictEqual(
+            restored?.executionSummary?.timing,
+            timing,
+            'Reconnecting must preserve the displayed duration',
+        );
+    });
+
+    test('streams an eight-panel plot in place without rereading unchanged assets', async function () {
+        if (!manifests[0].capabilities.jgd) {
+            this.skip();
+        }
+        await vscode.commands.executeCommand('r.interactive.open', manifests[0]);
+        const notebook = vscode.workspace.notebookDocuments.find(
+            (doc) => doc.metadata.rSessionId === manifests[0].id,
+        );
+        assert.ok(notebook);
+        const manager = interactiveManager(bundleContext()) as unknown as {
+            views: Map<string, { client: AgentClient }>;
+        };
+        const view = [...manager.views.values()].find(
+            (view) => view.client.manifest.id === manifests[0].id,
+        );
+        assert.ok(view);
+        const requests = sinon.spy(view.client, 'request');
+        const index = notebook.cellCount;
+        try {
+            await vscode.commands.executeCommand(
+                'r.runSelection',
+                `local({
+  old <- par(mfrow=c(2,4), mar=c(3,3,2,2)); on.exit(par(old))
+  set.seed(123)
+  for (group in 1:2) for (metric in 1:4) {
+    values <- apply(matrix(rnorm(900), ncol=3), 2, cumsum)
+    values <- sweep(values, 1, values[,1], "-")
+    matplot(values, type="n", main=paste("Metric", (group-1)*4+metric))
+    abline(v=seq(30,300,by=30), col="gray92")
+    matlines(values, lty=1, lwd=1.2)
+    legend("topleft", c("alpha","beta","gamma"), col=1:3, lty=1, bty="n")
+    Sys.sleep(0.3)
+  }
+  for (i in 1:3) { cat("progress", i, "\\n"); Sys.sleep(0.15) }
+})`,
+            );
+            const plot = (): vscode.NotebookCellOutput | undefined =>
+                notebook.cellCount > index
+                    ? notebook
+                          .cellAt(index)
+                          .outputs.find((output) => typeof output.metadata?.rDisplayId === 'string')
+                    : undefined;
+            await until(() => !!plot());
+            // VS Code rematerializes the API object on item changes. Its output
+            // ID is the identity delivered to the notebook renderer.
+            const outputId = (): string =>
+                (plot() as vscode.NotebookCellOutput & { id: string }).id;
+            const first = outputId();
+            assert.strictEqual(typeof first, 'string');
+            const finalSvg = (): string =>
+                Buffer.from(
+                    plot()?.items.find((item) => item.mime === 'image/svg+xml')?.data ?? [],
+                ).toString();
+            await until(
+                () =>
+                    notebook.cellAt(index).executionSummary?.success === true &&
+                    finalSvg().includes('Metric 8'),
+            );
+            assert.strictEqual(
+                outputId(),
+                first,
+                'All partial and final frames must retain the renderer output identity',
+            );
+            for (let panel = 1; panel <= 8; panel++) {
+                assert.match(finalSvg(), new RegExp(`Metric ${panel}`));
+            }
+            const assets = requests
+                .getCalls()
+                .filter((call) => call.args[0] === 'asset')
+                .map((call) => String(call.args[1]?.id));
+            assert.ok(assets.length >= 2, 'Exercise multiple partial snapshots');
+            assert.strictEqual(
+                assets.length,
+                new Set(assets).size,
+                'Console and completion updates must reuse encoded plot assets',
+            );
+        } finally {
+            requests.restore();
         }
     });
 
     test('groups two four-panel plot pages and exports every page without transient URLs', async function () {
-        if (!manifests[0].capabilities.jgd) { this.skip(); }
-        const notebook = vscode.workspace.notebookDocuments.find(doc => doc.metadata.rSessionId === manifests[0].id);
+        if (!manifests[0].capabilities.jgd) {
+            this.skip();
+        }
+        const notebook = vscode.workspace.notebookDocuments.find(
+            (doc) => doc.metadata.rSessionId === manifests[0].id,
+        );
         assert.ok(notebook);
         const errors = sinon.stub(vscode.window, 'showErrorMessage').resolves(undefined);
         const saved = sinon.stub(vscode.window, 'showSaveDialog');
@@ -1526,56 +3208,136 @@ cat("\n")`;
         try {
             await vscode.commands.executeCommand('r.interactive.open', manifests[0]);
             const index = notebook.cellCount;
-            await vscode.commands.executeCommand('r.runSelection', `par(mfrow=c(2,2), mar=c(3,3,2,2))
+            await vscode.commands.executeCommand(
+                'r.runSelection',
+                `par(mfrow=c(2,2), mar=c(3,3,2,2))
 for (i in 1:8) { plot(rnorm(100)); title(main=paste("Plot", i)) }
-par(mfrow=c(1,1))`);
-            const displays = (): Record<string, unknown>[] => notebook.cellAt(index).outputs.flatMap(output => output.items)
-                .filter(item => item.mime === DISPLAY_MIME).map(item => JSON.parse(Buffer.from(item.data).toString()) as Record<string, unknown>);
-            await until(() => notebook.cellCount > index && notebook.cellAt(index).executionSummary?.success === true &&
-                displays().some(display => Array.isArray(display.pages) && display.pages.length === 2));
-            assert.strictEqual(displays().filter(display => display.kind === 'plot').length, 1);
-            const gallery = displays().find(display => display.kind === 'plot'); assert.ok(gallery);
+par(mfrow=c(1,1))`,
+            );
+            const displays = (): Record<string, unknown>[] =>
+                notebook
+                    .cellAt(index)
+                    .outputs.flatMap((output) => output.items)
+                    .filter((item) => item.mime === DISPLAY_MIME)
+                    .map(
+                        (item) =>
+                            JSON.parse(Buffer.from(item.data).toString()) as Record<
+                                string,
+                                unknown
+                            >,
+                    );
+            await until(
+                () =>
+                    notebook.cellCount > index &&
+                    notebook.cellAt(index).executionSummary?.success === true &&
+                    displays().some(
+                        (display) => Array.isArray(display.pages) && display.pages.length === 2,
+                    ),
+            );
+            assert.strictEqual(displays().filter((display) => display.kind === 'plot').length, 1);
+            const gallery = displays().find((display) => display.kind === 'plot');
+            assert.ok(gallery);
             const pages = gallery.pages as Record<string, unknown>[];
             const context = bundleContext();
             const manager = interactiveManager(context) as unknown as {
-                rendererMessage(editor: vscode.NotebookEditor, message: Record<string, unknown>): Promise<void>;
+                rendererMessage(
+                    editor: vscode.NotebookEditor,
+                    message: Record<string, unknown>,
+                ): Promise<void>;
             };
-            const editor = vscode.window.visibleNotebookEditors.find(editor => editor.notebook === notebook); assert.ok(editor);
-            const message = { displayId: gallery.displayId, generation: gallery.generation, action: 'plotPage', selectedPlot: pages[0].displayId };
+            const editor = vscode.window.visibleNotebookEditors.find(
+                (editor) => editor.notebook === notebook,
+            );
+            assert.ok(editor);
+            const message = {
+                displayId: gallery.displayId,
+                generation: gallery.generation,
+                action: 'plotPage',
+                selectedPlot: pages[0].displayId,
+            };
             await manager.rendererMessage(editor, message);
             const preferenceKey = `${manifests[0].id}:${String(gallery.generation)}:${String(gallery.displayId)}`;
-            const preferences = (): Map<string, { selectedPlot: string }> => new Map(context.workspaceState.get('r.interactive.outputViews', []));
+            const preferences = (): Map<string, { selectedPlot: string }> =>
+                new Map(context.workspaceState.get('r.interactive.outputViews', []));
             assert.strictEqual(preferences().get(preferenceKey)?.selectedPlot, pages[0].displayId);
-            await manager.rendererMessage(editor, { ...message, selectedPlot: 'another-cells-plot' });
-            assert.strictEqual(preferences().get(preferenceKey)?.selectedPlot, pages[0].displayId, 'A plot preference cannot target another cell');
+            await manager.rendererMessage(editor, {
+                ...message,
+                selectedPlot: 'another-cells-plot',
+            });
+            assert.strictEqual(
+                preferences().get(preferenceKey)?.selectedPlot,
+                pages[0].displayId,
+                'A plot preference cannot target another cell',
+            );
             const executionId: unknown = notebook.cellAt(index).metadata.rExecutionId;
             await vscode.commands.executeCommand('r.interactive.detach', notebook.uri);
             await vscode.commands.executeCommand('r.interactive.open', manifests[0]);
-            const restored = vscode.workspace.notebookDocuments.find(doc => doc.metadata.rSessionId === manifests[0].id); assert.ok(restored);
-            const restoredCell = (): vscode.NotebookCell | undefined => restored.getCells().find(cell => cell.metadata.rExecutionId === executionId);
-            await until(() => !!restoredCell()?.outputs.some(output => output.items.some(item => item.mime === DISPLAY_MIME)));
-            const restoredGallery = restoredCell()?.outputs.flatMap(output => output.items).find(item => item.mime === DISPLAY_MIME); assert.ok(restoredGallery);
-            assert.strictEqual((JSON.parse(Buffer.from(restoredGallery.data).toString()) as Record<string, unknown>).selectedPlot, pages[0].displayId);
+            const restored = vscode.workspace.notebookDocuments.find(
+                (doc) => doc.metadata.rSessionId === manifests[0].id,
+            );
+            assert.ok(restored);
+            const restoredCell = (): vscode.NotebookCell | undefined =>
+                restored.getCells().find((cell) => cell.metadata.rExecutionId === executionId);
+            await until(
+                () =>
+                    !!restoredCell()?.outputs.some((output) =>
+                        output.items.some((item) => item.mime === DISPLAY_MIME),
+                    ),
+            );
+            const restoredGallery = restoredCell()
+                ?.outputs.flatMap((output) => output.items)
+                .find((item) => item.mime === DISPLAY_MIME);
+            assert.ok(restoredGallery);
+            assert.strictEqual(
+                (
+                    JSON.parse(Buffer.from(restoredGallery.data).toString()) as Record<
+                        string,
+                        unknown
+                    >
+                ).selectedPlot,
+                pages[0].displayId,
+            );
             for (const extension of ['rnb', 'ipynb', 'html']) {
-                const file = path.join(root, `gallery.${extension}`); saved.resolves(vscode.Uri.file(file));
+                const file = path.join(root, `gallery.${extension}`);
+                saved.resolves(vscode.Uri.file(file));
                 format.resolves({ label: extension, format: extension } as vscode.QuickPickItem);
                 await vscode.commands.executeCommand('r.interactive.export', restored.uri);
                 if (extension === 'rnb') {
-                    const report = new InteractiveSerializer().deserializeNotebook(fs.readFileSync(file));
-                    const gallery = report.cells.at(-1)?.outputs?.flatMap(output => output.items)
-                        .filter(item => item.mime === DISPLAY_MIME).map(item => JSON.parse(Buffer.from(item.data).toString()) as Record<string, unknown>).find(item => item.kind === 'plot');
-                    assert.ok(gallery); assert.strictEqual(gallery.connected, false);
+                    const report = new InteractiveSerializer().deserializeNotebook(
+                        fs.readFileSync(file),
+                    );
+                    const gallery = report.cells
+                        .at(-1)
+                        ?.outputs?.flatMap((output) => output.items)
+                        .filter((item) => item.mime === DISPLAY_MIME)
+                        .map(
+                            (item) =>
+                                JSON.parse(Buffer.from(item.data).toString()) as Record<
+                                    string,
+                                    unknown
+                                >,
+                        )
+                        .find((item) => item.kind === 'plot');
+                    assert.ok(gallery);
+                    assert.strictEqual(gallery.connected, false);
                     assert.strictEqual(gallery.selectedPlot, message.selectedPlot);
-                    const pages = gallery.pages as Record<string, unknown>[]; assert.strictEqual(pages.length, 2);
+                    const pages = gallery.pages as Record<string, unknown>[];
+                    assert.strictEqual(pages.length, 2);
                     for (const [pageIndex, page] of pages.entries()) {
-                        assert.strictEqual(page.url, undefined); assert.strictEqual(page.connected, false);
+                        assert.strictEqual(page.url, undefined);
+                        assert.strictEqual(page.connected, false);
                         const svg = Buffer.from(String(page.svgData), 'base64').toString();
-                        for (let panel = 1; panel <= 4; panel++) { assert.ok(svg.includes(`Plot ${pageIndex * 4 + panel}`)); }
+                        for (let panel = 1; panel <= 4; panel++) {
+                            assert.ok(svg.includes(`Plot ${pageIndex * 4 + panel}`));
+                        }
                     }
                 } else if (extension === 'ipynb') {
-                    const report = JSON.parse(fs.readFileSync(file, 'utf8')) as { cells: { outputs: { data?: Record<string, string> }[] }[] };
-                    const last = report.cells.at(-1); assert.ok(last);
-                    const plots = last.outputs.filter(output => output.data?.['image/svg+xml']);
+                    const report = JSON.parse(fs.readFileSync(file, 'utf8')) as {
+                        cells: { outputs: { data?: Record<string, string> }[] }[];
+                    };
+                    const last = report.cells.at(-1);
+                    assert.ok(last);
+                    const plots = last.outputs.filter((output) => output.data?.['image/svg+xml']);
                     assert.strictEqual(plots.length, 2);
                     assert.match(String(plots[0].data?.['image/svg+xml']), /Plot 1/);
                     assert.match(String(plots[1].data?.['image/svg+xml']), /Plot 8/);
@@ -1585,12 +3347,20 @@ par(mfrow=c(1,1))`);
                 }
             }
             sinon.assert.notCalled(errors);
-        } finally { errors.restore(); saved.restore(); format.restore(); }
+        } finally {
+            errors.restore();
+            saved.restore();
+            format.restore();
+        }
     });
 
     test('exports large compressed plots to portable notebooks and ordinary SVG report assets', async function () {
-        if (!manifests[0].capabilities.jgd) { this.skip(); }
-        const notebook = vscode.workspace.notebookDocuments.find(doc => doc.metadata.rSessionId === manifests[0].id);
+        if (!manifests[0].capabilities.jgd) {
+            this.skip();
+        }
+        const notebook = vscode.workspace.notebookDocuments.find(
+            (doc) => doc.metadata.rSessionId === manifests[0].id,
+        );
         assert.ok(notebook);
         const errors = sinon.stub(vscode.window, 'showErrorMessage').resolves(undefined);
         const saved = sinon.stub(vscode.window, 'showSaveDialog');
@@ -1598,16 +3368,38 @@ par(mfrow=c(1,1))`);
         const info = sinon.stub(vscode.window, 'showInformationMessage').resolves(undefined);
         try {
             const index = notebook.cellCount;
-            await vscode.commands.executeCommand('r.runSelection', 'plot(seq_len(22000), main="Large portable plot")');
-            await until(() => notebook.cellCount > index && notebook.cellAt(index).executionSummary?.success === true);
-            const plot = (): Record<string, unknown> | undefined => notebook.cellAt(index).outputs.flatMap(output => output.items)
-                .filter(item => item.mime === DISPLAY_MIME).map(item => JSON.parse(Buffer.from(item.data).toString()) as Record<string, unknown>)
-                .find(data => data.kind === 'plot');
+            await vscode.commands.executeCommand(
+                'r.runSelection',
+                'plot(seq_len(22000), main="Large portable plot")',
+            );
+            await until(
+                () =>
+                    notebook.cellCount > index &&
+                    notebook.cellAt(index).executionSummary?.success === true,
+            );
+            const plot = (): Record<string, unknown> | undefined =>
+                notebook
+                    .cellAt(index)
+                    .outputs.flatMap((output) => output.items)
+                    .filter((item) => item.mime === DISPLAY_MIME)
+                    .map(
+                        (item) =>
+                            JSON.parse(Buffer.from(item.data).toString()) as Record<
+                                string,
+                                unknown
+                            >,
+                    )
+                    .find((data) => data.kind === 'plot');
             await until(() => !!plot());
-            const display = plot(); assert.ok(display);
-            const id = String(display.svg), assetRoot = path.join(root, manifests[0].id, 'assets');
+            const display = plot();
+            assert.ok(display);
+            const id = String(display.svg),
+                assetRoot = path.join(root, manifests[0].id, 'assets');
             const svg = readAsset(assetRoot, id).toString();
-            assert.ok(Buffer.byteLength(svg) > 2 * 1024 * 1024, 'Exercise plots too large for the asset RPC');
+            assert.ok(
+                Buffer.byteLength(svg) > 2 * 1024 * 1024,
+                'Exercise plots too large for the asset RPC',
+            );
             assert.ok(id.endsWith('.svg.gz'));
             for (const extension of ['rnb', 'ipynb', 'html']) {
                 const file = path.join(root, `report.${extension}`);
@@ -1616,71 +3408,176 @@ par(mfrow=c(1,1))`);
                 await vscode.commands.executeCommand('r.interactive.export', notebook.uri);
                 sinon.assert.notCalled(errors);
                 if (extension === 'html') {
-                    assert.strictEqual(fs.readFileSync(path.join(file + '.assets', exportedAssetName(id)), 'utf8'), svg);
+                    assert.strictEqual(
+                        fs.readFileSync(path.join(file + '.assets', exportedAssetName(id)), 'utf8'),
+                        svg,
+                    );
                     assert.ok(fs.readFileSync(file, 'utf8').includes(exportedAssetName(id)));
                 } else if (extension === 'rnb') {
-                    const report = new InteractiveSerializer().deserializeNotebook(fs.readFileSync(file));
-                    assert.ok(report.cells.some(cell => cell.outputs?.some(output => output.items.some(item =>
-                        item.mime === 'image/svg+xml' && Buffer.from(item.data).toString() === svg))));
+                    const report = new InteractiveSerializer().deserializeNotebook(
+                        fs.readFileSync(file),
+                    );
+                    assert.ok(
+                        report.cells.some((cell) =>
+                            cell.outputs?.some((output) =>
+                                output.items.some(
+                                    (item) =>
+                                        item.mime === 'image/svg+xml' &&
+                                        Buffer.from(item.data).toString() === svg,
+                                ),
+                            ),
+                        ),
+                    );
                 } else {
-                    const report = JSON.parse(fs.readFileSync(file, 'utf8')) as { cells: { outputs: { data?: Record<string, string> }[] }[] };
-                    assert.ok(report.cells.some(cell => cell.outputs.some(output => output.data?.['image/svg+xml'] === svg)));
+                    const report = JSON.parse(fs.readFileSync(file, 'utf8')) as {
+                        cells: { outputs: { data?: Record<string, string> }[] }[];
+                    };
+                    assert.ok(
+                        report.cells.some((cell) =>
+                            cell.outputs.some((output) => output.data?.['image/svg+xml'] === svg),
+                        ),
+                    );
                 }
             }
             await vscode.commands.executeCommand('r.interactive.cleanAssets', notebook.uri);
             assert.ok(info.calledOnce);
             assert.strictEqual(readAsset(assetRoot, id).toString(), svg);
             sinon.assert.notCalled(errors);
-        } finally { errors.restore(); saved.restore(); format.restore(); info.restore(); }
+        } finally {
+            errors.restore();
+            saved.restore();
+            format.restore();
+            info.restore();
+        }
     });
     test('applies asset quota settings to connected sessions without restarting R', async () => {
         const configuration = vscode.workspace.getConfiguration('r');
         const previous = configuration.inspect<number>('interactive.maxAssetSizeMiB')?.globalValue;
-        const client = new AgentClient(manifests[0]); await client.connect();
+        const client = new AgentClient(manifests[0]);
+        await client.connect();
         const pid = manifests[0].rPid;
         try {
-            await configuration.update('interactive.maxAssetSizeMiB', 64.1, vscode.ConfigurationTarget.Global);
+            await configuration.update(
+                'interactive.maxAssetSizeMiB',
+                64.1,
+                vscode.ConfigurationTarget.Global,
+            );
             const expectedBytes = Math.floor(64.1 * 1024 * 1024);
             let stats: AssetStorageStats | undefined;
             const deadline = Date.now() + 10000;
             do {
                 stats = await client.request<AssetStorageStats>('assetStorage');
-                if (stats.limitBytes === expectedBytes) { break; }
-                await new Promise(resolve => setTimeout(resolve, 50));
+                if (stats.limitBytes === expectedBytes) {
+                    break;
+                }
+                await new Promise((resolve) => setTimeout(resolve, 50));
             } while (Date.now() < deadline);
             assert.strictEqual(stats.limitBytes, expectedBytes);
             assert.strictEqual((await client.snapshot()).manifest.rPid, pid);
-            const config = JSON.parse(fs.readFileSync(path.join(root, manifests[0].id, 'config.json'), 'utf8')) as AgentConfig;
+            const config = JSON.parse(
+                fs.readFileSync(path.join(root, manifests[0].id, 'config.json'), 'utf8'),
+            ) as AgentConfig;
             assert.strictEqual(config.maxAssetBytes, expectedBytes);
         } finally {
-            await configuration.update('interactive.maxAssetSizeMiB', previous, vscode.ConfigurationTarget.Global);
+            await configuration.update(
+                'interactive.maxAssetSizeMiB',
+                previous,
+                vscode.ConfigurationTarget.Global,
+            );
             client.close();
         }
     });
     test('clearing completed cells preserves drafts, running output, and durable history', async () => {
-        const notebook = vscode.workspace.notebookDocuments.find(doc => doc.metadata.rSessionId === manifests[0].id);
+        const notebook = vscode.workspace.notebookDocuments.find(
+            (doc) => doc.metadata.rSessionId === manifests[0].id,
+        );
         assert.ok(notebook);
         const index = notebook.cellCount;
         const edit = new vscode.WorkspaceEdit();
-        edit.set(notebook.uri, [vscode.NotebookEdit.insertCells(index, [
-            new vscode.NotebookCellData(vscode.NotebookCellKind.Code, 'Sys.sleep(2); cat("retained-after-clear")', 'r'),
-            new vscode.NotebookCellData(vscode.NotebookCellKind.Code, '# unfinished draft', 'r'),
-        ])]);
+        edit.set(notebook.uri, [
+            vscode.NotebookEdit.insertCells(index, [
+                new vscode.NotebookCellData(
+                    vscode.NotebookCellKind.Code,
+                    'Sys.sleep(2); cat("retained-after-clear")',
+                    'r',
+                ),
+                new vscode.NotebookCellData(
+                    vscode.NotebookCellKind.Code,
+                    '# unfinished draft',
+                    'r',
+                ),
+            ]),
+        ]);
         await vscode.workspace.applyEdit(edit);
-        await vscode.commands.executeCommand('notebook.cell.execute', { ranges: [{ start: index, end: index + 1 }], document: notebook.uri });
+        await vscode.commands.executeCommand('notebook.cell.execute', {
+            ranges: [{ start: index, end: index + 1 }],
+            document: notebook.uri,
+        });
         await until(() => manifests[0].status === 'busy');
+        const manager = interactiveManager() as unknown as {
+            views: Map<
+                string,
+                {
+                    client: AgentClient;
+                    model: Transcript;
+                    outputState?: NotebookOutputState;
+                }
+            >;
+        };
+        const view = [...manager.views.values()].find(
+            (view) => view.client.manifest.id === manifests[0].id,
+        );
+        assert.ok(view);
+        const removedStreams = [...view.model.cells.values()]
+            .filter((cell) => !['queued', 'running', 'unknown'].includes(cell.record.state))
+            .flatMap((cell) =>
+                cell.outputs.flatMap((output) => (output.stream ? [output.stream] : [])),
+            );
+        assert.ok(removedStreams.length, 'Exercise clearing completed console output');
         await vscode.commands.executeCommand('r.interactive.clear', notebook.uri);
-        assert.ok(notebook.getCells().some(cell => cell.document.getText() === '# unfinished draft'));
-        assert.ok(!notebook.getCells().some(cell => cell.document.getText().includes('editor_value <- 42')));
-        await until(() => notebook.getCells().some(cell => cell.outputs.some(output => output.items.some(item =>
-            Buffer.from(item.data).toString().includes('retained-after-clear')))));
-        const client = new AgentClient(manifests[0]); await client.connect();
-        try { assert.ok((await client.snapshot()).executions.some(record => record.code.includes('editor_value <- 42'))); }
-        finally { client.close(); }
+        for (const stream of removedStreams) {
+            assert.strictEqual(
+                view.outputState?.get(stream.snapshot()),
+                undefined,
+                'Clearing cells must release their notebook delivery handles and buffers',
+            );
+        }
+        assert.ok(
+            notebook.getCells().some((cell) => cell.document.getText() === '# unfinished draft'),
+        );
+        assert.ok(
+            !notebook
+                .getCells()
+                .some((cell) => cell.document.getText().includes('editor_value <- 42')),
+        );
+        await until(() =>
+            notebook
+                .getCells()
+                .some((cell) =>
+                    cell.outputs.some((output) =>
+                        output.items.some((item) =>
+                            Buffer.from(item.data).toString().includes('retained-after-clear'),
+                        ),
+                    ),
+                ),
+        );
+        const client = new AgentClient(manifests[0]);
+        await client.connect();
+        try {
+            assert.ok(
+                (await client.snapshot()).executions.some((record) =>
+                    record.code.includes('editor_value <- 42'),
+                ),
+            );
+        } finally {
+            client.close();
+        }
     });
     test('keeps independent notebooks and reconnects to the original R environment', async () => {
         await vscode.commands.executeCommand('r.interactive.open', manifests[1]);
-        const documents = vscode.workspace.notebookDocuments.filter(doc => manifests.some(m => m.id === doc.metadata.rSessionId));
+        const documents = vscode.workspace.notebookDocuments.filter((doc) =>
+            manifests.some((m) => m.id === doc.metadata.rSessionId),
+        );
         assert.strictEqual(documents.length, 2);
         await vscode.commands.executeCommand('r.interactive.detach');
         await vscode.commands.executeCommand('r.interactive.open', manifests[0]);
@@ -1688,70 +3585,107 @@ par(mfrow=c(1,1))`);
         try {
             await client.connect();
             const snapshot = await client.snapshot();
-            assert.ok(snapshot.executions.some(record => record.code.includes('editor_value')));
+            assert.ok(snapshot.executions.some((record) => record.code.includes('editor_value')));
             assert.ok(snapshot.workspace?.globalenv);
-        } finally { client.close(); }
+        } finally {
+            client.close();
+        }
     });
     test('Workspace follows native focus and bound sources, and actions retain their displayed owner', async () => {
         const workspace = workspaceProvider;
         const nodes = async (): Promise<GlobalEnvItem[]> => {
             const provider = workspace();
-            const root = (await provider.getChildren()).find(item => item.id === 'globalenv');
-            return await provider.getChildren(root) as GlobalEnvItem[];
+            const root = (await provider.getChildren()).find((item) => item.id === 'globalenv');
+            return (await provider.getChildren(root)) as GlobalEnvItem[];
         };
         const focus = async (index: number): Promise<void> => {
             await vscode.commands.executeCommand('r.interactive.open', manifests[index]);
-            const notebook = vscode.workspace.notebookDocuments.find(doc => doc.metadata.rSessionId === manifests[index].id);
+            const notebook = vscode.workspace.notebookDocuments.find(
+                (doc) => doc.metadata.rSessionId === manifests[index].id,
+            );
             assert.ok(notebook);
-            await vscode.commands.executeCommand('interactive.open', { preserveFocus: false }, notebook.uri);
+            await vscode.commands.executeCommand(
+                'interactive.open',
+                { preserveFocus: false },
+                notebook.uri,
+            );
             await vscode.commands.executeCommand('interactive.input.focus');
-            await until(() => workspace().owner?.sessionId === `${manifests[index].id}:${manifests[index].generation}`);
+            await until(
+                () =>
+                    workspace().owner?.sessionId ===
+                    `${manifests[index].id}:${manifests[index].generation}`,
+            );
         };
         for (const index of [0, 1]) {
             await focus(index);
-            await vscode.commands.executeCommand('r.runSelection', `workspace_marker <- rep(${index}, ${index + 1}); workspace_list <- list(owner = ${index})`);
+            await vscode.commands.executeCommand(
+                'r.runSelection',
+                `workspace_marker <- rep(${index}, ${index + 1}); workspace_list <- list(owner = ${index})`,
+            );
             await until(() => workspace().data?.globalenv.workspace_marker?.length === index + 1);
         }
         await focus(0);
-        const oldNode = (await nodes()).find(node => node.label === 'workspace_marker'); assert.ok(oldNode);
-        const source = await vscode.workspace.openTextDocument({ language: 'r', content: 'workspace_marker' });
+        const oldNode = (await nodes()).find((node) => node.label === 'workspace_marker');
+        assert.ok(oldNode);
+        const source = await vscode.workspace.openTextDocument({
+            language: 'r',
+            content: 'workspace_marker',
+        });
         await vscode.window.showTextDocument(source);
         await vscode.commands.executeCommand('r.interactive.bindDocument');
         await focus(1);
         await vscode.window.showTextDocument(source);
         await until(() => workspace().owner === oldNode.owner);
         assert.strictEqual(workspace().data?.globalenv.workspace_marker.length, 1);
-        const list = (await nodes()).find(node => node.label === 'workspace_list'); assert.ok(list);
+        const list = (await nodes()).find((node) => node.label === 'workspace_list');
+        assert.ok(list);
         const provider = workspace();
         const ownerBefore = provider.owner?.sessionId;
-        const generationBefore = (provider as unknown as { childPageGeneration: number }).childPageGeneration;
+        const generationBefore = (provider as unknown as { childPageGeneration: number })
+            .childPageGeneration;
         const children = await provider.getChildren(list);
         const ownerAfter = provider.owner?.sessionId;
-        const generationAfter = (provider as unknown as { childPageGeneration: number }).childPageGeneration;
-        assert.ok(children.some(child => String(child.description).includes('0')), JSON.stringify({
-            expectedOwner: oldNode.owner?.sessionId,
-            itemOwner: list.owner?.sessionId,
-            ownerBefore,
-            ownerAfter,
-            generationBefore,
-            generationAfter,
-            displayedList: provider.data?.globalenv.workspace_list,
-            returnedChildren: children.map(child => ({ label: child.label, description: child.description })),
-        }));
+        const generationAfter = (provider as unknown as { childPageGeneration: number })
+            .childPageGeneration;
+        assert.ok(
+            children.some((child) => String(child.description).includes('0')),
+            JSON.stringify({
+                expectedOwner: oldNode.owner?.sessionId,
+                itemOwner: list.owner?.sessionId,
+                ownerBefore,
+                ownerAfter,
+                generationBefore,
+                generationAfter,
+                displayedList: provider.data?.globalenv.workspace_list,
+                returnedChildren: children.map((child) => ({
+                    label: child.label,
+                    description: child.description,
+                })),
+            }),
+        );
         await focus(1);
         await vscode.commands.executeCommand('r.workspaceViewer.remove', oldNode);
-        const firstClient = new AgentClient(manifests[0]); await firstClient.connect({ claim: false });
+        const firstClient = new AgentClient(manifests[0]);
+        await firstClient.connect({ claim: false });
         try {
             let removed = false;
             const deadline = Date.now() + 10000;
             while (!removed && Date.now() < deadline) {
-                removed = !((await firstClient.snapshot()).workspace as WorkspaceData | undefined)?.globalenv.workspace_marker;
-                if (!removed) { await new Promise(resolve => setTimeout(resolve, 50)); }
+                removed = !((await firstClient.snapshot()).workspace as WorkspaceData | undefined)
+                    ?.globalenv.workspace_marker;
+                if (!removed) {
+                    await new Promise((resolve) => setTimeout(resolve, 50));
+                }
             }
             assert.ok(removed, 'Remove applies to the displayed node owner');
-            assert.strictEqual(workspace().owner?.sessionId, `${manifests[1].id}:${manifests[1].generation}`);
+            assert.strictEqual(
+                workspace().owner?.sessionId,
+                `${manifests[1].id}:${manifests[1].generation}`,
+            );
             assert.strictEqual(workspace().data?.globalenv.workspace_marker.length, 2);
-        } finally { firstClient.close(); }
+        } finally {
+            firstClient.close();
+        }
         // Closing/detaching an active view must not leave live-looking objects behind.
         await vscode.commands.executeCommand('r.interactive.detach', manifests[1]);
         assert.strictEqual(workspace().owner, undefined);
@@ -1760,16 +3694,25 @@ par(mfrow=c(1,1))`);
     });
     test('native toolbar actions target their notebook while another session is active', async () => {
         await vscode.commands.executeCommand('r.interactive.open', manifests[0]);
-        const notebook = vscode.workspace.notebookDocuments.find(doc => doc.metadata.rSessionId === manifests[0].id);
+        const notebook = vscode.workspace.notebookDocuments.find(
+            (doc) => doc.metadata.rSessionId === manifests[0].id,
+        );
         assert.ok(notebook);
         await vscode.commands.executeCommand('r.interactive.open', manifests[1]);
         // VS Code serializes the notebook toolbar's editor to { notebookUri }.
-        const target = { notebookEditor: { notebookUri: notebook.uri }, source: 'notebookToolbar', ui: true };
+        const target = {
+            notebookEditor: { notebookUri: notebook.uri },
+            source: 'notebookToolbar',
+            ui: true,
+        };
         const originalName = manifests[0].label;
         const otherName = manifests[1].label;
         const errors = sinon.stub(vscode.window, 'showErrorMessage').resolves(undefined);
         const confirm = sinon.stub(vscode.window, 'showWarningMessage').resolves(undefined);
-        const picker = sinon.stub(vscode.window, 'showQuickPick').resolves({ label: 'Rename…', command: 'r.interactive.rename' } as vscode.QuickPickItem);
+        const picker = sinon.stub(vscode.window, 'showQuickPick').resolves({
+            label: 'Rename…',
+            command: 'r.interactive.rename',
+        } as vscode.QuickPickItem);
         const input = sinon.stub(vscode.window, 'showInputBox').resolves('Toolbar target');
         try {
             await vscode.commands.executeCommand('r.interactive.sessionActions', target);
@@ -1782,74 +3725,162 @@ par(mfrow=c(1,1))`);
             assert.match(confirm.lastCall.args[0], /Toolbar target/);
             await vscode.commands.executeCommand('r.interactive.stop', target);
             assert.match(confirm.lastCall.args[0], /Toolbar target/);
-            assert.strictEqual(manifests[0].status, 'idle', 'Cancelling a confirmation must leave R alive');
+            assert.strictEqual(
+                manifests[0].status,
+                'idle',
+                'Cancelling a confirmation must leave R alive',
+            );
             assert.strictEqual(manifests[1].status, 'idle');
             sinon.assert.notCalled(errors);
             await vscode.commands.executeCommand('r.interactive.rename', target, originalName);
-        } finally { errors.restore(); confirm.restore(); picker.restore(); input.restore(); }
+        } finally {
+            errors.restore();
+            confirm.restore();
+            picker.restore();
+            input.restore();
+        }
     });
     test('toolbar actions never fall back to another session for an unrelated notebook', async () => {
         const errors = sinon.stub(vscode.window, 'showErrorMessage').resolves(undefined);
         const confirm = sinon.stub(vscode.window, 'showWarningMessage').resolves(undefined);
         try {
             await vscode.commands.executeCommand('r.interactive.stop', {
-                notebookEditor: { notebookUri: vscode.Uri.parse('untitled:unrelated.interactive') }, source: 'notebookToolbar', ui: true,
+                notebookEditor: { notebookUri: vscode.Uri.parse('untitled:unrelated.interactive') },
+                source: 'notebookToolbar',
+                ui: true,
             });
             sinon.assert.calledOnce(errors);
             assert.match(errors.firstCall.args[0], /not connected to an R Interactive session/);
             sinon.assert.notCalled(confirm);
-        } finally { errors.restore(); confirm.restore(); }
+        } finally {
+            errors.restore();
+            confirm.restore();
+        }
     });
     test('session actions target their tree entry even when another session is active', async () => {
         await vscode.commands.executeCommand('r.interactive.open', manifests[1]);
         const secondName = manifests[1].label;
-        await vscode.commands.executeCommand('r.interactive.rename', manifests[0], 'Renamed first session');
+        await vscode.commands.executeCommand(
+            'r.interactive.rename',
+            manifests[0],
+            'Renamed first session',
+        );
         assert.strictEqual(manifests[0].label, 'Renamed first session');
         assert.strictEqual(manifests[1].label, secondName);
         await vscode.commands.executeCommand('r.interactive.detach', manifests[0]);
-        const second = new AgentClient(manifests[1]); await second.connect();
-        try { assert.strictEqual(second.control, false, 'The second session must remain controlled by its original window'); }
-        finally { second.close(); }
+        const second = new AgentClient(manifests[1]);
+        await second.connect();
+        try {
+            assert.strictEqual(
+                second.control,
+                false,
+                'The second session must remain controlled by its original window',
+            );
+        } finally {
+            second.close();
+        }
     });
     test('Stop Session adds one notice to its own notebook and source execution can choose a live replacement', async () => {
         await vscode.commands.executeCommand('r.interactive.open', manifests[0]);
-        const source = await vscode.workspace.openTextDocument({ language: 'r', content: 'replacement_target_value <- 7' });
+        const source = await vscode.workspace.openTextDocument({
+            language: 'r',
+            content: 'replacement_target_value <- 7',
+        });
         await vscode.window.showTextDocument(source);
         await vscode.commands.executeCommand('r.interactive.bindDocument');
-        const notebook = vscode.workspace.notebookDocuments.find(doc => doc.metadata.rSessionId === manifests[0].id);
+        const notebook = vscode.workspace.notebookDocuments.find(
+            (doc) => doc.metadata.rSessionId === manifests[0].id,
+        );
         assert.ok(notebook);
-        const confirmation = sinon.stub(vscode.window, 'showWarningMessage').resolves('Stop Session' as unknown as vscode.MessageItem);
-        const picker = sinon.stub(vscode.window, 'showQuickPick').resolves({ label: manifests[1].label, manifest: manifests[1] } as vscode.QuickPickItem);
+        const confirmation = sinon
+            .stub(vscode.window, 'showWarningMessage')
+            .resolves('Stop Session' as unknown as vscode.MessageItem);
+        const picker = sinon.stub(vscode.window, 'showQuickPick').resolves({
+            label: manifests[1].label,
+            manifest: manifests[1],
+        } as vscode.QuickPickItem);
         const info = sinon.stub(vscode.window, 'showInformationMessage').resolves(undefined);
         try {
             await vscode.commands.executeCommand('r.interactive.stop', notebook.uri);
-            await until(() => notebook.getCells().some(cell => cell.metadata.rNoticeKind === 'stopped'));
-            const displays = (): Record<string, unknown>[] => notebook.getCells().flatMap(cell => cell.outputs).flatMap(output => output.items)
-                .filter(item => item.mime === DISPLAY_MIME).map(item => JSON.parse(Buffer.from(item.data).toString()) as Record<string, unknown>);
-            await until(() => displays().length > 0 && displays().every(data => data.running === false));
+            await until(() =>
+                notebook.getCells().some((cell) => cell.metadata.rNoticeKind === 'stopped'),
+            );
+            const displays = (): Record<string, unknown>[] =>
+                notebook
+                    .getCells()
+                    .flatMap((cell) => cell.outputs)
+                    .flatMap((output) => output.items)
+                    .filter((item) => item.mime === DISPLAY_MIME)
+                    .map(
+                        (item) =>
+                            JSON.parse(Buffer.from(item.data).toString()) as Record<
+                                string,
+                                unknown
+                            >,
+                    );
+            await until(
+                () => displays().length > 0 && displays().every((data) => data.running === false),
+            );
             const ended = manifests[0].ended;
             assert.ok(typeof ended === 'number' && ended >= manifests[0].created);
-            assert.strictEqual((JSON.parse(fs.readFileSync(path.join(root, manifests[0].id, 'manifest.json'), 'utf8')) as SessionManifest).ended, ended);
-            const notice = notebook.getCells().find(cell => cell.metadata.rNoticeKind === 'stopped');
-            const drafts = vscode.workspace.textDocuments.filter(doc => doc.uri.scheme === 'vscode-interactive-input');
-            const contents = drafts.map(doc => doc.getText());
+            assert.strictEqual(
+                (
+                    JSON.parse(
+                        fs.readFileSync(path.join(root, manifests[0].id, 'manifest.json'), 'utf8'),
+                    ) as SessionManifest
+                ).ended,
+                ended,
+            );
+            const notice = notebook
+                .getCells()
+                .find((cell) => cell.metadata.rNoticeKind === 'stopped');
+            const drafts = vscode.workspace.textDocuments.filter(
+                (doc) => doc.uri.scheme === 'vscode-interactive-input',
+            );
+            const contents = drafts.map((doc) => doc.getText());
             await vscode.commands.executeCommand('r.interactive.reuseCell', notice);
-            assert.deepStrictEqual(drafts.map(doc => doc.getText()), contents, 'A lifecycle notice must not become executable R code');
+            assert.deepStrictEqual(
+                drafts.map((doc) => doc.getText()),
+                contents,
+                'A lifecycle notice must not become executable R code',
+            );
             assert.match(info.lastCall.args[0], /Select an R code cell/);
             await vscode.commands.executeCommand('r.interactive.source', notice);
             assert.match(info.lastCall.args[0], /no source location/);
             await vscode.commands.executeCommand('r.interactive.stop', notebook.uri);
-            assert.strictEqual(manifests[0].ended, ended, 'Repeated Stop must not extend the recorded lifetime');
-            assert.strictEqual(notebook.getCells().filter(cell => cell.metadata.rNoticeKind === 'stopped').length, 1);
+            assert.strictEqual(
+                manifests[0].ended,
+                ended,
+                'Repeated Stop must not extend the recorded lifetime',
+            );
+            assert.strictEqual(
+                notebook.getCells().filter((cell) => cell.metadata.rNoticeKind === 'stopped')
+                    .length,
+                1,
+            );
             assert.notStrictEqual(manifests[1].status, 'exited');
             await vscode.commands.executeCommand('r.runSelection', 'replacement_target_value <- 7');
             sinon.assert.calledOnce(picker);
-            const choices = await picker.firstCall.args[0] as (vscode.QuickPickItem & { manifest?: SessionManifest })[];
-            assert.ok(!choices.some(item => item.manifest?.id === manifests[0].id));
-            const client = new AgentClient(manifests[1]); await client.connect();
-            try { assert.ok((await client.snapshot()).executions.some(record => record.code === 'replacement_target_value <- 7')); }
-            finally { client.close(); }
-        } finally { confirmation.restore(); picker.restore(); info.restore(); }
+            const choices = (await picker.firstCall.args[0]) as (vscode.QuickPickItem & {
+                manifest?: SessionManifest;
+            })[];
+            assert.ok(!choices.some((item) => item.manifest?.id === manifests[0].id));
+            const client = new AgentClient(manifests[1]);
+            await client.connect();
+            try {
+                assert.ok(
+                    (await client.snapshot()).executions.some(
+                        (record) => record.code === 'replacement_target_value <- 7',
+                    ),
+                );
+            } finally {
+                client.close();
+            }
+        } finally {
+            confirmation.restore();
+            picker.restore();
+            info.restore();
+        }
     });
 
     test('restart keeps the window, drafts, transcript, bindings and kernel through multiple R processes', async function () {
@@ -1862,38 +3893,81 @@ par(mfrow=c(1,1))`);
         let restartController: vscode.NotebookController;
         try {
             await vscode.commands.executeCommand('r.interactive.open', original);
-            const native = created.returnValues.find(value => value.notebookType === 'interactive');
-            assert.ok(native); restartController = native;
-        } finally { created.restore(); }
-        const notebook = vscode.workspace.notebookDocuments.find(doc => doc.metadata.rSessionId === original.id);
+            const native = created.returnValues.find(
+                (value) => value.notebookType === 'interactive',
+            );
+            assert.ok(native);
+            restartController = native;
+        } finally {
+            created.restore();
+        }
+        const notebook = vscode.workspace.notebookDocuments.find(
+            (doc) => doc.metadata.rSessionId === original.id,
+        );
         assert.ok(notebook);
-        const beforeCode = 'before_restart <- 42; cat("before restart"); data.frame(x=1:50); plot(1:3)';
+        const beforeCode =
+            'before_restart <- 42; cat("before restart"); data.frame(x=1:50); plot(1:3)';
         await vscode.commands.executeCommand('r.runSelection', beforeCode);
-        await until(() => notebook.getCells().some(cell => cell.document.getText() === beforeCode && cell.executionSummary?.success === true));
-        const oldCell = notebook.getCells().find(cell => cell.document.getText() === beforeCode);
+        await until(() =>
+            notebook
+                .getCells()
+                .some(
+                    (cell) =>
+                        cell.document.getText() === beforeCode &&
+                        cell.executionSummary?.success === true,
+                ),
+        );
+        const oldCell = notebook.getCells().find((cell) => cell.document.getText() === beforeCode);
         assert.ok(oldCell);
-        const displays = (cell: vscode.NotebookCell): Record<string, unknown>[] => cell.outputs.flatMap(output => output.items)
-            .filter(item => item.mime === DISPLAY_MIME).map(item => JSON.parse(Buffer.from(item.data).toString()) as Record<string, unknown>);
-        await until(() => displays(oldCell).some(data => data.kind === 'plot'));
+        const displays = (cell: vscode.NotebookCell): Record<string, unknown>[] =>
+            cell.outputs
+                .flatMap((output) => output.items)
+                .filter((item) => item.mime === DISPLAY_MIME)
+                .map(
+                    (item) =>
+                        JSON.parse(Buffer.from(item.data).toString()) as Record<string, unknown>,
+                );
+        await until(() => displays(oldCell).some((data) => data.kind === 'plot'));
         const oldUri = oldCell.document.uri.toString();
         const oldId = oldCell.metadata.rExecutionId as string;
         const oldCount = notebook.cellCount;
         const windowCount = vscode.workspace.notebookDocuments.length;
-        const input = await vscode.commands.executeCommand<{ inputUri: vscode.Uri }>('interactive.open',
-            { preserveFocus: true }, notebook.uri, `REditorSupport.r/r-${original.id}-${original.generation}-interactive`);
+        const input = await vscode.commands.executeCommand<{ inputUri: vscode.Uri }>(
+            'interactive.open',
+            { preserveFocus: true },
+            notebook.uri,
+            `REditorSupport.r/r-${original.id}-${original.generation}-interactive`,
+        );
         const draft = await vscode.workspace.openTextDocument(input.inputUri);
         const edit = new vscode.WorkspaceEdit();
         edit.insert(draft.uri, new vscode.Position(0, 0), 'unsent_draft <- 99');
-        edit.insert(oldCell.document.uri, oldCell.document.positionAt(oldCell.document.getText().length), '\n# edited after execution');
+        edit.insert(
+            oldCell.document.uri,
+            oldCell.document.positionAt(oldCell.document.getText().length),
+            '\n# edited after execution',
+        );
         await vscode.workspace.applyEdit(edit);
-        const source = await vscode.workspace.openTextDocument({ language: 'r', content: 'cat("bound source")' });
-        await vscode.window.showTextDocument(source, { viewColumn: vscode.ViewColumn.One, preserveFocus: false });
+        const source = await vscode.workspace.openTextDocument({
+            language: 'r',
+            content: 'cat("bound source")',
+        });
+        await vscode.window.showTextDocument(source, {
+            viewColumn: vscode.ViewColumn.One,
+            preserveFocus: false,
+        });
         await vscode.commands.executeCommand('r.interactive.bindDocument');
         let sawRestarting = false;
-        const change = vscode.workspace.onDidChangeNotebookDocument(event => {
-            if (event.notebook === notebook && event.notebook.getCells().some(cell => cell.metadata.rNoticeKind === 'restarting')) { sawRestarting = true; }
+        const change = vscode.workspace.onDidChangeNotebookDocument((event) => {
+            if (
+                event.notebook === notebook &&
+                event.notebook.getCells().some((cell) => cell.metadata.rNoticeKind === 'restarting')
+            ) {
+                sawRestarting = true;
+            }
         });
-        const confirmation = sinon.stub(vscode.window, 'showWarningMessage').resolves('Restart Session' as unknown as vscode.MessageItem);
+        const confirmation = sinon
+            .stub(vscode.window, 'showWarningMessage')
+            .resolves('Restart Session' as unknown as vscode.MessageItem);
         const errors = sinon.stub(vscode.window, 'showErrorMessage').resolves(undefined);
         // R shutdown can also emit Language Server notifications; assert only
         // the errors reported by the Interactive manager.
@@ -1901,10 +3975,20 @@ par(mfrow=c(1,1))`);
         const kernels = sinon.spy(vscode.notebooks, 'createNotebookController');
         let client: AgentClient | undefined;
         let executable: sinon.SinonStub | undefined;
-        const supervision = vscode.workspace.getConfiguration('r').inspect<string>('interactive.supervision')?.globalValue;
-        const previousNode = vscode.workspace.getConfiguration('r').inspect<string>('interactive.nodePath')?.globalValue;
-        const limitSettings = ['interactive.maxOutputSizeMiB', 'interactive.maxJournalSizeMiB', 'interactive.maxAssetSizeMiB'];
-        const previousLimits = limitSettings.map(key => vscode.workspace.getConfiguration('r').inspect<number>(key)?.globalValue);
+        const supervision = vscode.workspace
+            .getConfiguration('r')
+            .inspect<string>('interactive.supervision')?.globalValue;
+        const previousNode = vscode.workspace
+            .getConfiguration('r')
+            .inspect<string>('interactive.nodePath')?.globalValue;
+        const limitSettings = [
+            'interactive.maxOutputSizeMiB',
+            'interactive.maxJournalSizeMiB',
+            'interactive.maxAssetSizeMiB',
+        ];
+        const previousLimits = limitSettings.map(
+            (key) => vscode.workspace.getConfiguration('r').inspect<number>(key)?.globalValue,
+        );
         try {
             // A cancelled restart must leave the process and transcript alone.
             confirmation.resolves(undefined);
@@ -1916,41 +4000,78 @@ par(mfrow=c(1,1))`);
             // process: failed preflight must never reach Stop or change its journal.
             const launchFile = path.join(root, original.id, 'config.json');
             const savedLaunch = fs.readFileSync(launchFile, 'utf8');
-            const arfSetting = vscode.workspace.getConfiguration('r').inspect<string>('interactive.arfPath')?.globalValue;
+            const arfSetting = vscode.workspace
+                .getConfiguration('r')
+                .inspect<string>('interactive.arfPath')?.globalValue;
             try {
                 const missingArf = path.join(root, 'removed-arf');
-                fs.writeFileSync(launchFile, JSON.stringify({ ...JSON.parse(savedLaunch) as AgentConfig, provider: 'arf', arfPath: missingArf }));
-                await vscode.workspace.getConfiguration('r').update('interactive.arfPath', missingArf, vscode.ConfigurationTarget.Global);
-                confirmation.callsFake(message => message.startsWith('Restart R session')
-                    ? Promise.resolve('Restart Session' as unknown as vscode.MessageItem) : new Promise(() => { /* Leave the nonmodal warning open. */ }));
+                fs.writeFileSync(
+                    launchFile,
+                    JSON.stringify({
+                        ...(JSON.parse(savedLaunch) as AgentConfig),
+                        provider: 'arf',
+                        arfPath: missingArf,
+                    }),
+                );
+                await vscode.workspace
+                    .getConfiguration('r')
+                    .update('interactive.arfPath', missingArf, vscode.ConfigurationTarget.Global);
+                confirmation.callsFake((message) =>
+                    message.startsWith('Restart R session')
+                        ? Promise.resolve('Restart Session' as unknown as vscode.MessageItem)
+                        : new Promise(() => {
+                              /* Leave the nonmodal warning open. */
+                          }),
+                );
                 await vscode.commands.executeCommand('r.interactive.restart', notebook.uri);
-                assert.ok(confirmation.args.some(args => args[0].includes('The current R session has not been stopped.')));
-                const stillRunning = JSON.parse(fs.readFileSync(path.join(root, original.id, 'manifest.json'), 'utf8')) as SessionManifest;
+                assert.ok(
+                    confirmation.args.some((args) =>
+                        args[0].includes('The current R session has not been stopped.'),
+                    ),
+                );
+                const stillRunning = JSON.parse(
+                    fs.readFileSync(path.join(root, original.id, 'manifest.json'), 'utf8'),
+                ) as SessionManifest;
                 assert.strictEqual(stillRunning.rPid, original.rPid);
                 assert.strictEqual(stillRunning.status, 'idle');
                 assert.strictEqual(notebook.metadata.rGeneration, original.generation);
                 assert.strictEqual(notebook.cellCount, oldCount);
-                assert.ok(restartController.label.endsWith(' · idle'), 'An undismissed setup warning must not keep R in Restarting');
-                assert.ok(original.rPid); process.kill(original.rPid, 0);
+                assert.ok(
+                    restartController.label.endsWith(' · idle'),
+                    'An undismissed setup warning must not keep R in Restarting',
+                );
+                assert.ok(original.rPid);
+                process.kill(original.rPid, 0);
                 sinon.assert.notCalled(interactiveErrors);
             } finally {
                 fs.writeFileSync(launchFile, savedLaunch);
-                await vscode.workspace.getConfiguration('r').update('interactive.arfPath', arfSetting, vscode.ConfigurationTarget.Global);
+                await vscode.workspace
+                    .getConfiguration('r')
+                    .update('interactive.arfPath', arfSetting, vscode.ConfigurationTarget.Global);
                 confirmation.resolves('Restart Session' as unknown as vscode.MessageItem);
             }
             // A missing Node runtime must be detected before stopping the current R.
-            executable = sinon.stub(process, 'execPath').value(path.join(root, 'removed-host-runtime'));
+            executable = sinon
+                .stub(process, 'execPath')
+                .value(path.join(root, 'removed-host-runtime'));
             await vscode.commands.executeCommand('r.interactive.restart', notebook.uri);
             sinon.assert.calledOnce(interactiveErrors);
             assert.match(interactiveErrors.firstCall.args[0], /Reload VS Code/);
             assert.strictEqual(notebook.cellCount, oldCount);
             assert.strictEqual(notebook.metadata.rGeneration, original.generation);
             assert.ok(restartController.label.endsWith(' · idle'));
-            assert.ok(original.rPid); process.kill(original.rPid, 0);
+            assert.ok(original.rPid);
+            process.kill(original.rPid, 0);
             executable?.restore();
             errors.resetHistory();
             // An explicit missing override must also leave the current R process alone.
-            await vscode.workspace.getConfiguration('r').update('interactive.nodePath', path.join(root, 'missing-restart-node'), vscode.ConfigurationTarget.Global);
+            await vscode.workspace
+                .getConfiguration('r')
+                .update(
+                    'interactive.nodePath',
+                    path.join(root, 'missing-restart-node'),
+                    vscode.ConfigurationTarget.Global,
+                );
             await vscode.commands.executeCommand('r.interactive.restart', notebook.uri);
             sinon.assert.calledOnce(interactiveErrors);
             assert.match(interactiveErrors.firstCall.args[0], /r\.interactive\.nodePath/);
@@ -1958,18 +4079,27 @@ par(mfrow=c(1,1))`);
             assert.strictEqual(notebook.metadata.rGeneration, original.generation);
             assert.ok(restartController.label.endsWith(' · idle'));
             process.kill(original.rPid, 0);
-            await vscode.workspace.getConfiguration('r').update('interactive.nodePath', '', vscode.ConfigurationTarget.Global);
+            await vscode.workspace
+                .getConfiguration('r')
+                .update('interactive.nodePath', '', vscode.ConfigurationTarget.Global);
             errors.resetHistory();
             // Losing tmux must not stop the live R process. This preflight uses the
             // current setting even though the saved session used detached launch.
-            await vscode.workspace.getConfiguration('r').update('interactive.supervision', 'tmux', vscode.ConfigurationTarget.Global);
+            await vscode.workspace
+                .getConfiguration('r')
+                .update('interactive.supervision', 'tmux', vscode.ConfigurationTarget.Global);
             const previousPath = process.env.PATH;
             try {
                 process.env.PATH = root;
                 await vscode.commands.executeCommand('r.interactive.restart', notebook.uri);
-            } finally { process.env.PATH = previousPath; }
+            } finally {
+                process.env.PATH = previousPath;
+            }
             sinon.assert.calledOnce(interactiveErrors);
-            assert.match(interactiveErrors.firstCall.args[0], /Cannot find an executable tmux.*r\.interactive\.supervision/);
+            assert.match(
+                interactiveErrors.firstCall.args[0],
+                /Cannot find an executable tmux.*r\.interactive\.supervision/,
+            );
             assert.strictEqual(notebook.cellCount, oldCount);
             assert.strictEqual(notebook.metadata.rGeneration, original.generation);
             assert.strictEqual(fs.readFileSync(launchFile, 'utf8'), savedLaunch);
@@ -1977,43 +4107,79 @@ par(mfrow=c(1,1))`);
             process.kill(original.rPid, 0);
             errors.resetHistory();
             // A later supervisor failure must still retain the window and permit retry.
-            const supervisorBin = path.join(root, 'failed-supervisor'); fs.mkdirSync(supervisorBin);
-            fs.writeFileSync(path.join(supervisorBin, 'tmux'), '#!/bin/sh\necho "test tmux launch failure" >&2\nexit 1\n', { mode: 0o700 });
+            const supervisorBin = path.join(root, 'failed-supervisor');
+            fs.mkdirSync(supervisorBin);
+            fs.writeFileSync(
+                path.join(supervisorBin, 'tmux'),
+                '#!/bin/sh\necho "test tmux launch failure" >&2\nexit 1\n',
+                { mode: 0o700 },
+            );
             try {
                 process.env.PATH = `${supervisorBin}${path.delimiter}${previousPath ?? ''}`;
                 await vscode.commands.executeCommand('r.interactive.restart', notebook.uri);
-            } finally { process.env.PATH = previousPath; }
+            } finally {
+                process.env.PATH = previousPath;
+            }
             sinon.assert.calledOnce(interactiveErrors);
-            assert.match(interactiveErrors.firstCall.args[0], /Could not start the tmux.*test tmux launch failure/s);
-            assert.ok(notebook.getCells().some(cell => cell.metadata.rNoticeKind === 'restartFailed'));
+            assert.match(
+                interactiveErrors.firstCall.args[0],
+                /Could not start the tmux.*test tmux launch failure/s,
+            );
+            assert.ok(
+                notebook.getCells().some((cell) => cell.metadata.rNoticeKind === 'restartFailed'),
+            );
             assert.strictEqual(oldCell.document.uri.toString(), oldUri);
             assert.strictEqual(draft.getText(), 'unsent_draft <- 99');
-            await vscode.workspace.getConfiguration('r').update('interactive.supervision', 'detached', vscode.ConfigurationTarget.Global);
+            await vscode.workspace
+                .getConfiguration('r')
+                .update('interactive.supervision', 'detached', vscode.ConfigurationTarget.Global);
             const override = nodeOverride('custom Node for restart');
-            await vscode.workspace.getConfiguration('r').update('interactive.nodePath', override.executable, vscode.ConfigurationTarget.Global);
+            await vscode.workspace
+                .getConfiguration('r')
+                .update(
+                    'interactive.nodePath',
+                    override.executable,
+                    vscode.ConfigurationTarget.Global,
+                );
             for (const [index, value] of [1.5, 24, 96].entries()) {
-                await vscode.workspace.getConfiguration('r').update(limitSettings[index], value, vscode.ConfigurationTarget.Global);
+                await vscode.workspace
+                    .getConfiguration('r')
+                    .update(limitSettings[index], value, vscode.ConfigurationTarget.Global);
             }
-            confirmation.resetHistory(); errors.resetHistory();
+            confirmation.resetHistory();
+            errors.resetHistory();
             await Promise.all([
                 vscode.commands.executeCommand('r.interactive.restart', notebook.uri),
                 vscode.commands.executeCommand('r.interactive.restart', notebook.uri),
             ]);
             sinon.assert.calledOnce(confirmation);
-            sinon.assert.notCalled(interactiveErrors); sinon.assert.notCalled(kernels);
+            sinon.assert.notCalled(interactiveErrors);
+            sinon.assert.notCalled(kernels);
             assertNodeLaunched(override.log);
             assert.ok(sawRestarting);
             assert.strictEqual(vscode.workspace.notebookDocuments.length, windowCount);
             assert.strictEqual(notebook.cellCount, oldCount + 1);
-            assert.strictEqual(notebook.cellAt(oldCell.index), oldCell, 'Existing cells must keep their identity');
+            assert.strictEqual(
+                notebook.cellAt(oldCell.index),
+                oldCell,
+                'Existing cells must keep their identity',
+            );
             assert.strictEqual(oldCell.document.uri.toString(), oldUri);
             assert.ok(oldCell.document.getText().endsWith('# edited after execution'));
             assert.strictEqual(draft.getText(), 'unsent_draft <- 99');
-            assert.ok(displays(oldCell).every(data => data.archived === true && data.generation === original.generation));
-            const boundary = notebook.getCells().find(cell => cell.metadata.rNoticeKind === 'restarted');
+            assert.ok(
+                displays(oldCell).every(
+                    (data) => data.archived === true && data.generation === original.generation,
+                ),
+            );
+            const boundary = notebook
+                .getCells()
+                .find((cell) => cell.metadata.rNoticeKind === 'restarted');
             assert.ok(boundary && boundary.index > oldCell.index);
             assert.match(boundary.document.getText(), /Continue here in a fresh R process/);
-            const config = JSON.parse(fs.readFileSync(path.join(root, original.id, 'config.json'), 'utf8')) as AgentConfig;
+            const config = JSON.parse(
+                fs.readFileSync(path.join(root, original.id, 'config.json'), 'utf8'),
+            ) as AgentConfig;
             assert.notStrictEqual(config.generation, original.generation);
             assert.strictEqual(notebook.metadata.rGeneration, config.generation);
             assert.deepStrictEqual(config.previousGenerations, [original.generation]);
@@ -2022,80 +4188,176 @@ par(mfrow=c(1,1))`);
             assert.strictEqual(config.maxOutputBytes, 1.5 * 1024 * 1024);
             assert.strictEqual(config.maxJournalBytes, 24 * 1024 * 1024);
             assert.strictEqual(config.maxAssetBytes, 96 * 1024 * 1024);
-            assert.strictEqual(config.supervision, 'detached', 'Restart honors the repaired setting instead of the persisted tmux supervisor');
+            assert.strictEqual(
+                config.supervision,
+                'detached',
+                'Restart honors the repaired setting instead of the persisted tmux supervisor',
+            );
             assert.ok(fs.existsSync(path.join(config.library!, 'sess')));
-            const current = (): SessionManifest => JSON.parse(fs.readFileSync(path.join(root, original.id, 'manifest.json'), 'utf8')) as SessionManifest;
-            client = new AgentClient(current()); await client.connect({ claim: false });
+            const current = (): SessionManifest =>
+                JSON.parse(
+                    fs.readFileSync(path.join(root, original.id, 'manifest.json'), 'utf8'),
+                ) as SessionManifest;
+            client = new AgentClient(current());
+            await client.connect({ claim: false });
             assert.notStrictEqual(current().rPid, original.rPid);
             assert.ok(restartController.description?.includes(`PID ${current().rPid ?? ''}`));
             assert.ok(restartController.label.endsWith(' · idle'));
-            const afterCode = 'stopifnot(!exists("before_restart")); after_restart <- 7; cat("fresh process")';
+            const afterCode =
+                'stopifnot(!exists("before_restart")); after_restart <- 7; cat("fresh process")';
             await vscode.commands.executeCommand('r.runSelection', afterCode);
-            await until(() => notebook.getCells().some(cell => cell.document.getText() === afterCode && cell.executionSummary?.success === true));
+            await until(() =>
+                notebook
+                    .getCells()
+                    .some(
+                        (cell) =>
+                            cell.document.getText() === afterCode &&
+                            cell.executionSummary?.success === true,
+                    ),
+            );
             const index = notebook.cellCount;
-            await vscode.commands.executeCommand('notebook.cell.execute', { ranges: [{ start: oldCell.index, end: oldCell.index + 1 }], document: notebook.uri });
-            await until(() => notebook.cellCount > index && notebook.cellAt(index).executionSummary?.success === true);
-            assert.notStrictEqual(notebook.cellAt(index).metadata.rExecutionId, oldId, 'Reruns get fresh execution IDs');
+            await vscode.commands.executeCommand('notebook.cell.execute', {
+                ranges: [{ start: oldCell.index, end: oldCell.index + 1 }],
+                document: notebook.uri,
+            });
+            await until(
+                () =>
+                    notebook.cellCount > index &&
+                    notebook.cellAt(index).executionSummary?.success === true,
+            );
+            assert.notStrictEqual(
+                notebook.cellAt(index).metadata.rExecutionId,
+                oldId,
+                'Reruns get fresh execution IDs',
+            );
             assert.strictEqual(oldCell.document.uri.toString(), oldUri);
-            assert.ok((await client.snapshot()).executions.some(record => record.code === afterCode));
+            assert.ok(
+                (await client.snapshot()).executions.some((record) => record.code === afterCode),
+            );
             // Source routing remains bound even when another window becomes active.
             await vscode.commands.executeCommand('r.interactive.open', manifests[0]);
-            await vscode.window.showTextDocument(source, { viewColumn: vscode.ViewColumn.One, preserveFocus: false });
+            await vscode.window.showTextDocument(source, {
+                viewColumn: vscode.ViewColumn.One,
+                preserveFocus: false,
+            });
             await until(() => vscode.window.activeTextEditor?.document === source);
             await vscode.commands.executeCommand('r.runSelection');
-            await until(() => notebook.getCells().some(cell => cell.document.getText() === source.getText().trim() && cell.executionSummary?.success === true));
+            await until(() =>
+                notebook
+                    .getCells()
+                    .some(
+                        (cell) =>
+                            cell.document.getText() === source.getText().trim() &&
+                            cell.executionSummary?.success === true,
+                    ),
+            );
             client.close();
             const replacement = nodeOverride('replacement Node for restart');
-            await vscode.workspace.getConfiguration('r').update('interactive.nodePath', replacement.executable, vscode.ConfigurationTarget.Global);
+            await vscode.workspace
+                .getConfiguration('r')
+                .update(
+                    'interactive.nodePath',
+                    replacement.executable,
+                    vscode.ConfigurationTarget.Global,
+                );
             for (const [index, value] of [0.0625, 40, 96.5].entries()) {
-                await vscode.workspace.getConfiguration('r').update(limitSettings[index], value, vscode.ConfigurationTarget.Global);
+                await vscode.workspace
+                    .getConfiguration('r')
+                    .update(limitSettings[index], value, vscode.ConfigurationTarget.Global);
             }
             await vscode.commands.executeCommand('r.interactive.restart', notebook.uri);
             assertNodeLaunched(replacement.log);
-            const restartedConfig = JSON.parse(fs.readFileSync(path.join(root, original.id, 'config.json'), 'utf8')) as AgentConfig;
+            const restartedConfig = JSON.parse(
+                fs.readFileSync(path.join(root, original.id, 'config.json'), 'utf8'),
+            ) as AgentConfig;
             assert.strictEqual(restartedConfig.maxOutputBytes, 65536);
             assert.strictEqual(restartedConfig.maxJournalBytes, 40 * 1024 * 1024);
             assert.strictEqual(restartedConfig.maxAssetBytes, 96.5 * 1024 * 1024);
             assert.strictEqual(vscode.workspace.notebookDocuments.length, windowCount);
-            assert.strictEqual(notebook.getCells().filter(cell => cell.metadata.rNoticeKind === 'restarted').length, 2);
+            assert.strictEqual(
+                notebook.getCells().filter((cell) => cell.metadata.rNoticeKind === 'restarted')
+                    .length,
+                2,
+            );
             assert.strictEqual(draft.getText(), 'unsent_draft <- 99');
-            client = new AgentClient(current()); await client.connect({ claim: false });
+            client = new AgentClient(current());
+            await client.connect({ claim: false });
             await vscode.commands.executeCommand('r.interactive.open', current());
             const finalCode = 'stopifnot(!exists("after_restart")); cat("third process")';
             await vscode.commands.executeCommand('r.runSelection', finalCode);
-            await until(() => notebook.getCells().some(cell => cell.document.getText() === finalCode && cell.executionSummary?.success === true));
+            await until(() =>
+                notebook
+                    .getCells()
+                    .some(
+                        (cell) =>
+                            cell.document.getText() === finalCode &&
+                            cell.executionSummary?.success === true,
+                    ),
+            );
             for (const format of ['rnb', 'ipynb', 'R', 'html']) {
                 const destination = vscode.Uri.file(path.join(root, `restarted.${format}`));
                 const save = sinon.stub(vscode.window, 'showSaveDialog').resolves(destination);
-                const picker = sinon.stub(vscode.window, 'showQuickPick').resolves({ label: format, format } as vscode.QuickPickItem);
-                try { await vscode.commands.executeCommand('r.interactive.export', notebook.uri); }
-                finally { save.restore(); picker.restore(); }
+                const picker = sinon
+                    .stub(vscode.window, 'showQuickPick')
+                    .resolves({ label: format, format } as vscode.QuickPickItem);
+                try {
+                    await vscode.commands.executeCommand('r.interactive.export', notebook.uri);
+                } finally {
+                    save.restore();
+                    picker.restore();
+                }
                 const content = fs.readFileSync(destination.fsPath, 'utf8');
-                assert.ok(content.includes('before_restart') && content.includes('after_restart') && content.includes('third process'));
+                assert.ok(
+                    content.includes('before_restart') &&
+                        content.includes('after_restart') &&
+                        content.includes('third process'),
+                );
                 assert.strictEqual((content.match(/R session restarted/g) ?? []).length, 2);
             }
             // Disconnect/reopen reconstructs all three generations from disk in this notebook.
             await vscode.commands.executeCommand('r.interactive.detach', notebook.uri);
             await vscode.commands.executeCommand('r.interactive.open', current());
             assert.strictEqual(vscode.workspace.notebookDocuments.length, windowCount);
-            assert.strictEqual(notebook.getCells().filter(cell => cell.metadata.rNoticeKind === 'restarted').length, 2);
-            assert.ok(notebook.getCells().some(cell => cell.metadata.rExecutionId === oldId));
-            assert.ok(notebook.getCells().some(cell => cell.document.getText() === finalCode));
+            assert.strictEqual(
+                notebook.getCells().filter((cell) => cell.metadata.rNoticeKind === 'restarted')
+                    .length,
+                2,
+            );
+            assert.ok(notebook.getCells().some((cell) => cell.metadata.rExecutionId === oldId));
+            assert.ok(notebook.getCells().some((cell) => cell.document.getText() === finalCode));
             assert.strictEqual(draft.getText(), 'unsent_draft <- 99');
             await vscode.commands.executeCommand('r.interactive.clear', notebook.uri);
-            assert.ok(!notebook.getCells().some(cell => cell.metadata.rExecutionId === oldId));
+            assert.ok(!notebook.getCells().some((cell) => cell.metadata.rExecutionId === oldId));
             sinon.assert.notCalled(interactiveErrors);
         } finally {
-            confirmation.restore(); errors.restore(); kernels.restore(); change.dispose();
+            confirmation.restore();
+            errors.restore();
+            kernels.restore();
+            change.dispose();
             executable?.restore();
-            await vscode.workspace.getConfiguration('r').update('interactive.supervision', supervision, vscode.ConfigurationTarget.Global);
-            await vscode.workspace.getConfiguration('r').update('interactive.nodePath', previousNode, vscode.ConfigurationTarget.Global);
+            await vscode.workspace
+                .getConfiguration('r')
+                .update('interactive.supervision', supervision, vscode.ConfigurationTarget.Global);
+            await vscode.workspace
+                .getConfiguration('r')
+                .update('interactive.nodePath', previousNode, vscode.ConfigurationTarget.Global);
             for (const [index, key] of limitSettings.entries()) {
-                await vscode.workspace.getConfiguration('r').update(key, previousLimits[index], vscode.ConfigurationTarget.Global);
+                await vscode.workspace
+                    .getConfiguration('r')
+                    .update(key, previousLimits[index], vscode.ConfigurationTarget.Global);
             }
             if (!client?.connected) {
-                client = new AgentClient(JSON.parse(fs.readFileSync(path.join(root, original.id, 'manifest.json'), 'utf8')) as SessionManifest);
-                try { await client.connect(); } catch { client.close(); client = undefined; }
+                client = new AgentClient(
+                    JSON.parse(
+                        fs.readFileSync(path.join(root, original.id, 'manifest.json'), 'utf8'),
+                    ) as SessionManifest,
+                );
+                try {
+                    await client.connect();
+                } catch {
+                    client.close();
+                    client = undefined;
+                }
             }
             if (client) {
                 await client.request('claim', { force: true });
@@ -2103,10 +4365,15 @@ par(mfrow=c(1,1))`);
                 let exited = false;
                 const deadline = Date.now() + 10000;
                 while (!exited && Date.now() < deadline) {
-                    exited = (await client.request<{ status: string }>('heartbeat')).status === 'exited';
-                    if (!exited) { await new Promise(resolve => setTimeout(resolve, 50)); }
+                    exited =
+                        (await client.request<{ status: string }>('heartbeat')).status === 'exited';
+                    if (!exited) {
+                        await new Promise((resolve) => setTimeout(resolve, 50));
+                    }
                 }
-                if (exited) { await client.request('shutdown'); }
+                if (exited) {
+                    await client.request('shutdown');
+                }
                 client.close();
             }
         }
@@ -2118,32 +4385,65 @@ par(mfrow=c(1,1))`);
         let windowCount: number;
         const start = async (): Promise<SessionManifest> => {
             const id = randomUUID();
-            const config: AgentConfig = { id, generation: randomUUID(), label: `Bulk test ${bulk.length}`,
-                directory: root, storage: path.join(root, id), library: path.join(root, 'library'),
-                rPath: 'R', resources: path.join(process.cwd(), 'R'), provider: 'arf', arfPath: process.env.ARF_PATH ?? 'arf', supervision: 'detached',
-                plotBackend: 'auto', historyLimit: 50, maxOutputBytes: 1048576, maxJournalBytes: 16777216 };
-            const agent = new SessionAgent(config); agents.push(agent);
-            const manifest = await agent.start(); bulk.push(manifest);
+            const config: AgentConfig = {
+                id,
+                generation: randomUUID(),
+                label: `Bulk test ${bulk.length}`,
+                directory: root,
+                storage: path.join(root, id),
+                library: path.join(root, 'library'),
+                rPath: 'R',
+                resources: path.join(process.cwd(), 'R'),
+                provider: 'arf',
+                arfPath: process.env.ARF_PATH ?? 'arf',
+                supervision: 'detached',
+                plotBackend: 'auto',
+                historyLimit: 50,
+                maxOutputBytes: 1048576,
+                maxJournalBytes: 16777216,
+            };
+            const agent = new SessionAgent(config);
+            agents.push(agent);
+            const manifest = await agent.start();
+            bulk.push(manifest);
             await until(() => manifest.status === 'idle');
             return manifest;
         };
         suiteSetup(async () => {
-            for (let i = 0; i < 4; i++) { await start(); }
-            other = new AgentClient(bulk[2]); await other.connect();
+            for (let i = 0; i < 4; i++) {
+                await start();
+            }
+            other = new AgentClient(bulk[2]);
+            await other.connect();
             await vscode.commands.executeCommand('r.interactive.open', bulk[0]);
-            const opened = vscode.workspace.notebookDocuments.find(doc => doc.metadata.rSessionId === bulk[0].id);
-            assert.ok(opened); notebook = opened;
+            const opened = vscode.workspace.notebookDocuments.find(
+                (doc) => doc.metadata.rSessionId === bulk[0].id,
+            );
+            assert.ok(opened);
+            notebook = opened;
             const edit = new vscode.WorkspaceEdit();
-            edit.set(notebook.uri, [vscode.NotebookEdit.insertCells(0, [new vscode.NotebookCellData(vscode.NotebookCellKind.Code,
-                'bulk_retained <- 42; print(bulk_retained)', 'r')])]);
+            edit.set(notebook.uri, [
+                vscode.NotebookEdit.insertCells(0, [
+                    new vscode.NotebookCellData(
+                        vscode.NotebookCellKind.Code,
+                        'bulk_retained <- 42; print(bulk_retained)',
+                        'r',
+                    ),
+                ]),
+            ]);
             await vscode.workspace.applyEdit(edit);
-            await vscode.commands.executeCommand('notebook.cell.execute', { ranges: [{ start: 0, end: 1 }], document: notebook.uri });
+            await vscode.commands.executeCommand('notebook.cell.execute', {
+                ranges: [{ start: 0, end: 1 }],
+                document: notebook.uri,
+            });
             await until(() => notebook.cellAt(0).executionSummary?.success === true);
             windowCount = vscode.workspace.notebookDocuments.length;
         });
         suiteTeardown(async () => {
             other?.close();
-            if (notebook) { await vscode.commands.executeCommand('r.interactive.detach', notebook.uri); }
+            if (notebook) {
+                await vscode.commands.executeCommand('r.interactive.detach', notebook.uri);
+            }
         });
         test('cancelling the multi-select picker or all-session confirmation leaves every session alive', async () => {
             const picker = sinon.stub(vscode.window, 'showQuickPick').resolves(undefined);
@@ -2157,10 +4457,17 @@ par(mfrow=c(1,1))`);
                 sinon.assert.calledOnce(confirm);
                 assert.match(confirm.firstCall.args[0], /Stop 4 R Interactive sessions/);
                 const detail = confirm.firstCall.args[1].detail ?? '';
-                for (const manifest of bulk) { assert.ok(detail.includes(`${manifest.label} — PID ${manifest.rPid ?? 'starting'}`)); }
-                assert.ok(bulk.every(manifest => manifest.status === 'idle'));
+                for (const manifest of bulk) {
+                    assert.ok(
+                        detail.includes(`${manifest.label} — PID ${manifest.rPid ?? 'starting'}`),
+                    );
+                }
+                assert.ok(bulk.every((manifest) => manifest.status === 'idle'));
                 assert.strictEqual(vscode.workspace.notebookDocuments.length, windowCount);
-            } finally { picker.restore(); confirm.restore(); }
+            } finally {
+                picker.restore();
+                confirm.restore();
+            }
         });
         test('tree multi-selection deduplicates targets, retains output, and never stops a replacement generation', async () => {
             const stale = { ...bulk[1], generation: randomUUID() };
@@ -2168,35 +4475,75 @@ par(mfrow=c(1,1))`);
             confirm.onFirstCall().resolves('Stop 2 Sessions' as unknown as vscode.MessageItem);
             const picker = sinon.stub(vscode.window, 'showQuickPick').resolves(undefined);
             try {
-                await vscode.commands.executeCommand('r.interactive.stopSelected', bulk[0], [bulk[0], stale, bulk[0]]);
+                await vscode.commands.executeCommand('r.interactive.stopSelected', bulk[0], [
+                    bulk[0],
+                    stale,
+                    bulk[0],
+                ]);
                 sinon.assert.notCalled(picker);
                 assert.strictEqual(bulk[0].status, 'exited');
                 assert.strictEqual(bulk[1].status, 'idle');
                 assert.strictEqual(bulk[2].status, 'idle');
                 assert.match(confirm.lastCall.args[0], /Stopped 1 of 2.*1 could not be stopped/);
-                await until(() => notebook.getCells().some(cell => cell.metadata.rNoticeKind === 'stopped'));
-                assert.ok(notebook.cellAt(0).outputs.some(output => output.items.some(item => Buffer.from(item.data).toString().includes('42'))));
+                await until(() =>
+                    notebook.getCells().some((cell) => cell.metadata.rNoticeKind === 'stopped'),
+                );
+                assert.ok(
+                    notebook
+                        .cellAt(0)
+                        .outputs.some((output) =>
+                            output.items.some((item) =>
+                                Buffer.from(item.data).toString().includes('42'),
+                            ),
+                        ),
+                );
                 assert.strictEqual(vscode.workspace.notebookDocuments.length, windowCount);
-            } finally { confirm.restore(); picker.restore(); }
+            } finally {
+                confirm.restore();
+                picker.restore();
+            }
         });
         test('picker selection stops unopened sessions and reports other-window control without affecting unselected sessions', async () => {
-            const picker = sinon.stub(vscode.window, 'showQuickPick').resolves(bulk.slice(1, 3).map(manifest => ({ label: manifest.label, manifest })) as never);
+            const picker = sinon
+                .stub(vscode.window, 'showQuickPick')
+                .resolves(
+                    bulk
+                        .slice(1, 3)
+                        .map((manifest) => ({ label: manifest.label, manifest })) as never,
+                );
             const confirm = sinon.stub(vscode.window, 'showWarningMessage').resolves(undefined);
             confirm.onFirstCall().resolves('Stop 2 Sessions' as unknown as vscode.MessageItem);
             try {
                 await vscode.commands.executeCommand('r.interactive.stopSelected');
-                const choices = await picker.firstCall.args[0] as (vscode.QuickPickItem & { manifest: SessionManifest })[];
-                assert.deepStrictEqual(new Set(choices.map(choice => choice.manifest.id)), new Set(bulk.slice(1).map(manifest => manifest.id)));
+                const choices = (await picker.firstCall.args[0]) as (vscode.QuickPickItem & {
+                    manifest: SessionManifest;
+                })[];
+                assert.deepStrictEqual(
+                    new Set(choices.map((choice) => choice.manifest.id)),
+                    new Set(bulk.slice(1).map((manifest) => manifest.id)),
+                );
                 assert.strictEqual(bulk[1].status, 'exited');
                 assert.strictEqual(bulk[2].status, 'idle');
                 assert.strictEqual(bulk[3].status, 'idle');
-                assert.strictEqual((await other.request<{ control: boolean }>('heartbeat')).control, true);
+                assert.strictEqual(
+                    (await other.request<{ control: boolean }>('heartbeat')).control,
+                    true,
+                );
                 assert.match(confirm.lastCall.args[0], /Stopped 1 of 2.*1 could not be stopped/);
                 const manager = interactiveManager() as InteractiveManager;
-                assert.ok(!manager.getChildren().some(manifest => manifest.id === bulk[1].id), 'Stopped unopened sessions leave no dead tree link');
-                assert.ok(manager.getChildren().some(manifest => manifest.id === bulk[0].id), 'An open stopped transcript stays in the tree');
+                assert.ok(
+                    !manager.getChildren().some((manifest) => manifest.id === bulk[1].id),
+                    'Stopped unopened sessions leave no dead tree link',
+                );
+                assert.ok(
+                    manager.getChildren().some((manifest) => manifest.id === bulk[0].id),
+                    'An open stopped transcript stays in the tree',
+                );
                 assert.strictEqual(vscode.workspace.notebookDocuments.length, windowCount);
-            } finally { picker.restore(); confirm.restore(); }
+            } finally {
+                picker.restore();
+                confirm.restore();
+            }
         });
         test('Stop All captures its targets before confirmation, skips other windows, and stops the remaining sessions after control is released', async () => {
             const confirm = sinon.stub(vscode.window, 'showWarningMessage').resolves(undefined);
@@ -2211,70 +4558,129 @@ par(mfrow=c(1,1))`);
                 assert.strictEqual(bulk[3].status, 'exited');
                 assert.strictEqual(bulk[4].status, 'idle');
                 assert.match(confirm.lastCall.args[0], /Stopped 1 of 2/);
-                await other.request('detach'); other.close();
-                confirm.resetBehavior(); confirm.resolves('Stop 2 Sessions' as unknown as vscode.MessageItem);
+                await other.request('detach');
+                other.close();
+                confirm.resetBehavior();
+                confirm.resolves('Stop 2 Sessions' as unknown as vscode.MessageItem);
                 await vscode.commands.executeCommand('r.interactive.stopAll');
-                assert.ok(bulk.every(manifest => manifest.status === 'exited'));
+                assert.ok(bulk.every((manifest) => manifest.status === 'exited'));
                 assert.match(info.lastCall.args[0], /Stopped 2 of 2/);
                 const count = confirm.callCount;
                 await vscode.commands.executeCommand('r.interactive.stopAll');
                 assert.strictEqual(confirm.callCount, count);
                 assert.match(info.lastCall.args[0], /No running R Interactive sessions/);
                 assert.strictEqual(vscode.workspace.notebookDocuments.length, windowCount);
-            } finally { confirm.restore(); info.restore(); }
+            } finally {
+                confirm.restore();
+                info.restore();
+            }
         });
     });
     test('a stale saved URI cannot reconnect one session into another session window', async () => {
         const manager = interactiveManager() as InteractiveManager;
-        const saved = (manager as unknown as { savedConnections: Map<string, { id: string; notebookUri?: string }> }).savedConnections;
+        const saved = (
+            manager as unknown as {
+                savedConnections: Map<string, { id: string; notebookUri?: string }>;
+            }
+        ).savedConnections;
         const temporary: { agent: SessionAgent; manifest: SessionManifest }[] = [];
-        const before = new Set(vscode.window.tabGroups.all.flatMap(group => group.tabs));
+        const before = new Set(vscode.window.tabGroups.all.flatMap((group) => group.tabs));
         try {
             for (let i = 0; i < 2; i++) {
                 const id = randomUUID();
-                const agent = new SessionAgent({ id, generation: randomUUID(), label: `URI reuse ${i}`, directory: root, storage: path.join(root, id),
-                    rPath: 'R', library: path.join(root, 'library'), resources: path.join(process.cwd(), 'R'), provider: 'arf', arfPath: process.env.ARF_PATH ?? 'arf', supervision: 'test',
-                    plotBackend: 'standard', historyLimit: 50, maxOutputBytes: 1048576, maxJournalBytes: 16777216 });
-                const manifest = await agent.start(); temporary.push({ agent, manifest });
+                const agent = new SessionAgent({
+                    id,
+                    generation: randomUUID(),
+                    label: `URI reuse ${i}`,
+                    directory: root,
+                    storage: path.join(root, id),
+                    rPath: 'R',
+                    library: path.join(root, 'library'),
+                    resources: path.join(process.cwd(), 'R'),
+                    provider: 'arf',
+                    arfPath: process.env.ARF_PATH ?? 'arf',
+                    supervision: 'test',
+                    plotBackend: 'standard',
+                    historyLimit: 50,
+                    maxOutputBytes: 1048576,
+                    maxJournalBytes: 16777216,
+                });
+                const manifest = await agent.start();
+                temporary.push({ agent, manifest });
                 await manager.open(manifest);
             }
-            const [first, second] = temporary.map(({ manifest }) => vscode.workspace.notebookDocuments.find(doc => doc.metadata.rSessionId === manifest.id));
+            const [first, second] = temporary.map(({ manifest }) =>
+                vscode.workspace.notebookDocuments.find(
+                    (doc) => doc.metadata.rSessionId === manifest.id,
+                ),
+            );
             assert.ok(first && second);
             await vscode.commands.executeCommand('r.interactive.detach', first.uri);
             const reset = new vscode.WorkspaceEdit();
             reset.set(first.uri, [vscode.NotebookEdit.updateNotebookMetadata({})]);
             await vscode.workspace.applyEdit(reset);
-            saved.set(temporary[0].manifest.id, { id: temporary[0].manifest.id, notebookUri: second.uri.toString() });
+            saved.set(temporary[0].manifest.id, {
+                id: temporary[0].manifest.id,
+                notebookUri: second.uri.toString(),
+            });
             await manager.open(temporary[0].manifest);
             assert.strictEqual(second.metadata.rSessionId, temporary[1].manifest.id);
-            const reopened = vscode.workspace.notebookDocuments.find(doc => doc.metadata.rSessionId === temporary[0].manifest.id);
+            const reopened = vscode.workspace.notebookDocuments.find(
+                (doc) => doc.metadata.rSessionId === temporary[0].manifest.id,
+            );
             assert.ok(reopened && reopened !== second);
-            assert.notStrictEqual(saved.get(temporary[0].manifest.id)?.notebookUri, saved.get(temporary[1].manifest.id)?.notebookUri);
+            assert.notStrictEqual(
+                saved.get(temporary[0].manifest.id)?.notebookUri,
+                saved.get(temporary[1].manifest.id)?.notebookUri,
+            );
         } finally {
             for (const { agent, manifest } of temporary) {
-                await vscode.commands.executeCommand('r.interactive.detach', manifest); await agent.close();
+                await vscode.commands.executeCommand('r.interactive.detach', manifest);
+                await agent.close();
             }
-            await vscode.window.tabGroups.close(vscode.window.tabGroups.all.flatMap(group => group.tabs).filter(tab => !before.has(tab)), true);
+            await vscode.window.tabGroups.close(
+                vscode.window.tabGroups.all
+                    .flatMap((group) => group.tabs)
+                    .filter((tab) => !before.has(tab)),
+                true,
+            );
         }
     });
     test('exports portable notebook output without transient connection URLs', () => {
         const cell = new vscode.NotebookCellData(vscode.NotebookCellKind.Code, 'plot(1:3)', 'r');
         cell.executionSummary = { executionOrder: 1, success: true };
-        cell.outputs = [new vscode.NotebookCellOutput([
-            vscode.NotebookCellOutputItem.json({ kind: 'plot', svg: 'plot.svg', svgData: 'c3Zn', url: 'http://localhost:1234/private-token/plot.svg' }, DISPLAY_MIME),
-            vscode.NotebookCellOutputItem.text('<svg/>', 'image/svg+xml'),
-        ]), new vscode.NotebookCellOutput([vscode.NotebookCellOutputItem.stdout('hello')])];
+        cell.outputs = [
+            new vscode.NotebookCellOutput([
+                vscode.NotebookCellOutputItem.json(
+                    {
+                        kind: 'plot',
+                        svg: 'plot.svg',
+                        svgData: 'c3Zn',
+                        url: 'http://localhost:1234/private-token/plot.svg',
+                    },
+                    DISPLAY_MIME,
+                ),
+                vscode.NotebookCellOutputItem.text('<svg/>', 'image/svg+xml'),
+            ]),
+            new vscode.NotebookCellOutput([vscode.NotebookCellOutputItem.stdout('hello')]),
+        ];
         const data = new vscode.NotebookData([cell]);
         const serializer = new InteractiveSerializer();
         const saved = serializer.serializeNotebook(data);
         const restored = serializer.deserializeNotebook(saved);
-        const custom = restored.cells[0].outputs?.[0].items.find(item => item.mime === DISPLAY_MIME);
+        const custom = restored.cells[0].outputs?.[0].items.find(
+            (item) => item.mime === DISPLAY_MIME,
+        );
         assert.ok(custom);
         const output = JSON.parse(Buffer.from(custom.data).toString()) as Record<string, unknown>;
-        assert.strictEqual(output.url, undefined); assert.strictEqual(output.svgData, 'c3Zn');
+        assert.strictEqual(output.url, undefined);
+        assert.strictEqual(output.svgData, 'c3Zn');
         assert.strictEqual(output.connected, false);
         const ipynb = JSON.parse(Buffer.from(serializer.exportIpynb(data)).toString()) as {
-            nbformat: number; cells: { outputs: { output_type: string; data?: Record<string, unknown>; text?: string }[] }[];
+            nbformat: number;
+            cells: {
+                outputs: { output_type: string; data?: Record<string, unknown>; text?: string }[];
+            }[];
         };
         assert.strictEqual(ipynb.nbformat, 4);
         assert.strictEqual(ipynb.cells[0].outputs[0].data?.['image/svg+xml'], '<svg/>');
@@ -2282,7 +4688,6 @@ par(mfrow=c(1,1))`);
         assert.strictEqual(ipynb.cells[0].outputs[1].text, 'hello');
         assert.ok(!JSON.stringify(ipynb).includes('private-token'));
     });
-
 });
 
 async function stopLanguageClient(client: LanguageClient): Promise<void> {
@@ -2293,7 +4698,14 @@ async function stopLanguageClient(client: LanguageClient): Promise<void> {
     } catch (error) {
         // R's language server can close on shutdown before the client's exit
         // notification is written. The client has already completed cleanup.
-        if (client.state === State.Stopped && error instanceof Error && 'code' in error && error.code === 'EPIPE') { return; }
+        if (
+            client.state === State.Stopped &&
+            error instanceof Error &&
+            'code' in error &&
+            error.code === 'EPIPE'
+        ) {
+            return;
+        }
         throw error;
     }
 }
@@ -2302,25 +4714,28 @@ suite('Interactive language client cleanup', () => {
     test('waits for a slow shutdown and accepts the server closing before the exit notification', async () => {
         const connections: Array<{ dispose(): void }> = [];
         let serverSocket: net.Socket | undefined;
-        const server = net.createServer(socket => {
+        const server = net.createServer((socket) => {
             serverSocket = socket;
-            const connection = createMessageConnection(new StreamMessageReader(socket), new StreamMessageWriter(socket));
+            const connection = createMessageConnection(
+                new StreamMessageReader(socket),
+                new StreamMessageWriter(socket),
+            );
             connections.push(connection);
             connection.onRequest('initialize', () => ({ capabilities: {} }));
             connection.onRequest('shutdown', async () => {
-                await new Promise(resolve => setTimeout(resolve, 2500));
+                await new Promise((resolve) => setTimeout(resolve, 2500));
                 return null;
             });
             connection.listen();
         });
-        await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
+        await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
         const socket = net.connect((server.address() as net.AddressInfo).port, '127.0.0.1');
-        const ended = new Promise<void>(resolve => socket.once('end', resolve));
+        const ended = new Promise<void>((resolve) => socket.once('end', resolve));
         const writer = new StreamMessageWriter(socket);
         const write = writer.write.bind(writer);
         let exitErrorCode: string | undefined;
         // Force the same ordering that macOS can produce during R shutdown.
-        writer.write = async message => {
+        writer.write = async (message) => {
             const isExit = 'method' in message && message.method === 'exit';
             if (isExit) {
                 serverSocket!.end();
@@ -2329,33 +4744,51 @@ suite('Interactive language client cleanup', () => {
             try {
                 return await write(message);
             } catch (error) {
-                if (isExit) { exitErrorCode = (error as NodeJS.ErrnoException).code; }
+                if (isExit) {
+                    exitErrorCode = (error as NodeJS.ErrnoException).code;
+                }
                 throw error;
             }
         };
-        const channel = vscode.window.createOutputChannel('Test language client cleanup', { log: true });
-        const client = new LanguageClient('cleanup-test', 'Cleanup test', () => Promise.resolve({
-            reader: new StreamMessageReader(socket), writer,
-        }), { documentSelector: [], outputChannel: channel });
+        const channel = vscode.window.createOutputChannel('Test language client cleanup', {
+            log: true,
+        });
+        const client = new LanguageClient(
+            'cleanup-test',
+            'Cleanup test',
+            () =>
+                Promise.resolve({
+                    reader: new StreamMessageReader(socket),
+                    writer,
+                }),
+            { documentSelector: [], outputChannel: channel },
+        );
         try {
             await client.start();
             await stopLanguageClient(client);
             assert.strictEqual(client.state, State.Stopped);
             assert.strictEqual(exitErrorCode, 'EPIPE');
         } finally {
-            writer.dispose(); socket.destroy();
-            connections.forEach(connection => connection.dispose());
-            await new Promise<void>(resolve => server.close(() => resolve()));
+            writer.dispose();
+            socket.destroy();
+            connections.forEach((connection) => connection.dispose());
+            await new Promise<void>((resolve) => server.close(() => resolve()));
             channel.dispose();
         }
     });
 
     test('does not suppress unrelated shutdown failures or an unstopped client', async () => {
         const error = Object.assign(new Error('Socket shutdown failed'), { code: 'EPIPE' });
-        for (const [state, failure] of [[State.Running, error], [State.Stopped, new Error('Unexpected shutdown failure')],
-            [State.Stopped, new Error('Stopping the server timed out')]] as const) {
-            const client = { state, stop: () => Promise.reject(failure) } as unknown as LanguageClient;
-            await assert.rejects(stopLanguageClient(client), thrown => thrown === failure);
+        for (const [state, failure] of [
+            [State.Running, error],
+            [State.Stopped, new Error('Unexpected shutdown failure')],
+            [State.Stopped, new Error('Stopping the server timed out')],
+        ] as const) {
+            const client = {
+                state,
+                stop: () => Promise.reject(failure),
+            } as unknown as LanguageClient;
+            await assert.rejects(stopLanguageClient(client), (thrown) => thrown === failure);
         }
     });
 });

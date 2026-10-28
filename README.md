@@ -30,7 +30,7 @@ for other changes and upgrade notes.
     install.packages("languageserver")
     ```
 
-3. Install the stable release of this extension from the [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=reditorsupport.r) or the [Open VSX Registry](https://open-vsx.org/extension/reditorsupport/r). This release requires VS Code 1.110 or later.
+3. Install the stable release of this extension from the [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=reditorsupport.r) or the [Open VSX Registry](https://open-vsx.org/extension/reditorsupport/r). This release requires VS Code 1.101.0 or later.
 
     ```sh
     code --install-extension REditorSupport.r
@@ -60,7 +60,7 @@ for other changes and upgrade notes.
 Steps 1–3 above are all that's required to get started with R in VS Code. But we also recommend the following software for a fully optimized R + VS Code experience:
 
 * Install an interactive plotting backend for a better R graphics experience:
-  * [jgd](https://github.com/grantmcdermott/jgd): Lightweight JSON graphics device with native vscode-R integration.
+  * [jgd](https://github.com/grantmcdermott/jgd): Lightweight JSON graphics device with native vscode-R integration. If it is not installed, vscode-R can offer to install it into a vscode-R-managed library without changing your R libraries.
   * [httpgd](https://github.com/nx10/httpgd): SVG-based graphics device served via HTTP and WebSockets.
 
 * [arf](https://github.com/eitsupi/arf): A modern R console with many features: syntax highlighting, multiline editing, vi/emacs keybindings, R version switching, etc. Successor to [radian](https://github.com/randy3k/radian) written in Rust.

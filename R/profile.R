@@ -52,7 +52,11 @@ invisible(local({
         plot_backend <- Sys.getenv("SESS_PLOT_BACKEND", "auto")
         connect <- get("connect", envir = ns, inherits = FALSE)
         use_rstudioapi <- as.logical(Sys.getenv("SESS_RSTUDIOAPI", "TRUE"))
-        result <- connect(use_rstudioapi = use_rstudioapi, plot_backend = plot_backend)
+        vscode_r_with_rstudioapi(use_rstudioapi)
+        result <- vscode_r_with_jgd(plot_backend, function(allow_jgd = TRUE) {
+            connect(use_rstudioapi = use_rstudioapi, plot_backend = plot_backend,
+                    allow_jgd = allow_jgd)
+        })
         isTRUE(result)
     }
 

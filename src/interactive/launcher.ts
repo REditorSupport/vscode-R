@@ -14,51 +14,80 @@ export { prepareStorage } from './storage';
 
 const run = promisify(execFile);
 
-export function defaultStorage(platform = process.platform, home = os.homedir(), environment = process.env): string {
+export function defaultStorage(
+    platform = process.platform,
+    home = os.homedir(),
+    environment = process.env,
+): string {
     const xdg = environment.XDG_STATE_HOME;
     // XDG paths must be absolute; an empty value is equivalent to being unset.
-    if (xdg && path.isAbsolute(xdg)) { return path.join(xdg, 'vscode-r', 'interactive'); }
+    if (xdg && path.isAbsolute(xdg)) {
+        return path.join(xdg, 'vscode-r', 'interactive');
+    }
     const legacy = path.join(home, '.local', 'state', 'vscode-r', 'interactive');
     // Keep existing agents and their on-disk paths discoverable without moving live storage.
-    if (platform !== 'darwin' || fs.existsSync(legacy)) { return legacy; }
+    if (platform !== 'darwin' || fs.existsSync(legacy)) {
+        return legacy;
+    }
     return path.join(home, 'Library', 'Application Support', 'vscode-r', 'interactive');
 }
 
 export function discoverSessions(root: string): SessionManifest[] {
     let names: string[];
-    try { names = fs.readdirSync(root); }
-    catch (error) {
-        if ((error as NodeJS.ErrnoException).code === 'ENOENT') { return []; }
+    try {
+        names = fs.readdirSync(root);
+    } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+            return [];
+        }
         throw storageError(root, error);
     }
     const sessions: SessionManifest[] = [];
     for (const name of names) {
-        if (name === 'runtimes') { continue; }
+        if (name === 'runtimes') {
+            continue;
+        }
         try {
             identifier(name);
             const file = path.join(root, name, 'manifest.json');
             const stat = fs.lstatSync(file);
-            if (stat.isSymbolicLink() || (process.getuid && stat.uid !== process.getuid())) { continue; }
+            if (stat.isSymbolicLink() || (process.getuid && stat.uid !== process.getuid())) {
+                continue;
+            }
             const manifest = JSON.parse(fs.readFileSync(file, 'utf8')) as SessionManifest;
-            if (manifest.id !== name || manifest.host !== os.hostname()) { continue; }
+            if (manifest.id !== name || manifest.host !== os.hostname()) {
+                continue;
+            }
             sessions.push(manifest);
-        } catch { /* Ignore partial, foreign, and unrecognized registry entries. */ }
+        } catch {
+            /* Ignore partial, foreign, and unrecognized registry entries. */
+        }
     }
     return sessions.sort((a, b) => b.created - a.created);
 }
 
 /** Cheap rejection of stale registry entries; a socket still needs an authenticated probe. */
 export function hasSessionEndpoint(manifest: SessionManifest): boolean {
-    if (!Number.isSafeInteger(manifest.agentPid) || manifest.agentPid <= 0 ||
-        typeof manifest.endpoint !== 'string' || !path.isAbsolute(manifest.endpoint)) { return false; }
+    if (
+        !Number.isSafeInteger(manifest.agentPid) ||
+        manifest.agentPid <= 0 ||
+        typeof manifest.endpoint !== 'string' ||
+        !path.isAbsolute(manifest.endpoint)
+    ) {
+        return false;
+    }
     try {
         process.kill(manifest.agentPid, 0);
         return fs.statSync(manifest.endpoint).isSocket();
-    } catch { return false; }
+    } catch {
+        return false;
+    }
 }
 
 /** Shell quoting is used only for tmux/system service launch commands, never for R code. */
-export function shellQuote(value: string): string { return `'${value.replace(/'/g, `'"'"'`)}'`; }
+export function shellQuote(value: string): string {
+    return `'${value.replace(/'/g, `'"'"'`)}'`;
+}
 
 /** Debugger auto-attach must not make the persistent agent part of the editor's debug session. */
 export function agentEnvironment(environment = process.env): NodeJS.ProcessEnv {
@@ -72,9 +101,14 @@ export function agentEnvironment(environment = process.env): NodeJS.ProcessEnv {
 }
 
 /** Only the Electron launcher and agent need this flag, not their R children. */
-export function nodeEnvironment(runtime: NodeRuntime, environment = process.env): NodeJS.ProcessEnv {
+export function nodeEnvironment(
+    runtime: NodeRuntime,
+    environment = process.env,
+): NodeJS.ProcessEnv {
     const result = agentEnvironment(environment);
-    if (runtime.electron) { result.ELECTRON_RUN_AS_NODE = '1'; }
+    if (runtime.electron) {
+        result.ELECTRON_RUN_AS_NODE = '1';
+    }
     return result;
 }
 
@@ -86,36 +120,62 @@ export function installAgentBundle(extensionPath: string, root: string): string 
     const agent = path.join(root, 'runtimes', `agent-${hash}.cjs`);
     if (!fs.existsSync(agent)) {
         const temporary = `${agent}.${randomUUID()}.tmp`;
-        try { fs.writeFileSync(temporary, bytes, { mode: 0o600 }); fs.renameSync(temporary, agent); }
-        finally { fs.rmSync(temporary, { force: true }); }
+        try {
+            fs.writeFileSync(temporary, bytes, { mode: 0o600 });
+            fs.renameSync(temporary, agent);
+        } finally {
+            fs.rmSync(temporary, { force: true });
+        }
     }
     return agent;
 }
 
 /** Convenience for existing callers preparing the shipped sess backend. */
-export async function installRuntime(extensionPath: string, root: string, rPath: string,
-    log: (text: string) => void): Promise<{ library: string; resources: string; agent: string }> {
+export async function installRuntime(
+    extensionPath: string,
+    root: string,
+    rPath: string,
+    log: (text: string) => void,
+): Promise<{ library: string; resources: string; agent: string }> {
     const runtime = await installSessRuntime(extensionPath, root, rPath, log);
     return { ...runtime, agent: installAgentBundle(extensionPath, root) };
 }
 
 /** Validate before building a runtime or stopping a session for restart. */
-export async function prepareNodeRuntime(directory: string, runtime = hostNodeRuntime()): Promise<NodeRuntime> {
+export async function prepareNodeRuntime(
+    directory: string,
+    runtime = hostNodeRuntime(),
+): Promise<NodeRuntime> {
     const node = runtime.executable;
-    const help = 'Set r.interactive.nodePath to a Node.js 18+ executable on the R host, or clear it to use VS Code\'s runtime. Reload VS Code to refresh the automatic runtime; repair or update VS Code (VS Code Server on a remote host) if needed.';
+    const help =
+        "Set r.interactive.nodePath to a Node.js 18+ executable on the R host, or clear it to use VS Code's runtime. Reload VS Code to refresh the automatic runtime; repair or update VS Code (VS Code Server on a remote host) if needed.";
     let version: string;
     try {
-        version = (await run(node, ['-p', 'process.versions.node'], { env: nodeEnvironment(runtime), cwd: directory, timeout: 5000 })).stdout.trim();
-    } catch (error) { throw new Error(`Cannot run the Node.js runtime “${node}”. ${help}`, { cause: error }); }
+        version = (
+            await run(node, ['-p', 'process.versions.node'], {
+                env: nodeEnvironment(runtime),
+                cwd: directory,
+                timeout: 5000,
+            })
+        ).stdout.trim();
+    } catch (error) {
+        throw new Error(`Cannot run the Node.js runtime “${node}”. ${help}`, { cause: error });
+    }
     const major = /^(\d+)\.\d+\.\d+(?:[-+].*)?$/.exec(version)?.[1];
     if (!major || Number(major) < 18) {
-        throw new Error(`The session agent requires Node.js 18 or newer; “${node}” reported “${version}”. ${help}`);
+        throw new Error(
+            `The session agent requires Node.js 18 or newer; “${node}” reported “${version}”. ${help}`,
+        );
     }
     return runtime;
 }
 
-export async function launchAgent(config: AgentConfig, agent: string, runtime = hostNodeRuntime(),
-    log: (text: string) => void = () => undefined): Promise<SessionManifest> {
+export async function launchAgent(
+    config: AgentConfig,
+    agent: string,
+    runtime = hostNodeRuntime(),
+    log: (text: string) => void = () => undefined,
+): Promise<SessionManifest> {
     const supervisor = prepareSupervisor(config.supervision, config.directory);
     runtime = await prepareNodeRuntime(config.directory, runtime);
     const node = runtime.executable;
@@ -125,22 +185,43 @@ export async function launchAgent(config: AgentConfig, agent: string, runtime = 
     config.supervision = supervisor.kind;
     atomicJson(file, config);
     if (supervisor.kind !== 'detached') {
-        const args = supervisor.kind === 'tmux'
-            ? ['new-session', '-d', '-s', `vscode-r-${config.id.slice(0, 8)}-${config.generation.slice(0, 8)}`,
-                `${runtime.electron ? 'ELECTRON_RUN_AS_NODE=1 ' : ''}exec ${[node, agent, file].map(shellQuote).join(' ')} >>${shellQuote(path.join(config.storage, 'agent.log'))} 2>&1`]
-            : ['--user', '--collect', '--unit', `vscode-r-${config.id}-${config.generation}`,
-                ...(runtime.electron ? ['--setenv=ELECTRON_RUN_AS_NODE=1'] : []), '--', node, agent, file];
-        try { await run(supervisor.executable, args, { env, cwd: config.directory, timeout: 10000 }); }
-        catch (error) {
+        const args =
+            supervisor.kind === 'tmux'
+                ? [
+                      'new-session',
+                      '-d',
+                      '-s',
+                      `vscode-r-${config.id.slice(0, 8)}-${config.generation.slice(0, 8)}`,
+                      `${runtime.electron ? 'ELECTRON_RUN_AS_NODE=1 ' : ''}exec ${[node, agent, file].map(shellQuote).join(' ')} >>${shellQuote(path.join(config.storage, 'agent.log'))} 2>&1`,
+                  ]
+                : [
+                      '--user',
+                      '--collect',
+                      '--unit',
+                      `vscode-r-${config.id}-${config.generation}`,
+                      ...(runtime.electron ? ['--setenv=ELECTRON_RUN_AS_NODE=1'] : []),
+                      '--',
+                      node,
+                      agent,
+                      file,
+                  ];
+        try {
+            await run(supervisor.executable, args, { env, cwd: config.directory, timeout: 10000 });
+        } catch (error) {
             // A failed command may already have started an agent. Falling back now
             // could create two R processes using the same session registry.
-            throw new Error(`Could not start the ${supervisor.kind} session supervisor. Check ${supervisor.kind === 'systemd' ? 'the systemd user service' : 'tmux'} on the R host, ` +
-                `or set r.interactive.supervision to "detached". ${String(error)}`, { cause: error });
+            throw new Error(
+                `Could not start the ${supervisor.kind} session supervisor. Check ${supervisor.kind === 'systemd' ? 'the systemd user service' : 'tmux'} on the R host, ` +
+                    `or set r.interactive.supervision to "detached". ${String(error)}`,
+                { cause: error },
+            );
         }
     } else {
         if (supervisor.notice) {
             log(supervisor.notice);
-            fs.appendFileSync(path.join(config.storage, 'agent.log'), `${supervisor.notice}\n`, { mode: 0o600 });
+            fs.appendFileSync(path.join(config.storage, 'agent.log'), `${supervisor.notice}\n`, {
+                mode: 0o600,
+            });
         }
         // setsid/unref alone leaves the agent in the extension host's process tree.
         // Wait for a short-lived launcher to exit so tree-based editor/debugger cleanup
@@ -159,12 +240,22 @@ export async function launchAgent(config: AgentConfig, agent: string, runtime = 
     const deadline = Date.now() + 30000;
     while (Date.now() < deadline) {
         try {
-            const manifest = JSON.parse(fs.readFileSync(path.join(config.storage, 'manifest.json'), 'utf8')) as SessionManifest;
-            if (manifest.generation === config.generation) { return manifest; }
-        } catch { /* Atomic manifest is published after the endpoints are ready. */ }
-        await new Promise(resolve => setTimeout(resolve, 100));
+            const manifest = JSON.parse(
+                fs.readFileSync(path.join(config.storage, 'manifest.json'), 'utf8'),
+            ) as SessionManifest;
+            if (manifest.generation === config.generation) {
+                return manifest;
+            }
+        } catch {
+            /* Atomic manifest is published after the endpoints are ready. */
+        }
+        await new Promise((resolve) => setTimeout(resolve, 100));
     }
-    throw new Error(`Session agent did not become ready. See ${path.join(config.storage, 'agent.log')}`);
+    throw new Error(
+        `Session agent did not become ready. See ${path.join(config.storage, 'agent.log')}`,
+    );
 }
 
-export function newIdentity(): { id: string; generation: string } { return { id: randomUUID(), generation: randomUUID() }; }
+export function newIdentity(): { id: string; generation: string } {
+    return { id: randomUUID(), generation: randomUUID() };
+}
