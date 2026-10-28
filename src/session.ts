@@ -3867,8 +3867,11 @@ async function handleNotification(message: Record<string, unknown>, socket: IpcS
             };
             session.sessionDir = params.tempdir;
             session.workingDir = params.wd;
-            session.resource = (native ? rTerminal.getTerminalResource(native.terminal) : undefined)
-                ?? (isLocalHost(host) ? vscode.workspace.getWorkspaceFolder(Uri.file(params.wd))?.uri : undefined);
+            session.resource =
+                (native ? rTerminal.getTerminalResource(native.terminal) : undefined) ??
+                (isLocalHost(host)
+                    ? vscode.workspace.getWorkspaceFolder(Uri.file(params.wd))?.uri
+                    : undefined);
 
             const terminalPid =
                 native && terminalRegistry.attachNative(native.terminal, session)

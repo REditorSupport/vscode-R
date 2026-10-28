@@ -14,16 +14,34 @@ suite('Session package completion', () => {
     let sandbox: sinon.SinonSandbox;
     let service: LanguageService;
     let multiServer: boolean;
-    const folder = { uri: vscode.Uri.file(path.join(os.tmpdir(), 'vscode-r-language-service', 'project')), name: 'project', index: 0 };
-    const packages = (name: string) => ({ search: ['.GlobalEnv', `package:${name}`, 'package:base'], loaded_namespaces: [name, 'base'], globalenv: {} });
+    const folder = {
+        uri: vscode.Uri.file(path.join(os.tmpdir(), 'vscode-r-language-service', 'project')),
+        name: 'project',
+        index: 0,
+    };
+    const packages = (name: string) => ({
+        search: ['.GlobalEnv', `package:${name}`, 'package:base'],
+        loaded_namespaces: [name, 'base'],
+        globalenv: {},
+    });
 
     // Keep the tests independent of installed R packages and server processes.
     type ServiceInternals = {
         startLanguageService(): Promise<void>;
-        createClient(key: string, selector: vscode.DocumentFilter[], cwd: string,
-            workspaceFolder: vscode.WorkspaceFolder | undefined, outputChannel: vscode.LogOutputChannel,
-            resource?: vscode.Uri, sessionScope?: string): Promise<LanguageClient>;
-        registerClient(key: string, client: { sendRequest: sinon.SinonStub; stop: sinon.SinonStub }, scope: string): Promise<void>;
+        createClient(
+            key: string,
+            selector: vscode.DocumentFilter[],
+            cwd: string,
+            workspaceFolder: vscode.WorkspaceFolder | undefined,
+            outputChannel: vscode.LogOutputChannel,
+            resource?: vscode.Uri,
+            sessionScope?: string,
+        ): Promise<LanguageClient>;
+        registerClient(
+            key: string,
+            client: { sendRequest: sinon.SinonStub; stop: sinon.SinonStub },
+            scope: string,
+        ): Promise<void>;
         syncClientSessionState(key: string, force?: boolean): Promise<void>;
         clients: Map<string, { sendRequest: sinon.SinonStub; stop: sinon.SinonStub }>;
         clientScopes: Map<string, string>;
@@ -37,11 +55,14 @@ suite('Session package completion', () => {
         return sendRequest;
     }
 
-    const settle = () => new Promise<void>(resolve => setImmediate(resolve));
+    const settle = () => new Promise<void>((resolve) => setImmediate(resolve));
     function deferred() {
         let resolve!: (value: boolean) => void;
         let reject!: (error: Error) => void;
-        const promise = new Promise<boolean>((yes, no) => { resolve = yes; reject = no; });
+        const promise = new Promise<boolean>((yes, no) => {
+            resolve = yes;
+            reject = no;
+        });
         return { promise, resolve, reject };
     }
 
@@ -49,14 +70,20 @@ suite('Session package completion', () => {
         sandbox = sinon.createSandbox();
         mockExtensionContext(path.join(__dirname, '..', '..', '..'), sandbox);
         multiServer = false;
-        sandbox.stub(LanguageService.prototype as unknown as ServiceInternals, 'startLanguageService').resolves();
+        sandbox
+            .stub(LanguageService.prototype as unknown as ServiceInternals, 'startLanguageService')
+            .resolves();
         sandbox.stub(vscode.workspace, 'getConfiguration').returns({
-            get: (key: string) => key === 'lsp.multiServer' ? multiServer : undefined
+            get: (key: string) => (key === 'lsp.multiServer' ? multiServer : undefined),
         } as vscode.WorkspaceConfiguration);
-        sandbox.stub(vscode.workspace, 'getWorkspaceFolder').callsFake(uri =>
-            uri.fsPath === folder.uri.fsPath || uri.fsPath.startsWith(`${folder.uri.fsPath}${path.sep}`)
-                ? folder
-                : undefined);
+        sandbox
+            .stub(vscode.workspace, 'getWorkspaceFolder')
+            .callsFake((uri) =>
+                uri.fsPath === folder.uri.fsPath ||
+                uri.fsPath.startsWith(`${folder.uri.fsPath}${path.sep}`)
+                    ? folder
+                    : undefined,
+            );
         service = new LanguageService();
         sandbox.stub(extension, 'rLanguageService').value(service);
     });
@@ -72,43 +99,59 @@ suite('Session package completion', () => {
         service.syncSessionState(packages('stats'), folder.uri, 'first');
         await settle();
         sinon.assert.calledOnceWithExactly(request, 'r/syncSessionState', {
-            attachedPackages: ['stats', 'base'], loadedNamespaces: ['stats', 'base']
+            attachedPackages: ['stats', 'base'],
+            loadedNamespaces: ['stats', 'base'],
         });
         service.syncSessionState(packages('utils'), undefined, 'second');
         service.syncSessionState(undefined, folder.uri, 'first');
         await settle();
-        assert.strictEqual(request.callCount, 2, 'closing an older session must not clear the active packages');
+        assert.strictEqual(
+            request.callCount,
+            2,
+            'closing an older session must not clear the active packages',
+        );
         service.syncSessionState(undefined, undefined, 'second');
         await settle();
-        sinon.assert.calledWithExactly(request, 'r/syncSessionState', { attachedPackages: [], loadedNamespaces: [] });
+        sinon.assert.calledWithExactly(request, 'r/syncSessionState', {
+            attachedPackages: [],
+            loadedNamespaces: [],
+        });
     });
 
     test('client receives session updates while initial synchronization is pending', async () => {
         let resolveInitial!: () => void;
-        const initial = new Promise<void>(resolve => { resolveInitial = resolve; });
+        const initial = new Promise<void>((resolve) => {
+            resolveInitial = resolve;
+        });
         const request = sandbox.stub();
         request.onFirstCall().returns(initial);
         request.resolves(true);
         const fakeClient = { sendRequest: request, stop: sandbox.stub().resolves() };
         const internals = service as unknown as ServiceInternals;
 
-        service.syncSessionState({
-            search: ['.GlobalEnv', 'package:base'],
-            loaded_namespaces: ['base'],
-        }, folder.uri, 'session');
+        service.syncSessionState(
+            {
+                search: ['.GlobalEnv', 'package:base'],
+                loaded_namespaces: ['base'],
+            },
+            folder.uri,
+            'session',
+        );
 
         const registering = internals.registerClient('global', fakeClient, 'global');
         await Promise.resolve();
 
         service.syncSessionState(packages('dplyr'), folder.uri, 'session');
         sinon.assert.calledOnceWithExactly(request, 'r/syncSessionState', {
-            attachedPackages: ['base'], loadedNamespaces: ['base']
+            attachedPackages: ['base'],
+            loadedNamespaces: ['base'],
         });
 
         resolveInitial();
         await registering;
         sinon.assert.calledWithExactly(request, 'r/syncSessionState', {
-            attachedPackages: ['dplyr', 'base'], loadedNamespaces: ['dplyr', 'base']
+            attachedPackages: ['dplyr', 'base'],
+            loadedNamespaces: ['dplyr', 'base'],
         });
         sinon.assert.calledTwice(request);
     });
@@ -119,8 +162,13 @@ suite('Session package completion', () => {
         const request = sandbox.stub(LanguageClient.prototype, 'sendRequest').resolves(true);
         const internals = service as unknown as ServiceInternals;
         const client = await internals.createClient(
-            'global', [{ scheme: 'file', language: 'r' }], folder.uri.fsPath,
-            undefined, internals.outputChannel, folder.uri, 'global'
+            'global',
+            [{ scheme: 'file', language: 'r' }],
+            folder.uri.fsPath,
+            undefined,
+            internals.outputChannel,
+            folder.uri,
+            'global',
         );
 
         service.syncSessionState(packages('dplyr'), folder.uri, 'session');
@@ -135,7 +183,8 @@ suite('Session package completion', () => {
 
         sinon.assert.calledOnceWithExactly(next, event);
         sinon.assert.calledOnceWithExactly(request, 'r/syncSessionState', {
-            attachedPackages: ['dplyr', 'base'], loadedNamespaces: ['dplyr', 'base']
+            attachedPackages: ['dplyr', 'base'],
+            loadedNamespaces: ['dplyr', 'base'],
         });
         sinon.assert.callOrder(next, request);
     });
@@ -149,8 +198,13 @@ suite('Session package completion', () => {
         request.onSecondCall().returns(retry.promise);
         const internals = service as unknown as ServiceInternals;
         const client = await internals.createClient(
-            'global', [{ scheme: 'file', language: 'r' }], folder.uri.fsPath,
-            undefined, internals.outputChannel, folder.uri, 'global'
+            'global',
+            [{ scheme: 'file', language: 'r' }],
+            folder.uri.fsPath,
+            undefined,
+            internals.outputChannel,
+            folder.uri,
+            'global',
         );
         service.syncSessionState(packages('dplyr'), folder.uri, 'session');
         await settle();
@@ -160,7 +214,10 @@ suite('Session package completion', () => {
         assert.ok(middleware);
         const document = { uri: folder.uri } as vscode.TextDocument;
         const position = new vscode.Position(0, 0);
-        const context = { triggerKind: vscode.CompletionTriggerKind.Invoke, triggerCharacter: undefined };
+        const context = {
+            triggerKind: vscode.CompletionTriggerKind.Invoke,
+            triggerCharacter: undefined,
+        };
         const next = sandbox.stub().resolves([]);
         const cancellation = new vscode.CancellationTokenSource();
         try {
@@ -170,7 +227,13 @@ suite('Session package completion', () => {
             sinon.assert.notCalled(next);
             retry.resolve(true);
             await completing;
-            sinon.assert.calledOnceWithExactly(next, document, position, context, cancellation.token);
+            sinon.assert.calledOnceWithExactly(
+                next,
+                document,
+                position,
+                context,
+                cancellation.token,
+            );
             await middleware(document, position, context, cancellation.token, next);
             sinon.assert.calledTwice(request);
         } finally {
@@ -194,11 +257,93 @@ suite('Session package completion', () => {
         sinon.assert.calledOnce(externalFile);
     });
 
+    test('an unselected session refreshes its owned workspace without replacing another owner', async () => {
+        multiServer = true;
+        const secondFolder = {
+            uri: vscode.Uri.file(path.join(os.tmpdir(), 'vscode-r-language-service', 'other')),
+            name: 'other',
+            index: 1,
+        };
+        (vscode.workspace.getWorkspaceFolder as sinon.SinonStub).callsFake((uri: vscode.Uri) =>
+            uri.fsPath === folder.uri.fsPath ||
+            uri.fsPath.startsWith(`${folder.uri.fsPath}${path.sep}`)
+                ? folder
+                : uri.fsPath === secondFolder.uri.fsPath ||
+                    uri.fsPath.startsWith(`${secondFolder.uri.fsPath}${path.sep}`)
+                  ? secondFolder
+                  : undefined,
+        );
+        const first = client('first', folder.uri.toString(true));
+        const second = client('second', secondFolder.uri.toString(true));
+        service.syncSessionState(packages('stats'), folder.uri, 'first-session');
+        service.syncSessionState(packages('utils'), secondFolder.uri, 'second-session');
+        await settle();
+
+        service.syncSessionState(packages('dplyr'), folder.uri, 'first-session', false);
+        await settle();
+        sinon.assert.calledTwice(first);
+        sinon.assert.calledOnce(second);
+        assert.deepStrictEqual(first.lastCall.args[1], {
+            attachedPackages: ['dplyr', 'base'],
+            loadedNamespaces: ['dplyr', 'base'],
+        });
+
+        // A third session must not overwrite the recorded workspace owner.
+        service.syncSessionState(packages('splines'), folder.uri, 'third-session', false);
+        await settle();
+        sinon.assert.calledTwice(first);
+
+        // Once another session is selected in the same workspace, the old
+        // session must not overwrite that new owner on a subsequent refresh.
+        service.syncSessionState(packages('tools'), folder.uri, 'third-session');
+        await settle();
+        service.syncSessionState(packages('stats'), folder.uri, 'first-session', false);
+        await settle();
+        assert.deepStrictEqual(first.lastCall.args[1], {
+            attachedPackages: ['tools', 'base'],
+            loadedNamespaces: ['tools', 'base'],
+        });
+        sinon.assert.calledOnce(second);
+    });
+
+    test('disconnect clears the recorded workspace after its folder is removed', async () => {
+        multiServer = true;
+        const originalScope = folder.uri.toString(true);
+        const project = client('project', originalScope);
+        const unscoped = client('unscoped', 'unscoped');
+        service.syncSessionState(packages('dplyr'), folder.uri, 'removed-session');
+        await settle();
+        sinon.assert.calledOnce(project);
+
+        // VS Code no longer recognizes the folder while the R session is
+        // still running. Cleanup must not be redirected into unscoped.
+        (vscode.workspace.getWorkspaceFolder as sinon.SinonStub).returns(undefined);
+        service.syncSessionState(undefined, folder.uri, 'removed-session');
+        await settle();
+        sinon.assert.calledTwice(project);
+        sinon.assert.notCalled(unscoped);
+        assert.deepStrictEqual(project.lastCall.args[1], {
+            attachedPackages: [],
+            loadedNamespaces: [],
+        });
+
+        // Reopening the folder must not replay packages from the old session.
+        (vscode.workspace.getWorkspaceFolder as sinon.SinonStub).returns(folder);
+        const replacement = client('reopened', originalScope);
+        await (service as unknown as ServiceInternals).syncClientSessionState('reopened');
+        sinon.assert.notCalled(replacement);
+    });
+
     test('inactive Interactive workspace updates reach only its bound language servers', async () => {
         const global = client('global', 'global');
         const input = client('input', 'session:interactive-packages');
         const notebook = client('notebook', 'session:interactive-packages');
-        const target = session.registerSessionTransport('interactive-packages', 'host', folder.uri.fsPath, () => Promise.resolve(undefined));
+        const target = session.registerSessionTransport(
+            'interactive-packages',
+            'host',
+            folder.uri.fsPath,
+            () => Promise.resolve(undefined),
+        );
         try {
             assert.strictEqual(target.resource?.toString(), folder.uri.toString());
             session.updateSessionWorkspace(target, packages('stats'));
@@ -212,8 +357,14 @@ suite('Session package completion', () => {
             sinon.assert.calledOnce(notebook);
             session.unregisterSessionTransport(target);
             await settle();
-            sinon.assert.calledWithExactly(input, 'r/syncSessionState', { attachedPackages: [], loadedNamespaces: [] });
-            sinon.assert.calledWithExactly(notebook, 'r/syncSessionState', { attachedPackages: [], loadedNamespaces: [] });
+            sinon.assert.calledWithExactly(input, 'r/syncSessionState', {
+                attachedPackages: [],
+                loadedNamespaces: [],
+            });
+            sinon.assert.calledWithExactly(notebook, 'r/syncSessionState', {
+                attachedPackages: [],
+                loadedNamespaces: [],
+            });
             sinon.assert.calledOnce(global);
         } finally {
             session.unregisterSessionTransport(target);
@@ -248,9 +399,13 @@ suite('Session package completion', () => {
         initial.resolve(true);
         await settle();
         sinon.assert.calledTwice(request);
-        assert.deepStrictEqual(request.lastCall.args, ['r/syncSessionState', {
-            attachedPackages: [], loadedNamespaces: []
-        }]);
+        assert.deepStrictEqual(request.lastCall.args, [
+            'r/syncSessionState',
+            {
+                attachedPackages: [],
+                loadedNamespaces: [],
+            },
+        ]);
     });
 
     test('failed disconnect clear is retained for the next synchronization attempt', async () => {
@@ -263,9 +418,13 @@ suite('Session package completion', () => {
         sinon.assert.calledTwice(request);
         await (service as unknown as ServiceInternals).syncClientSessionState('global');
         sinon.assert.calledThrice(request);
-        assert.deepStrictEqual(request.lastCall.args, ['r/syncSessionState', {
-            attachedPackages: [], loadedNamespaces: []
-        }]);
+        assert.deepStrictEqual(request.lastCall.args, [
+            'r/syncSessionState',
+            {
+                attachedPackages: [],
+                loadedNamespaces: [],
+            },
+        ]);
     });
 
     test('failed synchronization still delivers newer pending state', async () => {
@@ -278,7 +437,8 @@ suite('Session package completion', () => {
         await settle();
         sinon.assert.calledTwice(request);
         assert.deepStrictEqual(request.lastCall.args[1], {
-            attachedPackages: ['dplyr', 'base'], loadedNamespaces: ['dplyr', 'base']
+            attachedPackages: ['dplyr', 'base'],
+            loadedNamespaces: ['dplyr', 'base'],
         });
     });
 
@@ -294,7 +454,8 @@ suite('Session package completion', () => {
         await settle();
         sinon.assert.calledThrice(request);
         assert.deepStrictEqual(request.lastCall.args[1], {
-            attachedPackages: ['stats', 'base'], loadedNamespaces: ['stats', 'base']
+            attachedPackages: ['stats', 'base'],
+            loadedNamespaces: ['stats', 'base'],
         });
     });
 
@@ -303,12 +464,15 @@ suite('Session package completion', () => {
         const request = client('global', 'global');
         request.onFirstCall().returns(initial.promise);
         service.syncSessionState(packages('stats'), folder.uri, 'session');
-        void initial.promise.then(() => service.syncSessionState(packages('dplyr'), folder.uri, 'session'));
+        void initial.promise.then(() =>
+            service.syncSessionState(packages('dplyr'), folder.uri, 'session'),
+        );
         initial.resolve(true);
         await settle();
         sinon.assert.calledTwice(request);
         assert.deepStrictEqual(request.lastCall.args[1], {
-            attachedPackages: ['dplyr', 'base'], loadedNamespaces: ['dplyr', 'base']
+            attachedPackages: ['dplyr', 'base'],
+            loadedNamespaces: ['dplyr', 'base'],
         });
     });
 
@@ -324,7 +488,8 @@ suite('Session package completion', () => {
         sinon.assert.calledOnce(old);
         sinon.assert.calledOnce(replacement);
         assert.deepStrictEqual(replacement.firstCall.args[1], {
-            attachedPackages: ['dplyr', 'base'], loadedNamespaces: ['dplyr', 'base']
+            attachedPackages: ['dplyr', 'base'],
+            loadedNamespaces: ['dplyr', 'base'],
         });
     });
 
@@ -333,7 +498,10 @@ suite('Session package completion', () => {
         const request = client('global', 'global');
         request.onFirstCall().returns(initial.promise);
         service.syncSessionState(packages('dplyr'), folder.uri, 'session');
-        const replay = (service as unknown as ServiceInternals).syncClientSessionState('global', true);
+        const replay = (service as unknown as ServiceInternals).syncClientSessionState(
+            'global',
+            true,
+        );
         initial.resolve(true);
         await replay;
         sinon.assert.calledTwice(request);

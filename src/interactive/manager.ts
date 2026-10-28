@@ -1643,7 +1643,8 @@ export class InteractiveManager
         // Native Interactive can recreate its input model when a tab is restored.
         // Reapply its owner and R language on reopen as well as initial creation.
         if (
-            view.inputUri && view.inputUri.toString() !== inputUri.toString() &&
+            view.inputUri &&
+            view.inputUri.toString() !== inputUri.toString() &&
             session.boundSessionForDocument(view.inputUri) === view.target
         ) {
             session.unbindSessionDocument(view.inputUri);

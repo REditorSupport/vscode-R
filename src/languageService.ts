@@ -68,7 +68,11 @@ export class LanguageService implements Disposable {
     private readonly listeners: Disposable[] = [];
     private disposed = false;
     private readonly clientScopes: Map<string, string> = new Map();
-    private readonly sessionStates: Map<string, { state: SessionState; stateKey: string; sessionId: string }> = new Map();
+    private readonly sessionStates: Map<
+        string,
+        { state: SessionState; stateKey: string; sessionId: string }
+    > = new Map();
+    private readonly sessionScopes = new Map<string, string>();
     private readonly clientSessionSync = new WeakMap<LanguageClient, ClientSessionSync>();
 
     constructor() {
@@ -85,17 +89,53 @@ export class LanguageService implements Disposable {
         return this.stopLanguageService();
     }
 
-    syncSessionState(data?: SessionWorkspaceData, resource?: Uri, sessionId = '', active = true): void {
-        // Bound virtual documents keep their owner's packages when focus moves.
+    syncSessionState(
+        data?: SessionWorkspaceData,
+        resource?: Uri,
+        sessionId = '',
+        active = true,
+    ): void {
+        // Virtual documents always follow their bound session.
         if (sessionId) {
             this.syncSessionScope(`session:${sessionId}`, data, sessionId);
         }
-        if (active || !data) {
-            this.syncSessionScope(this.getSessionScope(resource), data, sessionId);
+
+        // Store the scope when the session becomes its owner. Workspace folders
+        // may be removed before disconnect, so cleanup must not reclassify it.
+        const ownedScope = sessionId ? this.sessionScopes.get(sessionId) : undefined;
+        if (!data) {
+            if (sessionId) {
+                this.sessionScopes.delete(sessionId);
+            }
+            this.syncSessionScope(
+                ownedScope ?? this.getSessionScope(resource),
+                undefined,
+                sessionId,
+            );
+            return;
+        }
+
+        if (active) {
+            const scope = this.getSessionScope(resource);
+            if (ownedScope && ownedScope !== scope) {
+                this.syncSessionScope(ownedScope, undefined, sessionId);
+            }
+            if (sessionId) {
+                this.sessionScopes.set(sessionId, scope);
+            }
+            this.syncSessionScope(scope, data, sessionId);
+        } else if (ownedScope && this.sessionStates.get(ownedScope)?.sessionId === sessionId) {
+            // An unselected session may refresh its own workspace, but never
+            // replace the state now owned by another session.
+            this.syncSessionScope(ownedScope, data, sessionId);
         }
     }
 
-    private syncSessionScope(scope: string, data: SessionWorkspaceData | undefined, sessionId: string): void {
+    private syncSessionScope(
+        scope: string,
+        data: SessionWorkspaceData | undefined,
+        sessionId: string,
+    ): void {
         const current = this.sessionStates.get(scope);
         if (!data) {
             if (current && sessionId && current.sessionId !== sessionId) {
@@ -108,8 +148,8 @@ export class LanguageService implements Disposable {
 
         const state: SessionState = {
             attachedPackages: data.search
-                .filter(value => value.startsWith('package:'))
-                .map(value => value.substring(8)),
+                .filter((value) => value.startsWith('package:'))
+                .map((value) => value.substring(8)),
             loadedNamespaces: [...data.loaded_namespaces],
         };
         const stateKey = this.getSessionStateKey(state);
@@ -135,10 +175,13 @@ export class LanguageService implements Disposable {
             return Promise.resolve();
         }
         let sync = this.clientSessionSync.get(client);
-        const state = this.sessionStates.get(scope)?.state
+        const state =
+            this.sessionStates.get(scope)?.state ??
             // Retain a disconnect clear on the client until it is acknowledged.
-            ?? (sync ? { attachedPackages: [], loadedNamespaces: [] } : undefined);
-        if (!state) { return Promise.resolve(); }
+            (sync ? { attachedPackages: [], loadedNamespaces: [] } : undefined);
+        if (!state) {
+            return Promise.resolve();
+        }
         const stateKey = this.getSessionStateKey(state);
         if (!sync) {
             sync = { state, stateKey, replay: 0 };
@@ -147,32 +190,51 @@ export class LanguageService implements Disposable {
             sync.state = state;
             sync.stateKey = stateKey;
         }
-        if (force) { sync.replay++; }
+        if (force) {
+            sync.replay++;
+        }
         // Check in-flight work before acknowledged state: A -> B -> A must
         // restore A after B completes, even if A was previously acknowledged.
-        if (sync.pending) { return sync.pending; }
+        if (sync.pending) {
+            return sync.pending;
+        }
         if (sync.syncedStateKey === stateKey && sync.syncedReplay === sync.replay) {
             return Promise.resolve();
         }
         const current = sync;
-        const pending: Promise<void> = this.deliverSessionState(key, client, current).then(failed => {
-            if (current.pending === pending) { current.pending = undefined; }
-            // A refresh can arrive after the delivery loop finishes but before
-            // this promise settles. Reconcile it without retrying a failure loop.
-            if (!this.disposed && this.clients.get(key) === client
-                && (current.syncedStateKey !== current.stateKey || current.syncedReplay !== current.replay)
-                && (!failed || failed.stateKey !== current.stateKey || failed.replay !== current.replay)) {
-                return this.syncClientSessionState(key);
-            }
-        });
+        const pending: Promise<void> = this.deliverSessionState(key, client, current).then(
+            (failed) => {
+                if (current.pending === pending) {
+                    current.pending = undefined;
+                }
+                // A refresh can arrive after the delivery loop finishes but before
+                // this promise settles. Reconcile it without retrying a failure loop.
+                if (
+                    !this.disposed &&
+                    this.clients.get(key) === client &&
+                    (current.syncedStateKey !== current.stateKey ||
+                        current.syncedReplay !== current.replay) &&
+                    (!failed ||
+                        failed.stateKey !== current.stateKey ||
+                        failed.replay !== current.replay)
+                ) {
+                    return this.syncClientSessionState(key);
+                }
+            },
+        );
         current.pending = pending;
         return pending;
     }
 
-    private async deliverSessionState(key: string, client: LanguageClient, sync: ClientSessionSync):
-        Promise<{ stateKey: string; replay: number } | undefined> {
+    private async deliverSessionState(
+        key: string,
+        client: LanguageClient,
+        sync: ClientSessionSync,
+    ): Promise<{ stateKey: string; replay: number } | undefined> {
         while (!this.disposed && this.clients.get(key) === client) {
-            if (sync.syncedStateKey === sync.stateKey && sync.syncedReplay === sync.replay) { return; }
+            if (sync.syncedStateKey === sync.stateKey && sync.syncedReplay === sync.replay) {
+                return;
+            }
             const { state, stateKey, replay } = sync;
             try {
                 await client.sendRequest('r/syncSessionState', state);
@@ -182,16 +244,17 @@ export class LanguageService implements Disposable {
                 // A failed response may still have changed the server. Reconcile
                 // newer state, but leave an unchanged failure for the next event.
                 sync.syncedStateKey = undefined;
-                if (sync.stateKey === stateKey && sync.replay === replay) { return { stateKey, replay }; }
+                if (sync.stateKey === stateKey && sync.replay === replay) {
+                    return { stateKey, replay };
+                }
             }
         }
     }
 
     private getSessionStateKey(state: SessionState): string {
-        return [
-            state.attachedPackages.join('\u0000'),
-            state.loadedNamespaces.join('\u0000'),
-        ].join('\u0001');
+        return [state.attachedPackages.join('\u0000'), state.loadedNamespaces.join('\u0000')].join(
+            '\u0001',
+        );
     }
 
     private spawnServer(
@@ -376,8 +439,15 @@ export class LanguageService implements Disposable {
                 },
                 provideCompletionItem: async (document, position, context, token, next) => {
                     await this.syncClientSessionState(key);
-                    return completionMiddleware.provideCompletionItem?.(document, position, context, token, next)
-                        ?? next(document, position, context, token);
+                    return (
+                        completionMiddleware.provideCompletionItem?.(
+                            document,
+                            position,
+                            context,
+                            token,
+                            next,
+                        ) ?? next(document, position, context, token)
+                    );
                 },
                 provideSignatureHelp: async (document, position, context, token, next) => {
                     const result = await next(document, position, context, token);
@@ -464,7 +534,11 @@ export class LanguageService implements Disposable {
         return client;
     }
 
-    private async registerClient(key: string, client: LanguageClient, sessionScope: string): Promise<void> {
+    private async registerClient(
+        key: string,
+        client: LanguageClient,
+        sessionScope: string,
+    ): Promise<void> {
         this.clients.set(key, client);
         this.clientScopes.set(key, sessionScope);
         await this.syncClientSessionState(key);
@@ -529,7 +603,9 @@ export class LanguageService implements Disposable {
 
             if (document.uri.scheme === 'vscode-interactive-input') {
                 const key = document.uri.toString();
-                const scope = target ? `session:${target.sessionId}` : this.getSessionScope(folder?.uri);
+                const scope = target
+                    ? `session:${target.sessionId}`
+                    : this.getSessionScope(folder?.uri);
                 if (!this.checkClient(key)) {
                     const selector = [
                         {
@@ -556,7 +632,9 @@ export class LanguageService implements Disposable {
             // Each notebook uses a server started from parent folder
             if (document.uri.scheme === 'vscode-notebook-cell') {
                 const key = this.getKey(document.uri);
-                const scope = target ? `session:${target.sessionId}` : this.getSessionScope(folder?.uri);
+                const scope = target
+                    ? `session:${target.sessionId}`
+                    : this.getSessionScope(folder?.uri);
                 if (!this.checkClient(key)) {
                     console.log(`Start language server for ${document.uri.toString(true)}`);
                     const documentSelector: DocumentFilter[] = [

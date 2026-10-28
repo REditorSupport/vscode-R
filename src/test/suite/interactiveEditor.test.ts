@@ -1685,17 +1685,30 @@ function treeTooltip(item: vscode.TreeItem): string {
     });
     test('reopening a native input restores R language after its document is recreated', async () => {
         await vscode.commands.executeCommand('r.interactive.open', manifests[0]);
-        const notebook = vscode.workspace.notebookDocuments.find(doc => doc.metadata.rSessionId === manifests[0].id);
+        const notebook = vscode.workspace.notebookDocuments.find(
+            (doc) => doc.metadata.rSessionId === manifests[0].id,
+        );
         assert.ok(notebook);
-        const result = await vscode.commands.executeCommand<{ inputUri: vscode.Uri }>('interactive.open', { preserveFocus: true }, notebook.uri);
+        const result = await vscode.commands.executeCommand<{ inputUri: vscode.Uri }>(
+            'interactive.open',
+            { preserveFocus: true },
+            notebook.uri,
+        );
         const input = await vscode.workspace.openTextDocument(result.inputUri);
         await vscode.languages.setTextDocumentLanguage(input, 'plaintext');
         try {
             await vscode.commands.executeCommand('r.interactive.open', manifests[0]);
             const reopened = await vscode.workspace.openTextDocument(result.inputUri);
-            assert.strictEqual(reopened.languageId, 'r', 'Reopening must restore the R input language');
+            assert.strictEqual(
+                reopened.languageId,
+                'r',
+                'Reopening must restore the R input language',
+            );
         } finally {
-            await vscode.languages.setTextDocumentLanguage(await vscode.workspace.openTextDocument(result.inputUri), 'r');
+            await vscode.languages.setTextDocumentLanguage(
+                await vscode.workspace.openTextDocument(result.inputUri),
+                'r',
+            );
         }
     });
     test('starts each Interactive input language server in its owning session directory', async () => {
@@ -1713,21 +1726,30 @@ function treeTooltip(item: vscode.TreeItem): string {
                     notebook.uri,
                 );
                 const input = await vscode.workspace.openTextDocument(result.inputUri);
-                assert.strictEqual(input.languageId, 'r', 'An owning session must restore its input language');
-                await until(() => {
-                    const client = service.clients.get(result.inputUri.toString());
-                    return (
-                        client?.isRunning() === true &&
-                        client.clientOptions.workspaceFolder?.uri.fsPath === manifest.directory
-                    );
-                }, () => {
-                    const client = service.clients.get(result.inputUri.toString());
-                    return `Interactive input language server ${result.inputUri.toString()}: ${JSON.stringify({
-                        running: client?.isRunning() ?? false,
-                        expectedDirectory: manifest.directory,
-                        actualDirectory: client?.clientOptions.workspaceFolder?.uri.fsPath,
-                    })}`;
-                });
+                assert.strictEqual(
+                    input.languageId,
+                    'r',
+                    'An owning session must restore its input language',
+                );
+                await until(
+                    () => {
+                        const client = service.clients.get(result.inputUri.toString());
+                        return (
+                            client?.isRunning() === true &&
+                            client.clientOptions.workspaceFolder?.uri.fsPath === manifest.directory
+                        );
+                    },
+                    () => {
+                        const client = service.clients.get(result.inputUri.toString());
+                        return `Interactive input language server ${result.inputUri.toString()}: ${JSON.stringify(
+                            {
+                                running: client?.isRunning() ?? false,
+                                expectedDirectory: manifest.directory,
+                                actualDirectory: client?.clientOptions.workspaceFolder?.uri.fsPath,
+                            },
+                        )}`;
+                    },
+                );
             }
         } finally {
             await vscode.commands.executeCommand('r.interactive.open', manifests[0]);
