@@ -382,7 +382,10 @@ export async function executeSessionCode(target: Session, code: string): Promise
 export function updateSessionWorkspace(target: Session, data: WorkspaceData): void {
     target.workspaceData = data;
     rLanguageService?.syncSessionState(
-        target.processExited ? undefined : data, target.resource, target.sessionId, false,
+        target.processExited ? undefined : data,
+        target.resource,
+        target.sessionId,
+        false,
         target.libraryPaths,
     );
     if (activeSession === target) {
@@ -3543,7 +3546,13 @@ async function refreshActiveSession(session: Session): Promise<void> {
     sessionDir = session.sessionDir;
     workingDir = session.workingDir;
     workspaceData = session.workspaceData;
-    rLanguageService?.syncSessionState(session.processExited ? undefined : workspaceData, session.resource, session.sessionId, true, session.libraryPaths);
+    rLanguageService?.syncSessionState(
+        session.processExited ? undefined : workspaceData,
+        session.resource,
+        session.sessionId,
+        true,
+        session.libraryPaths,
+    );
 
     if (sessionStatusBarItem) {
         sessionStatusBarItem.text = formatSessionLabel(rVer, pid);
@@ -3864,7 +3873,11 @@ async function handleNotification(message: Record<string, unknown>, socket: IpcS
             // A replacement process may reuse the protocol session ID but has
             // different loaded packages. Do not retain its predecessor's state.
             if (previous) {
-                rLanguageService?.syncSessionState(undefined, previous.resource, previous.sessionId);
+                rLanguageService?.syncSessionState(
+                    undefined,
+                    previous.resource,
+                    previous.sessionId,
+                );
             }
             const disconnected = previous ? invalidateSessionConnection(previous) : undefined;
             if (disconnected) {
@@ -3888,7 +3901,9 @@ async function handleNotification(message: Record<string, unknown>, socket: IpcS
             // supply a usable remote workspace URI.
             session.resource = isLocalHost(host)
                 ? Uri.file(params.wd)
-                : (native ? rTerminal.getTerminalWorkspaceResource(native.terminal) : undefined);
+                : native
+                  ? rTerminal.getTerminalWorkspaceResource(native.terminal)
+                  : undefined;
 
             const terminalPid =
                 native && terminalRegistry.attachNative(native.terminal, session)
@@ -3950,8 +3965,10 @@ async function handleNotification(message: Record<string, unknown>, socket: IpcS
                 // their R session is not selected. Coalesce their package
                 // refreshes just like the foreground session.
                 refresh.invalidate(
-                    target === activeSession || rLanguageService?.ownsWorkspaceScope(target.sessionId)
-                        ? 500 : undefined,
+                    target === activeSession ||
+                        rLanguageService?.ownsWorkspaceScope(target.sessionId)
+                        ? 500
+                        : undefined,
                 );
             }
             break;

@@ -71,8 +71,9 @@ default_startup <- if (is.function(startup_fn)) startup_fn() else character()
 # Keep the project NAMESPACE imports separate from the temporary packages
 # attached in the interactive R process; S3 resolution consults imports as
 # well as the workspace startup list.
-session_imports <- list()
-previous_session_packages <- character()
+session_state <- new.env(parent = emptyenv())
+session_state$imports <- list()
+session_state$previous_packages <- character()
 
 server$request_handlers[["r/syncSessionState"]] <- function(self, id, params) {
     reply <- function(applied) {
@@ -101,19 +102,19 @@ server$request_handlers[["r/syncSessionState"]] <- function(self, id, params) {
         # A server can outlive an R session. Removing the previous package
         # metadata avoids stale members and S3 signatures after detach.
         for (workspace in self$workspaces$values()) {
-            index <- which(vapply(session_imports,
+            index <- which(vapply(session_state$imports,
                 function(entry) identical(entry$workspace, workspace), logical(1L)))
             if (!length(index)) {
                 base_imports <- workspace$imported_packages
-                session_imports[[length(session_imports) + 1L]] <-
+                session_state$imports[[length(session_state$imports) + 1L]] <-
                     list(workspace = workspace, imports = base_imports)
             } else {
-                base_imports <- session_imports[[index[[1L]]]]$imports
+                base_imports <- session_state$imports[[index[[1L]]]]$imports
                 actual <- workspace$imported_packages
-                if (!setequal(actual, union(base_imports, previous_session_packages))) {
-                    base_imports <- union(setdiff(actual, previous_session_packages),
-                        intersect(base_imports, previous_session_packages))
-                    session_imports[[index[[1L]]]]$imports <- base_imports
+                if (!setequal(actual, union(base_imports, session_state$previous_packages))) {
+                    base_imports <- union(setdiff(actual, session_state$previous_packages),
+                        intersect(base_imports, session_state$previous_packages))
+                    session_state$imports[[index[[1L]]]]$imports <- base_imports
                 }
             }
             previous <- workspace$startup_packages
@@ -144,7 +145,7 @@ server$request_handlers[["r/syncSessionState"]] <- function(self, id, params) {
             }
         }
 
-        previous_session_packages <- attached_packages
+        session_state$previous_packages <- attached_packages
         missing <- attached_packages[!vapply(attached_packages,
             function(pkg) length(find.package(pkg, quiet = TRUE)) > 0L, logical(1L))]
         if (length(missing)) {

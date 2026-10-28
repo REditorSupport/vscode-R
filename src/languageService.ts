@@ -84,7 +84,9 @@ export class LanguageService implements Disposable {
     constructor() {
         this.outputChannel = window.createOutputChannel('R Language Server', { log: true });
         this.config = workspace.getConfiguration('r');
-        this.listeners.push(workspace.onDidChangeWorkspaceFolders(() => this.reconcileSessionScopes()));
+        this.listeners.push(
+            workspace.onDidChangeWorkspaceFolders(() => this.reconcileSessionScopes()),
+        );
         void this.startLanguageService();
     }
 
@@ -123,7 +125,11 @@ export class LanguageService implements Disposable {
                     this.activeSessionId = '';
                 }
             }
-            this.syncSessionScope(ownedScope ?? this.getSessionScope(resource), undefined, sessionId);
+            this.syncSessionScope(
+                ownedScope ?? this.getSessionScope(resource),
+                undefined,
+                sessionId,
+            );
             return;
         }
         if (sessionId) {
@@ -134,11 +140,14 @@ export class LanguageService implements Disposable {
         }
         const scope = this.getSessionScope(resource);
         const current = this.sessionStates.get(scope);
-        if (active || ownedScope === scope && current?.sessionId === sessionId ||
+        if (
+            active ||
+            (ownedScope === scope && current?.sessionId === sessionId) ||
             // An unselected session can own a distinct workspace when it has
             // no existing owner. Never claim the shared unscoped/global scope
             // merely because an Interactive view publishes a snapshot.
-            (scope !== 'unscoped' && scope !== 'global' && !current)) {
+            (scope !== 'unscoped' && scope !== 'global' && !current)
+        ) {
             if (ownedScope && ownedScope !== scope) {
                 this.syncSessionScope(ownedScope, undefined, sessionId);
             }
@@ -176,8 +185,13 @@ export class LanguageService implements Disposable {
                 this.sessionScopes.delete(sessionId);
             }
             const current = this.sessionStates.get(scope);
-            if (!current && scope !== 'unscoped' ||
-                owned && (!current || current.sessionId === sessionId || this.activeSessionId === sessionId)) {
+            if (
+                (!current && scope !== 'unscoped') ||
+                (owned &&
+                    (!current ||
+                        current.sessionId === sessionId ||
+                        this.activeSessionId === sessionId))
+            ) {
                 this.sessionScopes.set(sessionId, scope);
                 this.setSessionScopeState(scope, state, sessionId);
             }
@@ -323,7 +337,10 @@ export class LanguageService implements Disposable {
 
     private getSessionStateKey(state: SessionState): string {
         return JSON.stringify([
-            state.attachedPackages, state.loadedNamespaces, state.libraryPaths, state.packagePaths,
+            state.attachedPackages,
+            state.loadedNamespaces,
+            state.libraryPaths,
+            state.packagePaths,
         ]);
     }
 
@@ -599,7 +616,10 @@ export class LanguageService implements Disposable {
         if (target) {
             this.syncSessionState(
                 target.processExited ? undefined : target.workspaceData,
-                target.resource, target.sessionId, false, target.libraryPaths,
+                target.resource,
+                target.sessionId,
+                false,
+                target.libraryPaths,
             );
         }
         await client.start();

@@ -154,37 +154,61 @@ suite('Session completion with real R language server', () => {
             const packageRoot = path.join(root, 'sessionfixture');
             await fs.mkdir(path.join(packageRoot, 'R'), { recursive: true });
             await fs.mkdir(library, { recursive: true });
-            await fs.writeFile(path.join(packageRoot, 'DESCRIPTION'), [
-                'Package: sessionfixture', 'Title: Session Completion Fixture',
-                'Version: 0.0.1', 'Description: Exercises session-specific library resolution.',
-                'Authors@R: person("Test", "Runner", email="test@example.org", role=c("aut", "cre"))',
-                'License: MIT', '',
-            ].join('\n'));
-            await fs.writeFile(path.join(packageRoot, 'NAMESPACE'),
-                'export(sessionOnlyFixture)\nexport(sessionGeneric)\nS3method(sessionGeneric, data.frame)\n');
-            await fs.writeFile(path.join(packageRoot, 'R', 'fixture.R'), [
-                'sessionOnlyFixture <- function() 1L',
-                'sessionGeneric <- function(x, ...) UseMethod("sessionGeneric")',
-                'sessionGeneric.data.frame <- function(x, sessionParameter = TRUE, ...) x',
-                '',
-            ].join('\n'));
-            const install = spawnSync(rPath, ['CMD', 'INSTALL', '--no-multiarch', '-l', library, packageRoot], {
-                encoding: 'utf8',
-            });
-            assert.strictEqual(install.status, 0,
-                `Could not install session completion fixture: ${install.stderr || install.error}`);
+            await fs.writeFile(
+                path.join(packageRoot, 'DESCRIPTION'),
+                [
+                    'Package: sessionfixture',
+                    'Title: Session Completion Fixture',
+                    'Version: 0.0.1',
+                    'Description: Exercises session-specific library resolution.',
+                    'Authors@R: person("Test", "Runner", email="test@example.org", role=c("aut", "cre"))',
+                    'License: MIT',
+                    '',
+                ].join('\n'),
+            );
+            await fs.writeFile(
+                path.join(packageRoot, 'NAMESPACE'),
+                'export(sessionOnlyFixture)\nexport(sessionGeneric)\nS3method(sessionGeneric, data.frame)\n',
+            );
+            await fs.writeFile(
+                path.join(packageRoot, 'R', 'fixture.R'),
+                [
+                    'sessionOnlyFixture <- function() 1L',
+                    'sessionGeneric <- function(x, ...) UseMethod("sessionGeneric")',
+                    'sessionGeneric.data.frame <- function(x, sessionParameter = TRUE, ...) x',
+                    '',
+                ].join('\n'),
+            );
+            const install = spawnSync(
+                rPath,
+                ['CMD', 'INSTALL', '--no-multiarch', '-l', library, packageRoot],
+                {
+                    encoding: 'utf8',
+                },
+            );
+            assert.strictEqual(
+                install.status,
+                0,
+                `Could not install session completion fixture: ${install.stderr || install.error}`,
+            );
             const packagePath = path.join(library, 'sessionfixture');
             const source = 'sessionOnlyFi';
-            const fixtureUri = protocolUri(vscode.Uri.joinPath(projects[0].uri, 'session-fixture.R'));
+            const fixtureUri = protocolUri(
+                vscode.Uri.joinPath(projects[0].uri, 'session-fixture.R'),
+            );
             await languageClient.sendNotification('textDocument/didOpen', {
                 textDocument: { uri: fixtureUri, languageId: 'r', version: 1, text: source },
             });
-            service.syncSessionState({
-                search: ['package:sessionfixture', 'package:base'],
-                loaded_namespaces: ['sessionfixture', 'base'],
-                library_paths: [library],
-                package_paths: { sessionfixture: packagePath },
-            }, projects[0].uri, 'session');
+            service.syncSessionState(
+                {
+                    search: ['package:sessionfixture', 'package:base'],
+                    loaded_namespaces: ['sessionfixture', 'base'],
+                    library_paths: [library],
+                    package_paths: { sessionfixture: packagePath },
+                },
+                projects[0].uri,
+                'session',
+            );
             await internals.syncClientSessionState('global');
             const fixtureCompletions = await languageClient.sendRequest<
                 Completion[] | { items: Completion[] } | null
@@ -192,30 +216,45 @@ suite('Session completion with real R language server', () => {
                 textDocument: { uri: fixtureUri },
                 position: { line: 0, character: source.length },
             });
-            assert.ok((Array.isArray(fixtureCompletions)
-                ? fixtureCompletions : fixtureCompletions?.items ?? [])
-                .some(item => item.label === 'sessionOnlyFixture' && item.data?.package === 'sessionfixture'),
-                'a package in a session-specific library must offer editor completion');
+            assert.ok(
+                (Array.isArray(fixtureCompletions)
+                    ? fixtureCompletions
+                    : (fixtureCompletions?.items ?? [])
+                ).some(
+                    (item) =>
+                        item.label === 'sessionOnlyFixture' &&
+                        item.data?.package === 'sessionfixture',
+                ),
+                'a package in a session-specific library must offer editor completion',
+            );
 
-            const providerProbe = spawnSync(rPath, [
-                '--vanilla', '--slave', '-e',
-                'cat(exists("member_resolve_packages", asNamespace("languageserver"), inherits=FALSE))',
-            ], { encoding: 'utf8' });
+            const providerProbe = spawnSync(
+                rPath,
+                [
+                    '--vanilla',
+                    '--slave',
+                    '-e',
+                    'cat(exists("member_resolve_packages", asNamespace("languageserver"), inherits=FALSE))',
+                ],
+                { encoding: 'utf8' },
+            );
             if (providerProbe.status === 0 && providerProbe.stdout.trim() === 'TRUE') {
                 const call = 'sessionGeneric(data.frame(x = 1), )';
                 await languageClient.sendNotification('textDocument/didChange', {
                     textDocument: { uri: fixtureUri, version: 2 },
                     contentChanges: [{ text: call }],
                 });
-                const signature = await languageClient.sendRequest<
-                    { signatures?: Array<{ label: string }> } | null
-                >('textDocument/signatureHelp', {
+                const signature = await languageClient.sendRequest<{
+                    signatures?: Array<{ label: string }>;
+                } | null>('textDocument/signatureHelp', {
                     textDocument: { uri: fixtureUri },
                     position: { line: 0, character: call.length - 1 },
                     context: { triggerKind: 1, isRetrigger: false },
                 });
-                assert.ok(signature?.signatures?.some(item => item.label.includes('sessionParameter')),
-                    'S3 resolution must use session-attached package metadata');
+                assert.ok(
+                    signature?.signatures?.some((item) => item.label.includes('sessionParameter')),
+                    'S3 resolution must use session-attached package metadata',
+                );
             }
 
             service.syncSessionState(undefined, projects[0].uri, 'session');
@@ -230,10 +269,14 @@ suite('Session completion with real R language server', () => {
                 textDocument: { uri: fixtureUri },
                 position: { line: 0, character: source.length },
             });
-            assert.ok(!(Array.isArray(afterDetach) ? afterDetach : afterDetach?.items ?? [])
-                .some(item => item.label === 'sessionOnlyFixture' &&
-                    item.data?.package === 'sessionfixture'),
-                'a detached session must not leave private-library completions');
+            assert.ok(
+                !(Array.isArray(afterDetach) ? afterDetach : (afterDetach?.items ?? [])).some(
+                    (item) =>
+                        item.label === 'sessionOnlyFixture' &&
+                        item.data?.package === 'sessionfixture',
+                ),
+                'a detached session must not leave private-library completions',
+            );
 
             service.syncSessionState(undefined, projects[0].uri, 'session');
             await internals.syncClientSessionState('global');

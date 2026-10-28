@@ -507,10 +507,11 @@ export function getTerminalWorkspaceResource(term: vscode.Terminal): vscode.Uri 
     if (!cwd) {
         return undefined;
     }
-    const uri = typeof cwd === 'string'
-        ? (vscode.workspace.workspaceFolders?.find((folder) => folder.uri.fsPath === cwd)?.uri
-            ?? vscode.Uri.file(cwd))
-        : cwd;
+    const uri =
+        typeof cwd === 'string'
+            ? (vscode.workspace.workspaceFolders?.find((folder) => folder.uri.fsPath === cwd)
+                  ?.uri ?? vscode.Uri.file(cwd))
+            : cwd;
     return vscode.workspace.getWorkspaceFolder(uri)?.uri;
 }
 

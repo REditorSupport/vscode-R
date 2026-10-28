@@ -495,11 +495,15 @@ suite('Session package completion', () => {
 
     test('session package locations are delivered to the language server', async () => {
         const request = client('global', 'global');
-        service.syncSessionState({
-            ...packages('custompkg'),
-            library_paths: ['/tmp/custom-library'],
-            package_paths: { custompkg: '/tmp/custom-library/custompkg' },
-        }, folder.uri, 'library-session');
+        service.syncSessionState(
+            {
+                ...packages('custompkg'),
+                library_paths: ['/tmp/custom-library'],
+                package_paths: { custompkg: '/tmp/custom-library/custompkg' },
+            },
+            folder.uri,
+            'library-session',
+        );
         await settle();
         sinon.assert.calledOnceWithExactly(request, 'r/syncSessionState', {
             attachedPackages: ['custompkg', 'base'],
@@ -508,26 +512,35 @@ suite('Session package completion', () => {
             packagePaths: { custompkg: '/tmp/custom-library/custompkg' },
         });
 
-        service.syncSessionState({
-            ...packages('custompkg'), library_paths: ['/tmp/other-library'],
-        }, folder.uri, 'library-session');
+        service.syncSessionState(
+            {
+                ...packages('custompkg'),
+                library_paths: ['/tmp/other-library'],
+            },
+            folder.uri,
+            'library-session',
+        );
         await settle();
         sinon.assert.calledTwice(request);
     });
 
     test('an unselected session acquires a newly added workspace', async () => {
         multiServer = true;
-        const outside = vscode.Uri.file(path.join(os.tmpdir(), 'vscode-r-language-service', 'added'));
+        const outside = vscode.Uri.file(
+            path.join(os.tmpdir(), 'vscode-r-language-service', 'added'),
+        );
         const request = client('added', outside.toString(true));
         const folderLookup = vscode.workspace.getWorkspaceFolder as sinon.SinonStub;
         service.syncSessionState(packages('splines'), outside, 'added-session', false);
         await settle();
         sinon.assert.notCalled(request);
 
-        folderLookup.callsFake(uri => uri.fsPath === outside.fsPath
-            ? { uri: outside, name: 'added', index: 1 } : undefined);
-        (service as unknown as ServiceInternals & { reconcileSessionScopes(): void })
-            .reconcileSessionScopes();
+        folderLookup.callsFake((uri: vscode.Uri) =>
+            uri.fsPath === outside.fsPath ? { uri: outside, name: 'added', index: 1 } : undefined,
+        );
+        (
+            service as unknown as ServiceInternals & { reconcileSessionScopes(): void }
+        ).reconcileSessionScopes();
         await settle();
         sinon.assert.calledOnceWithExactly(request, 'r/syncSessionState', {
             attachedPackages: ['splines', 'base'],
@@ -546,18 +559,24 @@ suite('Session package completion', () => {
         sinon.assert.calledOnce(outer);
         sinon.assert.notCalled(inner);
 
-        lookup.callsFake(uri => uri.fsPath === nested.fsPath ||
-            uri.fsPath.startsWith(`${nested.fsPath}${path.sep}`)
-            ? { uri: nested, name: 'nested', index: 1 }
-            : uri.fsPath.startsWith(folder.uri.fsPath) ? folder : undefined);
-        (service as unknown as ServiceInternals & { reconcileSessionScopes(): void })
-            .reconcileSessionScopes();
+        lookup.callsFake((uri: vscode.Uri) =>
+            uri.fsPath === nested.fsPath || uri.fsPath.startsWith(`${nested.fsPath}${path.sep}`)
+                ? { uri: nested, name: 'nested', index: 1 }
+                : uri.fsPath.startsWith(folder.uri.fsPath)
+                  ? folder
+                  : undefined,
+        );
+        (
+            service as unknown as ServiceInternals & { reconcileSessionScopes(): void }
+        ).reconcileSessionScopes();
         await settle();
         assert.deepStrictEqual(outer.lastCall.args[1], {
-            attachedPackages: [], loadedNamespaces: [],
+            attachedPackages: [],
+            loadedNamespaces: [],
         });
         assert.deepStrictEqual(inner.lastCall.args[1], {
-            attachedPackages: ['splines', 'base'], loadedNamespaces: ['splines', 'base'],
+            attachedPackages: ['splines', 'base'],
+            loadedNamespaces: ['splines', 'base'],
         });
     });
 
@@ -568,13 +587,15 @@ suite('Session package completion', () => {
         service.syncSessionState(packages('splines'), folder.uri, 'owner');
         await settle();
         (vscode.workspace.getWorkspaceFolder as sinon.SinonStub).returns(undefined);
-        (service as unknown as ServiceInternals & { reconcileSessionScopes(): void })
-            .reconcileSessionScopes();
+        (
+            service as unknown as ServiceInternals & { reconcileSessionScopes(): void }
+        ).reconcileSessionScopes();
         await settle();
         sinon.assert.calledTwice(project);
         sinon.assert.calledOnce(unscoped);
         assert.deepStrictEqual(project.lastCall.args[1], {
-            attachedPackages: [], loadedNamespaces: [],
+            attachedPackages: [],
+            loadedNamespaces: [],
         });
         assert.deepStrictEqual(unscoped.firstCall.args[1], {
             attachedPackages: ['splines', 'base'],
@@ -587,7 +608,10 @@ suite('Session package completion', () => {
         const input = client('input', 'session:stopped-runtime');
         const project = client('project', folder.uri.toString(true));
         const target = session.registerSessionTransport(
-            'stopped-runtime', 'host', folder.uri.fsPath, () => Promise.resolve(undefined),
+            'stopped-runtime',
+            'host',
+            folder.uri.fsPath,
+            () => Promise.resolve(undefined),
         );
         try {
             session.updateSessionWorkspace(target, packages('stats'));
@@ -598,10 +622,12 @@ suite('Session package completion', () => {
             session.updateSessionWorkspace(target, target.workspaceData);
             await settle();
             assert.deepStrictEqual(input.lastCall.args[1], {
-                attachedPackages: [], loadedNamespaces: [],
+                attachedPackages: [],
+                loadedNamespaces: [],
             });
             assert.deepStrictEqual(project.lastCall.args[1], {
-                attachedPackages: [], loadedNamespaces: [],
+                attachedPackages: [],
+                loadedNamespaces: [],
             });
         } finally {
             session.unregisterSessionTransport(target);

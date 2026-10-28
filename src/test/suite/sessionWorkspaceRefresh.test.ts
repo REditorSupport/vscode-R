@@ -136,18 +136,30 @@ suite('Session workspace refresh demand', () => {
 
         socket.emit('data', Buffer.from('{"jsonrpc":"2.0","method":"workspace_updated"}\n'));
         const request = await waitForValue(() => requests[0]);
-        socket.emit('data', Buffer.from(`${JSON.stringify({
-            jsonrpc: '2.0',
-            id: request.id,
-            result: {
-                revision: 1, globalenv: {}, search: ['package:splines'],
-                loaded_namespaces: ['splines'],
-            },
-        })}\n`));
+        socket.emit(
+            'data',
+            Buffer.from(
+                `${JSON.stringify({
+                    jsonrpc: '2.0',
+                    id: request.id,
+                    result: {
+                        revision: 1,
+                        globalenv: {},
+                        search: ['package:splines'],
+                        loaded_namespaces: ['splines'],
+                    },
+                })}\n`,
+            ),
+        );
         await session.ensureSessionWorkspace(background);
         assert.deepStrictEqual(background.workspaceData.search, ['package:splines']);
-        sinon.assert.calledWith(syncSessionState, background.workspaceData,
-            background.resource, background.sessionId, false);
+        sinon.assert.calledWith(
+            syncSessionState,
+            background.workspaceData,
+            background.resource,
+            background.sessionId,
+            false,
+        );
         assert.strictEqual(session.activeSession, foreground);
     });
 

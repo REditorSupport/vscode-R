@@ -131,7 +131,10 @@ suite('Session Communication', () => {
             session.bindSessionDocument(input, previous);
             rebound.length = 0;
             session.replaceSessionTransport(previous, next);
-            assert.deepStrictEqual(new Set(rebound), new Set([source.toString(), input.toString()]));
+            assert.deepStrictEqual(
+                new Set(rebound),
+                new Set([source.toString(), input.toString()]),
+            );
             assert.strictEqual(session.boundSessionForDocument(source), next);
             assert.strictEqual(session.boundSessionForDocument(input), next);
             assert.strictEqual(await previous.requester?.({}), 'old');
@@ -149,8 +152,9 @@ suite('Session Communication', () => {
         const folderUri = vscode.Uri.file(path.join(os.tmpdir(), 'workspace-only'));
         const folder = { uri: folderUri, name: 'only', index: 0 };
         sandbox.stub(vscode.workspace, 'workspaceFolders').value([folder]);
-        sandbox.stub(vscode.workspace, 'getWorkspaceFolder').callsFake((uri) =>
-            uri.fsPath === folderUri.fsPath ? folder : undefined);
+        sandbox
+            .stub(vscode.workspace, 'getWorkspaceFolder')
+            .callsFake((uri) => (uri.fsPath === folderUri.fsPath ? folder : undefined));
         const external = {
             creationOptions: { cwd: path.join(os.tmpdir(), 'outside-folder') },
         } as unknown as vscode.Terminal;
@@ -160,20 +164,25 @@ suite('Session Communication', () => {
         } as unknown as vscode.Terminal;
         assert.strictEqual(rTerminal.getTerminalWorkspaceResource(external), undefined);
         assert.strictEqual(rTerminal.getTerminalWorkspaceResource(unknown), undefined);
-        assert.strictEqual(rTerminal.getTerminalWorkspaceResource(associated)?.toString(),
-            folderUri.toString());
+        assert.strictEqual(
+            rTerminal.getTerminalWorkspaceResource(associated)?.toString(),
+            folderUri.toString(),
+        );
     });
 
     test('an Interactive session retains its unscoped directory for later workspace routing', () => {
         const directory = path.join(os.tmpdir(), 'vscode-r-added-workspace');
         const lookup = sandbox.stub(vscode.workspace, 'getWorkspaceFolder').returns(undefined);
-        const target = session.registerSessionTransport(
-            'late-workspace', 'host', directory, () => Promise.resolve(undefined),
+        const target = session.registerSessionTransport('late-workspace', 'host', directory, () =>
+            Promise.resolve(undefined),
         );
         try {
-            assert.strictEqual(target.resource?.fsPath, directory);
+            assert.strictEqual(target.resource?.toString(), vscode.Uri.file(directory).toString());
             lookup.returns({ uri: vscode.Uri.file(directory), name: 'added', index: 0 });
-            assert.strictEqual(vscode.workspace.getWorkspaceFolder(target.resource!)?.name, 'added');
+            assert.strictEqual(
+                vscode.workspace.getWorkspaceFolder(target.resource!)?.name,
+                'added',
+            );
         } finally {
             session.unregisterSessionTransport(target);
         }
@@ -993,9 +1002,14 @@ suite('Session Communication', () => {
                     : undefined,
             );
             assert.ok(attached);
-            assert.strictEqual(attached.resource?.fsPath, path.join(workspaceUri.fsPath, 'project'));
-            assert.strictEqual(vscode.workspace.getWorkspaceFolder(attached.resource!)?.uri.toString(),
-                workspaceUri.toString());
+            assert.strictEqual(
+                attached.resource?.fsPath,
+                path.join(workspaceUri.fsPath, 'project'),
+            );
+            assert.strictEqual(
+                vscode.workspace.getWorkspaceFolder(attached.resource!)?.uri.toString(),
+                workspaceUri.toString(),
+            );
             assert.strictEqual(socket._terminalPid, undefined);
         } finally {
             client.destroy();
@@ -1868,8 +1882,12 @@ suite('Session Communication', () => {
             assert.strictEqual(session.activeSession?.pid, '9876');
             const replacementSession = session.activeSession;
             assert.ok(replacementSession);
-            sinon.assert.calledWithExactly(syncState, undefined, originalSession.resource,
-                originalSession.sessionId);
+            sinon.assert.calledWithExactly(
+                syncState,
+                undefined,
+                originalSession.resource,
+                originalSession.sessionId,
+            );
             await assert.rejects(
                 session.executeSessionCode(replacementSession, 'View(iris)'),
                 /no attached terminal/,
