@@ -74,10 +74,30 @@ default_startup <- if (is.function(startup_fn)) startup_fn() else character()
 session_state <- new.env(parent = emptyenv())
 session_state$imports <- list()
 session_state$previous_packages <- character()
+session_state$revision <- 0L
+session_state$pending_reply <- NULL
 
 server$request_handlers[["r/syncSessionState"]] <- function(self, id, params) {
+    # A superseded worker discards its callback. Acknowledge its request so
+    # TypeScript can deliver the next state, including a disconnect clear.
+    session_state$revision <- session_state$revision + 1L
+    revision <- session_state$revision
+    if (is.function(session_state$pending_reply)) session_state$pending_reply(FALSE)
+    session_state$pending_reply <- NULL
+    if (!is.null(self$resolve_task_manager) &&
+            is.function(self$resolve_task_manager$cancel)) {
+        self$resolve_task_manager$cancel("r/syncSessionState")
+    }
+
+    replied <- FALSE
     reply <- function(applied) {
+        if (replied) return(invisible(NULL))
+        replied <<- TRUE
+        if (identical(session_state$pending_reply, reply)) {
+            session_state$pending_reply <- NULL
+        }
         self$deliver(languageserver:::Response$new(id, result = applied))
+        invisible(NULL)
     }
     if (!is.function(startup_fn) || is.null(tryCatch(self$workspaces, error = function(e) NULL))) {
         # Versions before the workspace startup API cannot safely reset state.
@@ -95,15 +115,23 @@ server$request_handlers[["r/syncSessionState"]] <- function(self, id, params) {
         if (!is.character(package_paths)) package_paths <- character()
         package_paths <- package_paths[nzchar(package_paths)]
         extra_paths <- dirname(package_paths)
-        candidate_paths <- unique(c(extra_paths, library_paths, default_library_paths))
+        candidate_paths <- if (length(attached_packages)) {
+            unique(c(extra_paths, library_paths, default_library_paths))
+        } else {
+            default_library_paths
+        }
         candidate_paths <- candidate_paths[dir.exists(candidate_paths)]
         .libPaths(candidate_paths)
 
         # A server can outlive an R session. Removing the previous package
         # metadata avoids stale members and S3 signatures after detach.
         for (workspace in self$workspaces$values()) {
-            index <- which(vapply(session_state$imports,
-                function(entry) identical(entry$workspace, workspace), logical(1L)))
+            matches <- vapply(
+                session_state$imports,
+                function(entry) identical(entry$workspace, workspace),
+                logical(1L)
+            )
+            index <- which(matches)
             if (!length(index)) {
                 base_imports <- workspace$imported_packages
                 session_state$imports[[length(session_state$imports) + 1L]] <-
@@ -112,19 +140,28 @@ server$request_handlers[["r/syncSessionState"]] <- function(self, id, params) {
                 base_imports <- session_state$imports[[index[[1L]]]]$imports
                 actual <- workspace$imported_packages
                 if (!setequal(actual, union(base_imports, session_state$previous_packages))) {
-                    base_imports <- union(setdiff(actual, session_state$previous_packages),
-                        intersect(base_imports, session_state$previous_packages))
+                    base_imports <- union(
+                        setdiff(actual, session_state$previous_packages),
+                        intersect(base_imports, session_state$previous_packages)
+                    )
                     session_state$imports[[index[[1L]]]]$imports <- base_imports
                 }
             }
             previous <- workspace$startup_packages
             new_startup <- if (length(attached_packages)) rev(attached_packages) else default_startup
-            removed <- setdiff(previous, unique(c(new_startup, workspace$imported_packages)))
+            removed <- setdiff(previous, unique(c(new_startup, base_imports)))
             workspace$startup_packages <- new_startup
             workspace$imported_packages <- union(base_imports, attached_packages)
             workspace$update_loaded_packages()
             for (pkg in unique(c(attached_packages, loaded_namespaces))) {
                 try(workspace$get_namespace(pkg), silent = TRUE)
+            }
+            if (length(removed) && !is.null(workspace$namespaces)) {
+                for (pkg in removed) {
+                    if (workspace$namespaces$has(pkg)) {
+                        workspace$namespaces$remove(pkg)
+                    }
+                }
             }
             if (length(removed) && !is.null(workspace$member_metadata)) {
                 for (pkg in removed) {
@@ -146,11 +183,18 @@ server$request_handlers[["r/syncSessionState"]] <- function(self, id, params) {
         }
 
         session_state$previous_packages <- attached_packages
-        missing <- attached_packages[!vapply(attached_packages,
-            function(pkg) length(find.package(pkg, quiet = TRUE)) > 0L, logical(1L))]
+        missing <- attached_packages[
+            !vapply(
+                attached_packages,
+                function(pkg) length(find.package(pkg, quiet = TRUE)) > 0L,
+                logical(1L)
+            )
+        ]
         if (length(missing)) {
-            message("Session packages cannot be resolved by languageserver: ",
-                paste(missing, collapse = ", "))
+            message(
+                "Session packages cannot be resolved by languageserver: ",
+                paste(missing, collapse = ", ")
+            )
             reply(FALSE)
             return(invisible(NULL))
         }
@@ -180,6 +224,7 @@ server$request_handlers[["r/syncSessionState"]] <- function(self, id, params) {
                 prepare_s3 = isTRUE(languageserver:::lsp_settings$get("s3_dispatch"))
             ),
             callback = function(result) {
+                if (!identical(revision, session_state$revision)) return(invisible(NULL))
                 tryCatch({
                     for (workspace in self$workspaces$values()) {
                         if (!is.null(result$members) && !is.null(workspace$member_metadata)) {
@@ -200,11 +245,14 @@ server$request_handlers[["r/syncSessionState"]] <- function(self, id, params) {
                 })
             },
             error = function(e) {
-                message("Session package metadata could not be prepared: ", conditionMessage(e))
-                reply(FALSE)
+                if (identical(revision, session_state$revision)) {
+                    message("Session package metadata could not be prepared: ", conditionMessage(e))
+                    reply(FALSE)
+                }
             },
             profiles = FALSE
         )
+        session_state$pending_reply <- reply
         self$resolve_task_manager$add_task("r/syncSessionState", task)
     }, error = function(e) {
         message("Session package synchronization failed: ", conditionMessage(e))

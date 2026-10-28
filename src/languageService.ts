@@ -319,8 +319,9 @@ export class LanguageService implements Disposable {
                 const applied = await client.sendRequest<boolean>('r/syncSessionState', state);
                 if (applied === false) {
                     this.outputChannel.appendLine(
-                        'Session package completion is unavailable with this languageserver version.',
+                        'R language server rejected the session package state; completion will retry.',
                     );
+                    return { stateKey, replay };
                 }
                 sync.syncedStateKey = stateKey;
                 sync.syncedReplay = replay;

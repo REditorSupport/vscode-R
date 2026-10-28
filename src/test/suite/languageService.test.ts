@@ -524,6 +524,20 @@ suite('Session package completion', () => {
         sinon.assert.calledTwice(request);
     });
 
+    test('an explicit rejection does not acknowledge the session state', async () => {
+        const request = client('global', 'global');
+        request.onFirstCall().resolves(false);
+        service.syncSessionState(packages('splines'), folder.uri, 'rejected-session');
+        await settle();
+        sinon.assert.calledOnce(request);
+        await (service as unknown as ServiceInternals).syncClientSessionState('global');
+        sinon.assert.calledTwice(request);
+        assert.deepStrictEqual(request.secondCall.args[1], {
+            attachedPackages: ['splines', 'base'],
+            loadedNamespaces: ['splines', 'base'],
+        });
+    });
+
     test('an unselected session acquires a newly added workspace', async () => {
         multiServer = true;
         const outside = vscode.Uri.file(
