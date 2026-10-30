@@ -342,6 +342,27 @@ suite('Interactive protocol and persistence', () => {
         assert.throws(() => parser.push(Buffer.alloc(101, 97)), /size limit/);
     });
 
+    test('bounds each fragmented frame by UTF-8 bytes and resets at blank and CRLF lines', () => {
+        const received: Record<string, unknown>[] = [];
+        const first = JSON.stringify({ text: 'λ🙂'.repeat(10000) });
+        const limit = Buffer.byteLength(first);
+        const parser = new JsonLines((message) => received.push(message), limit);
+        const bytes = Buffer.from(first + '\n\n {"text":"next"}\r\n');
+        for (let start = 0; start < bytes.length; start += 7) {
+            parser.push(bytes.subarray(start, start + 7));
+        }
+        assert.deepStrictEqual(received, [{ text: 'λ🙂'.repeat(10000) }, { text: 'next' }]);
+        const oversized = new JsonLines(
+            () => assert.fail('Oversized frames must not be delivered'),
+            limit,
+        );
+        const incomplete = Buffer.from(first);
+        for (let start = 0; start < incomplete.length; start += 13) {
+            oversized.push(incomplete.subarray(start, start + 13));
+        }
+        assert.throws(() => oversized.push(Buffer.from(' \n')), /size limit/);
+    });
+
     test('session probes verify identity and live status without claiming control and bound unresponsive endpoints', async function () {
         if (process.platform === 'win32') {
             this.skip();
