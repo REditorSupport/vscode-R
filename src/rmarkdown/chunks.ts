@@ -80,8 +80,17 @@ export interface RMarkdownChunk {
     codeRange: vscode.Range;
 }
 
+const chunkCache = new WeakMap<
+    vscode.TextDocument,
+    { version: number; languageId: string; chunks: RMarkdownChunk[] }
+>();
+
 // Scan document and return chunk info (e.g. ID, chunk range) from all chunks
 export function getChunks(document: vscode.TextDocument): RMarkdownChunk[] {
+    const cached = chunkCache.get(document);
+    if (cached?.version === document.version && cached.languageId === document.languageId) {
+        return cached.chunks;
+    }
     const lines = document.getText().split(/\r?\n/);
     const chunks: RMarkdownChunk[] = [];
 
@@ -140,6 +149,11 @@ export function getChunks(document: vscode.TextDocument): RMarkdownChunk[] {
     if (isRDoc && chunkStartLine !== undefined) {
         finishChunk(lines.length - 1, lines.length - 1);
     }
+    chunkCache.set(document, {
+        version: document.version,
+        languageId: document.languageId,
+        chunks,
+    });
     return chunks;
 }
 
@@ -147,11 +161,6 @@ export function getCurrentChunk(
     chunks: RMarkdownChunk[],
     line: number,
 ): RMarkdownChunk | undefined {
-    const textEditor = vscode.window.activeTextEditor;
-    if (!textEditor) {
-        return;
-    }
-
     // Case: If `chunks` is empty, return undefined
     if (chunks.length === 0) {
         return undefined;
@@ -427,11 +436,7 @@ export function getCodeLenses(
 
     // Iterate through all code chunks for getting chunk information for both CodeLens and chunk background color (set by `editor.setDecorations`)
     let codeLenses: vscode.CodeLens[] = [];
-    for (let i = 1; i <= chunks.length; i++) {
-        const chunk = chunks.find((e) => e.id === i);
-        if (!chunk) {
-            continue;
-        }
+    for (const chunk of chunks) {
         const chunkRange = chunk.chunkRange;
         const line = chunk.startLine;
 

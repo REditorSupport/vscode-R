@@ -61,6 +61,85 @@ suite('Generated file overwrite prompts', () => {
         assert.strictEqual(fs.readFileSync(cppPath, 'utf8'), 'user compiler settings');
     });
 
+    test('compiler probes run asynchronously and clean up after failure', async () => {
+        sandbox.stub(vscode.window, 'showWarningMessage').resolves('Yes' as never);
+        (util.getRpath as sinon.SinonStub).resolves('/R path/R');
+        const cppPath = path.join(directory, '.vscode', 'c_cpp_properties.json');
+        fs.mkdirSync(path.dirname(cppPath));
+        fs.writeFileSync(cppPath, 'user compiler settings');
+        const cleanupFile = process.platform === 'win32' ? 'cleanup.win' : 'cleanup';
+        fs.writeFileSync(path.join(directory, cleanupFile), '');
+        const cleanup = sandbox.stub(util, 'executeRCommand').resolves('');
+        let finish!: (result: Awaited<ReturnType<typeof util.spawnAsync>>) => void;
+        const probe = sandbox.stub(util, 'spawnAsync').returns(
+            new Promise((resolve) => {
+                finish = resolve;
+            }),
+        );
+        let completed = false;
+        const result = generateCppProperties();
+        void result.then(
+            () => {
+                completed = true;
+            },
+            () => {
+                completed = true;
+            },
+        );
+        await new Promise((resolve) => setImmediate(resolve));
+        assert.strictEqual(completed, false);
+        sinon.assert.calledOnce(probe);
+        assert.deepStrictEqual(probe.firstCall.args.slice(0, 2), [
+            '/R path/R',
+            ['CMD', 'SHLIB', 'comp_test.cpp'],
+        ]);
+        const temporary = String(probe.firstCall.args[2]?.cwd);
+        assert.strictEqual(fs.existsSync(path.join(temporary, 'comp_test.cpp')), true);
+        const rejected = assert.rejects(result, /compiler unavailable/);
+        finish({
+            pid: 1,
+            output: [],
+            stdout: '',
+            stderr: 'compiler unavailable',
+            status: 1,
+            signal: null,
+        });
+        await rejected;
+        assert.strictEqual(fs.existsSync(temporary), false);
+        assert.strictEqual(fs.readFileSync(cppPath, 'utf8'), 'user compiler settings');
+        sinon.assert.calledOnce(cleanup);
+    });
+
+    test('compiler configuration handles executable and include paths containing spaces', async () => {
+        (util.getRpath as sinon.SinonStub).resolves('/R path/R');
+        sandbox.stub(util, 'spawnAsync').resolves({
+            pid: 1,
+            output: [],
+            stderr: '',
+            status: 0,
+            signal: null,
+            stdout: 'R CMD SHLIB\n"/compiler path/clang++" -I"include path" -DTEST -std=c++17\n',
+        });
+        const command = sandbox.stub(util, 'executeRCommand').resolves('/compiler path/clang++');
+        await generateCppProperties();
+        assert.strictEqual(command.firstCall.args[0], 'cat(Sys.which("/compiler path/clang++"))');
+        const settings = JSON.parse(
+            fs.readFileSync(path.join(directory, '.vscode', 'c_cpp_properties.json'), 'utf8'),
+        ) as {
+            configurations: Array<{
+                compilerPath: string;
+                includePath: string[];
+                defines: string[];
+            }>;
+        };
+        assert.strictEqual(settings.configurations[0].compilerPath, '/compiler path/clang++');
+        assert.ok(
+            settings.configurations[0].includePath.some((value) => value.endsWith('include path')),
+        );
+        assert.deepStrictEqual(settings.configurations[0].defines, ['TEST']);
+        assert.deepStrictEqual(fs.readdirSync(directory), ['.vscode']);
+    });
+
     test('unavailable R preserves the existing lint configuration after confirming overwrite', async () => {
         sandbox
             .stub(vscode.window, 'showWarningMessage')

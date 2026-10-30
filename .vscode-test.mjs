@@ -29,7 +29,14 @@ function testProfile(name, lspEnabled) {
 	const directory = path.resolve('.vscode-test/user-data', name);
 	mkdirSync(path.join(directory, 'User'), { recursive: true });
 	writeFileSync(path.join(directory, 'User/settings.json'), JSON.stringify({ 'r.lsp.enabled': lspEnabled }));
-	return ['--user-data-dir', directory];
+	// Unattended runs can be occluded by another app. Keep browser paint and
+	// resize callbacks active so webview assertions observe actual loading.
+	return [
+		'--user-data-dir', directory,
+		'--disable-renderer-backgrounding',
+		'--disable-background-timer-throttling',
+		'--disable-backgrounding-occluded-windows'
+	];
 }
 
 export default defineConfig([

@@ -243,22 +243,24 @@ export async function activate(
 
     // register on-enter rule for roxygen comments
     const wordPattern = /(-?\d*\.\d\w*)|([^`~!@$^&*()=+[{\]}\\|;:'",<>/\s]+)/g;
-    vscode.languages.setLanguageConfiguration('r', {
-        onEnterRules: [
-            {
-                // Automatically continue roxygen comments: #'
-                action: { indentAction: vscode.IndentAction.None, appendText: "#' " },
-                beforeText: /^\s*#'\s*[^\s]/, // matches a non-empty roxygen line
-            },
-            {
-                // Automatically continue roxygen comments: #'
-                action: { indentAction: vscode.IndentAction.None, appendText: "#' " },
-                beforeText: /^\s*#'/, // matches any roxygen comment line, even an empty one
-                previousLineText: /^\s*([^#\s].*|#[^'\s].*|#'\s*[^\s].*|)$/, // matches everything but an empty roxygen line
-            },
-        ],
-        wordPattern,
-    });
+    context.subscriptions.push(
+        vscode.languages.setLanguageConfiguration('r', {
+            onEnterRules: [
+                {
+                    // Automatically continue roxygen comments: #'
+                    action: { indentAction: vscode.IndentAction.None, appendText: "#' " },
+                    beforeText: /^\s*#'\s*[^\s]/, // matches a non-empty roxygen line
+                },
+                {
+                    // Automatically continue roxygen comments: #'
+                    action: { indentAction: vscode.IndentAction.None, appendText: "#' " },
+                    beforeText: /^\s*#'/, // matches any roxygen comment line, even an empty one
+                    previousLineText: /^\s*([^#\s].*|#[^'\s].*|#'\s*[^\s].*|)$/, // matches everything but an empty roxygen line
+                },
+            ],
+            wordPattern,
+        }),
+    );
 
     // register terminal-provider
     context.subscriptions.push(
@@ -279,30 +281,44 @@ export async function activate(
     context.subscriptions.push(new InteractiveManager(context));
 
     // register codelens and completion providers for r markdown and r files
-    vscode.languages.registerCodeLensProvider(
-        ['r', 'rmd'],
-        new rmarkdown.RMarkdownCodeLensProvider(),
+    const codeLensProvider = new rmarkdown.RMarkdownCodeLensProvider();
+    context.subscriptions.push(
+        codeLensProvider,
+        vscode.languages.registerCodeLensProvider(['r', 'rmd'], codeLensProvider),
     );
-    vscode.languages.registerCompletionItemProvider(
-        'rmd',
-        new rmarkdown.RMarkdownCompletionItemProvider(),
-        ' ',
-        ',',
+    context.subscriptions.push(
+        vscode.languages.registerCompletionItemProvider(
+            'rmd',
+            new rmarkdown.RMarkdownCompletionItemProvider(),
+            ' ',
+            ',',
+        ),
     );
-    vscode.languages.registerFoldingRangeProvider('r', new rmarkdown.RChunkFoldingProvider());
+    context.subscriptions.push(
+        vscode.languages.registerFoldingRangeProvider('r', new rmarkdown.RChunkFoldingProvider()),
+    );
 
     // register (session) hover and completion providers
-    vscode.languages.registerHoverProvider(['r', 'rmd'], new completions.HoverProvider());
-    vscode.languages.registerHoverProvider(['r', 'rmd'], new completions.HelpLinkHoverProvider());
-    vscode.languages.registerCompletionItemProvider(
-        ['r', 'rmd'],
-        new completions.StaticCompletionItemProvider(),
-        '@',
+    context.subscriptions.push(
+        vscode.languages.registerHoverProvider(['r', 'rmd'], new completions.HoverProvider()),
+    );
+    context.subscriptions.push(
+        vscode.languages.registerHoverProvider(
+            ['r', 'rmd'],
+            new completions.HelpLinkHoverProvider(),
+        ),
+    );
+    context.subscriptions.push(
+        vscode.languages.registerCompletionItemProvider(
+            ['r', 'rmd'],
+            new completions.StaticCompletionItemProvider(),
+            '@',
+        ),
     );
 
     // register task provider
     const taskProvider = new RTaskProvider();
-    vscode.tasks.registerTaskProvider(taskProvider.type, taskProvider);
+    context.subscriptions.push(vscode.tasks.registerTaskProvider(taskProvider.type, taskProvider));
 
     // deploy session watcher (if configured by user)
     if (enableSessionWatcher) {
@@ -321,7 +337,9 @@ export async function activate(
 
         // track active text editor
         rstudioapi.trackLastActiveTextEditor(vscode.window.activeTextEditor);
-        vscode.window.onDidChangeActiveTextEditor(rstudioapi.trackLastActiveTextEditor);
+        context.subscriptions.push(
+            vscode.window.onDidChangeActiveTextEditor(rstudioapi.trackLastActiveTextEditor),
+        );
 
         // register the R Workspace tree view
         // creates a custom context value for the workspace view

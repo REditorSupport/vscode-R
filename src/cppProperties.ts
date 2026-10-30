@@ -3,8 +3,14 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { Uri, window } from 'vscode';
-import { getRpath, getCurrentWorkspaceFolder, executeRCommand, createTempDir } from './util';
-import { execSync } from 'child_process';
+import {
+    getRpath,
+    getCurrentWorkspaceFolder,
+    executeRCommand,
+    createTempDir,
+    spawnAsync,
+    ToRStringLiteral,
+} from './util';
 import { extensionContext } from './extension';
 
 export async function generateCppProperties(): Promise<void> {
@@ -52,14 +58,18 @@ async function generateCppPropertiesProc(workspaceFolder: string) {
         });
     }
 
-    const compileOutputCpp = collectCompilerOutput(rPath, workspaceFolder, 'cpp');
-    const compileOutputC = collectCompilerOutput(rPath, workspaceFolder, 'c');
-
-    if (fs.existsSync(path.join(workspaceFolder, cleanupFile))) {
-        await executeRCommand(`system("sh ./${cleanupFile}")`, workspaceFolder, (e: Error) => {
-            void window.showErrorMessage(e.message);
-            return '';
-        });
+    let compileOutputCpp: string;
+    let compileOutputC: string;
+    try {
+        compileOutputCpp = await collectCompilerOutput(rPath, workspaceFolder, 'cpp');
+        compileOutputC = await collectCompilerOutput(rPath, workspaceFolder, 'c');
+    } finally {
+        if (fs.existsSync(path.join(workspaceFolder, cleanupFile))) {
+            await executeRCommand(`system("sh ./${cleanupFile}")`, workspaceFolder, (e: Error) => {
+                void window.showErrorMessage(e.message);
+                return '';
+            });
+        }
     }
 
     const compileInfo = extractCompilerInfo(compileOutputCpp);
@@ -67,10 +77,14 @@ async function generateCppPropertiesProc(workspaceFolder: string) {
     const compileStdC = extractCompilerStd(compileOutputC);
     const compileCall = extractCompilerCall(compileOutputCpp);
     const compilerPath = compileCall
-        ? await executeRCommand(`cat(Sys.which("${compileCall}"))`, workspaceFolder, (e: Error) => {
-              void window.showErrorMessage(e.message);
-              return '';
-          })
+        ? await executeRCommand(
+              `cat(Sys.which(${ToRStringLiteral(compileCall, '"')}))`,
+              workspaceFolder,
+              (e: Error) => {
+                  void window.showErrorMessage(e.message);
+                  return '';
+              },
+          )
         : '';
 
     const intelliSensePlatform = platformChoose('windows', 'macos', 'linux');
@@ -134,10 +148,14 @@ async function collectRLinkingTo(workspaceFolder: string): Promise<string[]> {
         .asAbsolutePath('R/cppProperties/extractLinkingTo.R')
         .replace(/\\/g, '/');
     const linkingToIncludesStr = (
-        await executeRCommand(`source('${rScript}')`, workspaceFolder, (e: Error) => {
-            void window.showErrorMessage(e.message);
-            return '';
-        })
+        await executeRCommand(
+            `source(${ToRStringLiteral(rScript, '"')})`,
+            workspaceFolder,
+            (e: Error) => {
+                void window.showErrorMessage(e.message);
+                return '';
+            },
+        )
     )?.trim();
     if (!linkingToIncludesStr || linkingToIncludesStr === '') {
         return [];
@@ -190,37 +208,44 @@ function extractCompilerCall(compileOutput: string): string | undefined {
     }
 
     const m = ccalls[1].match(rxComp);
-    return m?.[1];
+    return m ? ensureUnquoted(m[1]) : undefined;
 }
 
-function collectCompilerOutput(rPath: string, workspaceFolder: string, testExtension: 'cpp' | 'c') {
+async function collectCompilerOutput(
+    rPath: string,
+    workspaceFolder: string,
+    testExtension: 'cpp' | 'c',
+): Promise<string> {
     const makevarsFiles = ['Makevars', 'Makevars.win', 'Makevars.ucrt'];
 
     const srcFolder = path.join(workspaceFolder, 'src');
     const tempFolder = createTempDir(workspaceFolder);
 
-    // Copy makevars
-    if (fs.existsSync(srcFolder)) {
-        const projectMakevarsFiles = fs
-            .readdirSync(srcFolder)
-            .filter((fn) => makevarsFiles.includes(fn));
-        for (const f of projectMakevarsFiles) {
-            fs.copyFileSync(path.join(srcFolder, f), path.join(tempFolder, f));
+    try {
+        // Copy makevars
+        if (fs.existsSync(srcFolder)) {
+            const projectMakevarsFiles = fs
+                .readdirSync(srcFolder)
+                .filter((fn) => makevarsFiles.includes(fn));
+            for (const f of projectMakevarsFiles) {
+                fs.copyFileSync(path.join(srcFolder, f), path.join(tempFolder, f));
+            }
         }
+
+        // Create dummy source file
+        const testFile = `comp_test.${testExtension}`;
+        fs.writeFileSync(path.join(tempFolder, testFile), '');
+
+        // Compile dummy
+        const result = await spawnAsync(rPath, ['CMD', 'SHLIB', testFile], { cwd: tempFolder });
+        if (result.status !== 0) {
+            throw (
+                result.error ??
+                new Error(result.stderr || 'Could not determine R compiler settings.')
+            );
+        }
+        return result.stdout;
+    } finally {
+        fs.rmSync(tempFolder, { recursive: true, force: true });
     }
-
-    // Create dummy source file
-    const testFile = `comp_test.${testExtension}`;
-    fs.writeFileSync(path.join(tempFolder, testFile), '');
-
-    // Compile dummy
-    const command = `"${rPath}" CMD SHLIB ${testFile}`;
-    const compileOutput = execSync(command, {
-        cwd: tempFolder,
-    }).toString();
-
-    // Cleanup
-    fs.rmSync(tempFolder, { recursive: true, force: true });
-
-    return compileOutput;
 }

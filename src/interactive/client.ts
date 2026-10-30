@@ -117,20 +117,50 @@ export class AgentClient extends EventEmitter {
                 this.emit('disconnect');
             }
         });
-        await new Promise<void>((resolve, reject) => {
-            const timer = setTimeout(() => {
-                socket.destroy();
-                reject(new Error('Agent connection timed out'));
-            }, options.timeout ?? 5000);
-            socket.once('connect', () => {
-                clearTimeout(timer);
-                resolve();
+        try {
+            await new Promise<void>((resolve, reject) => {
+                const finish = (error?: Error): void => {
+                    clearTimeout(timer);
+                    socket.off('connect', connected);
+                    socket.off('error', finish);
+                    socket.off('close', disconnected);
+                    if (error) {
+                        reject(error);
+                    } else {
+                        resolve();
+                    }
+                };
+                const connected = (): void => finish();
+                const disconnected = (): void => finish(new Error('Session agent disconnected'));
+                const timer = setTimeout(() => {
+                    finish(new Error('Agent connection timed out'));
+                    socket.destroy();
+                }, options.timeout ?? 5000);
+                socket.once('connect', connected);
+                socket.once('error', finish);
+                socket.once('close', disconnected);
             });
-            socket.once('error', (error) => {
-                clearTimeout(timer);
-                reject(error);
-            });
-        });
+            await this.initialize(socket, options);
+        } catch (error) {
+            // An obsolete attempt must never close a replacement connection.
+            if (this.socket === socket) {
+                this.close();
+            }
+            throw error;
+        }
+    }
+
+    private assertConnection(socket: net.Socket): void {
+        if (this.socket !== socket || socket.destroyed) {
+            throw new Error('Session agent disconnected during connection');
+        }
+    }
+
+    private async initialize(
+        socket: net.Socket,
+        options: { claim?: boolean; timeout?: number },
+    ): Promise<void> {
+        this.assertConnection(socket);
         const manifest = await this.request<SessionManifest>(
             'hello',
             {
@@ -141,21 +171,26 @@ export class AgentClient extends EventEmitter {
             },
             options.timeout,
         );
+        this.assertConnection(socket);
         if (manifest.id !== this.manifest.id || manifest.generation !== this.manifest.generation) {
             throw new Error(
                 'R session identity changed; refresh the session list before connecting',
             );
         }
         this.manifest = manifest;
-        this.control =
+        const control =
             options.claim === false
                 ? false
                 : await this.request<boolean>('claim', {}, options.timeout);
+        this.assertConnection(socket);
+        this.control = control;
         this.ready = true;
-        this.emit('activity');
         this.heartbeat = setInterval(() => {
             void this.request<{ control: boolean; status: SessionManifest['status'] }>('heartbeat')
                 .then((value) => {
+                    if (this.socket !== socket || socket.destroyed) {
+                        return;
+                    }
                     this.control = value.control;
                     this.manifest.status = value.status;
                     this.emit('activity');
@@ -163,6 +198,7 @@ export class AgentClient extends EventEmitter {
                 .catch(() => socket.destroy());
         }, 20000);
         this.heartbeat.unref();
+        this.emit('activity');
     }
 
     private emitEvent(event: SessionEvent): void {

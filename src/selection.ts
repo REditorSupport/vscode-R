@@ -231,7 +231,6 @@ export function extendSelection(
     const flagsFinish = { 0: false, 1: false }; // 1 represents looking forward, 0 represents looking back.
     let flagAbort = false;
     const unmatched = { 0: [] as string[], 1: [] as string[] };
-    let curChar = '';
     let quoteChar = '';
     while (!flagAbort && !(flagsFinish[0] && flagsFinish[1])) {
         const { nextChar, nextPos, isEndOfCodeLine, isEndOfFile } = getNextChar(
@@ -262,21 +261,15 @@ export function extendSelection(
             }
         } else {
             if (nextChar === quoteChar) {
-                if (lookingForward) {
-                    if (curChar !== '\\') {
-                        quoteChar = '';
-                    }
-                } else {
-                    const next = getNextChar(
-                        poss[lookingForward ? 1 : 0],
-                        lookingForward,
-                        getLineFromCache,
-                        getEndsInOperatorFromCache,
-                        lineCount,
-                    );
-                    if (next.nextChar !== '\\') {
-                        quoteChar = '';
-                    }
+                const text = getLineFromCache(nextPos.line);
+                let backslashes = 0;
+                for (let i = nextPos.character - 1; i >= 0 && text[i] === '\\'; i--) {
+                    backslashes++;
+                }
+                // Paired backslashes escape each other; only an odd run escapes
+                // the quote, regardless of the direction used to scan the call.
+                if (backslashes % 2 === 0) {
+                    quoteChar = '';
                 }
             }
         }
@@ -291,8 +284,6 @@ export function extendSelection(
                 flagAbort = true;
             }
         }
-
-        curChar = nextChar;
     }
     if (flagAbort) {
         return { startLine: line, endLine: line };

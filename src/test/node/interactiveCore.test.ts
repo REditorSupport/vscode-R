@@ -342,6 +342,27 @@ suite('Interactive protocol and persistence', () => {
         assert.throws(() => parser.push(Buffer.alloc(101, 97)), /size limit/);
     });
 
+    test('bounds each fragmented frame by UTF-8 bytes and resets at blank and CRLF lines', () => {
+        const received: Record<string, unknown>[] = [];
+        const first = JSON.stringify({ text: 'λ🙂'.repeat(10000) });
+        const limit = Buffer.byteLength(first);
+        const parser = new JsonLines((message) => received.push(message), limit);
+        const bytes = Buffer.from(first + '\n\n {"text":"next"}\r\n');
+        for (let start = 0; start < bytes.length; start += 7) {
+            parser.push(bytes.subarray(start, start + 7));
+        }
+        assert.deepStrictEqual(received, [{ text: 'λ🙂'.repeat(10000) }, { text: 'next' }]);
+        const oversized = new JsonLines(
+            () => assert.fail('Oversized frames must not be delivered'),
+            limit,
+        );
+        const incomplete = Buffer.from(first);
+        for (let start = 0; start < incomplete.length; start += 13) {
+            oversized.push(incomplete.subarray(start, start + 13));
+        }
+        assert.throws(() => oversized.push(Buffer.from(' \n')), /size limit/);
+    });
+
     test('session probes verify identity and live status without claiming control and bound unresponsive endpoints', async function () {
         if (process.platform === 'win32') {
             this.skip();
@@ -409,6 +430,52 @@ suite('Interactive protocol and persistence', () => {
         }
         assert.ok(!hasSessionEndpoint(manifest));
         assert.strictEqual(await probeSession(manifest), undefined);
+    });
+
+    test('a failed handshake closes its socket and a canceled attempt leaves its replacement connected', async function () {
+        if (process.platform === 'win32') {
+            this.skip();
+        }
+        const manifest = {
+            id: 'connection',
+            generation: 'first',
+            protocol: 1,
+            endpoint: path.join(directory, 'connection.sock'),
+            token: 'test-token',
+        } as SessionManifest;
+        let identity = { ...manifest, generation: 'other' };
+        let disconnected!: () => void;
+        const peerClosed = new Promise<void>((resolve) => {
+            disconnected = resolve;
+        });
+        const server = net.createServer((socket) => {
+            socket.on('error', () => undefined);
+            socket.on('close', disconnected);
+            const parser = new JsonLines((message) => {
+                socket.write(JSON.stringify({ id: message.id, result: identity }) + '\n');
+            });
+            socket.on('data', (chunk: Buffer) => parser.push(chunk));
+        });
+        const client = new AgentClient(manifest);
+        try {
+            await new Promise<void>((resolve, reject) => {
+                server.once('error', reject);
+                server.listen(manifest.endpoint, resolve);
+            });
+            await assert.rejects(client.connect({ claim: false }), /identity changed/);
+            await peerClosed;
+            assert.strictEqual(client.connected, false);
+
+            identity = manifest;
+            const canceled = client.connect({ claim: false, timeout: 1000 });
+            const replacement = client.connect({ claim: false, timeout: 1000 });
+            await Promise.all([assert.rejects(canceled, /disconnected/), replacement]);
+            assert.strictEqual(client.connected, true);
+            assert.deepStrictEqual(await client.request('heartbeat'), manifest);
+        } finally {
+            client.close();
+            await new Promise<void>((resolve) => server.close(() => resolve()));
+        }
     });
 
     test('admission survives reopening and never accepts changed code with a reused ID', () => {
