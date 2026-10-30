@@ -538,6 +538,27 @@ suite('Session package completion', () => {
         });
     });
 
+    test('unsupported server stops retrying but replacement clients can synchronize', async () => {
+        const request = client('global', 'global');
+        request.resolves('unsupported');
+        service.syncSessionState(packages('splines'), folder.uri, 'old-session');
+        await settle();
+        sinon.assert.calledOnce(request);
+
+        service.syncSessionState(packages('dplyr'), folder.uri, 'old-session');
+        service.syncSessionState(undefined, folder.uri, 'old-session');
+        await (service as unknown as ServiceInternals).syncClientSessionState('global', true);
+        sinon.assert.calledOnce(request);
+
+        const replacement = client('global', 'global');
+        service.syncSessionState(packages('stats'), folder.uri, 'new-session');
+        await settle();
+        sinon.assert.calledOnceWithExactly(replacement, 'r/syncSessionState', {
+            attachedPackages: ['stats', 'base'],
+            loadedNamespaces: ['stats', 'base'],
+        });
+    });
+
     test('an unselected session acquires a newly added workspace', async () => {
         multiServer = true;
         const outside = vscode.Uri.file(

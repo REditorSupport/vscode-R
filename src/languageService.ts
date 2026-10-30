@@ -59,6 +59,7 @@ interface ClientSessionSync {
     syncedStateKey?: string;
     replay: number;
     syncedReplay?: number;
+    unsupported?: boolean;
     pending?: Promise<void>;
 }
 
@@ -254,6 +255,9 @@ export class LanguageService implements Disposable {
             return Promise.resolve();
         }
         let sync = this.clientSessionSync.get(client);
+        if (sync?.unsupported) {
+            return Promise.resolve();
+        }
         const state =
             this.sessionStates.get(scope)?.state ??
             // Retain a disconnect clear on the client until it is acknowledged.
@@ -290,6 +294,7 @@ export class LanguageService implements Disposable {
                 // this promise settles. Reconcile it without retrying a failure loop.
                 if (
                     !this.disposed &&
+                    !current.unsupported &&
                     this.clients.get(key) === client &&
                     (current.syncedStateKey !== current.stateKey ||
                         current.syncedReplay !== current.replay) &&
@@ -316,7 +321,17 @@ export class LanguageService implements Disposable {
             }
             const { state, stateKey, replay } = sync;
             try {
-                const applied = await client.sendRequest<boolean>('r/syncSessionState', state);
+                const applied = await client.sendRequest<boolean | 'unsupported'>(
+                    'r/syncSessionState',
+                    state,
+                );
+                if (applied === 'unsupported') {
+                    sync.unsupported = true;
+                    this.outputChannel.appendLine(
+                        'Session package synchronization is unsupported; using static completion.',
+                    );
+                    return;
+                }
                 if (applied === false) {
                     this.outputChannel.appendLine(
                         'R language server rejected the session package state; completion will retry.',

@@ -100,8 +100,12 @@ server$request_handlers[["r/syncSessionState"]] <- function(self, id, params) {
         self$deliver(languageserver:::Response$new(id, result = applied))
         invisible(NULL)
     }
-    if (!is.function(startup_fn) || is.null(tryCatch(self$workspaces, error = function(e) NULL))) {
-        # Versions before the workspace startup API cannot safely reset state.
+    if (!is.function(startup_fn)) {
+        # Older languageserver versions cannot support this feature.
+        reply("unsupported")
+        return(invisible(NULL))
+    }
+    if (is.null(tryCatch(self$workspaces, error = function(e) NULL))) {
         reply(FALSE)
         return(invisible(NULL))
     }

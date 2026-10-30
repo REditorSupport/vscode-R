@@ -105,7 +105,7 @@ suite('Session completion with real R language server', () => {
                         text: 'bs',
                     },
                 });
-            type Completion = { label: string; data?: { package?: string } };
+            type Completion = { label: string; data?: { package?: string; type?: string } };
             const hasSplineCompletion = async (folder: vscode.WorkspaceFolder) => {
                 const response = await languageClient.sendRequest<
                     Completion[] | { items: Completion[] } | null
@@ -168,12 +168,19 @@ suite('Session completion with real R language server', () => {
             );
             await fs.writeFile(
                 path.join(packageRoot, 'NAMESPACE'),
-                'export(sessionOnlyFixture)\nexport(sessionGeneric)\nS3method(sessionGeneric, data.frame)\n',
+                [
+                    'export(sessionOnlyFixture)',
+                    'export(sessionGeneric)',
+                    'export(sessionChain)',
+                    'S3method(sessionGeneric, data.frame)',
+                    '',
+                ].join('\n'),
             );
             await fs.writeFile(
                 path.join(packageRoot, 'R', 'fixture.R'),
                 [
                     'sessionOnlyFixture <- function() 1L',
+                    'sessionChain <- function() list(all = function() list(sunrise = TRUE))',
                     'sessionGeneric <- function(x, ...) UseMethod("sessionGeneric")',
                     'sessionGeneric.data.frame <- function(x, sessionParameter = TRUE, ...) x',
                     '',
@@ -199,6 +206,48 @@ suite('Session completion with real R language server', () => {
             await languageClient.sendNotification('textDocument/didOpen', {
                 textDocument: { uri: fixtureUri, languageId: 'r', version: 1, text: source },
             });
+            const providerProbe = spawnSync(
+                rPath,
+                [
+                    '--vanilla',
+                    '--slave',
+                    '-e',
+                    'cat(exists("member_resolve_packages", asNamespace("languageserver"), inherits=FALSE))',
+                ],
+                { encoding: 'utf8' },
+            );
+            let nestedMembers: (() => Promise<boolean>) | undefined;
+            if (providerProbe.status === 0 && providerProbe.stdout.trim() === 'TRUE') {
+                const chain = 'sessionChain()$all()$su';
+                const chainUri = protocolUri(
+                    vscode.Uri.joinPath(projects[0].uri, 'session-members.R'),
+                );
+                await languageClient.sendNotification('textDocument/didOpen', {
+                    textDocument: {
+                        uri: chainUri,
+                        languageId: 'r',
+                        version: 1,
+                        text: chain,
+                    },
+                });
+                nestedMembers = async () => {
+                    const response = await languageClient.sendRequest<
+                        Completion[] | { items: Completion[] } | null
+                    >('textDocument/completion', {
+                        textDocument: { uri: chainUri },
+                        position: { line: 0, character: chain.length },
+                    });
+                    return (Array.isArray(response) ? response : (response?.items ?? [])).some(
+                        (item) => item.label === 'sunrise' && item.data?.type === 'member',
+                    );
+                };
+                assert.strictEqual(
+                    await nestedMembers(),
+                    false,
+                    'nested members of the installed package must be absent before attachment',
+                );
+            }
+
             service.syncSessionState(
                 {
                     search: ['package:sessionfixture', 'package:base'],
@@ -228,17 +277,12 @@ suite('Session completion with real R language server', () => {
                 'a package in a session-specific library must offer editor completion',
             );
 
-            const providerProbe = spawnSync(
-                rPath,
-                [
-                    '--vanilla',
-                    '--slave',
-                    '-e',
-                    'cat(exists("member_resolve_packages", asNamespace("languageserver"), inherits=FALSE))',
-                ],
-                { encoding: 'utf8' },
-            );
-            if (providerProbe.status === 0 && providerProbe.stdout.trim() === 'TRUE') {
+            if (nestedMembers) {
+                assert.strictEqual(
+                    await nestedMembers(),
+                    true,
+                    'a session-only package must offer nested member completion without library()',
+                );
                 const call = 'sessionGeneric(data.frame(x = 1), )';
                 await languageClient.sendNotification('textDocument/didChange', {
                     textDocument: { uri: fixtureUri, version: 2 },
@@ -277,6 +321,13 @@ suite('Session completion with real R language server', () => {
                 ),
                 'a detached session must not leave private-library completions',
             );
+            if (nestedMembers) {
+                assert.strictEqual(
+                    await nestedMembers(),
+                    false,
+                    'detaching the session must remove its nested member metadata',
+                );
+            }
 
             service.syncSessionState(undefined, projects[0].uri, 'session');
             await internals.syncClientSessionState('global');
