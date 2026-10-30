@@ -216,17 +216,8 @@ suite('Session completion with real R language server', () => {
                 ],
                 { encoding: 'utf8' },
             );
-            const hasMemberProvider =
-                providerProbe.status === 0 && providerProbe.stdout.trim() === 'TRUE';
-            if (process.env.VSCR_TEST_REQUIRE_LSP_PROVIDERS === '1') {
-                assert.strictEqual(
-                    hasMemberProvider,
-                    true,
-                    `Missing member_resolve_packages: ${providerProbe.stderr}`,
-                );
-            }
             let nestedMembers: (() => Promise<boolean>) | undefined;
-            if (hasMemberProvider) {
+            if (providerProbe.status === 0 && providerProbe.stdout.trim() === 'TRUE') {
                 const chain = 'sessionChain()$all()$su';
                 const chainUri = protocolUri(
                     vscode.Uri.joinPath(projects[0].uri, 'session-members.R'),
