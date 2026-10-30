@@ -35,6 +35,10 @@ export class RMarkdownCodeLensProvider implements vscode.CodeLensProvider {
     private readonly currentCellTop: vscode.TextEditorDecorationType;
     private readonly currentCellBottom: vscode.TextEditorDecorationType;
     private onDidChangeTextEditorSelectionHandler: vscode.Disposable | undefined;
+    private readonly highlightedCells = new WeakMap<
+        vscode.TextEditor,
+        { version: number; chunk: RMarkdownChunk | undefined }
+    >();
 
     constructor() {
         this.decoration = vscode.window.createTextEditorDecorationType({
@@ -57,54 +61,30 @@ export class RMarkdownCodeLensProvider implements vscode.CodeLensProvider {
 
         // Register the event listener and store the disposable
         this.onDidChangeTextEditorSelectionHandler = vscode.window.onDidChangeTextEditorSelection(
-            () => this.onDidChangeTextEditorSelection(),
+            ({ textEditor }) => {
+                if (isRDocument(textEditor.document)) {
+                    this.highlightCurrentChunk(getChunks(textEditor.document), textEditor);
+                }
+            },
         );
     }
 
-    // Event handler for text editor selection change
-    private onDidChangeTextEditorSelection() {
-        // Get the active editor
-        const editor = vscode.window.activeTextEditor;
-
-        if (editor) {
-            const document = editor.document;
-            const chunks = getChunks(document);
-
-            // Call highlightCurrentChunk with the updated chunks and document
-            this.highlight(chunks, document);
+    private highlightCurrentChunk(chunks: RMarkdownChunk[], editor: vscode.TextEditor) {
+        const document = editor.document;
+        const currentChunk = getCurrentChunk(chunks, editor.selection.active.line);
+        const previous = this.highlightedCells.get(editor);
+        if (previous?.version === document.version && previous.chunk === currentChunk) {
+            return;
         }
-    }
-
-    private highlightCurrentChunk(chunks: RMarkdownChunk[], document: vscode.TextDocument) {
-        for (const editor of vscode.window.visibleTextEditors) {
-            if (editor.document.uri.toString() === document.uri.toString()) {
-                const lines = document.getText().split(/\r?\n/);
-                const currentLine = editor.selection.active.line;
-                const currentChunk = getCurrentChunk(chunks, currentLine);
-
-                if (currentChunk) {
-                    // set top border
-                    const currentChunkStart = new vscode.Range(
-                        new vscode.Position(currentChunk.startLine, 0),
-                        new vscode.Position(
-                            currentChunk.startLine,
-                            lines[currentChunk.startLine].length,
-                        ),
-                    );
-                    editor.setDecorations(this.currentCellTop, [currentChunkStart]);
-
-                    // set bottom border
-                    const currentChunkEnd = new vscode.Range(
-                        new vscode.Position(currentChunk.endLine, 0),
-                        new vscode.Position(
-                            currentChunk.endLine,
-                            lines[currentChunk.endLine].length,
-                        ),
-                    );
-                    editor.setDecorations(this.currentCellBottom, [currentChunkEnd]);
-                }
-            }
-        }
+        this.highlightedCells.set(editor, { version: document.version, chunk: currentChunk });
+        editor.setDecorations(
+            this.currentCellTop,
+            currentChunk ? [document.lineAt(currentChunk.startLine).range] : [],
+        );
+        editor.setDecorations(
+            this.currentCellBottom,
+            currentChunk ? [document.lineAt(currentChunk.endLine).range] : [],
+        );
     }
 
     private highlightChunks(chunks: RMarkdownChunk[], document: vscode.TextDocument) {
@@ -124,7 +104,11 @@ export class RMarkdownCodeLensProvider implements vscode.CodeLensProvider {
         // Highlight differently for `.R` and `.Rmd` files
         const isRDoc = isRDocument(document);
         if (isRDoc) {
-            this.highlightCurrentChunk(chunks, document);
+            for (const editor of vscode.window.visibleTextEditors) {
+                if (editor.document === document) {
+                    this.highlightCurrentChunk(chunks, editor);
+                }
+            }
         } else {
             this.highlightChunks(chunks, document);
         }
@@ -154,6 +138,10 @@ export class RMarkdownCodeLensProvider implements vscode.CodeLensProvider {
         if (this.onDidChangeTextEditorSelectionHandler) {
             this.onDidChangeTextEditorSelectionHandler.dispose();
         }
+        this.decoration.dispose();
+        this.currentCellTop.dispose();
+        this.currentCellBottom.dispose();
+        this._onDidChangeCodeLenses.dispose();
     }
 }
 
