@@ -2,7 +2,6 @@
 
 import * as os from 'os';
 import { basename, dirname } from 'path';
-import * as net from 'net';
 import { URL } from 'url';
 import * as fs from 'fs';
 import {
@@ -38,6 +37,7 @@ import { CommonOptions } from 'child_process';
 import { boundSessionForDocument, onDidBindSessionDocument, Session } from './session';
 import { SessionSignatureHelpProvider } from './signatureHelp';
 import { completionMiddleware } from './completionMiddleware';
+import { connectTcpLanguageServer } from './languageServerTransport';
 
 export class LanguageService implements Disposable {
     private readonly clients: Map<string, LanguageClient> = new Map();
@@ -47,16 +47,21 @@ export class LanguageService implements Disposable {
     private readonly sessionSignatures = new SessionSignatureHelpProvider();
     private readonly clientUpdates = new Map<string, Promise<void>>();
     private readonly listeners: Disposable[] = [];
+    private readonly startup: Promise<void>;
+    private readonly startupCancellation = new AbortController();
     private disposed = false;
 
     constructor() {
         this.outputChannel = window.createOutputChannel('R Language Server', { log: true });
         this.config = workspace.getConfiguration('r');
-        void this.startLanguageService();
+        this.startup = this.startLanguageService().catch((error: unknown) => {
+            this.outputChannel.appendLine(`Failed to start language server: ${String(error)}`);
+        });
     }
 
     dispose(): Thenable<void> {
         this.disposed = true;
+        this.startupCancellation.abort();
         this.listeners.forEach((listener) => {
             listener.dispose();
         });
@@ -94,8 +99,12 @@ export class LanguageService implements Disposable {
                     client.outputChannel.show();
                 }
             }
-            if (client.needsStop()) {
-                void client.stop();
+            if (client.isRunning()) {
+                void client.stop().catch((error: unknown) => {
+                    client.outputChannel.appendLine(
+                        `Failed to stop language server: ${String(error)}`,
+                    );
+                });
             }
         });
         return childProcess;
@@ -174,29 +183,11 @@ export class LanguageService implements Disposable {
             rScriptPath,
         );
 
-        const tcpServerOptions = () =>
-            new Promise<DisposableProcess | StreamInfo>((resolve, reject) => {
-                // Use a TCP socket because of problems with blocking STDIO
-                const server = net.createServer((socket) => {
-                    // 'connection' listener
-                    console.log('R process connected');
-                    socket.on('end', () => {
-                        console.log('R process disconnected');
-                    });
-                    socket.on('error', (e: Error) => {
-                        console.log(`R process error: ${e.message}`);
-                        reject(e);
-                    });
-                    server.close();
-                    resolve({ reader: socket, writer: socket });
-                });
-                // Listen on random port
-                server.listen(0, '127.0.0.1', () => {
-                    const port = (server.address() as net.AddressInfo).port;
-                    env.VSCR_LSP_PORT = String(port);
-                    return this.spawnServer(client, rPath, args, options);
-                });
-            });
+        const tcpServerOptions = (): Promise<StreamInfo> =>
+            connectTcpLanguageServer((port) => {
+                env.VSCR_LSP_PORT = String(port);
+                return this.spawnServer(client, rPath, args, options);
+            }, this.startupCancellation.signal);
 
         // Options to control the language client
         const clientOptions: LanguageClientOptions = {
@@ -608,12 +599,17 @@ export class LanguageService implements Disposable {
                 this.outputChannel,
                 workspaceFolder?.uri,
             );
+            if (this.disposed) {
+                await client.stop();
+                return;
+            }
             this.clients.set('global', client);
             this.startMultiLanguageService(true);
         }
     }
 
     private async stopLanguageService(): Promise<void> {
+        await this.startup;
         await Promise.all(this.clientUpdates.values());
         const promises: Thenable<void>[] = [];
         for (const client of this.clients.values()) {
