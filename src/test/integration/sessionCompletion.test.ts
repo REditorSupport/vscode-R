@@ -338,6 +338,35 @@ suite('Session completion with real R language server', () => {
                     'disconnect removes session-only completions',
                 );
             }
+
+            // When a package is both session-attached and statically imported,
+            // a changed NAMESPACE must remain authoritative after detach.
+            const namespaceFile = path.join(projects[1].uri.fsPath, 'NAMESPACE');
+            const splines = {
+                search: ['package:splines', 'package:base'],
+                loaded_namespaces: ['splines', 'base'],
+            };
+            service.syncSessionState(splines, projects[0].uri, 'session');
+            await internals.syncClientSessionState('global');
+            await fs.writeFile(namespaceFile, 'import(splines)\n');
+            service.syncSessionState(undefined, projects[0].uri, 'session');
+            await internals.syncClientSessionState('global');
+            assert.strictEqual(
+                await hasSplineCompletion(projects[1]),
+                true,
+                'a static import added during attachment must survive detachment',
+            );
+
+            service.syncSessionState(splines, projects[0].uri, 'session');
+            await internals.syncClientSessionState('global');
+            await fs.rm(namespaceFile);
+            service.syncSessionState(undefined, projects[0].uri, 'session');
+            await internals.syncClientSessionState('global');
+            assert.strictEqual(
+                await hasSplineCompletion(projects[1]),
+                false,
+                'a static import removed during attachment must not survive detachment',
+            );
         } finally {
             try {
                 await service?.dispose();

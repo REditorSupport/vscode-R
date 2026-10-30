@@ -72,8 +72,29 @@ default_startup <- if (is.function(startup_fn)) startup_fn() else character()
 # attached in the interactive R process; S3 resolution consults imports as
 # well as the workspace startup list.
 session_state <- new.env(parent = emptyenv())
-session_state$imports <- list()
-session_state$previous_packages <- character()
+namespace_imports <- get0("extract_namespace_imports", namespace, inherits = FALSE)
+
+# Read static NAMESPACE imports independently from session-attached packages.
+# The imported package set is otherwise indistinguishable when they overlap.
+workspace_static_imports <- function(root) {
+    if (length(root) != 1L) return(character())
+    file <- file.path(root, "NAMESPACE")
+    if (!file.exists(file)) return(character())
+    if (is.function(namespace_imports)) return(namespace_imports(file)$packages)
+
+    # Released languageserver versions with startup_packages, but without the
+    # newer namespace parser, handle ordinary import() directives here.
+    expressions <- tryCatch(parse(file, keep.source = FALSE), error = function(e) expression())
+    packages <- unlist(lapply(expressions, function(expr) {
+        if (!is.call(expr) || !identical(expr[[1L]], quote(import))) return(character())
+        args <- as.list(expr)[-1L]
+        values <- vapply(args, function(arg) {
+            if (is.name(arg) || is.character(arg)) as.character(arg)[1L] else ""
+        }, character(1L), USE.NAMES = FALSE)
+        values[nzchar(values)]
+    }), use.names = FALSE)
+    unique(packages)
+}
 session_state$revision <- 0L
 session_state$pending_reply <- NULL
 
@@ -131,27 +152,7 @@ server$request_handlers[["r/syncSessionState"]] <- function(self, id, params) {
         # A server can outlive an R session. Removing the previous package
         # metadata avoids stale members and S3 signatures after detach.
         for (workspace in self$workspaces$values()) {
-            matches <- vapply(
-                session_state$imports,
-                function(entry) identical(entry$workspace, workspace),
-                logical(1L)
-            )
-            index <- which(matches)
-            if (!length(index)) {
-                base_imports <- workspace$imported_packages
-                session_state$imports[[length(session_state$imports) + 1L]] <-
-                    list(workspace = workspace, imports = base_imports)
-            } else {
-                base_imports <- session_state$imports[[index[[1L]]]]$imports
-                actual <- workspace$imported_packages
-                if (!setequal(actual, union(base_imports, session_state$previous_packages))) {
-                    base_imports <- union(
-                        setdiff(actual, session_state$previous_packages),
-                        intersect(base_imports, session_state$previous_packages)
-                    )
-                    session_state$imports[[index[[1L]]]]$imports <- base_imports
-                }
-            }
+            base_imports <- workspace_static_imports(workspace$root)
             previous <- workspace$startup_packages
             new_startup <- if (length(attached_packages)) rev(attached_packages) else default_startup
             removed <- setdiff(previous, unique(c(new_startup, base_imports)))
@@ -187,7 +188,6 @@ server$request_handlers[["r/syncSessionState"]] <- function(self, id, params) {
             }
         }
 
-        session_state$previous_packages <- attached_packages
         missing <- attached_packages[
             !vapply(
                 attached_packages,

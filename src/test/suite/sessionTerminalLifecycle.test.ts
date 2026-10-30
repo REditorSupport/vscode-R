@@ -1098,16 +1098,21 @@ suite('Session Terminal Lifecycle', () => {
         } as unknown as vscode.Terminal;
         sandbox.stub(vscode.window, 'terminals').value([terminal]);
         const timerSandbox = sinon.createSandbox();
-        const clock = timerSandbox.useFakeTimers();
+        timerSandbox.useFakeTimers();
         const timerSpy = timerSandbox.spy(globalThis, 'setTimeout');
+        const clearTimerSpy = timerSandbox.spy(globalThis, 'clearTimeout');
         const close = new vscode.EventEmitter<vscode.Terminal>();
         sandbox.stub(vscode.window, 'onDidCloseTerminal').callsFake(close.event);
         const waiting = session.waitForTerminalReady(terminal, 30000, file, token);
         try {
             const expire = await waitForTimerDelay(timerSpy, 600000, file);
+            const deadline = timerSpy.getCalls().find((call) => call.args[1] === 600000);
+            assert.ok(deadline);
             expire();
             assert.strictEqual(await waiting, false);
-            assert.strictEqual(clock.countTimers(), 0);
+            // Another extension-host component can schedule unrelated fake timers.
+            // Only the timer owned by this startup wait must be cleared.
+            sinon.assert.calledWith(clearTimerSpy, deadline.returnValue);
         } finally {
             close.fire(terminal);
             timerSandbox.restore();
