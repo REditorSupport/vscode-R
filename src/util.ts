@@ -464,18 +464,22 @@ export class DummyMemento implements vscode.Memento {
     items = new Map<string, any>();
     public get<T>(key: string, defaultValue?: T): T | undefined {
         if (this.items.has(key)) {
-            return <T>this.items.get(key) || defaultValue;
+            return <T>this.items.get(key);
         } else {
             return defaultValue;
         }
     }
     // oxlint-disable-next-line typescript/require-await
     public async update(key: string, value: any): Promise<void> {
-        this.items.set(key, value);
+        if (value === undefined) {
+            this.items.delete(key);
+        } else {
+            this.items.set(key, value);
+        }
     }
 
     public keys(): readonly string[] {
-        return Object.keys(this.items);
+        return [...this.items.keys()];
     }
 }
 

@@ -20,7 +20,7 @@ import { sessionDir, sessionDirectoryExists } from './session';
 import { runTextInTerm, chooseTerminal } from './rTerminal';
 import { config } from './util';
 
-let lastActiveTextEditor: TextEditor;
+let lastActiveTextEditor: TextEditor | undefined;
 
 // Types for rstudioapi
 export type RSCoord = number | 'Inf' | '-Inf';
@@ -63,7 +63,7 @@ export function activeEditorContext(): RSDocumentContext {
     // path
     // contents
     // selection - a list of selections
-    const currentEditor = getLastActiveTextEditor();
+    const currentEditor = requireActiveTextEditor();
     const currentDocument = currentEditor.document;
     return {
         id: { external: currentDocument.uri.toString() },
@@ -153,7 +153,9 @@ export async function replaceTextInCurrentSelection(
     const target = findTargetUri(id);
     console.info(`[replaceTextInCurrentSelection] inserting: ${text} into ${target.path}`);
     const edit = new WorkspaceEdit();
-    edit.replace(target, getLastActiveTextEditor().selection, text);
+    const targetDocument = await workspace.openTextDocument(target);
+    const editor = await reuseOrCreateEditor(targetDocument);
+    edit.replace(target, editor.selection, text);
     await applyEditorEdit(edit);
 }
 
@@ -228,18 +230,24 @@ export async function setSelections(ranges: RSRange[], id: string | null): Promi
 export async function documentSave(id: string | null): Promise<void> {
     const target = findTargetUri(id);
     const targetDocument = await workspace.openTextDocument(target);
-    await targetDocument.save();
+    if (!(await targetDocument.save())) {
+        throw new Error('Could not save document.');
+    }
 }
 
 export async function documentSaveAll(): Promise<void> {
-    await workspace.saveAll();
+    if (!(await workspace.saveAll())) {
+        throw new Error('Could not save all documents.');
+    }
 }
 
 export async function documentClose(id: string | null, save: boolean): Promise<void> {
     const target = findTargetUri(id);
     if (save) {
         const targetDocument = await workspace.openTextDocument(target);
-        await targetDocument.save();
+        if (!(await targetDocument.save())) {
+            throw new Error('Could not save document; it remains open.');
+        }
     }
     const tabs = window.tabGroups.all.flatMap((g) => g.tabs);
     const targetTabs = tabs.filter(
@@ -256,18 +264,19 @@ export function projectPath(): { path: string | undefined } {
         if (workspace.workspaceFolders.length === 1) {
             // In single root common case, this will always work.
             return {
-                path: workspace.workspaceFolders[0].uri.path,
+                path: workspace.workspaceFolders[0].uri.fsPath,
             };
         } else if (workspace.workspaceFolders.length > 1) {
             // In less common multi-root folder case is a bit tricky. If the active
             // text editor has scheme 'untitled:' (is unsaved), then
             // workspace.getWorkspaceFolder() won't be able to find its Uri in any
             // folder and will return undefined.
-            const currentDocument = getLastActiveTextEditor().document;
-            const currentDocFolder = workspace.getWorkspaceFolder(currentDocument.uri);
+            const currentDocument = getLastActiveTextEditor()?.document;
+            const currentDocFolder =
+                currentDocument && workspace.getWorkspaceFolder(currentDocument.uri);
             if (typeof currentDocFolder !== 'undefined') {
                 return {
-                    path: currentDocFolder.uri.path,
+                    path: currentDocFolder.uri.fsPath,
                 };
             }
         }
@@ -493,8 +502,16 @@ function getLastActiveTextEditor() {
         : window.activeTextEditor;
 }
 
+function requireActiveTextEditor(): TextEditor {
+    const editor = getLastActiveTextEditor();
+    if (!editor) {
+        throw new Error('No active text editor is available.');
+    }
+    return editor;
+}
+
 function findTargetUri(id: string | null) {
-    return id === null ? getLastActiveTextEditor().document.uri : Uri.parse(id);
+    return id === null ? requireActiveTextEditor().document.uri : Uri.parse(id);
 }
 
 async function reuseOrCreateEditor(targetDocument: TextDocument) {
@@ -503,19 +520,15 @@ async function reuseOrCreateEditor(targetDocument: TextDocument) {
     // Sometimes the last active is not visible in the case it was overtaken by a
     // WebViewPanel.
 
-    const KnownEditors: TextEditor[] = [];
-
-    KnownEditors.push(lastActiveTextEditor);
-    KnownEditors.push(...window.visibleTextEditors);
-
-    const matchingTextEditors = KnownEditors.filter(
-        (editor) => editor.document.uri.toString() === targetDocument.uri.toString(),
+    const knownEditors = [getLastActiveTextEditor(), ...window.visibleTextEditors];
+    const matchingEditor = knownEditors.find(
+        (editor) => editor?.document.uri.toString() === targetDocument.uri.toString(),
     );
 
-    if (matchingTextEditors.length === 0) {
+    if (!matchingEditor) {
         const newEditor = await window.showTextDocument(targetDocument, ViewColumn.Beside);
         return newEditor;
     } else {
-        return matchingTextEditors[0];
+        return matchingEditor;
     }
 }
