@@ -1,6 +1,7 @@
 'use strict';
 
 import { rm, stat, access } from 'node:fs/promises';
+import { join } from 'node:path';
 import { commands, extensions, window, workspace } from 'vscode';
 
 import { runTextInTerm } from './rTerminal';
@@ -26,7 +27,7 @@ export async function previewEnvironment(): Promise<void> {
             return;
         }
         const tmpDir = createTempDir(currentWorkspaceFolder, true);
-        const pathToTmpCsv = `${tmpDir}/environment.csv`;
+        const pathToTmpCsv = join(tmpDir, 'environment.csv');
         const envName = 'name=ls()';
         const envClass =
             'class=sapply(ls(), function(x) {class(get(x, envir = parent.env(environment())))[1]})';
@@ -69,7 +70,7 @@ export async function previewDataframe(): Promise<boolean | undefined> {
         const tmpDir = createTempDir(currentWorkspaceFolder, true);
 
         // Create R write CSV command.  Turn off row names and quotes, they mess with Excel Viewer.
-        const pathToTmpCsv = `${tmpDir}/${dataframeName}.csv`;
+        const pathToTmpCsv = join(tmpDir, `${dataframeName}.csv`);
         const rWriteCsvCommand = `write.csv(${dataframeName}, ${ToRStringLiteral(pathToTmpCsv, '"')}, row.names = FALSE, quote = FALSE)`;
         await writeAndOpenTmpCSV(rWriteCsvCommand, pathToTmpCsv, tmpDir);
     }
