@@ -14,6 +14,7 @@ suite('Interactive input formatting with independent providers', () => {
     let providers: vscode.Disposable[];
     let previousOnType: boolean | undefined;
     let previousOnPaste: boolean | undefined;
+    let previousAutoClosingBrackets: string | undefined;
     const selector = { scheme: 'vscode-interactive-input', language: 'r' };
     const settings = (): vscode.WorkspaceConfiguration =>
         vscode.workspace.getConfiguration('editor', { languageId: 'r' });
@@ -106,6 +107,23 @@ suite('Interactive input formatting with independent providers', () => {
         editor = vscode.window.activeTextEditor!;
         previousOnType = settings().inspect<boolean>('formatOnType')?.globalLanguageValue;
         previousOnPaste = settings().inspect<boolean>('formatOnPaste')?.globalLanguageValue;
+        previousAutoClosingBrackets =
+            settings().inspect<string>('autoClosingBrackets')?.globalLanguageValue;
+        // This fixture verifies provider triggers. Auto-closing can consume a
+        // typed ')' by moving the cursor, which intentionally makes no edit.
+        // The language-server integration suite separately covers that behavior.
+        await settings().update(
+            'autoClosingBrackets',
+            'never',
+            vscode.ConfigurationTarget.Global,
+            true,
+        );
+        await until(
+            () =>
+                vscode.workspace
+                    .getConfiguration('editor', editor.document)
+                    .get('autoClosingBrackets') === 'never',
+        );
     });
     setup(async () => {
         providers = [];
@@ -125,6 +143,12 @@ suite('Interactive input formatting with independent providers', () => {
     suiteTeardown(async () => {
         await setFormatSetting('formatOnType', previousOnType);
         await setFormatSetting('formatOnPaste', previousOnPaste);
+        await settings().update(
+            'autoClosingBrackets',
+            previousAutoClosingBrackets,
+            vscode.ConfigurationTarget.Global,
+            true,
+        );
         controller.dispose();
         await vscode.window.tabGroups.close(
             vscode.window.tabGroups.all

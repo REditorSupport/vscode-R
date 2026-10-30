@@ -28,6 +28,7 @@ import {
     StreamMessageReader,
     StreamMessageWriter,
     createMessageConnection,
+    DocumentOnTypeFormattingRequest,
 } from 'vscode-languageclient/node';
 
 function treeTooltip(item: vscode.TreeItem): string {
@@ -1331,10 +1332,15 @@ function treeTooltip(item: vscode.TreeItem): string {
                 () =>
                     languageService().clients.get(opened.inputUri.toString())?.isRunning() === true,
             );
-            assert.ok(
-                languageService().clients.get(opened.inputUri.toString())?.initializeResult
-                    ?.capabilities.documentOnTypeFormattingProvider,
-                'languageserver must advertise on-type formatting',
+            // Current servers register formatting dynamically after initialize;
+            // the active provider also covers servers with static capabilities.
+            await until(
+                () =>
+                    languageService()
+                        .clients.get(opened.inputUri.toString())
+                        ?.getFeature(DocumentOnTypeFormattingRequest.method)
+                        .getProvider(document) !== undefined,
+                'languageserver must register on-type formatting for the Interactive input',
             );
             try {
                 for (const [text, ch, expected] of [
