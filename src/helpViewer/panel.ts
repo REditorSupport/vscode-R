@@ -132,6 +132,7 @@ export class HelpPanel {
 
         // called e.g. when the webview panel is closed by the user
         this.panel.onDidDispose(() => {
+            this.scrollYCallback?.(0);
             this.panel = undefined;
             this.history = [];
             this.forwardHistory = [];
@@ -269,16 +270,37 @@ export class HelpPanel {
 
     // Get current scrollY from webview
     private async getScrollY(): Promise<number> {
+        if (!this.panel) {
+            return 0;
+        }
         this.scrollYCallback?.(0);
-        const scrollYPromise = new Promise<number>((resolve, reject) => {
-            const timeout = setTimeout(() => reject('GetScrollY message timed out after 1s'), 1000);
-            this.scrollYCallback = (y: number) => {
+        let finish!: (y: number) => void;
+        const scrollYPromise = new Promise<number>((resolve) => {
+            let settled = false;
+            // Hidden or replaced webview documents may not acknowledge messages.
+            // Losing a scroll position must not disable Back, Forward or Refresh.
+            const timeout = setTimeout(() => finish(0), 1000);
+            finish = (y: number) => {
+                if (settled) {
+                    return;
+                }
+                settled = true;
                 clearTimeout(timeout);
-                this.scrollYCallback = undefined;
+                if (this.scrollYCallback === finish) {
+                    this.scrollYCallback = undefined;
+                }
                 resolve(y);
             };
+            this.scrollYCallback = finish;
         });
-        void this.panel?.webview.postMessage({ command: 'getScrollY' });
+        void this.panel.webview.postMessage({ command: 'getScrollY' }).then(
+            (delivered) => {
+                if (!delivered) {
+                    finish(0);
+                }
+            },
+            () => finish(0),
+        );
         return scrollYPromise;
     }
 
