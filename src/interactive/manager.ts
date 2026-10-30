@@ -1406,11 +1406,14 @@ export class InteractiveManager
             (previous.client.connected || previous.restarting)
         ) {
             if (previous.notebook.notebookType === 'interactive') {
-                await vscode.commands.executeCommand(
+                const result = await vscode.commands.executeCommand<{ inputUri: vscode.Uri }>(
                     'interactive.open',
                     { preserveFocus: true },
                     previous.notebook.uri,
                 );
+                if (result?.inputUri) {
+                    await this.bindInput(previous, result.inputUri);
+                }
             } else {
                 const editor = vscode.window.visibleNotebookEditors.find(
                     (item) => item.notebook === previous.notebook,
@@ -1583,11 +1586,7 @@ export class InteractiveManager
                 });
             }
             if (inputUri) {
-                session.bindSessionDocument(inputUri, target);
-                await vscode.languages.setTextDocumentLanguage(
-                    await vscode.workspace.openTextDocument(inputUri),
-                    'r',
-                );
+                await this.bindInput(view, inputUri);
             }
             const restoring =
                 notebook === existing || (!!savedUri && notebook.uri.toString() === savedUri);
@@ -1638,6 +1637,24 @@ export class InteractiveManager
             }
             throw error;
         }
+    }
+
+    private async bindInput(view: InteractiveView, inputUri: vscode.Uri): Promise<void> {
+        // Native Interactive can recreate its input model when a tab is restored.
+        // Reapply its owner and R language on reopen as well as initial creation.
+        if (
+            view.inputUri &&
+            view.inputUri.toString() !== inputUri.toString() &&
+            session.boundSessionForDocument(view.inputUri) === view.target
+        ) {
+            session.unbindSessionDocument(view.inputUri);
+        }
+        view.inputUri = inputUri;
+        session.bindSessionDocument(inputUri, view.target);
+        await vscode.languages.setTextDocumentLanguage(
+            await vscode.workspace.openTextDocument(inputUri),
+            'r',
+        );
     }
 
     private registerTarget(client: AgentClient): session.Session {
@@ -3285,6 +3302,9 @@ export class InteractiveManager
             if (snapshot.workspace) {
                 target.workspaceData = snapshot.workspace as unknown as session.WorkspaceData;
             }
+            // Restarts can finish in an unselected window. Publish the
+            // replacement process's packages even without activating it.
+            session.updateSessionWorkspace(target, target.workspaceData);
             view.base = snapshot.manifest.assetBase
                 ? (
                       await vscode.env.asExternalUri(vscode.Uri.parse(snapshot.manifest.assetBase))

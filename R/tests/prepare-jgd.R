@@ -498,12 +498,19 @@ local({
     while (!file.exists(profile_log) && Sys.time() < deadline) Sys.sleep(0.01)
     if (!file.exists(profile_log)) stop("Declined startup profile did not connect sess.")
     stopifnot(identical(readLines(profile_log), c("fixture-socket", "FALSE", "FALSE")))
-    startup_status <- readLines(startup_file, warn = FALSE)
+    # On Windows, the child may briefly hold the newly created status file
+    # while writing it. Treat an incomplete or unreadable snapshot as pending
+    # rather than failing before the existing startup deadline.
     deadline <- Sys.time() + 10
-    while (length(startup_status) == 6L && startup_status[[6L]] == "pending" &&
-               Sys.time() < deadline) {
+    startup_status <- character()
+    repeat {
+        startup_status <- tryCatch(
+            if (file.exists(startup_file)) readLines(startup_file, warn = FALSE) else character(),
+            error = function(e) character()
+        )
+        if (length(startup_status) == 6L && startup_status[[6L]] != "pending") break
+        if (Sys.time() >= deadline) break
         Sys.sleep(0.01)
-        startup_status <- readLines(startup_file, warn = FALSE)
     }
     if (length(startup_status) != 6L || startup_status[[6L]] != "ready") {
         logs <- unlist(lapply(c("stdout", "stderr"), function(name) {

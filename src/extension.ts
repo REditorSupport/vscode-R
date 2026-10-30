@@ -45,6 +45,7 @@ export let globalPlotManager: PlotManager | undefined = undefined;
 export let rmdPreviewManager: rmarkdown.RMarkdownPreviewManager | undefined = undefined;
 export let rmdKnitManager: rmarkdown.RMarkdownKnitManager | undefined = undefined;
 export let sessionStatusBarItem: vscode.StatusBarItem | undefined = undefined;
+export let rLanguageService: languageService.LanguageService | undefined = undefined;
 
 // Called (once) when the extension is activated
 export async function activate(
@@ -237,7 +238,8 @@ export async function activate(
             );
             void vscode.commands.executeCommand('workbench.extensions.search', '@installed r-lsp');
         } else {
-            context.subscriptions.push(new languageService.LanguageService());
+            rLanguageService = new languageService.LanguageService();
+            context.subscriptions.push(rLanguageService);
         }
     }
 

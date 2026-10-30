@@ -495,7 +495,27 @@ export function deleteTerminal(term: vscode.Terminal): void {
     }
 }
 
-function getTerminalResource(term: vscode.Terminal): vscode.Uri | undefined {
+/** A routing hint only when the terminal really belongs to a workspace.
+ * Do not use getTerminalResource() here: its active-folder fallback is for
+ * configuring terminal sends, not identifying an R process. */
+export function getTerminalWorkspaceResource(term: vscode.Terminal): vscode.Uri | undefined {
+    if (term === rTerm && rTermResource) {
+        return vscode.workspace.getWorkspaceFolder(rTermResource)?.uri;
+    }
+    const options = term.creationOptions;
+    const cwd = options && 'cwd' in options ? options.cwd : undefined;
+    if (!cwd) {
+        return undefined;
+    }
+    const uri =
+        typeof cwd === 'string'
+            ? (vscode.workspace.workspaceFolders?.find((folder) => folder.uri.fsPath === cwd)
+                  ?.uri ?? vscode.Uri.file(cwd))
+            : cwd;
+    return vscode.workspace.getWorkspaceFolder(uri)?.uri;
+}
+
+export function getTerminalResource(term: vscode.Terminal): vscode.Uri | undefined {
     if (term === rTerm && rTermResource) {
         return rTermResource;
     }

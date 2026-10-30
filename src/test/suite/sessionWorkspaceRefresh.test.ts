@@ -109,6 +109,60 @@ suite('Session workspace refresh demand', () => {
         }
     });
 
+    test('an owned background workspace refreshes packages without explicit demand', async () => {
+        const syncSessionState = sandbox.stub();
+        sandbox.stub(extension, 'rLanguageService').value({
+            syncSessionState,
+            ownsWorkspaceScope: () => true,
+        });
+        const socket = await connections.attach('workspace-lsp-owner', 55104, 'external-host', {
+            autoActivate: false,
+            attachmentId: 'workspace-lsp-owner-fixture',
+        });
+        await session.activateSessionById('workspace-lsp-owner');
+        const background = session.activeSession!;
+        foreground = session.registerSessionTransport('workspace-selected', 'host', '/tmp', () =>
+            Promise.resolve({ globalenv: {}, search: [], loaded_namespaces: [] }),
+        );
+        await session.activateSession(foreground);
+        const requests: Array<{ id: number; method: string }> = [];
+        sandbox.stub(socket, 'write').callsFake((data: string | Uint8Array) => {
+            const message = JSON.parse(data.toString()) as { id: number; method: string };
+            if (message.method === 'workspace') {
+                requests.push(message);
+            }
+            return true;
+        });
+
+        socket.emit('data', Buffer.from('{"jsonrpc":"2.0","method":"workspace_updated"}\n'));
+        const request = await waitForValue(() => requests[0]);
+        socket.emit(
+            'data',
+            Buffer.from(
+                `${JSON.stringify({
+                    jsonrpc: '2.0',
+                    id: request.id,
+                    result: {
+                        revision: 1,
+                        globalenv: {},
+                        search: ['package:splines'],
+                        loaded_namespaces: ['splines'],
+                    },
+                })}\n`,
+            ),
+        );
+        await session.ensureSessionWorkspace(background);
+        assert.deepStrictEqual(background.workspaceData.search, ['package:splines']);
+        sinon.assert.calledWith(
+            syncSessionState,
+            background.workspaceData,
+            background.resource,
+            background.sessionId,
+            false,
+        );
+        assert.strictEqual(session.activeSession, foreground);
+    });
+
     test('native unchanged replies invalidate child values once after a notification burst', async () => {
         const socket = await connections.attach(
             'workspace-native-unchanged',
