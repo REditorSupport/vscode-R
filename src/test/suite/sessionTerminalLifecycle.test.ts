@@ -175,6 +175,88 @@ suite('Session Terminal Lifecycle', () => {
         sandbox.restore();
     });
 
+    test('an unresolved unrelated PID does not delay an exact native terminal match', async () => {
+        const pendingPid = deferred<number>();
+        const unrelatedSend = sandbox.stub();
+        const unrelated = {
+            processId: pendingPid.promise,
+            sendText: unrelatedSend,
+        } as unknown as vscode.Terminal;
+        const sendText = sandbox.stub();
+        const terminal = {
+            processId: Promise.resolve(46290),
+            sendText,
+            show: sandbox.stub(),
+        } as unknown as vscode.Terminal;
+        sandbox.stub(vscode.window, 'terminals').value([unrelated, terminal]);
+        sandbox.stub(vscode.window, 'activeTerminal').value(terminal);
+        const socket = await connections.attach('exact-beyond-pending', 46290);
+        const owner = session.activeSession;
+        assert.ok(owner);
+        assert.strictEqual(socket._terminalPid, 46290);
+        sinon.assert.notCalled(ancestors);
+        await session.executeSessionCode(owner, 'View(iris)');
+        sinon.assert.calledOnceWithExactly(sendText, 'View(iris)');
+
+        pendingPid.resolve(46290);
+        await new Promise<void>((resolve) => setImmediate(resolve));
+        assert.strictEqual(await session.waitForTerminalReady(unrelated, 1), false);
+        await session.executeSessionCode(owner, 'rm(iris)');
+        sinon.assert.calledWithExactly(sendText, 'rm(iris)');
+        sinon.assert.notCalled(unrelatedSend);
+    });
+
+    for (const hasAncestor of [false, true]) {
+        test(`native discovery bounds unresolved PID reads and preserves ancestor ownership (${String(hasAncestor)})`, async () => {
+            const entered = deferred<void>();
+            const pendingPid = deferred<number>();
+            const unrelated = {
+                get processId() {
+                    entered.resolve();
+                    return pendingPid.promise;
+                },
+            } as unknown as vscode.Terminal;
+            const sendText = sandbox.stub();
+            const terminal = {
+                processId: Promise.resolve(46291),
+                sendText,
+                show: sandbox.stub(),
+            } as unknown as vscode.Terminal;
+            sandbox.stub(vscode.window, 'terminals').value([unrelated, terminal]);
+            sandbox.stub(vscode.window, 'activeTerminal').value(terminal);
+            ancestors.withArgs(46292).resolves(hasAncestor ? [46293, 46291] : []);
+            const socket = await connections.startAttach('bounded-native-pids', 46292);
+            const clock = sandbox.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+            try {
+                await entered.promise;
+                assert.strictEqual(socket._sessionId, undefined);
+                await clock.tickAsync(1000);
+                await settleWithFakeTime(
+                    waitFor(() => (socket._sessionId ? true : undefined)),
+                    clock,
+                );
+                assert.strictEqual(socket._terminalPid, hasAncestor ? 46291 : undefined);
+            } finally {
+                clock.restore();
+            }
+            const owner = session.activeSession;
+            assert.ok(owner);
+            pendingPid.resolve(46292);
+            await new Promise<void>((resolve) => setImmediate(resolve));
+            assert.strictEqual(await session.waitForTerminalReady(unrelated, 1), false);
+            if (hasAncestor) {
+                await session.executeSessionCode(owner, 'View(iris)');
+                sinon.assert.calledOnceWithExactly(sendText, 'View(iris)');
+            } else {
+                await assert.rejects(
+                    session.executeSessionCode(owner, 'View(iris)'),
+                    /no attached terminal/,
+                );
+                sinon.assert.notCalled(sendText);
+            }
+        });
+    }
+
     for (const { delayedPid, parents } of [
         { delayedPid: false, parents: [] },
         { delayedPid: true, parents: [] },
