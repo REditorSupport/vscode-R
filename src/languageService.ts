@@ -38,6 +38,7 @@ import { boundSessionForDocument, onDidBindSessionDocument, Session } from './se
 import { SessionSignatureHelpProvider } from './signatureHelp';
 import { completionMiddleware } from './completionMiddleware';
 import { connectTcpLanguageServer } from './languageServerTransport';
+import { CancellableLanguageClient } from './languageServerClient';
 
 export class LanguageService implements Disposable {
     private readonly clients: Map<string, LanguageClient> = new Map();
@@ -49,6 +50,7 @@ export class LanguageService implements Disposable {
     private readonly listeners: Disposable[] = [];
     private readonly startup: Promise<void>;
     private readonly startupCancellation = new AbortController();
+    private readonly startingClients = new Set<CancellableLanguageClient>();
     private disposed = false;
 
     constructor() {
@@ -62,6 +64,7 @@ export class LanguageService implements Disposable {
     dispose(): Thenable<void> {
         this.disposed = true;
         this.startupCancellation.abort();
+        this.startingClients.forEach((client) => client.cancelStartup());
         this.listeners.forEach((listener) => {
             listener.dispose();
         });
@@ -85,6 +88,9 @@ export class LanguageService implements Disposable {
                 `R Language Server (${pid}) exited ` +
                     (signal ? `from signal ${signal}` : `with exit code ${code || 'null'}`),
             );
+            if (this.disposed) {
+                return;
+            }
             if (code !== 0) {
                 if (code === 10) {
                     // languageserver is not installed.
@@ -118,7 +124,7 @@ export class LanguageService implements Disposable {
         resource?: Uri,
         target?: Session,
     ): Promise<LanguageClient> {
-        let client: LanguageClient;
+        let client: CancellableLanguageClient;
         const virtualOnly = selector.every(
             (filter) =>
                 'scheme' in filter &&
@@ -144,6 +150,9 @@ export class LanguageService implements Disposable {
         const debug = this.config.get<boolean>('lsp.debug');
         const useRenvLibPath = this.config.get<boolean>('useRenvLibPath') ?? false;
         const rPath = target?.rPath || (await getRpath(false, resource)) || ''; // TODO: Abort gracefully
+        if (this.disposed) {
+            throw new Error('The R language service is shutting down.');
+        }
         if (debug) {
             console.log(`R path: ${rPath}`);
         }
@@ -183,11 +192,16 @@ export class LanguageService implements Disposable {
             rScriptPath,
         );
 
-        const tcpServerOptions = (): Promise<StreamInfo> =>
-            connectTcpLanguageServer((port) => {
+        const tcpServerOptions = async (): Promise<StreamInfo> => {
+            const transport = await connectTcpLanguageServer((port) => {
                 env.VSCR_LSP_PORT = String(port);
-                return this.spawnServer(client, rPath, args, options);
-            }, this.startupCancellation.signal);
+                return client.ownProcess(this.spawnServer(client, rPath, args, options));
+            }, client.startupSignal);
+            client.ownSocket(transport.reader);
+            return transport;
+        };
+
+        const fileWatcher = workspace.createFileSystemWatcher('**/*.{R,r}');
 
         // Options to control the language client
         const clientOptions: LanguageClientOptions = {
@@ -220,7 +234,7 @@ export class LanguageService implements Disposable {
             synchronize: {
                 // Synchronize the setting section 'r' to the server
                 configurationSection: 'r.lsp',
-                fileEvents: workspace.createFileSystemWatcher('**/*.{R,r}'),
+                fileEvents: fileWatcher,
             },
             middleware: {
                 ...completionMiddleware,
@@ -290,19 +304,39 @@ export class LanguageService implements Disposable {
 
         // Create the language client and start the client.
         if (use_stdio && process.platform !== 'win32') {
-            client = new LanguageClient(
+            client = new CancellableLanguageClient(
                 'r',
                 'R Language Server',
                 { command: rPath, args: args, options: options },
                 clientOptions,
+                this.startupCancellation.signal,
             );
         } else {
-            client = new LanguageClient('r', 'R Language Server', tcpServerOptions, clientOptions);
+            client = new CancellableLanguageClient(
+                'r',
+                'R Language Server',
+                tcpServerOptions,
+                clientOptions,
+                this.startupCancellation.signal,
+            );
         }
 
-        extensionContext.subscriptions.push(client);
-        await client.start();
-        return client;
+        extensionContext.subscriptions.push(client, fileWatcher);
+        this.startingClients.add(client);
+        try {
+            await client.start();
+            if (this.disposed) {
+                await client.stop();
+                throw new Error('The R language service is shutting down.');
+            }
+            return client;
+        } catch (error) {
+            client.cancelStartup();
+            fileWatcher.dispose();
+            throw error;
+        } finally {
+            this.startingClients.delete(client);
+        }
     }
 
     private checkClient(name: string): boolean {
