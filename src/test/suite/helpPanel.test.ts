@@ -23,6 +23,17 @@ suite('Help panel navigation', () => {
         return { promise, resolve };
     }
 
+    async function settleNavigation(navigation: Promise<void>): Promise<void> {
+        await navigation;
+        await new Promise<void>((resolve) => setImmediate(resolve));
+    }
+
+    async function markHistoryStale(): Promise<void> {
+        load.resolves(undefined);
+        await help.refresh();
+        load.resetHistory();
+    }
+
     setup(async () => {
         sandbox = sinon.createSandbox();
         mockExtensionContext(path.resolve(__dirname, '../../..'), sandbox);
@@ -213,5 +224,199 @@ suite('Help panel navigation', () => {
         assert.strictEqual(await prepared, false);
         assert.doesNotMatch(panel.webview.html, /Math/);
         assert.strictEqual(help.panel, undefined);
+    });
+
+    test('a preview refresh cannot cancel a selected page awaiting HTML preparation', async () => {
+        await help.showHelpFile({
+            requestPath: '/second',
+            packageDir: '/pkg',
+            isPreview: true,
+            html: '<body>Old preview</body>',
+        });
+        const external = deferred<vscode.Uri>();
+        const preparing = deferred<void>();
+        sandbox.stub(vscode.env, 'asExternalUri').callsFake(() => {
+            preparing.resolve();
+            return external.promise;
+        });
+        load.resolves({
+            requestPath: '/second',
+            packageDir: '/pkg',
+            isPreview: true,
+            html: '<body>Refreshed old preview</body>',
+        });
+        postMessage.resolves(false);
+        const selected = help.showHelpFile({
+            requestPath: '/destination',
+            url: 'http://localhost:1234/destination',
+            html: '<body>Selected destination<script src="katex.js"></script></body>',
+        });
+        await preparing.promise;
+        await help.refreshPreview('/pkg');
+        external.resolve(vscode.Uri.parse('http://localhost:1234/katex.js'));
+        assert.strictEqual(await selected, true);
+        assert.match(panel.webview.html, /Selected destination/);
+        assert.doesNotMatch(panel.webview.html, /Old preview|Refreshed old preview/);
+        sinon.assert.notCalled(load);
+    });
+
+    test('a preview refresh cannot cancel a selected page whose file is pending', async () => {
+        await help.showHelpFile({
+            requestPath: '/second',
+            packageDir: '/pkg',
+            isPreview: true,
+            html: '<body>Old preview</body>',
+        });
+        const file = deferred<HelpFile>();
+        load.resolves({
+            requestPath: '/second',
+            packageDir: '/pkg',
+            isPreview: true,
+            html: '<body>Refreshed old preview</body>',
+        });
+        postMessage.resolves(false);
+        const selected = help.showHelpFile(file.promise);
+        await help.refreshPreview('/pkg');
+        file.resolve({ requestPath: '/destination', html: '<body>Selected destination</body>' });
+        assert.strictEqual(await selected, true);
+        assert.match(panel.webview.html, /Selected destination/);
+        sinon.assert.notCalled(load);
+    });
+
+    test('a preview refresh during stale Back navigation preserves the selected destination', async () => {
+        await help.showHelpFile({
+            requestPath: '/third',
+            packageDir: '/pkg',
+            isPreview: true,
+            html: '<body>History C</body>',
+        });
+        postMessage.resolves(false);
+        await markHistoryStale();
+        const file = deferred<HelpFile>();
+        const requested = deferred<void>();
+        load.withArgs('/second', true, true).callsFake(() => {
+            requested.resolve();
+            return file.promise;
+        });
+        load.withArgs('/third', undefined, true).resolves({
+            requestPath: '/third',
+            packageDir: '/pkg',
+            isPreview: true,
+            html: '<body>Refreshed C</body>',
+        });
+        const back = help.goBack();
+        await requested.promise;
+        await help.refreshPreview('/pkg');
+        file.resolve({ requestPath: '/second', html: '<body>History B</body>' });
+        await settleNavigation(back);
+        assert.match(panel.webview.html, /History B/);
+        sinon.assert.neverCalledWith(load, '/third', undefined, true);
+        await settleNavigation(help.goForward());
+        assert.match(panel.webview.html, /History C/);
+    });
+
+    test('a cancelled stale Back navigation does not remove its history destination', async () => {
+        await help.showHelpFile({ requestPath: '/third', html: '<body>History C</body>' });
+        postMessage.resolves(false);
+        await markHistoryStale();
+        const file = deferred<HelpFile>();
+        const requested = deferred<void>();
+        load.withArgs('/second', true, true).callsFake(() => {
+            requested.resolve();
+            return file.promise;
+        });
+        const back = help.goBack();
+        await requested.promise;
+        await help.showHelpFile({ requestPath: '/fourth', html: '<body>Selected D</body>' });
+        file.resolve({ requestPath: '/second', html: '<body>History B</body>' });
+        await settleNavigation(back);
+        assert.match(panel.webview.html, /Selected D/);
+        await settleNavigation(help.goBack());
+        assert.match(panel.webview.html, /History C/);
+        await settleNavigation(help.goBack());
+        assert.match(panel.webview.html, /History B/);
+    });
+
+    test('a cancelled stale Forward navigation keeps its destination for retry', async () => {
+        await help.showHelpFile({ requestPath: '/third', html: '<body>History C</body>' });
+        postMessage.resolves(false);
+        await settleNavigation(help.goBack());
+        assert.match(panel.webview.html, /Second/);
+        await markHistoryStale();
+        const file = deferred<HelpFile>();
+        const requested = deferred<void>();
+        load.withArgs('/third', true, true).callsFake(() => {
+            requested.resolve();
+            return file.promise;
+        });
+        const forward = help.goForward();
+        await requested.promise;
+        await help.showHelpFile(
+            { requestPath: '/second', html: '<body>B replacement</body>' },
+            false,
+        );
+        file.resolve({ requestPath: '/third', html: '<body>History C</body>' });
+        await settleNavigation(forward);
+        assert.match(panel.webview.html, /B replacement/);
+        await settleNavigation(help.goForward());
+        assert.match(panel.webview.html, /History C/);
+        await settleNavigation(help.goBack());
+        assert.match(panel.webview.html, /B replacement/);
+        await settleNavigation(help.goBack());
+        assert.match(panel.webview.html, /First/);
+    });
+
+    test('a rejected stale Back fetch preserves history and allows refresh and retry', async () => {
+        await help.showHelpFile({ requestPath: '/third', html: '<body>History C</body>' });
+        postMessage.resolves(false);
+        await markHistoryStale();
+        const failure = new Error('Back fetch failed');
+        const backLoad = load.withArgs('/second', true, true);
+        backLoad.onFirstCall().rejects(failure);
+        backLoad
+            .onSecondCall()
+            .resolves({ requestPath: '/second', html: '<body>History B</body>' });
+        await assert.rejects(help.goBack(), (error) => error === failure);
+        assert.match(panel.webview.html, /History C/);
+        load.withArgs('/third', undefined, true).resolves({
+            requestPath: '/third',
+            html: '<body>Refreshed C</body>',
+        });
+        await help.refresh();
+        assert.match(panel.webview.html, /Refreshed C/);
+        await settleNavigation(help.goBack());
+        assert.match(panel.webview.html, /History B/);
+        await settleNavigation(help.goForward());
+        assert.match(panel.webview.html, /Refreshed C/);
+    });
+
+    test('failed Forward HTML preparation preserves its destination and allows refresh and retry', async () => {
+        await help.showHelpFile({ requestPath: '/third', html: '<body>History C</body>' });
+        postMessage.resolves(false);
+        await settleNavigation(help.goBack());
+        await markHistoryStale();
+        load.withArgs('/third', true, true).resolves({
+            requestPath: '/third',
+            url: 'http://localhost:1234/third',
+            html: '<body>History C math<script src="katex.js"></script></body>',
+        });
+        const failure = new Error('Forward HTML preparation failed');
+        const external = sandbox.stub(vscode.env, 'asExternalUri');
+        external.onFirstCall().rejects(failure);
+        external.onSecondCall().resolves(vscode.Uri.parse('http://localhost:1234/katex.js'));
+        await assert.rejects(help.goForward(), (error) => error === failure);
+        assert.match(panel.webview.html, /Second/);
+        load.withArgs('/second', undefined, true).resolves({
+            requestPath: '/second',
+            html: '<body>Refreshed B</body>',
+        });
+        await help.refresh();
+        assert.match(panel.webview.html, /Refreshed B/);
+        await settleNavigation(help.goForward());
+        assert.match(panel.webview.html, /History C math/);
+        await settleNavigation(help.goBack());
+        assert.match(panel.webview.html, /Refreshed B/);
+        await settleNavigation(help.goBack());
+        assert.match(panel.webview.html, /First/);
     });
 });
