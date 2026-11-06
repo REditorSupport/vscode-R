@@ -227,7 +227,7 @@ suite('Language service initialization cancellation', () => {
                         const response = JSON.stringify({jsonrpc:'2.0', id:message.id, result:message.method === 'initialize' ? {capabilities:{}} : null});
                         output.write('Content-Length: ' + Buffer.byteLength(response) + '\\r\\n\\r\\n' + response);
                     }
-                    if (${reply} && message.method === 'exit') process.exit(0);
+                    if (${reply} && message.method === 'exit') setTimeout(() => process.exit(0), 75);
                 }
             });
             input.on('error', () => {});
@@ -331,6 +331,11 @@ suite('Language service initialization cancellation', () => {
             const firstExit = new Promise<void>((resolve) => first.once('close', () => resolve()));
             await client.stop();
             await firstExit;
+            assert.strictEqual(
+                first.exitCode,
+                0,
+                'Graceful shutdown must allow server cleanup to finish',
+            );
             assert.ok(
                 shutdowns.has(first),
                 'Running clients must send shutdown before transport cleanup',
@@ -342,10 +347,41 @@ suite('Language service initialization cancellation', () => {
             const nextExit = new Promise<void>((resolve) => next.once('close', () => resolve()));
             await service.dispose();
             await nextExit;
+            assert.strictEqual(next.exitCode, 0);
             assert.ok(shutdowns.has(next));
             assert.strictEqual(state.startingClients.size, 0);
         });
     }
+
+    test('disposal cancels a pending executable lookup and does not start a late client', async () => {
+        configure(false, false);
+        let finish!: (value: string) => void;
+        (util.getRpath as sinon.SinonStub).returns(
+            new Promise<string>((resolve) => {
+                finish = resolve;
+            }),
+        );
+        service = new LanguageService();
+        await Promise.resolve();
+        let deadline: NodeJS.Timeout | undefined;
+        try {
+            await Promise.race([
+                service.dispose(),
+                new Promise<never>((_resolve, reject) => {
+                    deadline = setTimeout(
+                        () => reject(new Error('Executable lookup blocked disposal')),
+                        3000,
+                    );
+                }),
+            ]);
+        } finally {
+            clearTimeout(deadline);
+            finish(process.execPath);
+        }
+        await Promise.resolve();
+        assert.strictEqual(children.length, 0);
+        assert.strictEqual(watcherDisposals.length, 0);
+    });
 
     test('disposal cancels every pending multi-server initialization before awaiting updates', async () => {
         configure(false, true);

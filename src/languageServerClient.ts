@@ -1,6 +1,7 @@
 import { LanguageClient, State } from 'vscode-languageclient/node';
 import type { LanguageClientOptions, ServerOptions } from 'vscode-languageclient/node';
 import type { Socket } from 'node:net';
+import type { ChildProcess } from 'node:child_process';
 import type { DisposableProcess } from './util';
 
 function cancelledStartup(): Error {
@@ -13,6 +14,7 @@ function cancelledStartup(): Error {
 class StartupResources {
     readonly cancellation = new AbortController();
     private readonly releases: Array<() => void> = [];
+    private readonly exits: Promise<void>[] = [];
     private disposed = false;
 
     constructor(
@@ -53,6 +55,35 @@ class StartupResources {
         this.parent.removeEventListener('abort', this.dispose);
     }
 
+    watchProcess(child: ChildProcess): void {
+        if (this.disposed || child.exitCode !== null || child.signalCode !== null) {
+            return;
+        }
+        this.exits.push(
+            new Promise<void>((resolve) => {
+                child.once('close', resolve);
+                this.own(() => child.removeListener('close', resolve));
+            }),
+        );
+    }
+
+    async waitForExit(): Promise<void> {
+        let timer: NodeJS.Timeout | undefined;
+        try {
+            // shutdown()/exit() acknowledge transport writes, not process exit.
+            // Let cooperative R servers clean up their workers before forcing
+            // transport/process disposal, matching the node client's grace.
+            await Promise.race([
+                Promise.all(this.exits),
+                new Promise<void>((resolve) => {
+                    timer = setTimeout(resolve, 2000);
+                }),
+            ]);
+        } finally {
+            clearTimeout(timer);
+        }
+    }
+
     throwIfCancelled(): void {
         if (this.disposed) {
             throw cancelledStartup();
@@ -91,6 +122,9 @@ export class CancellableLanguageClient extends LanguageClient {
         if (this.starting || this.isRunning()) {
             return this.starting ?? super.start();
         }
+        if (this.state === State.Starting && this.resources?.cancellation.signal.aborted) {
+            return Promise.reject(cancelledStartup());
+        }
         const resources = new StartupResources(this.cancellation, (error) =>
             this.outputChannel.appendLine(`Failed to release language server: ${String(error)}`),
         );
@@ -101,9 +135,14 @@ export class CancellableLanguageClient extends LanguageClient {
         // v10's connection-close handler can clear its shared start promise
         // before initialize rejects. Its idempotent second call snapshots that
         // promise, so both it and the outer startup operation stay observed.
+        let aborted!: () => void;
+        const cancelled = new Promise<never>((_resolve, reject) => {
+            aborted = () => reject(cancelledStartup());
+            resources.cancellation.signal.addEventListener('abort', aborted, { once: true });
+        });
         const operation = super.start();
         const initialized = super.start();
-        const starting = Promise.all([operation, initialized])
+        const starting = Promise.race([Promise.all([operation, initialized]), cancelled])
             .then(
                 () => resources.finishStartup(),
                 (error: unknown) => {
@@ -112,6 +151,7 @@ export class CancellableLanguageClient extends LanguageClient {
                 },
             )
             .finally(() => {
+                resources.cancellation.signal.removeEventListener('abort', aborted);
                 if (this.starting === starting) {
                     this.starting = undefined;
                 }
@@ -126,6 +166,7 @@ export class CancellableLanguageClient extends LanguageClient {
 
     ownProcess(child: DisposableProcess): DisposableProcess {
         if (this.resources) {
+            this.resources.watchProcess(child);
             child.dispose = this.resources.own(child.dispose.bind(child));
         }
         return child;
@@ -140,18 +181,20 @@ export class CancellableLanguageClient extends LanguageClient {
     }
 
     protected override async createMessageTransports(encoding: string) {
+        const resources = this.resources;
         const transports = await super.createMessageTransports(encoding);
         // Executable-based stdio starts inside LanguageClient. Its public process
         // handle is available once transports exist, before initialize is sent.
         const child = this.serverProcess;
         if (child) {
-            this.resources?.own(() => {
+            resources?.watchProcess(child);
+            resources?.own(() => {
                 child.stdout?.destroy();
                 child.stdin?.destroy();
                 child.kill('SIGKILL');
             });
         }
-        this.resources?.throwIfCancelled();
+        resources?.throwIfCancelled();
         return transports;
     }
 
@@ -166,6 +209,7 @@ export class CancellableLanguageClient extends LanguageClient {
         }
         try {
             await super.stop(timeout);
+            await resources?.waitForExit();
         } finally {
             resources?.dispose();
         }

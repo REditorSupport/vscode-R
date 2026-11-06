@@ -39,6 +39,7 @@ import { SessionSignatureHelpProvider } from './signatureHelp';
 import { completionMiddleware } from './completionMiddleware';
 import { connectTcpLanguageServer } from './languageServerTransport';
 import { CancellableLanguageClient } from './languageServerClient';
+import { withRpcCancellation } from './nativeRpc';
 
 export class LanguageService implements Disposable {
     private readonly clients: Map<string, LanguageClient> = new Map();
@@ -149,7 +150,13 @@ export class LanguageService implements Disposable {
         const resourceConfig = config(resource);
         const debug = this.config.get<boolean>('lsp.debug');
         const useRenvLibPath = this.config.get<boolean>('useRenvLibPath') ?? false;
-        const rPath = target?.rPath || (await getRpath(false, resource)) || ''; // TODO: Abort gracefully
+        const rPath =
+            target?.rPath ||
+            (await withRpcCancellation(
+                () => getRpath(false, resource),
+                this.startupCancellation.signal,
+            )) ||
+            ''; // TODO: Abort gracefully
         if (this.disposed) {
             throw new Error('The R language service is shutting down.');
         }
