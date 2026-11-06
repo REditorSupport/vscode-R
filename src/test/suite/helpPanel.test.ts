@@ -105,6 +105,62 @@ suite('Help panel navigation', () => {
         sinon.assert.notCalled(postMessage);
     });
 
+    test('a newer refresh wins when the older page fetch completes first', async () => {
+        const first = deferred<HelpFile>();
+        const second = deferred<HelpFile>();
+        load.onFirstCall().returns(first.promise);
+        load.onSecondCall().returns(second.promise);
+        postMessage.resolves(false);
+        const older = help.refresh();
+        const newer = help.refresh();
+        first.resolve({ requestPath: '/second', html: '<body>Older refresh</body>' });
+        await older;
+        const htmlAfterOlder = panel.webview.html;
+        second.resolve({ requestPath: '/second', html: '<body>Latest refresh</body>' });
+        await newer;
+        assert.match(htmlAfterOlder, /Second/);
+        assert.doesNotMatch(htmlAfterOlder, /Older refresh/);
+        assert.match(panel.webview.html, /Latest refresh/);
+        sinon.assert.calledOnce(postMessage);
+    });
+
+    test('an older preview scroll timeout cannot invalidate a newer pending refresh', async () => {
+        await help.showHelpFile({
+            requestPath: '/second',
+            packageDir: '/pkg',
+            isPreview: true,
+            html: '<body>Original preview</body>',
+        });
+        const original = panel.webview.html;
+        const second = deferred<HelpFile>();
+        load.onFirstCall().resolves({
+            requestPath: '/second',
+            packageDir: '/pkg',
+            isPreview: true,
+            html: '<body>Older preview</body>',
+        });
+        load.onSecondCall().returns(second.promise);
+        const clock = sandbox.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+        const older = help.refreshPreview('/pkg');
+        await clock.tickAsync(0);
+        sinon.assert.calledOnce(postMessage);
+        const newer = help.refreshPreview('/pkg');
+        await clock.tickAsync(1000);
+        await older;
+        const htmlAfterOlder = panel.webview.html;
+        second.resolve({
+            requestPath: '/second',
+            packageDir: '/pkg',
+            isPreview: true,
+            html: '<body>Latest preview</body>',
+        });
+        await clock.tickAsync(1000);
+        await newer;
+        assert.strictEqual(htmlAfterOlder, original);
+        assert.match(panel.webview.html, /Latest preview/);
+        assert.strictEqual(clock.countTimers(), 0);
+    });
+
     test('closing Help during a refresh scroll wait leaves it closed and cancels its timer', async () => {
         const clock = sandbox.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
         load.resolves({ requestPath: '/second', html: '<body>Refreshed</body>' });

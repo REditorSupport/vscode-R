@@ -77,10 +77,10 @@ export class HelpPanel {
     private async refreshCurrentEntry(): Promise<void> {
         const panel = this.panel;
         const entry = this.currentEntry;
-        const revision = this.renderRevision;
         if (!panel || !entry) {
             return;
         }
+        const revision = ++this.renderRevision;
         const isCurrent = () =>
             this.panel === panel && this.currentEntry === entry && this.renderRevision === revision;
         const newHelpFile = await this.rHelp.getHelpFileForPath(
