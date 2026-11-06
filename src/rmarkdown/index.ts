@@ -34,16 +34,24 @@ export class RMarkdownCodeLensProvider implements vscode.CodeLensProvider {
     public readonly onDidChangeCodeLenses: vscode.Event<void> = this._onDidChangeCodeLenses.event;
     private readonly currentCellTop: vscode.TextEditorDecorationType;
     private readonly currentCellBottom: vscode.TextEditorDecorationType;
-    private onDidChangeTextEditorSelectionHandler: vscode.Disposable | undefined;
+    private readonly listeners: vscode.Disposable[] = [];
+    private readonly chunkBackgroundEnabled: boolean;
     private readonly highlightedCells = new WeakMap<
         vscode.TextEditor,
         { version: number; chunk: RMarkdownChunk | undefined }
     >();
+    private readonly highlightedBackgrounds = new WeakMap<
+        vscode.TextEditor,
+        { document: vscode.TextDocument; version: number; languageId: string }
+    >();
+    private readonly backgroundRanges = new WeakMap<RMarkdownChunk[], vscode.Range[]>();
 
     constructor() {
+        const backgroundColor = config().get<string>('rmarkdown.chunkBackgroundColor');
+        this.chunkBackgroundEnabled = Boolean(backgroundColor);
         this.decoration = vscode.window.createTextEditorDecorationType({
             isWholeLine: true,
-            backgroundColor: config().get('rmarkdown.chunkBackgroundColor'),
+            backgroundColor,
         });
         // From https://github.com/microsoft/vscode-jupyter/blob/f8c0f925d855a45240fd06875b17216e47eb08f8/src/interactive-window/editor-integration/decorator.ts#L84
         this.currentCellTop = vscode.window.createTextEditorDecorationType({
@@ -59,14 +67,61 @@ export class RMarkdownCodeLensProvider implements vscode.CodeLensProvider {
             isWholeLine: true,
         });
 
-        // Register the event listener and store the disposable
-        this.onDidChangeTextEditorSelectionHandler = vscode.window.onDidChangeTextEditorSelection(
-            ({ textEditor }) => {
-                if (isRDocument(textEditor.document)) {
-                    this.highlightCurrentChunk(getChunks(textEditor.document), textEditor);
+        // Decorations have their own setting and must also update when VS Code
+        // does not request CodeLens. Cache both document scans and editor writes.
+        this.listeners.push(
+            vscode.window.onDidChangeTextEditorSelection(({ textEditor }) =>
+                this.updateEditorDecorations(textEditor),
+            ),
+            vscode.window.onDidChangeVisibleTextEditors((editors) =>
+                editors.forEach((editor) => this.updateEditorDecorations(editor)),
+            ),
+            vscode.workspace.onDidChangeTextDocument(({ document }) => {
+                for (const editor of vscode.window.visibleTextEditors) {
+                    if (editor.document === document) {
+                        this.updateEditorDecorations(editor);
+                    }
                 }
-            },
+            }),
         );
+        vscode.window.visibleTextEditors.forEach((editor) => this.updateEditorDecorations(editor));
+    }
+
+    private updateEditorDecorations(editor: vscode.TextEditor, chunks?: RMarkdownChunk[]): void {
+        const document = editor.document;
+        if (document.languageId !== 'rmd' && this.highlightedBackgrounds.has(editor)) {
+            editor.setDecorations(this.decoration, []);
+            this.highlightedBackgrounds.delete(editor);
+        }
+        if (!isRDocument(document) && this.highlightedCells.has(editor)) {
+            editor.setDecorations(this.currentCellTop, []);
+            editor.setDecorations(this.currentCellBottom, []);
+            this.highlightedCells.delete(editor);
+        }
+        if (isRDocument(document)) {
+            this.highlightCurrentChunk(chunks ?? getChunks(document), editor);
+        } else if (document.languageId === 'rmd' && this.chunkBackgroundEnabled) {
+            const previous = this.highlightedBackgrounds.get(editor);
+            if (
+                previous?.document === document &&
+                previous.version === document.version &&
+                previous.languageId === document.languageId
+            ) {
+                return;
+            }
+            chunks ??= getChunks(document);
+            let ranges = this.backgroundRanges.get(chunks);
+            if (!ranges) {
+                ranges = chunks.map((chunk) => chunk.chunkRange);
+                this.backgroundRanges.set(chunks, ranges);
+            }
+            editor.setDecorations(this.decoration, ranges);
+            this.highlightedBackgrounds.set(editor, {
+                document,
+                version: document.version,
+                languageId: document.languageId,
+            });
+        }
     }
 
     private highlightCurrentChunk(chunks: RMarkdownChunk[], editor: vscode.TextEditor) {
@@ -87,33 +142,6 @@ export class RMarkdownCodeLensProvider implements vscode.CodeLensProvider {
         );
     }
 
-    private highlightChunks(chunks: RMarkdownChunk[], document: vscode.TextDocument) {
-        const chunkRanges = chunks.map((chunk) => chunk.chunkRange);
-        for (const editor of vscode.window.visibleTextEditors) {
-            if (editor.document.uri.toString() === document.uri.toString()) {
-                editor.setDecorations(this.decoration, chunkRanges);
-            }
-        }
-    }
-
-    private highlight(chunks: RMarkdownChunk[], document: vscode.TextDocument) {
-        if (!chunks) {
-            return;
-        }
-
-        // Highlight differently for `.R` and `.Rmd` files
-        const isRDoc = isRDocument(document);
-        if (isRDoc) {
-            for (const editor of vscode.window.visibleTextEditors) {
-                if (editor.document === document) {
-                    this.highlightCurrentChunk(chunks, editor);
-                }
-            }
-        } else {
-            this.highlightChunks(chunks, document);
-        }
-    }
-
     public provideCodeLenses(
         document: vscode.TextDocument,
         token: vscode.CancellationToken,
@@ -121,7 +149,11 @@ export class RMarkdownCodeLensProvider implements vscode.CodeLensProvider {
         const chunks = getChunks(document);
 
         // Highlight chunks
-        this.highlight(chunks, document);
+        for (const editor of vscode.window.visibleTextEditors) {
+            if (editor.document === document) {
+                this.updateEditorDecorations(editor, chunks);
+            }
+        }
 
         // Loop through chunks and setup
         const codeLenses = getCodeLenses(chunks, token);
@@ -135,9 +167,9 @@ export class RMarkdownCodeLensProvider implements vscode.CodeLensProvider {
     // Clean-up
     dispose() {
         // Unregister the event listener when the provider is disposed
-        if (this.onDidChangeTextEditorSelectionHandler) {
-            this.onDidChangeTextEditorSelectionHandler.dispose();
-        }
+        this.listeners.forEach((listener) => {
+            listener.dispose();
+        });
         this.decoration.dispose();
         this.currentCellTop.dispose();
         this.currentCellBottom.dispose();
