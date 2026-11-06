@@ -82,7 +82,7 @@ Use Linux or macOS for Interactive runtime tests, with R and an installed arf 0.
 ```sh
 export R_LIBS=/path/to/test-library
 mkdir -p "$R_LIBS"
-Rscript -e 'install.packages(c("remotes", "languageserver", "lintr", "renv"))'
+Rscript -e 'install.packages(c("remotes", "languageserver", "lintr", "styler", "renv"))'
 pnpm run build
 Rscript -e 'tinytest::test_package("sess")'
 ```
