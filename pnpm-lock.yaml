@@ -27,8 +27,8 @@ importers:
         specifier: ^11.12.0
         version: 11.12.0
       js-yaml:
-        specifier: ^4.3.2
-        version: 4.3.2
+        specifier: ^5.5.0
+        version: 5.5.0
       vscode-languageclient:
         specifier: ^10.1.2
         version: 10.1.2
