@@ -381,6 +381,10 @@ export class HelpPanel {
                 forward.pop();
                 history.push(departing);
             }
+            panel.reveal(undefined, false);
+            if (!isCurrent()) {
+                return;
+            }
             this.publishHelpFile(prepared, panel.webview, history, forward);
             this.endNavigation(revision);
             await this.setContextValues();
