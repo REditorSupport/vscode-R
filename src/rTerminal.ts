@@ -30,7 +30,7 @@ import { config, delay, getRterm, getCurrentWorkspaceFolder, getRPathConfigEntry
 import { resolveBackend, jgdEnabled, CommonPlotManager } from './plotViewer';
 import { tryInteractiveExecution } from './interactive/executionTarget';
 import * as fs from 'fs';
-import * as yaml from 'js-yaml';
+import { loadRMarkdownYaml } from './rmarkdown/yaml';
 
 export let rTerm: vscode.Terminal | undefined = undefined;
 let rTermResource: vscode.Uri | undefined;
@@ -96,12 +96,6 @@ const terminalSends = new WeakMap<vscode.Terminal, Promise<void>>();
 let lastParamsRmdPath: string | undefined;
 let lastParamsRmdVersion: number | undefined;
 
-const rExprType = new yaml.Type('!r', {
-    kind: 'scalar',
-    construct: (data: string) => ({ __rExpr: data }),
-});
-const RMARKDOWN_SCHEMA = yaml.DEFAULT_SCHEMA.extend([rExprType]);
-
 function valueToR(val: unknown): string {
     if (val === null || val === undefined) {
         return 'NULL';
@@ -117,6 +111,12 @@ function valueToR(val: unknown): string {
     }
     if (typeof val === 'object' && val !== null && '__rExpr' in (val as Record<string, unknown>)) {
         return (val as { __rExpr: string }).__rExpr;
+    }
+    if (val instanceof Set) {
+        // js-yaml 5 represents !!set with Set instead of an object of nulls.
+        return valueToR(
+            Object.fromEntries(Array.from(val as Set<unknown>, (key) => [String(key), null])),
+        );
     }
     if (Array.isArray(val)) {
         return `c(${val.map(valueToR).join(', ')})`;
@@ -145,10 +145,7 @@ export function getRmdParamsCommand(document: vscode.TextDocument): string | und
     lastParamsRmdPath = filePath;
     lastParamsRmdVersion = document.version;
     try {
-        const frontmatter = yaml.load(match[1], { schema: RMARKDOWN_SCHEMA }) as Record<
-            string,
-            unknown
-        >;
+        const frontmatter = loadRMarkdownYaml(match[1]) as Record<string, unknown>;
         const params = frontmatter?.['params'] as Record<string, unknown> | undefined;
         if (!params || typeof params !== 'object') {
             return undefined;

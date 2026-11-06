@@ -151,6 +151,46 @@ suite('R Markdown execution', () => {
         );
     });
 
+    test('knit frontmatter preserves merged commands alongside !r parameters', async () => {
+        const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'vscode-r-knit-yaml-'));
+        try {
+            const file = path.join(directory, 'test.Rmd');
+            const knit = 'function(input, ...) rmarkdown::render(input, ...)';
+            fs.writeFileSync(
+                file,
+                `---
+defaults: &defaults
+  knit: ${knit}
+  site: rmarkdown::render_site
+<<: *defaults
+date: !!timestamp 2026-11-07
+params:
+  count: !r 1+1
+---\n`,
+            );
+            const manager = new RMarkdownKnitManager() as unknown as {
+                getYamlFrontmatter(file: string): Record<string, unknown>;
+                getKnitCommand(
+                    params: Record<string, unknown>,
+                    file: string,
+                    format?: string,
+                ): Promise<string>;
+            };
+            const frontmatter = manager.getYamlFrontmatter(file);
+            assert.strictEqual(frontmatter['knit'], knit);
+            assert.strictEqual(frontmatter['site'], 'rmarkdown::render_site');
+            assert.deepStrictEqual(frontmatter['params'], { count: { __rExpr: '1+1' } });
+            assert.deepStrictEqual(frontmatter['date'], new Date('2026-11-07T00:00:00Z'));
+            const literal = util.ToRStringLiteral(file, '"');
+            assert.strictEqual(
+                await manager.getKnitCommand(frontmatter, literal, 'html_document'),
+                `(${knit})(${literal}, output_format = "html_document")`,
+            );
+        } finally {
+            fs.rmSync(directory, { recursive: true, force: true });
+        }
+    });
+
     test('non-object YAML frontmatter cannot leave knitting permanently busy', async () => {
         const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'vscode-r-knit-'));
         try {
@@ -178,7 +218,9 @@ suite('R Markdown execution', () => {
                 ) => Promise<void>;
                 getYamlFrontmatter(file: string): unknown;
             };
+            const parseError = sandbox.stub(console, 'error');
             assert.deepStrictEqual(manager.getYamlFrontmatter(file), {});
+            sinon.assert.notCalled(parseError);
             const render = sandbox
                 .stub(manager, 'renderDocument')
                 .rejects(new Error('transient failure'));

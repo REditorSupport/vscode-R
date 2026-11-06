@@ -63,6 +63,87 @@ suite('Rmd Params Test Suite', () => {
         assert.strictEqual(cmd, 'params <- list(a = 1+1)');
     });
 
+    test('getRmdParamsCommand preserves merged parameter defaults and nested !r values', () => {
+        const mockDoc = {
+            languageId: 'rmd',
+            getText: () => `---
+defaults: &defaults
+  count: 2
+  label: default
+params:
+  <<: *defaults
+  label: overridden
+  expression:
+    value: !r |
+      sum(c(1, 2))
+  values: [true, null, !r 1+1]
+---`,
+            uri: vscode.Uri.file('/test_merged_params.Rmd'),
+            version: 1,
+        } as vscode.TextDocument;
+
+        assert.strictEqual(
+            rTerminal.getRmdParamsCommand(mockDoc),
+            'params <- list(count = 2, label = "overridden", expression = sum(c(1, 2))\n, values = c(TRUE, NULL, 1+1))',
+        );
+    });
+
+    test('getRmdParamsCommand keeps YAML 1.2 scalars with legacy metadata tags', () => {
+        const mockDoc = {
+            languageId: 'rmd',
+            getText: () => `---
+date: !!timestamp 2026-11-07
+params:
+  enabled: true
+  label: yes
+  mode: on
+  count: 012
+  binary: 0b101
+  hex: -0xF
+  nothing: null
+---`,
+            uri: vscode.Uri.file('/test_scalar_params.Rmd'),
+            version: 1,
+        } as vscode.TextDocument;
+
+        assert.strictEqual(
+            rTerminal.getRmdParamsCommand(mockDoc),
+            'params <- list(enabled = TRUE, label = "yes", mode = "on", count = 12, binary = 5, hex = -15, nothing = NULL)',
+        );
+    });
+
+    test('getRmdParamsCommand preserves set parameters as named null values', () => {
+        const mockDoc = {
+            languageId: 'rmd',
+            getText: () => '---\nparams:\n  choices: !!set {one: null, two: null}\n---',
+            uri: vscode.Uri.file('/test_set_params.Rmd'),
+            version: 1,
+        } as vscode.TextDocument;
+
+        assert.strictEqual(
+            rTerminal.getRmdParamsCommand(mockDoc),
+            'params <- list(choices = list(one = NULL, two = NULL))',
+        );
+    });
+
+    test('getRmdParamsCommand rejects malformed YAML and non-scalar !r tags', () => {
+        for (const [index, value] of [
+            '[1,',
+            '!unknown value',
+            '!r [1, 2]',
+            '!r {a: 1}',
+        ].entries()) {
+            const mockDoc = {
+                languageId: 'rmd',
+                getText: () => `---\nparams:\n  a: ${value}\n---`,
+                uri: vscode.Uri.file(`/test_invalid_params_${index}.Rmd`),
+                version: 1,
+            } as vscode.TextDocument;
+
+            assert.strictEqual(rTerminal.getRmdParamsCommand(mockDoc), undefined);
+        }
+    });
+
     test('getRmdParamsCommand respects cache invalidation by version', () => {
         const mockDoc = {
             languageId: 'rmd',

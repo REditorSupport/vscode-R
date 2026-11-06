@@ -2,7 +2,7 @@ import * as util from '../util';
 import * as vscode from 'vscode';
 import * as fs from 'node:fs';
 import * as path from 'path';
-import * as yaml from 'js-yaml';
+import { loadRMarkdownYaml } from './yaml';
 
 import { RMarkdownManager, KnitWorkingDirectory } from './manager';
 import { runTextInTerm } from '../rTerminal';
@@ -125,7 +125,7 @@ export class RMarkdownKnitManager extends RMarkdownManager {
         let paramObj: IYamlFrontmatter = {};
         if (yamlText) {
             try {
-                const parsed: unknown = yaml.load(yamlText);
+                const parsed: unknown = loadRMarkdownYaml(yamlText);
                 if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
                     paramObj = parsed as IYamlFrontmatter;
                 }
