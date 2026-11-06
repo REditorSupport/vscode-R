@@ -39,6 +39,7 @@ export class HelpPanel {
     private currentEntry: HistoryEntry | undefined = undefined;
     private history: HistoryEntry[] = [];
     private forwardHistory: HistoryEntry[] = [];
+    private renderRevision = 0;
 
     // used to get scrollY position from webview:
     private scrollYCallback?: (y: number) => void;
@@ -74,18 +75,26 @@ export class HelpPanel {
     }
 
     private async refreshCurrentEntry(): Promise<void> {
-        if (!this.currentEntry) {
+        const panel = this.panel;
+        const entry = this.currentEntry;
+        const revision = this.renderRevision;
+        if (!panel || !entry) {
             return;
         }
+        const isCurrent = () =>
+            this.panel === panel && this.currentEntry === entry && this.renderRevision === revision;
         const newHelpFile = await this.rHelp.getHelpFileForPath(
-            this.currentEntry.helpFile.requestPath,
+            entry.helpFile.requestPath,
             undefined,
             true,
         );
-        if (!newHelpFile) {
+        if (!newHelpFile || !isCurrent()) {
             return;
         }
         newHelpFile.scrollY = await this.getScrollY();
+        if (!isCurrent()) {
+            return;
+        }
         await this.showHelpFile(newHelpFile, false, undefined, undefined, true);
     }
 
@@ -133,6 +142,7 @@ export class HelpPanel {
         // called e.g. when the webview panel is closed by the user
         this.panel.onDidDispose(() => {
             this.scrollYCallback?.(0);
+            this.renderRevision++;
             this.panel = undefined;
             this.history = [];
             this.forwardHistory = [];
@@ -173,14 +183,22 @@ export class HelpPanel {
 
         // get or create webview:
         const webview = this.getWebview(preserveFocus, viewColumn);
+        const revision = ++this.renderRevision;
+        const isCurrent = () => this.panel?.webview === webview && this.renderRevision === revision;
 
         // make sure helpFile is not a promise:
         helpFile = await helpFile;
+        if (!isCurrent()) {
+            return false;
+        }
 
         helpFile.scrollY = helpFile.scrollY || 0;
 
         // modify html
         helpFile = await this.pimpMyHelp(helpFile, this.webviewStyleUri, this.webviewScriptUri);
+        if (!isCurrent()) {
+            return false;
+        }
 
         // actually show the help page
         webview.html = helpFile.html;
@@ -250,6 +268,8 @@ export class HelpPanel {
         }
     }
     private async showHistoryEntry(entry: HistoryEntry) {
+        const panel = this.panel;
+        const revision = ++this.renderRevision;
         let helpFile: HelpFile;
         if (entry.isStale) {
             // Fallback to stale helpFile.
@@ -265,7 +285,10 @@ export class HelpPanel {
             helpFile = entry.helpFile;
         }
 
-        void this.showHelpFile(helpFile, false);
+        if (this.panel !== panel || this.renderRevision !== revision || !panel) {
+            return;
+        }
+        await this.showHelpFile(helpFile, false);
     }
 
     // Get current scrollY from webview

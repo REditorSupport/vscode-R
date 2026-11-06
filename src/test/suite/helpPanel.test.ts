@@ -3,7 +3,7 @@ import * as sinon from 'sinon';
 import * as vscode from 'vscode';
 import * as path from 'path';
 import { HelpPanel } from '../../helpViewer/panel';
-import type { RHelp } from '../../helpViewer';
+import type { HelpFile, RHelp } from '../../helpViewer';
 import * as util from '../../util';
 import { mockExtensionContext } from '../common/mockvscode';
 
@@ -12,6 +12,16 @@ suite('Help panel navigation', () => {
     let panel: vscode.WebviewPanel;
     let help: HelpPanel;
     let closed: vscode.EventEmitter<void>;
+    let load: sinon.SinonStub;
+    let postMessage: sinon.SinonStub;
+
+    function deferred<T>() {
+        let resolve!: (value: T) => void;
+        const promise = new Promise<T>((finish) => {
+            resolve = finish;
+        });
+        return { promise, resolve };
+    }
 
     setup(async () => {
         sandbox = sinon.createSandbox();
@@ -21,6 +31,8 @@ suite('Help panel navigation', () => {
             .stub(util, 'config')
             .returns({ get: () => 'Two' } as unknown as vscode.WorkspaceConfiguration);
         closed = new vscode.EventEmitter<void>();
+        load = sandbox.stub();
+        postMessage = sandbox.stub().resolves(true);
         panel = {
             active: true,
             reveal: sandbox.stub(),
@@ -31,12 +43,12 @@ suite('Help panel navigation', () => {
                 html: '',
                 asWebviewUri: (uri: vscode.Uri) => uri,
                 onDidReceiveMessage: sandbox.stub(),
-                postMessage: sandbox.stub().resolves(true),
+                postMessage,
             },
         } as unknown as vscode.WebviewPanel;
         help = new HelpPanel(
             { webviewScriptPath: '/help.js', webviewStylePath: '/help.css' },
-            {} as RHelp,
+            { getHelpFileForPath: load } as unknown as RHelp,
             panel,
         );
         await help.showHelpFile({ requestPath: '/first', html: '<body>First</body>' });
@@ -72,10 +84,78 @@ suite('Help panel navigation', () => {
 
     test('failed delivery falls back immediately instead of waiting for the scroll timeout', async () => {
         const clock = sandbox.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
-        (panel.webview.postMessage as sinon.SinonStub).resolves(false);
+        postMessage.resolves(false);
         await help.goBack();
         await clock.tickAsync(0);
         assert.match(panel.webview.html, /First/);
         assert.strictEqual(clock.countTimers(), 0);
+    });
+
+    test('closing Help during a refresh fetch does not recreate its panel', async () => {
+        const fetched = deferred<HelpFile>();
+        load.returns(fetched.promise);
+        const create = sandbox.stub(vscode.window, 'createWebviewPanel');
+        const refresh = help.refresh();
+        sinon.assert.calledOnceWithExactly(load, '/second', undefined, true);
+        panel.dispose();
+        fetched.resolve({ requestPath: '/second', html: '<body>Refreshed</body>' });
+        await refresh;
+        assert.strictEqual(help.panel, undefined);
+        sinon.assert.notCalled(create);
+        sinon.assert.notCalled(postMessage);
+    });
+
+    test('closing Help during a refresh scroll wait leaves it closed and cancels its timer', async () => {
+        const clock = sandbox.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+        load.resolves({ requestPath: '/second', html: '<body>Refreshed</body>' });
+        const create = sandbox.stub(vscode.window, 'createWebviewPanel');
+        const refresh = help.refresh();
+        await clock.tickAsync(0);
+        sinon.assert.calledOnce(postMessage);
+        panel.dispose();
+        await refresh;
+        assert.strictEqual(help.panel, undefined);
+        assert.strictEqual(clock.countTimers(), 0);
+        sinon.assert.notCalled(create);
+    });
+
+    test('navigation while a refresh fetch is pending keeps the newly selected page', async () => {
+        const fetched = deferred<HelpFile>();
+        load.returns(fetched.promise);
+        const refresh = help.refresh();
+        await help.showHelpFile({ requestPath: '/third', html: '<body>Third</body>' });
+        fetched.resolve({ requestPath: '/second', html: '<body>Refreshed second</body>' });
+        await refresh;
+        assert.match(panel.webview.html, /Third/);
+        sinon.assert.notCalled(postMessage);
+    });
+
+    test('navigation while a refresh awaits scroll prevents stale replacement', async () => {
+        const clock = sandbox.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+        load.resolves({ requestPath: '/second', html: '<body>Refreshed second</body>' });
+        const refresh = help.refresh();
+        await clock.tickAsync(0);
+        sinon.assert.calledOnce(postMessage);
+        await help.showHelpFile({ requestPath: '/third', html: '<body>Third</body>' });
+        await clock.tickAsync(1000);
+        await refresh;
+        assert.match(panel.webview.html, /Third/);
+        assert.strictEqual(clock.countTimers(), 0);
+    });
+
+    test('closing during async page preparation prevents a late write to the disposed webview', async () => {
+        const external = deferred<vscode.Uri>();
+        sandbox.stub(vscode.env, 'asExternalUri').returns(external.promise);
+        const prepared = help.showHelpFile({
+            requestPath: '/math',
+            url: 'http://localhost:1234/math',
+            html: '<body><script src="katex.js"></script>Math</body>',
+        });
+        await Promise.resolve();
+        panel.dispose();
+        external.resolve(vscode.Uri.parse('http://localhost:1234/katex.js'));
+        assert.strictEqual(await prepared, false);
+        assert.doesNotMatch(panel.webview.html, /Math/);
+        assert.strictEqual(help.panel, undefined);
     });
 });
