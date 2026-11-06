@@ -81,6 +81,8 @@ export class PackageManager {
     // public favoriteNames: string[] = [];
 
     public favoriteNames: Set<string> = new Set();
+    private readonly indexLoads = new Map<string, Promise<IndexEntry[] | undefined>>();
+    private cacheGeneration = 0;
 
     constructor(args: PackageManagerOptions) {
         this.rHelp = args.rHelp;
@@ -98,6 +100,8 @@ export class PackageManager {
 
     // Funciton to clear only the cached files regarding an individual package etc.
     public async clearCachedFiles(re?: string | RegExp): Promise<void> {
+        this.cacheGeneration++;
+        this.indexLoads.clear();
         let cache: CachedIndexFiles | undefined;
         if (re) {
             const oldCache = this.state.get<CachedIndexFiles>('r.helpPanel.cachedIndexFiles', []);
@@ -161,13 +165,21 @@ export class PackageManager {
     // Is used frequently when list of favorites is shared globally to sync between sessions
     private pullFavoriteNames() {
         if (this.state) {
-            this.favoriteNames =
-                this.state.get('r.helpPanel.favoriteNamesSet') || this.favoriteNames;
+            const saved = this.state.get<unknown>('r.helpPanel.favoriteNamesSet');
+            if (saved !== undefined) {
+                // Memento persists JSON. Older versions saved a Set, which becomes
+                // an empty object after reloading the extension host.
+                this.favoriteNames = new Set(
+                    (Array.isArray(saved) ? saved : saved instanceof Set ? [...saved] : []).filter(
+                        (name): name is string => typeof name === 'string',
+                    ),
+                );
+            }
         }
     }
     private pushFavoriteNames() {
         if (this.state) {
-            void this.state.update('r.helpPanel.favoriteNamesSet', this.favoriteNames);
+            void this.state.update('r.helpPanel.favoriteNamesSet', [...this.favoriteNames]);
         }
     }
 
@@ -375,15 +387,26 @@ export class PackageManager {
 
         // only read and parse file if not cached yet
         if (!indexItems) {
-            const helpFile = await this.rHelp.getHelpFileForPath(path, false);
-            if (!helpFile?.html) {
-                // set missing files to null
-                indexItems = undefined;
-            } else {
-                // parse and cache file
-                indexItems = parseIndexFile(helpFile.html);
+            let load = this.indexLoads.get(path);
+            if (!load) {
+                const generation = this.cacheGeneration;
+                load = (async () => {
+                    const helpFile = await this.rHelp.getHelpFileForPath(path, false);
+                    const items = helpFile?.html ? parseIndexFile(helpFile.html) : undefined;
+                    if (generation === this.cacheGeneration) {
+                        await this.updateCachedIndexFile(path, items);
+                    }
+                    return items;
+                })();
+                this.indexLoads.set(path, load);
             }
-            void this.updateCachedIndexFile(path, indexItems);
+            try {
+                indexItems = await load;
+            } finally {
+                if (this.indexLoads.get(path) === load) {
+                    this.indexLoads.delete(path);
+                }
+            }
         }
 
         // return cache entry. make new array to avoid messing with the cache

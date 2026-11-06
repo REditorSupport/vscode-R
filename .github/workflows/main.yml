@@ -43,7 +43,7 @@ jobs:
       - name: Verify managed tool consent
         run: pnpm run test:tool-consent
       - name: Install R test dependencies
-        run: install.packages(c("remotes", "pkgbuild", "languageserver", "lintr", "renv"))
+        run: install.packages(c("remotes", "pkgbuild", "languageserver", "lintr", "styler", "renv"))
         shell: Rscript {0}
       - run: pnpm run build
       - name: Verify managed jgd preparation

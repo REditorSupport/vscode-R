@@ -39,6 +39,8 @@ export class HelpPanel {
     private currentEntry: HistoryEntry | undefined = undefined;
     private history: HistoryEntry[] = [];
     private forwardHistory: HistoryEntry[] = [];
+    private renderRevision = 0;
+    private pendingNavigation?: number;
 
     // used to get scrollY position from webview:
     private scrollYCallback?: (y: number) => void;
@@ -74,19 +76,45 @@ export class HelpPanel {
     }
 
     private async refreshCurrentEntry(): Promise<void> {
-        if (!this.currentEntry) {
+        const panel = this.panel;
+        const entry = this.currentEntry;
+        if (!panel || !entry) {
             return;
         }
+        if (this.pendingNavigation !== undefined) {
+            // A refresh belongs to the displayed page, not the destination a
+            // user is currently opening. Retain staleness for later history use.
+            entry.isStale = true;
+            return;
+        }
+        const revision = ++this.renderRevision;
+        const isCurrent = () =>
+            this.panel === panel &&
+            this.currentEntry === entry &&
+            this.renderRevision === revision &&
+            this.pendingNavigation === undefined;
         const newHelpFile = await this.rHelp.getHelpFileForPath(
-            this.currentEntry.helpFile.requestPath,
+            entry.helpFile.requestPath,
             undefined,
             true,
         );
-        if (!newHelpFile) {
+        if (!newHelpFile || !isCurrent()) {
             return;
         }
-        newHelpFile.scrollY = await this.getScrollY();
-        await this.showHelpFile(newHelpFile, false, undefined, undefined, true);
+        const scrollY = await this.getScrollY();
+        if (!isCurrent()) {
+            return;
+        }
+        const prepared = await this.prepareHelpFile({ ...newHelpFile, scrollY }, isCurrent);
+        if (!prepared || !isCurrent()) {
+            return;
+        }
+        panel.reveal(undefined, true);
+        if (!isCurrent()) {
+            return;
+        }
+        this.publishHelpFile(prepared, panel.webview);
+        await this.setContextValues();
     }
 
     // retrieves the stored webview or creates a new one if the webview was closed
@@ -132,6 +160,9 @@ export class HelpPanel {
 
         // called e.g. when the webview panel is closed by the user
         this.panel.onDidDispose(() => {
+            this.scrollYCallback?.(0);
+            this.renderRevision++;
+            this.pendingNavigation = undefined;
             this.panel = undefined;
             this.history = [];
             this.forwardHistory = [];
@@ -160,46 +191,121 @@ export class HelpPanel {
     }
 
     // shows (internal) help file object in webview
-    public async showHelpFile(
+    public showHelpFile(
         helpFile: HelpFile | Promise<HelpFile>,
         updateHistory = true,
         currentScrollY = 0,
         viewer?: vscode.ViewColumn | string,
         preserveFocus: boolean = false,
     ): Promise<boolean> {
+        return this.navigateToHelpFile(
+            () => Promise.resolve(helpFile),
+            updateHistory,
+            currentScrollY,
+            viewer,
+            preserveFocus,
+        );
+    }
+
+    private beginNavigation(): number {
+        const revision = ++this.renderRevision;
+        this.pendingNavigation = revision;
+        this.scrollYCallback?.(0);
+        return revision;
+    }
+
+    private endNavigation(revision: number): void {
+        if (this.pendingNavigation === revision) {
+            this.pendingNavigation = undefined;
+        }
+    }
+
+    private async navigateToHelpFile(
+        load: () => Promise<HelpFile | undefined>,
+        updateHistory = true,
+        currentScrollY = 0,
+        viewer?: vscode.ViewColumn | string,
+        preserveFocus = false,
+        missingPath?: string,
+    ): Promise<boolean> {
         viewer ||= config().get<string>('session.viewers.viewColumn.helpPanel');
         const viewColumn = asViewColumn(viewer);
 
         // get or create webview:
         const webview = this.getWebview(preserveFocus, viewColumn);
-
-        // make sure helpFile is not a promise:
-        helpFile = await helpFile;
-
-        helpFile.scrollY = helpFile.scrollY || 0;
-
-        // modify html
-        helpFile = await this.pimpMyHelp(helpFile, this.webviewStyleUri, this.webviewScriptUri);
-
-        // actually show the help page
-        webview.html = helpFile.html;
-
-        // update history to enable back/forward
-        if (updateHistory) {
-            if (this.currentEntry) {
-                this.currentEntry.helpFile.scrollY = currentScrollY;
-                this.history.push(this.currentEntry);
+        const revision = this.beginNavigation();
+        const isCurrent = () =>
+            this.panel?.webview === webview &&
+            this.renderRevision === revision &&
+            this.pendingNavigation === revision;
+        const previous = this.currentEntry;
+        const history = this.history.slice();
+        const forward = this.forwardHistory.slice();
+        try {
+            const helpFile = await load();
+            if (!isCurrent()) {
+                return false;
             }
-            this.forwardHistory = [];
+            if (!helpFile) {
+                if (missingPath) {
+                    void vscode.window.showWarningMessage(
+                        `Did not find help page for path ${missingPath}`,
+                    );
+                }
+                return false;
+            }
+            const prepared = await this.prepareHelpFile(helpFile, isCurrent);
+            if (!prepared || !isCurrent()) {
+                return false;
+            }
+            if (updateHistory && previous) {
+                history.push(this.historyEntryWithScroll(previous, currentScrollY));
+            }
+            this.publishHelpFile(prepared, webview, history, updateHistory ? [] : forward);
+            this.endNavigation(revision);
+            await this.setContextValues();
+            return true;
+        } finally {
+            this.endNavigation(revision);
         }
+    }
+
+    private async prepareHelpFile(
+        helpFile: HelpFile,
+        isCurrent: () => boolean,
+    ): Promise<HelpFile | undefined> {
+        if (!isCurrent()) {
+            return undefined;
+        }
+        // Rendering modifies HTML and scroll state. Keep committed history and
+        // cached files intact if this asynchronous preparation is superseded.
+        const prepared = await this.pimpMyHelp(
+            { ...helpFile, scrollY: helpFile.scrollY || 0 },
+            this.webviewStyleUri,
+            this.webviewScriptUri,
+        );
+        return isCurrent() ? prepared : undefined;
+    }
+
+    private historyEntryWithScroll(entry: HistoryEntry, scrollY: number): HistoryEntry {
+        return { ...entry, helpFile: { ...entry.helpFile, scrollY } };
+    }
+
+    private publishHelpFile(
+        helpFile: HelpFile,
+        webview: vscode.Webview,
+        history = this.history,
+        forward = this.forwardHistory,
+    ): void {
+        // Publishing and history changes form one synchronous transaction. A
+        // failed/cancelled preparation has not consumed either history stack.
+        webview.html = helpFile.html;
+        this.history = history;
+        this.forwardHistory = forward;
         this.currentEntry = {
             helpFile: helpFile,
             isStale: helpFile.isPreview,
         };
-
-        await this.setContextValues();
-
-        return true;
     }
 
     public async openInExternalBrowser(helpFile?: HelpFile): Promise<boolean> {
@@ -219,66 +325,107 @@ export class HelpPanel {
 
     // go back/forward in the history of the webview:
     public async goBack(): Promise<void> {
-        const scrollY = await this.getScrollY();
-        this._goBack(scrollY);
+        await this.navigateHistory('back');
     }
-    private _goBack(currentScrollY = 0): void {
-        const entry = this.history.pop();
-        if (entry) {
-            if (this.currentEntry) {
-                // should always be true
-                this.currentEntry.helpFile.scrollY = currentScrollY;
-                this.forwardHistory.push(this.currentEntry);
-            }
-            void this.showHistoryEntry(entry);
-        }
+    private async _goBack(currentScrollY = 0): Promise<void> {
+        await this.navigateHistory('back', currentScrollY);
     }
     public async goForward(): Promise<void> {
-        const scrollY = await this.getScrollY();
-        this._goForward(scrollY);
+        await this.navigateHistory('forward');
     }
-    private _goForward(currentScrollY = 0): void {
-        const entry = this.forwardHistory.pop();
-        if (entry) {
-            if (this.currentEntry) {
-                // should always be true
-                this.currentEntry.helpFile.scrollY = currentScrollY;
-                this.history.push(this.currentEntry);
+    private async _goForward(currentScrollY = 0): Promise<void> {
+        await this.navigateHistory('forward', currentScrollY);
+    }
+    private async navigateHistory(
+        direction: 'back' | 'forward',
+        currentScrollY?: number,
+    ): Promise<void> {
+        const panel = this.panel;
+        const previous = this.currentEntry;
+        const history = this.history.slice();
+        const forward = this.forwardHistory.slice();
+        const entry = (direction === 'back' ? history : forward).at(-1);
+        if (!panel || !previous || !entry) {
+            return;
+        }
+        const revision = this.beginNavigation();
+        const isCurrent = () =>
+            this.panel === panel &&
+            this.currentEntry === previous &&
+            this.renderRevision === revision &&
+            this.pendingNavigation === revision;
+        try {
+            const scrollY = currentScrollY ?? (await this.getScrollY());
+            if (!isCurrent()) {
+                return;
             }
-            void this.showHistoryEntry(entry);
-        }
-    }
-    private async showHistoryEntry(entry: HistoryEntry) {
-        let helpFile: HelpFile;
-        if (entry.isStale) {
-            // Fallback to stale helpFile.
-            // Handle differently?
-            const newHelpFile = await this.rHelp.getHelpFileForPath(
-                entry.helpFile.requestPath,
-                true,
-                true,
+            const file = entry.isStale
+                ? (await this.rHelp.getHelpFileForPath(entry.helpFile.requestPath, true, true)) ||
+                  entry.helpFile
+                : entry.helpFile;
+            if (!isCurrent()) {
+                return;
+            }
+            const prepared = await this.prepareHelpFile(
+                { ...file, scrollY: entry.helpFile.scrollY },
+                isCurrent,
             );
-            helpFile = newHelpFile || entry.helpFile;
-            helpFile.scrollY = entry.helpFile.scrollY;
-        } else {
-            helpFile = entry.helpFile;
+            if (!prepared || !isCurrent()) {
+                return;
+            }
+            const departing = this.historyEntryWithScroll(previous, scrollY);
+            if (direction === 'back') {
+                history.pop();
+                forward.push(departing);
+            } else {
+                forward.pop();
+                history.push(departing);
+            }
+            panel.reveal(undefined, false);
+            if (!isCurrent()) {
+                return;
+            }
+            this.publishHelpFile(prepared, panel.webview, history, forward);
+            this.endNavigation(revision);
+            await this.setContextValues();
+        } finally {
+            this.endNavigation(revision);
         }
-
-        void this.showHelpFile(helpFile, false);
     }
 
     // Get current scrollY from webview
     private async getScrollY(): Promise<number> {
+        if (!this.panel) {
+            return 0;
+        }
         this.scrollYCallback?.(0);
-        const scrollYPromise = new Promise<number>((resolve, reject) => {
-            const timeout = setTimeout(() => reject('GetScrollY message timed out after 1s'), 1000);
-            this.scrollYCallback = (y: number) => {
+        let finish!: (y: number) => void;
+        const scrollYPromise = new Promise<number>((resolve) => {
+            let settled = false;
+            // Hidden or replaced webview documents may not acknowledge messages.
+            // Losing a scroll position must not disable Back, Forward or Refresh.
+            const timeout = setTimeout(() => finish(0), 1000);
+            finish = (y: number) => {
+                if (settled) {
+                    return;
+                }
+                settled = true;
                 clearTimeout(timeout);
-                this.scrollYCallback = undefined;
+                if (this.scrollYCallback === finish) {
+                    this.scrollYCallback = undefined;
+                }
                 resolve(y);
             };
+            this.scrollYCallback = finish;
         });
-        void this.panel?.webview.postMessage({ command: 'getScrollY' });
+        void this.panel.webview.postMessage({ command: 'getScrollY' }).then(
+            (delivered) => {
+                if (!delivered) {
+                    finish(0);
+                }
+            },
+            () => finish(0),
+        );
         return scrollYPromise;
     }
 
@@ -304,16 +451,31 @@ export class HelpPanel {
             // actual request path as used by R:
             const requestPath = parts.join('/');
 
-            // retrieve helpfile for path:
-            const helpFile = await this.rHelp.getHelpFileForPath(requestPath);
+            const load = async (): Promise<HelpFile | undefined> => {
+                const helpFile = await this.rHelp.getHelpFileForPath(requestPath);
+                if (!helpFile) {
+                    return undefined;
+                }
+                return uri.fragment
+                    ? { ...helpFile, hash: '#' + uri.fragment }
+                    : { ...helpFile, scrollY: 0 };
+            };
+            if (!uri.path.endsWith('.pdf') && !uri.path.endsWith('.R')) {
+                // Claim navigation before fetching as well as preparing HTML.
+                await this.navigateToHelpFile(
+                    load,
+                    true,
+                    currentScrollY,
+                    undefined,
+                    false,
+                    requestPath,
+                );
+                return;
+            }
+            const helpFile = await load();
 
             // if successful, show helpfile:
             if (helpFile) {
-                if (uri.fragment) {
-                    helpFile.hash = '#' + uri.fragment;
-                } else {
-                    helpFile.scrollY = 0;
-                }
                 if (uri.path.endsWith('.pdf')) {
                     void this.openInExternalBrowser(helpFile);
                 } else if (uri.path.endsWith('.R')) {
@@ -322,8 +484,6 @@ export class HelpPanel {
                         content: helpFile.html0,
                     });
                     void vscode.window.showTextDocument(doc);
-                } else {
-                    void this.showHelpFile(helpFile, true, currentScrollY);
                 }
             } else {
                 void vscode.window.showWarningMessage(
@@ -335,9 +495,9 @@ export class HelpPanel {
             const currentScrollY = Number(msg.scrollY) || 0;
             const button: number = Number(msg.button) || 0;
             if (button === 3) {
-                this._goBack(currentScrollY);
+                await this._goBack(currentScrollY);
             } else if (button === 4) {
-                this._goForward(currentScrollY);
+                await this._goForward(currentScrollY);
             }
         } else if (msg.message === 'codeClicked') {
             if (!msg.code) {

@@ -221,6 +221,33 @@ suite('External Terminal Integration', () => {
         }
     });
 
+    test('discovery refresh updates later native terminals while an unrelated PID remains pending', async () => {
+        const pendingPid = deferred<number | undefined>();
+        const external = makeTerminal(pendingPid.promise);
+        const discoveryFile = await session.createSessionDiscoveryFile('old-sess');
+        const native = {
+            ...makeTerminal(Promise.resolve(55114)),
+            creationOptions: { env: { SESS_DISCOVERY_FILE: discoveryFile } },
+        } as vscode.Terminal;
+        setTerminals([external, native], native);
+        const refresh = session.refreshTerminalDiscoveryFiles('new-sess', [external, native]);
+        try {
+            let endpoint: string | undefined;
+            for (let attempt = 0; attempt < 100; attempt++) {
+                endpoint = ((await readJson(discoveryFile)) as { endpoint?: string }).endpoint;
+                if (endpoint === 'new-sess') {
+                    break;
+                }
+                await new Promise<void>((resolve) => setTimeout(resolve, 10));
+            }
+            assert.strictEqual(endpoint, 'new-sess');
+        } finally {
+            pendingPid.resolve(undefined);
+            await refresh;
+            await fsp.rm(discoveryFile, { force: true });
+        }
+    });
+
     test('discovery refresh skips a newly registered terminal and continues with live native terminals', async () => {
         let pidRead!: () => void;
         const readStarted = new Promise<void>((resolve) => {

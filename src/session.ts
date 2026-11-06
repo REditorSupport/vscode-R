@@ -1245,44 +1245,43 @@ export async function refreshTerminalDiscoveryFiles(
     if (attachmentLifecycleStopping) {
         return;
     }
-    for (const term of terminals) {
-        if (generation !== attachmentLifecycleGeneration || attachmentLifecycleStopping) {
-            return;
-        }
-        if (!isNativeTerminalEligible(term)) {
-            continue;
-        }
-        const envPath = terminalDiscoveryPath(term);
-        const pidWait = await nativeTerminalPidWaits.waitFor(term, () => term.processId, {
-            isEligible: () => isNativeTerminalEligible(term),
-        });
-        if (pidWait.kind === 'invalidated') {
-            if (pidWait.reason === 'lifecycle') {
+    await Promise.all(
+        terminals.map(async (term) => {
+            if (generation !== attachmentLifecycleGeneration || attachmentLifecycleStopping) {
                 return;
             }
-            continue;
-        }
-        const terminalPid = pidWait.value;
-        const isCurrent = () =>
-            generation === attachmentLifecycleGeneration &&
-            !attachmentLifecycleStopping &&
-            pidWait.isCurrent() &&
-            isNativeTerminalEligible(term);
-        if (!terminalPid || !isCurrent()) {
-            continue;
-        }
-        let discoveryPath = envPath;
-        discoveryPath ??= await findDiscoveryFileForTerminal(terminalPid);
-        if (discoveryPath && isCurrent()) {
-            await updateTerminalSessionDiscoveryFile(
-                term,
-                discoveryPath,
-                pipePath,
-                terminalPid,
-                isCurrent,
-            );
-        }
-    }
+            if (!isNativeTerminalEligible(term)) {
+                return;
+            }
+            const envPath = terminalDiscoveryPath(term);
+            const pidWait = await nativeTerminalPidWaits.waitFor(term, () => term.processId, {
+                isEligible: () => isNativeTerminalEligible(term),
+            });
+            if (pidWait.kind === 'invalidated') {
+                return;
+            }
+            const terminalPid = pidWait.value;
+            const isCurrent = () =>
+                generation === attachmentLifecycleGeneration &&
+                !attachmentLifecycleStopping &&
+                pidWait.isCurrent() &&
+                isNativeTerminalEligible(term);
+            if (!terminalPid || !isCurrent()) {
+                return;
+            }
+            let discoveryPath = envPath;
+            discoveryPath ??= await findDiscoveryFileForTerminal(terminalPid);
+            if (discoveryPath && isCurrent()) {
+                await updateTerminalSessionDiscoveryFile(
+                    term,
+                    discoveryPath,
+                    pipePath,
+                    terminalPid,
+                    isCurrent,
+                );
+            }
+        }),
+    );
 }
 
 export async function updateTerminalDiscovery(terminal: vscode.Terminal): Promise<void> {
@@ -3602,38 +3601,87 @@ async function findLocalTerminal(
     signal?: AbortSignal,
 ): Promise<NativeTerminalCandidate | undefined> {
     const candidates = new Map<number, NativeTerminalCandidate>();
-    for (const terminal of window.terminals) {
+    const pending = new Map<vscode.Terminal, AbortController>();
+    const cancelPending = (): void => {
+        for (const controller of pending.values()) {
+            controller.abort();
+        }
+    };
+    let invalidated = false;
+    let exactMatch!: (candidate: NativeTerminalCandidate) => void;
+    const exact = new Promise<NativeTerminalCandidate>((resolve) => {
+        exactMatch = resolve;
+    });
+    // A terminal's processId can remain pending indefinitely. Read candidates
+    // concurrently, return exact matches immediately, and bound other PID waits.
+    const timer = setTimeout(cancelPending, 1000);
+    signal?.addEventListener('abort', cancelPending, { once: true });
+    try {
         if (signal?.aborted) {
             return undefined;
         }
-        if (!isNativeTerminalEligible(terminal)) {
-            continue;
-        }
-        const isCurrent = terminalRegistry.snapshot(terminal);
-        const pidWait = await nativeTerminalPidWaits.waitFor(terminal, () => terminal.processId, {
-            signal,
-            isEligible: () => isNativeTerminalEligible(terminal),
-        });
-        if (pidWait.kind === 'invalidated') {
-            if (pidWait.reason !== 'terminal') {
-                return undefined;
+        const reads = window.terminals.filter(isNativeTerminalEligible).map(async (terminal) => {
+            if (signal?.aborted || invalidated) {
+                return;
             }
-            continue;
+            const isCurrent = terminalRegistry.snapshot(terminal);
+            const controller = new AbortController();
+            pending.set(terminal, controller);
+            try {
+                const pidWait = await nativeTerminalPidWaits.waitFor(
+                    terminal,
+                    () => terminal.processId,
+                    {
+                        signal: controller.signal,
+                        isEligible: () => isNativeTerminalEligible(terminal),
+                    },
+                );
+                if (pidWait.kind === 'invalidated') {
+                    if (pidWait.reason === 'lifecycle') {
+                        invalidated = true;
+                        cancelPending();
+                    }
+                    return;
+                }
+                const terminalPid = pidWait.value;
+                const candidate = {
+                    terminal,
+                    pid: String(terminalPid),
+                    isCurrent: () =>
+                        !signal?.aborted &&
+                        pidWait.isCurrent() &&
+                        isCurrent() &&
+                        isNativeTerminalEligible(terminal),
+                };
+                if (terminalPid === undefined || !candidate.isCurrent()) {
+                    return;
+                }
+                candidates.set(terminalPid, candidate);
+                if (candidate.pid === rPid) {
+                    exactMatch(candidate);
+                }
+            } finally {
+                // Completed candidates keep their validity checks after we
+                // cancel unfinished reads on early return or at the deadline.
+                pending.delete(terminal);
+            }
+        });
+        const complete = Promise.all(reads).then(() => undefined);
+        const direct = await Promise.race([exact, complete]);
+        if (signal?.aborted || invalidated) {
+            return undefined;
         }
-        const terminalPid = pidWait.value;
-        if (terminalPid === undefined || !pidWait.isCurrent() || !isCurrent()) {
-            continue;
+        if (direct?.isCurrent()) {
+            return direct;
         }
-        const candidate = {
-            terminal,
-            pid: String(terminalPid),
-            isCurrent: () =>
-                pidWait.isCurrent() && isCurrent() && isNativeTerminalEligible(terminal),
-        };
-        if (candidate.pid === rPid) {
-            return candidate;
-        }
-        candidates.set(terminalPid, candidate);
+        await complete;
+    } finally {
+        clearTimeout(timer);
+        signal?.removeEventListener('abort', cancelPending);
+        cancelPending();
+    }
+    if (signal?.aborted || invalidated) {
+        return undefined;
     }
     if (!candidates.size) {
         return undefined;

@@ -28,6 +28,7 @@ import {
     StreamMessageReader,
     StreamMessageWriter,
     createMessageConnection,
+    DocumentOnTypeFormattingRequest,
 } from 'vscode-languageclient/node';
 
 function treeTooltip(item: vscode.TreeItem): string {
@@ -1331,10 +1332,15 @@ function treeTooltip(item: vscode.TreeItem): string {
                 () =>
                     languageService().clients.get(opened.inputUri.toString())?.isRunning() === true,
             );
-            assert.ok(
-                languageService().clients.get(opened.inputUri.toString())?.initializeResult
-                    ?.capabilities.documentOnTypeFormattingProvider,
-                'languageserver must advertise on-type formatting',
+            // Current servers register formatting dynamically after initialize;
+            // the active provider also covers servers with static capabilities.
+            await until(
+                () =>
+                    languageService()
+                        .clients.get(opened.inputUri.toString())
+                        ?.getFeature(DocumentOnTypeFormattingRequest.method)
+                        .getProvider(document) !== undefined,
+                'languageserver must register on-type formatting for the Interactive input',
             );
             try {
                 for (const [text, ch, expected] of [
@@ -3860,9 +3866,52 @@ par(mfrow=c(1,1))`,
     });
 
     test('restart keeps the window, drafts, transcript, bindings and kernel through multiple R processes', async function () {
-        // Cold runtime installation, failed preflights and two R restarts can
-        // together exceed the suite timeout on CI; individual waits stay bounded.
-        this.timeout(120000);
+        const restartTimeouts = {
+            'cancelled restart': 30000,
+            'missing arf': 30000,
+            'missing host Node': 30000,
+            'missing Node override': 30000,
+            'missing tmux': 30000,
+            // Runtime preparation precedes supervisor launch, so even this
+            // failed restart can be the first to install bundled sess.
+            'failed tmux launch': 90000,
+            'coalesced restart': 90000,
+            'second restart': 60000,
+        };
+        // Keep the original two-minute allowance for transcript, settings,
+        // routing and exports, with separate restart budgets and 30s for cleanup.
+        this.timeout(
+            120000 + Object.values(restartTimeouts).reduce((sum, value) => sum + value, 0) + 30000,
+        );
+        const restartPhase = async (
+            name: keyof typeof restartTimeouts,
+            action: () => Thenable<unknown>,
+        ): Promise<void> => {
+            const started = Date.now();
+            const timeout = restartTimeouts[name];
+            let timer: ReturnType<typeof setTimeout> | undefined;
+            console.log(`[restart test] Starting ${name} (budget ${timeout}ms)`);
+            try {
+                await Promise.race([
+                    Promise.resolve().then(action),
+                    new Promise<never>((_, reject) => {
+                        timer = setTimeout(
+                            () =>
+                                reject(
+                                    new Error(`Restart test phase "${name}" exceeded ${timeout}ms`),
+                                ),
+                            timeout,
+                        );
+                    }),
+                ]);
+                console.log(`[restart test] Completed ${name} in ${Date.now() - started}ms`);
+            } catch (error) {
+                console.error(`[restart test] Failed ${name} after ${Date.now() - started}ms`);
+                throw error;
+            } finally {
+                clearTimeout(timer);
+            }
+        };
         const original = manifests[1];
         await vscode.commands.executeCommand('r.interactive.detach', original);
         const created = sinon.spy(vscode.notebooks, 'createNotebookController');
@@ -3968,7 +4017,9 @@ par(mfrow=c(1,1))`,
         try {
             // A cancelled restart must leave the process and transcript alone.
             confirmation.resolves(undefined);
-            await vscode.commands.executeCommand('r.interactive.restart', notebook.uri);
+            await restartPhase('cancelled restart', () =>
+                vscode.commands.executeCommand('r.interactive.restart', notebook.uri),
+            );
             assert.strictEqual(notebook.cellCount, oldCount);
             assert.strictEqual(notebook.metadata.rGeneration, original.generation);
             confirmation.resolves('Restart Session' as unknown as vscode.MessageItem);
@@ -3999,7 +4050,9 @@ par(mfrow=c(1,1))`,
                               /* Leave the nonmodal warning open. */
                           }),
                 );
-                await vscode.commands.executeCommand('r.interactive.restart', notebook.uri);
+                await restartPhase('missing arf', () =>
+                    vscode.commands.executeCommand('r.interactive.restart', notebook.uri),
+                );
                 assert.ok(
                     confirmation.args.some((args) =>
                         args[0].includes('The current R session has not been stopped.'),
@@ -4030,7 +4083,9 @@ par(mfrow=c(1,1))`,
             executable = sinon
                 .stub(process, 'execPath')
                 .value(path.join(root, 'removed-host-runtime'));
-            await vscode.commands.executeCommand('r.interactive.restart', notebook.uri);
+            await restartPhase('missing host Node', () =>
+                vscode.commands.executeCommand('r.interactive.restart', notebook.uri),
+            );
             sinon.assert.calledOnce(interactiveErrors);
             assert.match(interactiveErrors.firstCall.args[0], /Reload VS Code/);
             assert.strictEqual(notebook.cellCount, oldCount);
@@ -4048,7 +4103,9 @@ par(mfrow=c(1,1))`,
                     path.join(root, 'missing-restart-node'),
                     vscode.ConfigurationTarget.Global,
                 );
-            await vscode.commands.executeCommand('r.interactive.restart', notebook.uri);
+            await restartPhase('missing Node override', () =>
+                vscode.commands.executeCommand('r.interactive.restart', notebook.uri),
+            );
             sinon.assert.calledOnce(interactiveErrors);
             assert.match(interactiveErrors.firstCall.args[0], /r\.interactive\.nodePath/);
             assert.strictEqual(notebook.cellCount, oldCount);
@@ -4067,7 +4124,9 @@ par(mfrow=c(1,1))`,
             const previousPath = process.env.PATH;
             try {
                 process.env.PATH = root;
-                await vscode.commands.executeCommand('r.interactive.restart', notebook.uri);
+                await restartPhase('missing tmux', () =>
+                    vscode.commands.executeCommand('r.interactive.restart', notebook.uri),
+                );
             } finally {
                 process.env.PATH = previousPath;
             }
@@ -4092,7 +4151,9 @@ par(mfrow=c(1,1))`,
             );
             try {
                 process.env.PATH = `${supervisorBin}${path.delimiter}${previousPath ?? ''}`;
-                await vscode.commands.executeCommand('r.interactive.restart', notebook.uri);
+                await restartPhase('failed tmux launch', () =>
+                    vscode.commands.executeCommand('r.interactive.restart', notebook.uri),
+                );
             } finally {
                 process.env.PATH = previousPath;
             }
@@ -4124,10 +4185,12 @@ par(mfrow=c(1,1))`,
             }
             confirmation.resetHistory();
             errors.resetHistory();
-            await Promise.all([
-                vscode.commands.executeCommand('r.interactive.restart', notebook.uri),
-                vscode.commands.executeCommand('r.interactive.restart', notebook.uri),
-            ]);
+            await restartPhase('coalesced restart', () =>
+                Promise.all([
+                    vscode.commands.executeCommand('r.interactive.restart', notebook.uri),
+                    vscode.commands.executeCommand('r.interactive.restart', notebook.uri),
+                ]),
+            );
             sinon.assert.calledOnce(confirmation);
             sinon.assert.notCalled(interactiveErrors);
             sinon.assert.notCalled(kernels);
@@ -4241,7 +4304,9 @@ par(mfrow=c(1,1))`,
                     .getConfiguration('r')
                     .update(limitSettings[index], value, vscode.ConfigurationTarget.Global);
             }
-            await vscode.commands.executeCommand('r.interactive.restart', notebook.uri);
+            await restartPhase('second restart', () =>
+                vscode.commands.executeCommand('r.interactive.restart', notebook.uri),
+            );
             assertNodeLaunched(replacement.log);
             const restartedConfig = JSON.parse(
                 fs.readFileSync(path.join(root, original.id, 'config.json'), 'utf8'),

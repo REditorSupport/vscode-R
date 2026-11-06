@@ -34,6 +34,7 @@ suite('Standard plot viewer request coordination', () => {
     let panels: Array<{
         panel: vscode.WebviewPanel;
         resize: (width: number, height: number) => Promise<void>;
+        ready: () => Promise<void>;
         postMessage: sinon.SinonStub;
     }>;
 
@@ -76,6 +77,7 @@ suite('Standard plot viewer request coordination', () => {
                 postMessage,
                 resize: (width, height) =>
                     receiveMessage?.({ type: 'resize', width, height }) ?? Promise.resolve(),
+                ready: () => receiveMessage?.({ type: 'ready' }) ?? Promise.resolve(),
             });
             return panel;
         });
@@ -360,13 +362,56 @@ suite('Standard plot viewer request coordination', () => {
         sinon.assert.notCalled(newPanel.postMessage);
     });
 
-    test('waits for the initial webview resize before requesting the first plot', async () => {
+    test('waits for a webview startup message before requesting the first plot', async () => {
         const request = sandbox
             .stub(session, 'sessionRequest')
             .resolves({ data: 'plot', format: 'svg' });
         await viewer.update();
         sinon.assert.notCalled(request);
         await panels[0].resize(640, 480);
+        sinon.assert.calledOnce(request);
+    });
+
+    test('requests the first plot when the webview is ready without a layout resize', async () => {
+        const owner = { sessionId: 'ready-owner' } as session.Session;
+        activeSession.value(owner);
+        const request = sandbox
+            .stub(session, 'sessionRequest')
+            .resolves({ data: 'plot', format: 'svg' });
+        await viewer.update();
+        sinon.assert.notCalled(request);
+        await panels[0].ready();
+        sinon.assert.calledOnceWithExactly(
+            request,
+            {
+                method: 'plot_latest',
+                params: { width: 800, height: 600, format: 'svglite', devArgs: undefined },
+            },
+            owner,
+        );
+        sinon.assert.calledOnceWithExactly(panels[0].postMessage, {
+            type: 'update',
+            data: 'plot',
+            format: 'svg',
+        });
+        await panels[0].ready();
+        sinon.assert.calledOnce(request);
+        await panels[0].resize(640, 480);
+        sinon.assert.calledTwice(request);
+    });
+
+    test('ignores readiness from a disposed panel and does not rerender after an initial resize', async () => {
+        const request = sandbox
+            .stub(session, 'sessionRequest')
+            .resolves({ data: 'plot', format: 'svg' });
+        await viewer.update();
+        const old = panels[0];
+        viewer.dispose();
+        await viewer.update();
+        await old.ready();
+        sinon.assert.notCalled(request);
+        await panels[1].resize(640, 480);
+        await panels[1].ready();
         sinon.assert.calledOnce(request);
     });
 

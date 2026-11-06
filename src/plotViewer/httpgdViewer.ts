@@ -38,28 +38,36 @@ export class HttpgdManager {
     public async showViewer(urlString: string): Promise<void> {
         await Promise.resolve();
         const url = new URL(urlString);
-        const host = url.host;
         const token = url.searchParams.get('token') || undefined;
-        const ind = this.viewers.findIndex((viewer) => viewer.host === host);
+        const ind = this.viewers.findIndex((viewer) => viewer.origin === url.origin);
         if (ind >= 0) {
             const viewer = this.viewers.splice(ind, 1)[0];
-            this.viewers.unshift(viewer);
-            viewer.show();
-        } else {
-            const conf = config();
-            const colorTheme = conf.get('plot.defaults.colorTheme', 'vscode');
-            this.viewerOptions.stripStyles = colorTheme === 'vscode';
-            this.viewerOptions.previewPlotLayout = conf.get<PreviewPlotLayout>(
-                'plot.defaults.plotPreviewLayout',
-                'multirow',
+            if (viewer.token === token) {
+                this.viewers.unshift(viewer);
+                viewer.show();
+                return;
+            }
+            // A restarted device can reuse its port with a new authentication
+            // token. Retire the connection rather than reusing stale credentials.
+            viewer.dispose();
+            viewer.webviewPanel?.dispose();
+            this.recentlyActiveViewers = this.recentlyActiveViewers.filter(
+                (active) => active !== viewer,
             );
-            this.viewerOptions.refreshTimeoutLength = conf.get('plot.timing.refreshInterval', 10);
-            this.viewerOptions.resizeTimeoutLength = conf.get('plot.timing.resizeInterval', 100);
-            this.viewerOptions.fullWindow = conf.get('plot.defaults.fullWindowMode', false);
-            this.viewerOptions.token = token;
-            const viewer = new HttpgdViewer(host, this.viewerOptions);
-            this.viewers.unshift(viewer);
         }
+        const conf = config();
+        const colorTheme = conf.get('plot.defaults.colorTheme', 'vscode');
+        this.viewerOptions.stripStyles = colorTheme === 'vscode';
+        this.viewerOptions.previewPlotLayout = conf.get<PreviewPlotLayout>(
+            'plot.defaults.plotPreviewLayout',
+            'multirow',
+        );
+        this.viewerOptions.refreshTimeoutLength = conf.get('plot.timing.refreshInterval', 10);
+        this.viewerOptions.resizeTimeoutLength = conf.get('plot.timing.resizeInterval', 100);
+        this.viewerOptions.fullWindow = conf.get('plot.defaults.fullWindowMode', false);
+        this.viewerOptions.token = token;
+        const viewer = new HttpgdViewer(url.origin, this.viewerOptions);
+        this.viewers.unshift(viewer);
     }
 
     public registerActiveViewer(viewer: HttpgdViewer): void {
@@ -115,6 +123,7 @@ export class HttpgdViewer implements IHttpgdViewer, PlotViewer {
     readonly id: string;
     readonly parent: HttpgdManager;
     readonly host: string;
+    readonly origin: string;
     readonly token?: string;
     webviewPanel?: vscode.WebviewPanel;
     readonly api: HttpgdClient;
@@ -163,12 +172,14 @@ export class HttpgdViewer implements IHttpgdViewer, PlotViewer {
     }
 
     constructor(host: string, options: HttpgdViewerOptions) {
-        this.host = host;
-        this.id = host;
+        const url = new URL(host.includes('://') ? host : `http://${host}`);
+        this.host = url.host;
+        this.origin = url.origin;
+        this.id = this.host;
         this.token = options.token;
         this.parent = options.parent;
 
-        this.api = new HttpgdClient(this.host, this.token);
+        this.api = new HttpgdClient(this.origin, this.token);
         this.api.onPlotsChanged((newState) => {
             void this.refreshPlotsDelayed(newState.plots).catch((err) => {
                 this.reportRefreshError(err);
@@ -206,7 +217,7 @@ export class HttpgdViewer implements IHttpgdViewer, PlotViewer {
         this.stripStyles = options.stripStyles ?? this.defaultStripStyles;
         this.previewPlotLayout = options.previewPlotLayout ?? this.defaultPreviewPlotLayout;
         this.fullWindow = options.fullWindow ?? this.defaultFullWindow;
-        this.resizeTimeoutLength = options.refreshTimeoutLength ?? this.resizeTimeoutLength;
+        this.resizeTimeoutLength = options.resizeTimeoutLength ?? this.resizeTimeoutLength;
         this.refreshTimeoutLength = options.refreshTimeoutLength ?? this.refreshTimeoutLength;
         void this.api.connect().catch((err) => {
             if (!this.disposed) {
@@ -269,11 +280,18 @@ export class HttpgdViewer implements IHttpgdViewer, PlotViewer {
     }
 
     public openExternal(): void {
-        let urlString = `http://${this.host}/live`;
+        const url = new URL('/live', this.origin);
         if (this.token) {
-            urlString += `?token=${this.token}`;
+            url.searchParams.set('token', this.token);
         }
-        const uri = vscode.Uri.parse(urlString);
+        // Uri.parse decodes query escapes, including delimiters within a token.
+        // Preserve URLSearchParams' encoding when handing the URL to VS Code.
+        const uri = vscode.Uri.from({
+            scheme: url.protocol.slice(0, -1),
+            authority: url.host,
+            path: url.pathname,
+            query: url.search.slice(1),
+        });
         void vscode.env.openExternal(uri);
     }
 
@@ -283,7 +301,7 @@ export class HttpgdViewer implements IHttpgdViewer, PlotViewer {
         if (
             plt &&
             (plt.height !== this.viewHeight ||
-                plt.width !== this.viewHeight ||
+                plt.width !== this.viewWidth ||
                 plt.zoom !== this.zoom)
         ) {
             await this.refreshPlots(this.api.getPlots());
@@ -489,10 +507,11 @@ export class HttpgdViewer implements IHttpgdViewer, PlotViewer {
             return;
         }
         const nPlots = this.plots.length;
-        let plotIds = plotsIdResponse.map((x) => x.id);
-        plotIds = plotIds.filter((id) => !this.hiddenPlots.includes(id));
+        const hidden = new Set(this.hiddenPlots);
+        const existing = new Map(this.plots.map((plot) => [plot.id, plot]));
+        const plotIds = plotsIdResponse.map((x) => x.id).filter((id) => !hidden.has(id));
         const newPlotPromises = plotIds.map(async (id) => {
-            const plot = this.plots.find((plt) => plt.id === id);
+            const plot = existing.get(id);
             if (force || !plot || id === this.activePlot) {
                 return await this.getPlotContent(id, this.viewWidth, this.viewHeight, this.zoom);
             } else {
@@ -503,7 +522,7 @@ export class HttpgdViewer implements IHttpgdViewer, PlotViewer {
         if (this.disposed) {
             return;
         }
-        const oldPlotIds = this.plots.map((plt) => plt.id);
+        const oldPlotIds = new Set(this.plots.map((plt) => plt.id));
         this.plots = newPlots;
         if (this.plots.length !== nPlots) {
             this.activePlot = this.plots[this.plots.length - 1]?.id;
@@ -512,7 +531,7 @@ export class HttpgdViewer implements IHttpgdViewer, PlotViewer {
             this.refreshHtml();
         } else {
             for (const plt of this.plots) {
-                if (oldPlotIds.includes(plt.id)) {
+                if (oldPlotIds.has(plt.id)) {
                     this.updatePlot(plt);
                 } else {
                     this.addPlot(plt);

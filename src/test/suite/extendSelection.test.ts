@@ -12,6 +12,41 @@ import { extendSelection } from '../../selection';
 
 // Defines a Mocha test suite to group tests of similar kind together
 suite('extendSelection Tests', () => {
+    test('selects complete calls containing strings ending in escaped backslashes', () => {
+        for (const text of [
+            String.raw`print(
+  "a\\", 1
+)
+next_call()`,
+            String.raw`print("a\\",
+  1
+)
+next_call()`,
+            String.raw`print(
+  'a\\\\', 1
+)
+next_call()`,
+        ]) {
+            const lines = text.split('\n');
+            for (let line = 0; line <= 2; line++) {
+                assert.deepStrictEqual(
+                    extendSelection(line, (i) => lines[i], lines.length),
+                    {
+                        startLine: 0,
+                        endLine: 2,
+                    },
+                );
+            }
+            assert.deepStrictEqual(
+                extendSelection(3, (i) => lines[i], lines.length),
+                {
+                    startLine: 3,
+                    endLine: 3,
+                },
+            );
+        }
+    });
+
     test('Selecting multi-line {} bracketed expression', () => {
         const doc = `
         function (x) {

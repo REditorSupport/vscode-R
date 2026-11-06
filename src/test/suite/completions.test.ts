@@ -3,7 +3,78 @@ import * as sinon from 'sinon';
 import * as assert from 'assert';
 
 import * as session from '../../session';
-import { HoverProvider, LiveCompletionItemProvider } from '../../completions';
+import * as extension from '../../extension';
+import * as util from '../../util';
+import {
+    HelpLinkHoverProvider,
+    HoverProvider,
+    LiveCompletionItemProvider,
+} from '../../completions';
+
+suite('Help link hover', () => {
+    let sandbox: sinon.SinonSandbox;
+    let aliases: sinon.SinonStub;
+    setup(() => {
+        sandbox = sinon.createSandbox();
+        sandbox.stub(util, 'config').returns({
+            get: () => true,
+        } as unknown as vscode.WorkspaceConfiguration);
+        aliases = sandbox.stub().resolves([]);
+        sandbox.stub(extension, 'globalRHelp').value({ getMatchingAliases: aliases });
+    });
+    teardown(() => sandbox.restore());
+
+    test('punctuation does not look up the entire document as a help alias', async () => {
+        const document = await vscode.workspace.openTextDocument({
+            language: 'r',
+            content: '# comment\nx <- 1',
+        });
+        const hover = await new HelpLinkHoverProvider().provideHover(
+            document,
+            new vscode.Position(0, 0),
+        );
+        assert.strictEqual(hover, null);
+        sinon.assert.notCalled(aliases);
+    });
+
+    test('an unmatched alias contributes no empty hover', async () => {
+        const document = await vscode.workspace.openTextDocument({
+            language: 'r',
+            content: 'unknown_function()',
+        });
+        assert.strictEqual(
+            await new HelpLinkHoverProvider().provideHover(document, new vscode.Position(0, 5)),
+            null,
+        );
+        sinon.assert.calledOnceWithExactly(aliases, 'unknown_function');
+    });
+
+    test('cancellation discards a pending help alias lookup', async () => {
+        let finish!: (value: unknown[]) => void;
+        aliases.returns(
+            new Promise<unknown[]>((resolve) => {
+                finish = resolve;
+            }),
+        );
+        const document = await vscode.workspace.openTextDocument({
+            language: 'r',
+            content: 'sum()',
+        });
+        const cancellation = new vscode.CancellationTokenSource();
+        try {
+            const hover = new HelpLinkHoverProvider().provideHover(
+                document,
+                new vscode.Position(0, 1),
+                cancellation.token,
+            );
+            cancellation.cancel();
+            finish([{ package: 'base', alias: 'sum', name: 'sum' }]);
+            assert.strictEqual(await hover, null);
+        } finally {
+            cancellation.dispose();
+        }
+    });
+});
 
 suite('Session hover and completion', () => {
     let sandbox: sinon.SinonSandbox;

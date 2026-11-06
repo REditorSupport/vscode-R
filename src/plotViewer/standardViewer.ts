@@ -76,19 +76,22 @@ export class StandardPlotViewer implements PlotViewer {
         );
         this.panel = panel;
         const generation = ++this.panelGeneration;
+        let initialRequest = false;
 
         panel.iconPath = new UriIcon('graph');
-        panel.webview.html = this.getHtml();
 
         panel.webview.onDidReceiveMessage(
             async (msg: { type: string; width?: number; height?: number }) => {
                 if (
                     this.panel === panel &&
                     this.panelGeneration === generation &&
-                    msg.type === 'resize'
+                    (msg.type === 'resize' || (msg.type === 'ready' && !initialRequest))
                 ) {
-                    this.viewWidth = msg.width || this.viewWidth;
-                    this.viewHeight = msg.height || this.viewHeight;
+                    initialRequest = true;
+                    if (msg.type === 'resize') {
+                        this.viewWidth = msg.width || this.viewWidth;
+                        this.viewHeight = msg.height || this.viewHeight;
+                    }
                     await this.requestPlot();
                 }
             },
@@ -100,6 +103,9 @@ export class StandardPlotViewer implements PlotViewer {
                 this.panelGeneration++;
             }
         });
+        // Install the receiver before starting the document so its first ready
+        // message cannot be missed, even without a visible layout/resize event.
+        panel.webview.html = this.getHtml();
     }
 
     private requestPlot(): Promise<void> {
@@ -293,6 +299,9 @@ export class StandardPlotViewer implements PlotViewer {
                 }
             }
         });
+        // Hidden webviews can suspend ResizeObserver callbacks. Request the
+        // initial plot once scripts are listening, then refine its size on resize.
+        vscode.postMessage({ type: 'ready' });
     </script>
 </body>
 </html>

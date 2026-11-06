@@ -16,6 +16,18 @@ suite('R command utilities', () => {
     });
     teardown(() => sandbox.restore());
 
+    test('in-memory help state preserves falsy values and supports key deletion', async () => {
+        const state = new util.DummyMemento();
+        for (const value of [false, 0, '', null]) {
+            await state.update('cached', value);
+            assert.strictEqual(state.get('cached', 'fallback'), value);
+            assert.deepStrictEqual(state.keys(), ['cached']);
+        }
+        await state.update('cached', undefined);
+        assert.strictEqual(state.get('cached', 'fallback'), 'fallback');
+        assert.deepStrictEqual(state.keys(), []);
+    });
+
     test('R literals escape quotes, backslashes and control characters', () => {
         assert.strictEqual(
             util.ToRStringLiteral('a"b\'c\\d\n\r\t\b\f\v', '"'),

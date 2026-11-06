@@ -765,9 +765,7 @@ export class InteractiveManager
                 const edits: vscode.NotebookEdit[] = [];
                 for (const cell of view.notebook.getCells().slice().reverse()) {
                     const id = cell.metadata.rExecutionId as string | undefined;
-                    const record =
-                        id &&
-                        this.transcriptCells(view).find((cell) => cell.record.id === id)?.record;
+                    const record = id && this.transcriptCell(view, id)?.record;
                     if (
                         record &&
                         !view.executions.has(record.id) &&
@@ -1953,10 +1951,7 @@ export class InteractiveManager
             }
             // Re-running creates a new execution identity, even if the same cell is selected.
             const previousId = cell.metadata.rExecutionId as string | undefined;
-            if (
-                previousId &&
-                this.transcriptCells(view).some((cell) => cell.record.id === previousId)
-            ) {
+            if (previousId && this.transcriptCell(view, previousId)) {
                 await this.submit(view, code, cell.metadata.rSource as SourceLocation | undefined);
                 continue;
             }

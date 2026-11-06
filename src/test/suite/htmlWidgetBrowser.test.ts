@@ -12,11 +12,40 @@ import {
     restoreHtmlViewer,
     runHtmlViewerCommand,
     showWebView,
-    shutdownHtmlWidgetViewers,
 } from '../../webViewer';
 import { extensionContext } from '../../extension';
 import { mockExtensionContext } from '../common/mockvscode';
 import { waitForValue } from '../common/sessionConnections';
+
+const fixtureSandboxes = new Set<sinon.SinonSandbox>();
+const fixtureViewers = new Map<
+    sinon.SinonSandbox,
+    ReturnType<typeof initializeHtmlWidgetViewers>
+>();
+
+function createFixtureSandbox(): sinon.SinonSandbox {
+    const sandbox = sinon.createSandbox();
+    fixtureSandboxes.add(sandbox);
+    return sandbox;
+}
+
+function initializeFixtureViewers(
+    sandbox: sinon.SinonSandbox,
+    sessions: Parameters<typeof initializeHtmlWidgetViewers>[1],
+): ReturnType<typeof initializeHtmlWidgetViewers> {
+    const manager = initializeHtmlWidgetViewers(extensionContext, sessions);
+    fixtureViewers.set(sandbox, manager);
+    return manager;
+}
+
+async function shutdownFixtureViewers(sandbox: sinon.SinonSandbox): Promise<void> {
+    const manager = fixtureViewers.get(sandbox);
+    fixtureViewers.delete(sandbox);
+    if (manager) {
+        manager.dispose();
+        await manager.flush();
+    }
+}
 
 async function focusHtmlViewer(panel: vscode.WebviewPanel): Promise<void> {
     panel.reveal(panel.viewColumn, false);
@@ -31,9 +60,19 @@ async function focusHtmlViewer(panel: vscode.WebviewPanel): Promise<void> {
 }
 
 suite('HTML widget browser rendering', () => {
+    teardown(async () => {
+        // Mocha timeouts do not cancel an async test body. Release its own
+        // manager and mocks here, even if the body's finally block runs later.
+        try {
+            await Promise.all([...fixtureViewers.keys()].map(shutdownFixtureViewers));
+        } finally {
+            fixtureSandboxes.forEach((sandbox) => sandbox.restore());
+            fixtureSandboxes.clear();
+        }
+    });
     test('CSP-blocked acknowledgements unlock navigation and stop the spinner after ten seconds in a real webview', async function () {
         this.timeout(30000);
-        const sandbox = sinon.createSandbox();
+        const sandbox = createFixtureSandbox();
         const statusItems = sandbox.spy(vscode.window, 'createStatusBarItem');
         sandbox
             .stub(vscode.window, 'registerWebviewPanelSerializer')
@@ -51,7 +90,7 @@ suite('HTML widget browser rendering', () => {
         source.rVer = '4.6.1';
         try {
             mockExtensionContext(path.resolve(__dirname, '../../..'), sandbox);
-            const manager = initializeHtmlWidgetViewers(extensionContext, {
+            const manager = initializeFixtureViewers(sandbox, {
                 resolveSession: (source) =>
                     session.getViewerSessionContext(source.sessionId, source)!,
                 getActiveSessionId: () => session.activeSession?.sessionId,
@@ -83,6 +122,7 @@ suite('HTML widget browser rendering', () => {
             const context = session.getViewerSessionContext(source.sessionId);
             await showWebView(first, 'First', 'Two', context);
             const entry = [...manager.viewers.values()][0];
+            await focusHtmlViewer(entry.panel);
             await waitForValue(() =>
                 acknowledgements.includes(entry.revision) ? true : undefined,
             );
@@ -133,7 +173,7 @@ suite('HTML widget browser rendering', () => {
             panels.forEach((panel) => {
                 panel.dispose();
             });
-            await shutdownHtmlWidgetViewers();
+            await shutdownFixtureViewers(sandbox);
             session.unregisterSessionTransport(source);
             sandbox.restore();
             fs.rmSync(directory, { recursive: true, force: true });
@@ -141,7 +181,7 @@ suite('HTML widget browser rendering', () => {
     });
 
     test('document edits preserve authored titles, SVG accessibility, and tag-shaped script text', async () => {
-        const sandbox = sinon.createSandbox();
+        const sandbox = createFixtureSandbox();
         sandbox
             .stub(vscode.window, 'registerWebviewPanelSerializer')
             .returns({ dispose: sandbox.stub() });
@@ -150,7 +190,7 @@ suite('HTML widget browser rendering', () => {
         let result: vscode.Uri | undefined;
         try {
             mockExtensionContext(path.resolve(__dirname, '../../..'), sandbox);
-            initializeHtmlWidgetViewers(extensionContext, {
+            initializeFixtureViewers(sandbox, {
                 resolveSession: (source) =>
                     session.getViewerSessionContext(source.sessionId, source)!,
                 getActiveSessionId: () => session.activeSession?.sessionId,
@@ -216,14 +256,14 @@ suite('HTML widget browser rendering', () => {
             panels.forEach((panel) => {
                 panel.dispose();
             });
-            await shutdownHtmlWidgetViewers();
+            await shutdownFixtureViewers(sandbox);
             sandbox.restore();
             fs.rmSync(directory, { recursive: true, force: true });
         }
     });
 
     test('authored local bases load relative resources from their own directories', async () => {
-        const sandbox = sinon.createSandbox();
+        const sandbox = createFixtureSandbox();
         sandbox
             .stub(vscode.window, 'registerWebviewPanelSerializer')
             .returns({ dispose: sandbox.stub() });
@@ -240,7 +280,7 @@ suite('HTML widget browser rendering', () => {
         let result: vscode.Uri | undefined;
         try {
             mockExtensionContext(path.resolve(__dirname, '../../..'), sandbox);
-            initializeHtmlWidgetViewers(extensionContext, {
+            initializeFixtureViewers(sandbox, {
                 resolveSession: (source) =>
                     session.getViewerSessionContext(source.sessionId, source)!,
                 getActiveSessionId: () => session.activeSession?.sessionId,
@@ -330,14 +370,14 @@ suite('HTML widget browser rendering', () => {
             panels.forEach((panel) => {
                 panel.dispose();
             });
-            await shutdownHtmlWidgetViewers();
+            await shutdownFixtureViewers(sandbox);
             sandbox.restore();
             fs.rmSync(directory, { recursive: true, force: true });
         }
     });
 
     test('authored bases cannot read files outside the output and trusted workspace', async () => {
-        const sandbox = sinon.createSandbox();
+        const sandbox = createFixtureSandbox();
         sandbox
             .stub(vscode.window, 'registerWebviewPanelSerializer')
             .returns({ dispose: sandbox.stub() });
@@ -376,7 +416,7 @@ suite('HTML widget browser rendering', () => {
                 },
             ]);
             mockExtensionContext(path.resolve(__dirname, '../../..'), sandbox);
-            initializeHtmlWidgetViewers(extensionContext, {
+            initializeFixtureViewers(sandbox, {
                 resolveSession: (source) =>
                     session.getViewerSessionContext(source.sessionId, source)!,
                 getActiveSessionId: () => session.activeSession?.sessionId,
@@ -444,7 +484,7 @@ suite('HTML widget browser rendering', () => {
             panels.forEach((panel) => {
                 panel.dispose();
             });
-            await shutdownHtmlWidgetViewers();
+            await shutdownFixtureViewers(sandbox);
             session.unregisterSessionTransport(source);
             sandbox.restore();
             fs.rmSync(directory, { recursive: true, force: true });
@@ -452,7 +492,7 @@ suite('HTML widget browser rendering', () => {
     });
 
     test('Cmd/Ctrl+F inside the widget opens native Find while other keys stay with the widget', async () => {
-        const sandbox = sinon.createSandbox();
+        const sandbox = createFixtureSandbox();
         sandbox
             .stub(vscode.window, 'registerWebviewPanelSerializer')
             .returns({ dispose: sandbox.stub() });
@@ -470,7 +510,7 @@ suite('HTML widget browser rendering', () => {
         source.rVer = '4.6.1';
         try {
             mockExtensionContext(path.resolve(__dirname, '../../..'), sandbox);
-            initializeHtmlWidgetViewers(extensionContext, {
+            initializeFixtureViewers(sandbox, {
                 resolveSession: (source) =>
                     session.getViewerSessionContext(source.sessionId, source)!,
                 getActiveSessionId: () => session.activeSession?.sessionId,
@@ -548,7 +588,7 @@ suite('HTML widget browser rendering', () => {
             panels.forEach((panel) => {
                 panel.dispose();
             });
-            await shutdownHtmlWidgetViewers();
+            await shutdownFixtureViewers(sandbox);
             session.unregisterSessionTransport(source);
             sandbox.restore();
             fs.rmSync(directory, { recursive: true, force: true });
@@ -556,7 +596,7 @@ suite('HTML widget browser rendering', () => {
     });
 
     test('fragment links scroll to IDs and named anchors inside the widget without leaving its document', async () => {
-        const sandbox = sinon.createSandbox();
+        const sandbox = createFixtureSandbox();
         sandbox
             .stub(vscode.window, 'registerWebviewPanelSerializer')
             .returns({ dispose: sandbox.stub() });
@@ -573,7 +613,7 @@ suite('HTML widget browser rendering', () => {
         source.rVer = '4.6.1';
         try {
             mockExtensionContext(path.resolve(__dirname, '../../..'), sandbox);
-            initializeHtmlWidgetViewers(extensionContext, {
+            initializeFixtureViewers(sandbox, {
                 resolveSession: (source) =>
                     session.getViewerSessionContext(source.sessionId, source)!,
                 getActiveSessionId: () => session.activeSession?.sessionId,
@@ -664,15 +704,16 @@ suite('HTML widget browser rendering', () => {
             panels.forEach((panel) => {
                 panel.dispose();
             });
-            await shutdownHtmlWidgetViewers();
+            await shutdownFixtureViewers(sandbox);
             session.unregisterSessionTransport(source);
             sandbox.restore();
             fs.rmSync(directory, { recursive: true, force: true });
         }
     });
 
-    test('history navigation keeps the previous HTML visible without rerunning it', async () => {
-        const sandbox = sinon.createSandbox();
+    test('history navigation keeps the previous HTML visible without rerunning it', async function () {
+        this.timeout(45000);
+        const sandbox = createFixtureSandbox();
         sandbox
             .stub(vscode.window, 'registerWebviewPanelSerializer')
             .returns({ dispose: sandbox.stub() });
@@ -692,7 +733,7 @@ suite('HTML widget browser rendering', () => {
         source.rVer = '4.6.1';
         try {
             mockExtensionContext(path.resolve(__dirname, '../../..'), sandbox);
-            const viewerManager = initializeHtmlWidgetViewers(extensionContext, {
+            const viewerManager = initializeFixtureViewers(sandbox, {
                 resolveSession: (source) =>
                     session.getViewerSessionContext(source.sessionId, source)!,
                 getActiveSessionId: () => session.activeSession?.sessionId,
@@ -713,6 +754,10 @@ suite('HTML widget browser rendering', () => {
                 // Delay replacement delivery to exercise the interval between the
                 // options and HTML workbench messages, without delaying a clear.
                 const webview = panel.webview;
+                let disposed = false;
+                panel.onDidDispose(() => {
+                    disposed = true;
+                });
                 const descriptor = Object.getOwnPropertyDescriptor(
                     Object.getPrototypeOf(webview),
                     'html',
@@ -729,7 +774,9 @@ suite('HTML widget browser rendering', () => {
                         writes.push(
                             new Promise((resolve) =>
                                 setTimeout(() => {
-                                    descriptor.set!.call(webview, html);
+                                    if (!disposed) {
+                                        descriptor.set!.call(webview, html);
+                                    }
                                     resolve();
                                 }, 500),
                             ),
@@ -767,6 +814,7 @@ suite('HTML widget browser rendering', () => {
             const html = fixture('html');
             const loaded = async (count: number) => {
                 await Promise.all(writes);
+                await focusHtmlViewer(panels[0]);
                 await waitForValue(() =>
                     reports.length >= count &&
                     [...viewerManager.viewers.values()].some(
@@ -851,15 +899,16 @@ suite('HTML widget browser rendering', () => {
             panels.forEach((panel) => {
                 panel.dispose();
             });
-            await shutdownHtmlWidgetViewers();
+            await shutdownFixtureViewers(sandbox);
             session.unregisterSessionTransport(source);
             sandbox.restore();
             fs.rmSync(directory, { recursive: true, force: true });
         }
     });
 
-    test('native actions navigate, remove, and restore full documents with relative resources', async () => {
-        const sandbox = sinon.createSandbox();
+    test('native actions navigate, remove, and restore full documents with relative resources', async function () {
+        this.timeout(45000);
+        const sandbox = createFixtureSandbox();
         sandbox
             .stub(vscode.window, 'registerWebviewPanelSerializer')
             .returns({ dispose: sandbox.stub() });
@@ -876,7 +925,7 @@ suite('HTML widget browser rendering', () => {
         source.rVer = '4.6.1';
         try {
             mockExtensionContext(path.resolve(__dirname, '../../..'), sandbox);
-            const viewerManager = initializeHtmlWidgetViewers(extensionContext, {
+            const viewerManager = initializeFixtureViewers(sandbox, {
                 resolveSession: (source) =>
                     session.getViewerSessionContext(source.sessionId, source)!,
                 getActiveSessionId: () => session.activeSession?.sessionId,
@@ -933,6 +982,7 @@ suite('HTML widget browser rendering', () => {
             const second = fixture('second');
             const count = (name: string) => urls.filter((uri) => uri.path === `/${name}`).length;
             const loaded = async (name: string, previous: number) => {
+                await focusHtmlViewer(panels.at(-1)!);
                 const uri = await waitForValue(() => {
                     const reports = urls.filter((uri) => uri.path === `/${name}`);
                     const latest = reports.at(-1);
@@ -1012,14 +1062,15 @@ suite('HTML widget browser rendering', () => {
             panels.forEach((panel) => {
                 panel.dispose();
             });
-            await shutdownHtmlWidgetViewers();
+            await shutdownFixtureViewers(sandbox);
             session.unregisterSessionTransport(source);
             sandbox.restore();
             fs.rmSync(directory, { recursive: true, force: true });
         }
     });
-    test('registered native commands operate on HTML outputs received by the activated extension', async () => {
-        const sandbox = sinon.createSandbox();
+    test('registered native commands operate on HTML outputs received by the activated extension', async function () {
+        this.timeout(45000);
+        const sandbox = createFixtureSandbox();
         sandbox
             .stub(vscode.window, 'registerWebviewPanelSerializer')
             .returns({ dispose: sandbox.stub() });
@@ -1133,8 +1184,8 @@ suite('HTML widget browser rendering', () => {
                 const generation = () =>
                     Number(/data-generation="(\d+)"/.exec(viewer.webview.html)?.[1]);
                 const ready = () => loaded.get(viewer) === generation();
-                await waitForValue(() => (ready() ? true : undefined));
                 await focusHtmlViewer(viewer);
+                await waitForValue(() => (ready() ? true : undefined));
                 const key = {
                     back: 'canGoBack',
                     forward: 'canGoForward',

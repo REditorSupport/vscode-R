@@ -222,8 +222,12 @@ export class HelpLinkHoverProvider implements vscode.HoverProvider {
     async provideHover(
         document: vscode.TextDocument,
         position: vscode.Position,
+        cancellation?: vscode.CancellationToken,
     ): Promise<vscode.Hover | null> {
-        if (!config().get<boolean>('helpPanel.enableHoverLinks')) {
+        if (
+            cancellation?.isCancellationRequested ||
+            !config().get<boolean>('helpPanel.enableHoverLinks')
+        ) {
             return null;
         }
 
@@ -242,8 +246,20 @@ export class HelpLinkHoverProvider implements vscode.HoverProvider {
 
         const re = /([a-zA-Z0-9._:])+/;
         const wordRange = document.getWordRangeAtPosition(position, re);
+        if (!wordRange) {
+            return null;
+        }
+        const version = document.version;
         const token = document.getText(wordRange);
         const aliases = (await globalRHelp?.getMatchingAliases(token)) || [];
+        if (
+            !aliases.length ||
+            cancellation?.isCancellationRequested ||
+            document.isClosed ||
+            document.version !== version
+        ) {
+            return null;
+        }
         const mds = aliases.map((a) => {
             const cmdText = `${a.package}::${a.alias}`;
             const args = [`/library/${a.package}/html/${a.name}.html`];

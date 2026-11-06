@@ -40,7 +40,7 @@ export async function executeEditorCommand(
     await vscode.commands.executeCommand(command, { text });
     await waitForEditorState(
         () => editor.document.version > version,
-        `The ${command} command did not change the intended document`,
+        `The ${command} command for ${JSON.stringify(text)} did not change the intended document`,
     );
     await vscode.commands.executeCommand('revealLine', {
         lineNumber: editor.selection.active.line,
