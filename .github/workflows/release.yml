@@ -61,7 +61,7 @@ jobs:
 
   publish-vs-marketplace:
     name: Publish to Visual Studio Marketplace
-    # TODO: Uncomment after a repository admin creates the vs-marketplace environment (for trusted publishing) and moves VSCE_TOKEN into it.
+    # TODO: Uncomment when switching to trusted publishing (OIDC, no token); a repository admin must create the vs-marketplace environment first.
     # environment: vs-marketplace
     timeout-minutes: 30
     runs-on: ubuntu-latest
@@ -86,7 +86,7 @@ jobs:
 
   publish-open-vsx:
     name: Publish to Open VSX Registry
-    # TODO: Uncomment after a repository admin creates the open-vsx environment (for trusted publishing) and moves OPEN_VSX_TOKEN into it.
+    # TODO: Uncomment when switching to trusted publishing (OIDC, no token); a repository admin must create the open-vsx environment first.
     # environment: open-vsx
     timeout-minutes: 30
     runs-on: ubuntu-latest

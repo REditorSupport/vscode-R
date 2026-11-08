@@ -40,7 +40,7 @@ jobs:
       prerelease-date: ${{ needs.prepare.outputs.date }}
 
   publish-vs-marketplace:
-    # TODO: Uncomment after a repository admin creates the vs-marketplace environment (for trusted publishing) and moves VSCE_TOKEN into it.
+    # TODO: Uncomment when switching to trusted publishing (OIDC, no token); a repository admin must create the vs-marketplace environment first.
     # environment: vs-marketplace
     needs:
       - prepare
@@ -73,7 +73,7 @@ jobs:
         run: pnpm exec vsce publish --pre-release --skip-duplicate --packagePath artifacts/vscode-R.vsix
 
   publish-open-vsx:
-    # TODO: Uncomment after a repository admin creates the open-vsx environment (for trusted publishing) and moves OPEN_VSX_TOKEN into it.
+    # TODO: Uncomment when switching to trusted publishing (OIDC, no token); a repository admin must create the open-vsx environment first.
     # environment: open-vsx
     needs:
       - prepare
