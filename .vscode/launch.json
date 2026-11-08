@@ -33,21 +33,6 @@
       ],
       "sourceMaps": true,
       "preLaunchTask": "compile"
-    },
-    {
-      "name": "Extension Tests",
-      "type": "extensionHost",
-      "request": "launch",
-      "runtimeExecutable": "${execPath}",
-      "args": [
-        "--extensionDevelopmentPath=${workspaceFolder}",
-        "--extensionTestsPath=${workspaceFolder}/out/test/suite/index"
-      ],
-      "outFiles": [
-        "${workspaceFolder}/dist/**/*.js",
-        "${workspaceFolder}/out/**/*.js"
-      ],
-      "preLaunchTask": "pretest"
     }
   ]
 }

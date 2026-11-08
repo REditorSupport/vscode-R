@@ -17,7 +17,7 @@ If a command reports `pnpm: command not found`, ensure pnpm's installation direc
 2. Select **Launch Extension** in Run and Debug, then press **F5**. The pre-launch task runs `pnpm run compile` to build the extension and webviews in `dist`, including source maps for TypeScript breakpoints.
 3. Open an R file or run an R command in the Extension Development Host to activate vscode-R. Ensure the **R Syntax** extension (`REditorSupport.r-syntax`) is installed and enabled there.
 
-For continuous rebuilding, run `pnpm run watch`. `pnpm run build` additionally installs the bundled `sess` R package; this is not required just to launch the extension debugger. **Extension Tests** builds both the bundle and the TypeScript test files before launching.
+For continuous rebuilding, run `pnpm run watch`. `pnpm run build` additionally installs the bundled `sess` R package; this is not required just to launch the extension debugger.
 
 VS Code 1.140.0 bundles [JavaScript Debugger 1.140.0](https://github.com/microsoft/vscode-js-debug/releases/tag/v1.140.0), which fixes the [extension host attach regression in VS Code 1.139](https://github.com/microsoft/vscode-js-debug/issues/2420). Use the built-in **JavaScript Debugger** on VS Code 1.140.0 or newer. If you previously used **JavaScript Debugger Nightly**, disable Nightly, re-enable the built-in debugger (`ms-vscode.js-debug`) in the Extensions view, and run **Developer: Reload Window**.
 
@@ -103,9 +103,14 @@ The provider is arf. `ARF_PATH` selects its executable; `VSCR_TEST_STATIC=1` sel
 in Node/Mocha, then runs the extension-host suites and isolated sess task tests.
 `pnpm run test:interactive` prepares and runs only the Node suites, including
 supervision. After preparing once with `pnpm run pretest`, use `pnpm run test:node`
-and `pnpm run test:extension` to rerun either layer without rebuilding. The
-**Extension Tests** debugger configuration runs only `src/test/suite/`; use the
-CLI for the isolated multi-folder sess task tests.
+and `pnpm run test:extension` to rerun either layer without rebuilding.
+
+To debug extension-host tests, install the recommended
+[Extension Test Runner](https://marketplace.visualstudio.com/items?itemName=ms-vscode.extension-test-runner)
+(`ms-vscode.extension-test-runner`). It reads `.vscode-test.mjs`, so each suite
+runs with the same files, Mocha setup and launch arguments as
+`pnpm run test:extension`. Run `pnpm run pretest`, then select **Debug Test** for
+a test or suite in the Testing view.
 
 PR CI, main pushes and manual runs execute the full supported suites on every
 OS. Linux and macOS run the same Node, Interactive editor and isolated sess task
