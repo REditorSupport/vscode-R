@@ -122,8 +122,9 @@ lists the same configurations in the Testing view, so individual tests or suites
 can be run or debugged from there after `pnpm run pretest`.
 
 PR CI, main pushes and manual runs execute the full supported suites on every
-OS. Linux and macOS run the same Node and Interactive editor tests, including the actual VS Code Electron runtime check with no Node executable
-on PATH and successful session creation using the default VS Code runtime.
+OS. Linux and macOS run the same Node and Interactive editor tests, including
+the actual VS Code Electron runtime check with no Node executable on PATH and
+successful session creation using the default VS Code runtime.
 Windows skips the Interactive runtime/editor suites because persistent
 supervision currently requires Linux/macOS. Linux additionally runs the tmux launcher survival case
 once with tmux enabled and uses Xvfb for extension-host tests. Source/bootstrap
