@@ -8,6 +8,10 @@
         "lib": [
             "ES2022"
         ],
+        "types": [
+            "mocha",
+            "node"
+        ],
         "sourceMap": true,
         "rootDir": "src",
         "strict": true,
