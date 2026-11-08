@@ -2,10 +2,6 @@
 
 ## Unreleased
 
-### Internals and development builds
-
-- Made release publishing retry-safe by publishing to the VS Code Marketplace and Open VSX in independent jobs and skipping existing releases and extension versions.
-
 ### Compatibility and upgrade notes
 
 - Raised the minimum supported VS Code version to **1.101.0** (Node.js 22). (#1850)
