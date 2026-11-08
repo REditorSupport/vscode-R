@@ -51,19 +51,29 @@ jobs:
       - name: Create release
         run: |
           VERSION=${GITHUB_REF#refs/tags/v}
-          mv artifacts/vscode-R.vsix "artifacts/r-$VERSION.vsix"
-          if IS_DRAFT=$(gh release view "v$VERSION" --json isDraft --jq .isDraft 2>/dev/null); then
+          ASSET="r-$VERSION.vsix"
+          mv artifacts/vscode-R.vsix "artifacts/$ASSET"
+          if RELEASE=$(gh release view "v$VERSION" --json isDraft,assets 2>/dev/null); then
             # A previous attempt may have created the release without the asset.
-            echo "Release v$VERSION already exists; uploading the VSIX."
-            gh release upload "v$VERSION" "artifacts/r-$VERSION.vsix" --clobber
+            # Keep a completed asset: --clobber deletes it before uploading, so
+            # a failed upload would remove the existing download.
+            if jq -e --arg name "$ASSET" \
+              '.assets | any(.name == $name and .state == "uploaded")' \
+              <<<"$RELEASE" >/dev/null; then
+              echo "Release v$VERSION already has $ASSET; skipping the upload."
+            else
+              echo "Release v$VERSION already exists; uploading $ASSET."
+              # --clobber replaces an incomplete asset with the same name.
+              gh release upload "v$VERSION" "artifacts/$ASSET" --clobber
+            fi
             # gh release create uploads assets to a draft before publishing it,
             # so an interrupted attempt can leave the release as a draft.
-            if [ "$IS_DRAFT" = "true" ]; then
+            if [ "$(jq -r .isDraft <<<"$RELEASE")" = "true" ]; then
               echo "Release v$VERSION is a draft; publishing it."
               gh release edit "v$VERSION" --draft=false
             fi
           else
-            gh release create "v$VERSION" "artifacts/r-$VERSION.vsix" \
+            gh release create "v$VERSION" "artifacts/$ASSET" \
               --title "v$VERSION" \
               --notes "Release v$VERSION" \
               --generate-notes
