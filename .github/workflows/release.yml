@@ -34,10 +34,9 @@ jobs:
     name: Release
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-    # Create the GitHub Release only after both registries have the version.
-    needs:
-      - publish-vs-marketplace
-      - publish-open-vsx
+    # Independent of the registry jobs so the VSIX stays available as a
+    # fallback when a registry is down.
+    needs: verify
     runs-on: ubuntu-latest
     permissions:
       contents: write
