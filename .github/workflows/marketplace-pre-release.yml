@@ -40,7 +40,8 @@ jobs:
       prerelease-date: ${{ needs.prepare.outputs.date }}
 
   publish-vs-marketplace:
-    environment: vs-marketplace
+    # TODO: Uncomment after a repository admin creates the vs-marketplace environment (for trusted publishing) and moves VSCE_TOKEN into it.
+    # environment: vs-marketplace
     needs:
       - prepare
       - verify
@@ -72,7 +73,8 @@ jobs:
         run: pnpm exec vsce publish --pre-release --skip-duplicate --packagePath artifacts/vscode-R.vsix
 
   publish-open-vsx:
-    environment: open-vsx
+    # TODO: Uncomment after a repository admin creates the open-vsx environment (for trusted publishing) and moves OPEN_VSX_TOKEN into it.
+    # environment: open-vsx
     needs:
       - prepare
       - verify
