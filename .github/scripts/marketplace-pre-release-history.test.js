@@ -357,6 +357,19 @@ function splitJobs(options) {
     }));
 }
 
+test('split jobs: re-running only the failed registry job completes the publication', async () => {
+    const prior = run(820, '2026-10-05', 'sha-a');
+    const current = run(821, '2026-10-06', 'sha-a');
+    const firstAttempt = splitJobs({ openVsxConclusion: 'failure' });
+    const retriedOpenVsx = { ...splitJobs()[1], run_attempt: 2 };
+    const jobs = [...firstAttempt, retriedOpenVsx];
+    assert.equal(completedBothRegistries(firstAttempt), false);
+    assert.equal(completedBothRegistries(jobs), true);
+    assert.deepEqual(await decide(current, [prior, current], new Map([['820', jobs]])), {
+        publish: false, date: '2026-10-06', reason: 'unchanged',
+    });
+});
+
 for (const [format, jobsFor] of [['split jobs', splitJobs], ['old combined job', (options) => [publishJob(options)]]]) {
     test(`${format}: both registries succeeded suppress unchanged SHA`, async () => {
         const prior = run(800, '2026-10-05', 'sha-a');
