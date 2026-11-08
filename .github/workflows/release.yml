@@ -52,10 +52,16 @@ jobs:
         run: |
           VERSION=${GITHUB_REF#refs/tags/v}
           mv artifacts/vscode-R.vsix "artifacts/r-$VERSION.vsix"
-          if gh release view "v$VERSION" >/dev/null 2>&1; then
+          if IS_DRAFT=$(gh release view "v$VERSION" --json isDraft --jq .isDraft 2>/dev/null); then
             # A previous attempt may have created the release without the asset.
             echo "Release v$VERSION already exists; uploading the VSIX."
             gh release upload "v$VERSION" "artifacts/r-$VERSION.vsix" --clobber
+            # gh release create uploads assets to a draft before publishing it,
+            # so an interrupted attempt can leave the release as a draft.
+            if [ "$IS_DRAFT" = "true" ]; then
+              echo "Release v$VERSION is a draft; publishing it."
+              gh release edit "v$VERSION" --draft=false
+            fi
           else
             gh release create "v$VERSION" "artifacts/r-$VERSION.vsix" \
               --title "v$VERSION" \
