@@ -33,6 +33,18 @@
       ],
       "sourceMaps": true,
       "preLaunchTask": "compile"
+    },
+    {
+      "name": "Extension Tests",
+      "type": "extensionHost",
+      "request": "launch",
+      "runtimeExecutable": "${execPath}",
+      "testConfiguration": "${workspaceFolder}/.vscode-test.mjs",
+      "outFiles": [
+        "${workspaceFolder}/dist/**/*.js",
+        "${workspaceFolder}/out/**/*.js"
+      ],
+      "preLaunchTask": "pretest"
     }
   ]
 }
