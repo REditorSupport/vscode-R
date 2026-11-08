@@ -65,7 +65,9 @@ jobs:
 
   publish-vs-marketplace:
     name: Publish to Visual Studio Marketplace
-    # TODO: Uncomment when switching to trusted publishing (OIDC, no token); a repository admin must create the vs-marketplace environment first.
+    # TODO: Uncomment when switching to trusted publishing (OIDC, no token).
+    # A repository admin must create the vs-marketplace environment, and each
+    # publishing workflow file needs its own Marketplace trusted publishing policy.
     # environment: vs-marketplace
     timeout-minutes: 30
     runs-on: ubuntu-latest
@@ -90,7 +92,11 @@ jobs:
 
   publish-open-vsx:
     name: Publish to Open VSX Registry
-    # TODO: Uncomment when switching to trusted publishing (OIDC, no token); a repository admin must create the open-vsx environment first.
+    # TODO: Uncomment when switching to trusted publishing (OIDC, no token).
+    # A repository admin must create the open-vsx environment. Open VSX may allow
+    # only one trusted publisher per extension, so stable and pre-release
+    # publishing may first need to be consolidated into a single workflow file
+    # (a shared reusable workflow may not be enough, since the caller differs).
     # environment: open-vsx
     timeout-minutes: 30
     runs-on: ubuntu-latest
