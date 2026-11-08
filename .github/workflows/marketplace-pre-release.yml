@@ -76,10 +76,11 @@ jobs:
 
   publish-open-vsx:
     # TODO: Uncomment when switching to trusted publishing (OIDC, no token).
-    # A repository admin must create the open-vsx environment. Open VSX may allow
-    # only one trusted publisher per extension, so stable and pre-release
-    # publishing may first need to be consolidated into a single workflow file
-    # (a shared reusable workflow may not be enough, since the caller differs).
+    # A repository admin must create the open-vsx environment. Open VSX allows
+    # only one trusted publisher (bound to one workflow file) per extension, so
+    # stable and pre-release publishing must first be consolidated into a single
+    # workflow file (a shared reusable workflow may not be enough, since the
+    # caller differs).
     # environment: open-vsx
     needs:
       - prepare
