@@ -1,6 +1,7 @@
 import { defineConfig } from '@vscode/test-cli';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import * as path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 const common = {
 	mocha: {
@@ -14,7 +15,7 @@ const common = {
 // command tests also need a fresh window after fixtures create terminals and
 // webviews. The real Interactive suite has its own window with the LSP enabled.
 function testProfile(name, lspEnabled) {
-	const directory = path.resolve('.vscode-test/user-data', name);
+	const directory = fileURLToPath(new URL(`.vscode-test/user-data/${name}/`, import.meta.url));
 	mkdirSync(path.join(directory, 'User'), { recursive: true });
 	writeFileSync(path.join(directory, 'User/settings.json'), JSON.stringify({ 'r.lsp.enabled': lspEnabled }));
 	// Unattended runs can be occluded by another app. Keep browser paint and
