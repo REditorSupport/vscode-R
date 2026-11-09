@@ -1,10 +1,29 @@
 # Changelog
 
-## Unreleased
+## 3.4.0 - 2026-11-09
 
 ### Compatibility and upgrade notes
 
-- Raised the minimum supported VS Code version to **1.101.0** (Node.js 22). (#1850)
+- Raised the minimum supported VS Code version to **1.101.0** (Node.js 22). (#1850, #1906)
+
+### New features
+
+- Terminal startup and manual attachment now offer to install `jgd` and `rstudioapi` into a vscode-R-managed tool library, with consent, without modifying user or project libraries. (#1907, #1909)
+
+### Improvements and bug fixes
+
+- Improved workspace refresh, R Interactive output, and editor responsiveness. (#1908, #1921)
+- Improved session startup reliability and fixed Help navigation and plot loading. (#1921)
+
+**Full Changelog**: <https://github.com/REditorSupport/vscode-R/compare/v3.2.2...v3.4.0>
+
+The comparison also lists #1911, which was already released in 3.2.2 via a backport.
+
+## 3.2.2 - 2026-10-26
+
+- Restored httpgd plot and local help rendering with EJS 7. (#1911)
+
+**Full Changelog**: <https://github.com/REditorSupport/vscode-R/compare/v3.2.1...v3.2.2>
 
 ## 3.2.1 - 2026-10-24
 
