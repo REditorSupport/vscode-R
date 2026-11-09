@@ -1,10 +1,31 @@
 # Changelog
 
-## Unreleased
+## 3.4.0 - 2026-11-09
 
 ### Compatibility and upgrade notes
 
-- Raised the minimum supported VS Code version to **1.101.0** (Node.js 22). (#1850)
+- Raised the minimum supported VS Code version to **1.101.0** (Node.js 22). (#1850, #1906)
+
+### New features
+
+- Terminal startup and manual attachment now offer to install `jgd` and `rstudioapi` into a vscode-R-managed tool library, with consent, without modifying user or project libraries. (#1907, #1909)
+- `rstudioapi` is now optional for `sess`; RStudio API emulation prepares it separately when enabled. (#1909)
+
+### Improvements and bug fixes
+
+- Reduced repeated workspace inspection and data transfer for unchanged objects, and improved retained history lookup and console output streaming in R Interactive. (#1908)
+- Improved editor responsiveness for large documents, fragmented session messages, and long Interactive histories; compiler probes now run asynchronously. (#1921)
+- Improved cancellation and cleanup of session requests and language-server startup, and prevented unresolved terminal process IDs from blocking attachment. (#1908, #1921)
+- Restored httpgd plot and local help rendering with EJS 7. (#1911)
+- Fixed Help favorites persistence, stale refreshes, and Back/Forward navigation, and improved initial plot loading and httpgd HTTPS/authentication handling. (#1921)
+- Fixed RStudio API document selection, save error reporting, escaped strings and paths, and CSV export completion. (#1921)
+
+### Internals and development builds
+
+- Made VS Code Marketplace and Open VSX publishing independent and safe to retry. (#1926)
+- Updated dependencies and publishing tools, including security fixes. (#1898, #1905, #1916, #1917, #1918, #1919, #1920, #1924, #1925, #1927)
+
+**Full Changelog**: <https://github.com/REditorSupport/vscode-R/compare/v3.2.1...v3.4.0>
 
 ## 3.2.1 - 2026-10-24
 
