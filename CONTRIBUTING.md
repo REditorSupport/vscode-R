@@ -17,7 +17,7 @@ If a command reports `pnpm: command not found`, ensure pnpm's installation direc
 2. Select **Launch Extension** in Run and Debug, then press **F5**. The pre-launch task runs `pnpm run compile` to build the extension and webviews in `dist`, including source maps for TypeScript breakpoints.
 3. Open an R file or run an R command in the Extension Development Host to activate vscode-R. Ensure the **R Syntax** extension (`REditorSupport.r-syntax`) is installed and enabled there.
 
-For continuous rebuilding, run `pnpm run watch`. `pnpm run build` additionally installs the bundled `sess` R package; this is not required just to launch the extension debugger. **Extension Tests** builds both the bundle and the TypeScript test files before launching.
+For continuous rebuilding, run `pnpm run watch`. `pnpm run build` additionally installs the bundled `sess` R package; this is not required just to launch the extension debugger.
 
 VS Code 1.140.0 bundles [JavaScript Debugger 1.140.0](https://github.com/microsoft/vscode-js-debug/releases/tag/v1.140.0), which fixes the [extension host attach regression in VS Code 1.139](https://github.com/microsoft/vscode-js-debug/issues/2420). Use the built-in **JavaScript Debugger** on VS Code 1.140.0 or newer. If you previously used **JavaScript Debugger Nightly**, disable Nightly, re-enable the built-in debugger (`ms-vscode.js-debug`) in the Extensions view, and run **Developer: Reload Window**.
 
@@ -100,17 +100,31 @@ VSCR_TEST_TMUX=1 pnpm exec mocha out/test/node/interactiveRuntime.test.js --ui t
 The provider is arf. `ARF_PATH` selects its executable; `VSCR_TEST_STATIC=1` selects standard graphics. The tmux variant needs tmux and exercises a real supervised agent, as Linux CI does. These variables can be combined. Check skipped tests when assessing coverage: a missing optional runtime or package is not a verified pass for that feature.
 
 `pnpm run test` prepares the bundle and test files, runs `src/test/node/` directly
-in Node/Mocha, then runs the extension-host suites and isolated sess task tests.
+in Node/Mocha, then runs the extension-host suites.
 `pnpm run test:interactive` prepares and runs only the Node suites, including
 supervision. After preparing once with `pnpm run pretest`, use `pnpm run test:node`
-and `pnpm run test:extension` to rerun either layer without rebuilding. The
-**Extension Tests** debugger configuration runs only `src/test/suite/`; use the
-CLI for the isolated multi-folder sess task tests.
+and `pnpm run test:extension` to rerun either layer without rebuilding.
+
+To debug extension-host tests, select **Extension Tests** in Run and Debug and
+press **F5**. The pre-launch task runs `pnpm run pretest`, and the debugger then
+asks which `.vscode-test.mjs` configuration to run (`provider-tests`,
+`editor-command-tests` or `interactive-integration`). One launch runs only the
+selected configuration, with the same files, Mocha options and launch arguments
+as `pnpm run test:extension`. Unlike the CLI, it runs in the current VS Code and
+does not install extension dependencies, so the **R Syntax** extension must
+already be installed. `interactive-integration` also needs the R and arf setup
+described above.
+
+Alternatively, the optional
+[Extension Test Runner](https://marketplace.visualstudio.com/items?itemName=ms-vscode.extension-test-runner)
+extension (`ms-vscode.extension-test-runner`, in the workspace recommendations)
+lists the same configurations in the Testing view, so individual tests or suites
+can be run or debugged from there after `pnpm run pretest`.
 
 PR CI, main pushes and manual runs execute the full supported suites on every
-OS. Linux and macOS run the same Node, Interactive editor and isolated sess task
-tests, including the actual VS Code Electron runtime check with no Node executable
-on PATH and successful session creation using the default VS Code runtime.
+OS. Linux and macOS run the same Node and Interactive editor tests, including
+the actual VS Code Electron runtime check with no Node executable on PATH and
+successful session creation using the default VS Code runtime.
 Windows skips the Interactive runtime/editor suites because persistent
 supervision currently requires Linux/macOS. Linux additionally runs the tmux launcher survival case
 once with tmux enabled and uses Xvfb for extension-host tests. Source/bootstrap
@@ -123,7 +137,7 @@ pnpm run pretest
 pnpm exec vscode-test --run out/test/suite/interactiveEditor.test.js
 ```
 
-On headless Linux, run the editor command under `xvfb-run -a`. The test configuration installs R Syntax in the test profile. [runtime-lifecycle.cjs](src/test/examples/README.md#editor-runtime-lifecycle) separately checks persistence across full application exit and different editor versions. Use it with the minimum VS Code version from `package.json` and current stable when changing runtime launch or reconnection.
+On headless Linux, run the editor command under `xvfb-run -a`. When run from the CLI, the test configuration installs R Syntax in the test profile. [runtime-lifecycle.cjs](src/test/examples/README.md#editor-runtime-lifecycle) separately checks persistence across full application exit and different editor versions. Use it with the minimum VS Code version from `package.json` and current stable when changing runtime launch or reconnection.
 
 ### Browser renderer
 
