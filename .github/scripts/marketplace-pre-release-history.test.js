@@ -2,7 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const { readFileSync } = require('node:fs');
 const { join } = require('node:path');
-const { createGhApi, decidePublication, pagesToItems, completePagesToItems } = require('./marketplace-pre-release-history');
+const { createGhApi, decidePublication, pagesToItems, completePagesToItems, didAttemptPublication, completedBothRegistries } = require('./marketplace-pre-release-history');
 
 const marketplace = 'Publish to Visual Studio Marketplace';
 const openVsx = 'Publish to Open VSX Registry';
@@ -335,25 +335,60 @@ test('run pagination fails closed on empty, inconsistent, or duplicate pages', (
         : { total_count: 101, workflow_runs: [item(100)] }).listRuns('owner/repo'), /duplicate workflow runs/);
 });
 
-test('workflow rechecks eligibility in the publishing job and gates both registries', () => {
-    const workflowPath = join(__dirname, '../workflows/marketplace-pre-release.yml');
-    const workflow = readFileSync(workflowPath, 'utf8');
-    const prepareStart = workflow.indexOf('  prepare:');
-    const publishStart = workflow.indexOf('\n  publish:\n    needs:');
-    const prepare = workflow.slice(prepareStart, publishStart);
-    const helperIndex = prepare.indexOf('.github/scripts/marketplace-pre-release-history.js');
-    assert.ok(helperIndex >= 0);
-    assert.ok(prepare.slice(0, helperIndex).includes('uses: actions/checkout@'));
-    assert.match(prepare.slice(0, helperIndex), /uses: actions\/setup-node@[\s\S]*?node-version: 24/);
-    const publish = workflow.slice(publishStart);
-    const eligibilityIndex = publish.indexOf('id: eligibility');
-    assert.ok(eligibilityIndex >= 0);
-    assert.match(publish.slice(eligibilityIndex), /run: node \.github\/scripts\/marketplace-pre-release-history\.js/);
-    for (const name of [marketplace, openVsx]) {
-        const index = publish.indexOf(`- name: ${name}`);
-        assert.ok(index > eligibilityIndex, `${name} must run after the eligibility check`);
-        const nextStep = publish.indexOf('\n      - name:', index + 1);
-        const step = publish.slice(index, nextStep < 0 ? undefined : nextStep);
-        assert.match(step, /if: steps\.eligibility\.outputs\.publish == 'true'/);
+test('each split publishing job rechecks eligibility and gates its registry', () => {
+    const workflow = readFileSync(join(__dirname, '../workflows/marketplace-pre-release.yml'), 'utf8');
+    for (const [job, name] of [['publish-vs-marketplace', marketplace], ['publish-open-vsx', openVsx]]) {
+        const start = workflow.indexOf(`\n  ${job}:`);
+        assert.ok(start >= 0);
+        const end = workflow.indexOf('\n  publish-', start + 1);
+        const body = workflow.slice(start, end < 0 ? undefined : end);
+        const eligibility = body.indexOf('id: eligibility');
+        assert.ok(eligibility >= 0);
+        assert.ok(body.indexOf('.github/scripts/marketplace-pre-release-history.js', eligibility) > eligibility);
+        const publication = body.indexOf(`- name: ${name}`);
+        assert.ok(publication > eligibility);
+        assert.ok(body.slice(publication).includes("if: steps.eligibility.outputs.publish == 'true'"));
     }
 });
+
+function splitJobs(options) {
+    return publishJob(options).steps.map((step, index) => ({
+        name: ['publish-vs-marketplace', 'publish-open-vsx'][index], steps: [step],
+    }));
+}
+
+test('split jobs: re-running only the failed registry job completes the publication', async () => {
+    const prior = run(820, '2026-10-05', 'sha-a');
+    const current = run(821, '2026-10-06', 'sha-a');
+    const firstAttempt = splitJobs({ openVsxConclusion: 'failure' });
+    const retriedOpenVsx = { ...splitJobs()[1], run_attempt: 2 };
+    const jobs = [...firstAttempt, retriedOpenVsx];
+    assert.equal(completedBothRegistries(firstAttempt), false);
+    assert.equal(completedBothRegistries(jobs), true);
+    assert.deepEqual(await decide(current, [prior, current], new Map([['820', jobs]])), {
+        publish: false, date: '2026-10-06', reason: 'unchanged',
+    });
+});
+
+for (const [format, jobsFor] of [['split jobs', splitJobs], ['old combined job', (options) => [publishJob(options)]]]) {
+    test(`${format}: both registries succeeded suppress unchanged SHA`, async () => {
+        const prior = run(800, '2026-10-05', 'sha-a');
+        const current = run(801, '2026-10-06', 'sha-a');
+        const jobs = jobsFor();
+        assert.equal(didAttemptPublication(jobs), true);
+        assert.equal(completedBothRegistries(jobs), true);
+        assert.deepEqual(await decide(current, [prior, current], new Map([['800', jobs]])), {
+            publish: false, date: '2026-10-06', reason: 'unchanged',
+        });
+    });
+    test(`${format}: partial publication reserves date without completing publication`, async () => {
+        const prior = run(810, '2026-10-05', 'sha-a');
+        const current = run(811, '2026-10-05', 'sha-a');
+        const jobs = jobsFor({ openVsxConclusion: 'failure' });
+        assert.equal(didAttemptPublication(jobs), true);
+        assert.equal(completedBothRegistries(jobs), false);
+        assert.deepEqual(await decide(current, [prior, current], new Map([['810', jobs]])), {
+            publish: false, date: '2026-10-05', reason: 'date-reserved',
+        });
+    });
+}

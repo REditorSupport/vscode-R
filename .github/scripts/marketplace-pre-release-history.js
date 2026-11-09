@@ -2,7 +2,8 @@ const { execFileSync } = require('node:child_process');
 const { appendFileSync } = require('node:fs');
 
 const WORKFLOW = 'marketplace-pre-release.yml';
-const PUBLISH_JOB = 'publish';
+// Include the former combined job when inspecting existing Actions history.
+const PUBLISH_JOBS = ['publish', 'publish-vs-marketplace', 'publish-open-vsx'];
 const REGISTRY_STEPS = [
     'Publish to Visual Studio Marketplace',
     'Publish to Open VSX Registry',
@@ -111,20 +112,20 @@ function createGhApi(execFile = execFileSync) {
     };
 }
 
-function didAttemptPublication(job) {
-    if (job.name !== PUBLISH_JOB || !Array.isArray(job.steps)) {
-        return false;
-    }
-    return job.steps.some((step) => REGISTRY_STEPS.includes(step.name)
+function registrySteps(jobs) {
+    return jobs.filter((job) => PUBLISH_JOBS.includes(job.name))
+        .flatMap((job) => Array.isArray(job.steps) ? job.steps : []);
+}
+
+function didAttemptPublication(jobs) {
+    return registrySteps(jobs).some((step) => REGISTRY_STEPS.includes(step.name)
         && (step.status === 'in_progress' || step.status === 'completed')
         && step.conclusion !== 'skipped');
 }
 
-function completedBothRegistries(job) {
-    if (job.name !== PUBLISH_JOB || !Array.isArray(job.steps)) {
-        return false;
-    }
-    return REGISTRY_STEPS.every((name) => job.steps.some((step) =>
+function completedBothRegistries(jobs) {
+    const steps = registrySteps(jobs);
+    return REGISTRY_STEPS.every((name) => steps.some((step) =>
         step.name === name && step.status === 'completed' && step.conclusion === 'success'));
 }
 
@@ -170,7 +171,7 @@ async function decidePublication({ api, repository, runId, sha }) {
         const isCurrentRun = String(run.id) === String(runId);
         if (!isCurrentRun && utcDate(run) >= runDate) {
             const jobs = await jobsFor(run);
-            if (jobs.some(didAttemptPublication)) {
+            if (didAttemptPublication(jobs)) {
                 dateReserved = true;
                 break;
             }
@@ -192,7 +193,7 @@ async function decidePublication({ api, repository, runId, sha }) {
         }
         for (let index = end - 1; index >= start; index -= 1) {
             const jobs = await jobsFor(runs[index]);
-            if (jobs.some(completedBothRegistries)) {
+            if (completedBothRegistries(jobs)) {
                 return runs[start].head_sha === sha
                     ? { publish: false, date: runDate, reason: 'unchanged' }
                     : { publish: true, date: runDate, reason: 'new-sha' };
