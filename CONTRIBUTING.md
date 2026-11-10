@@ -162,7 +162,7 @@ The release workflow rejects odd minors, non-numeric versions, and tags that do
 not match `package.json`. Stable patch releases remain independent of daily
 pre-releases.
 
-The Marketplace pre-release workflow runs daily at 03:23 UTC. It skips commits
+Daily pre-release publishing in `.github/workflows/release.yml` runs at 03:23 UTC. It skips commits
 already covered by a successful daily run, runs the existing build, lint and
 all-OS tests, and publishes only the verified pre-release VSIX. The GitHub
 `latest` development VSIX continues to update on every verified push.
@@ -175,7 +175,8 @@ Keep the base version in `package.json`; do not commit generated daily versions.
 For development toward `4.0.0`, maintainers can explicitly set the base version
 to `3.999.0`, then change it to `4.0.0` for the stable release.
 
-The workflow reuses `VSCE_TOKEN` and `OPEN_VSX_TOKEN` to publish the same VSIX
+The workflow uses Trusted Publishing (OIDC) via the `vs-marketplace` and `open-vsx`
+GitHub environments to publish the same VSIX
 to the VS Code Marketplace and Open VSX Registry. Both publications must succeed
 for the daily run to count as successful.
 Retries retain the original run's UTC date and tolerate an already-published

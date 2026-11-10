@@ -1,9 +1,20 @@
 const { execFileSync } = require('node:child_process');
 const { appendFileSync } = require('node:fs');
 
-const WORKFLOW = 'marketplace-pre-release.yml';
-// Include the former combined job when inspecting existing Actions history.
-const PUBLISH_JOBS = ['publish', 'publish-vs-marketplace', 'publish-open-vsx'];
+const WORKFLOW = 'release.yml';
+// Retain the retired marketplace-pre-release.yml workflow ID on the canonical
+// repository so runs from before the workflow consolidation stay visible.
+const LEGACY_WORKFLOW_IDS = {
+    'REditorSupport/vscode-R': ['376461048'],
+};
+// Include former job names when inspecting existing Actions history.
+const PUBLISH_JOBS = [
+    'publish',
+    'publish-vs-marketplace',
+    'publish-open-vsx',
+    'prerelease-publish-vs-marketplace',
+    'prerelease-publish-open-vsx',
+];
 const REGISTRY_STEPS = [
     'Publish to Visual Studio Marketplace',
     'Publish to Open VSX Registry',
@@ -59,6 +70,40 @@ function createGhApi(execFile = execFileSync) {
         }
         return trimmed.split(/\r?\n/).map((line) => JSON.parse(line));
     }
+    function listWorkflowRuns(repository, workflow) {
+        const path = `repos/${repository}/actions/workflows/${workflow}/runs`;
+        const allRuns = [];
+        let totalCount;
+        let page = 1;
+        do {
+            const pages = call([
+                path,
+                '-f', 'per_page=100',
+                '-f', `page=${page}`,
+            ], { jq: RUN_JQ, paginate: false });
+            if (pages.length !== 1) {
+                throw new Error(`GitHub API returned an invalid workflow runs page ${page}`);
+            }
+            const pageTotal = pages[0].total_count;
+            if (!Number.isSafeInteger(pageTotal) || pageTotal < 0 || (totalCount !== undefined && pageTotal !== totalCount)) {
+                throw new Error('GitHub API returned an invalid or changing workflow run total_count');
+            }
+            totalCount = pageTotal;
+            const pageRuns = pagesToItems(pages, 'workflow_runs');
+            if (pageRuns.length === 0 && allRuns.length < totalCount) {
+                throw new Error(`GitHub API returned incomplete workflow run history (${allRuns.length} of ${totalCount})`);
+            }
+            allRuns.push(...pageRuns);
+            page += 1;
+        } while (allRuns.length < totalCount);
+        if (allRuns.length !== totalCount) {
+            throw new Error(`GitHub API returned incomplete workflow run history (${allRuns.length} of ${totalCount})`);
+        }
+        if (new Set(allRuns.map((run) => String(run.id))).size !== allRuns.length) {
+            throw new Error('GitHub API returned duplicate workflow runs across pages');
+        }
+        return allRuns;
+    }
     return {
         getRun(repository, runId) {
             const run = call([`repos/${repository}/actions/runs/${runId}`], { paginate: false });
@@ -68,38 +113,18 @@ function createGhApi(execFile = execFileSync) {
             return run;
         },
         listRuns(repository) {
-            const path = `repos/${repository}/actions/workflows/${WORKFLOW}/runs`;
-            const allRuns = [];
-            let totalCount;
-            let page = 1;
-            do {
-                const pages = call([
-                    path,
-                    '-f', 'per_page=100',
-                    '-f', `page=${page}`,
-                ], { jq: RUN_JQ, paginate: false });
-                if (pages.length !== 1) {
-                    throw new Error(`GitHub API returned an invalid workflow runs page ${page}`);
+            const runs = listWorkflowRuns(repository, WORKFLOW);
+            for (const legacyId of LEGACY_WORKFLOW_IDS[repository] || []) {
+                try {
+                    runs.push(...listWorkflowRuns(repository, legacyId));
+                } catch (error) {
+                    const detail = `${error?.stderr || ''}\n${error?.message || ''}`;
+                    if (!/HTTP 404\b/.test(detail)) {
+                        throw error;
+                    }
                 }
-                const pageTotal = pages[0].total_count;
-                if (!Number.isSafeInteger(pageTotal) || pageTotal < 0 || (totalCount !== undefined && pageTotal !== totalCount)) {
-                    throw new Error('GitHub API returned an invalid or changing workflow run total_count');
-                }
-                totalCount = pageTotal;
-                const pageRuns = pagesToItems(pages, 'workflow_runs');
-                if (pageRuns.length === 0 && allRuns.length < totalCount) {
-                    throw new Error(`GitHub API returned incomplete workflow run history (${allRuns.length} of ${totalCount})`);
-                }
-                allRuns.push(...pageRuns);
-                page += 1;
-            } while (allRuns.length < totalCount);
-            if (allRuns.length !== totalCount) {
-                throw new Error(`GitHub API returned incomplete workflow run history (${allRuns.length} of ${totalCount})`);
             }
-            if (new Set(allRuns.map((run) => String(run.id))).size !== allRuns.length) {
-                throw new Error('GitHub API returned duplicate workflow runs across pages');
-            }
-            return allRuns;
+            return runs;
         },
         listJobs(repository, runId) {
             const pages = call([
