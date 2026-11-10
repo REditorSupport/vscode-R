@@ -341,6 +341,8 @@ test('consolidated release workflow configures trusted publishing and rechecks p
     assert.ok(!workflow.includes('OVSX_PAT'));
     assert.ok(!workflow.includes('VSCE_TOKEN'));
     assert.ok(!workflow.includes('OPEN_VSX_TOKEN'));
+    assert.ok(workflow.includes("format('stable-publishing-{0}', github.ref)"));
+    assert.ok(!workflow.includes("format('release-{0}', github.ref)"));
 
     for (const [job, envName, command] of [
         ['publish-vs-marketplace', 'vs-marketplace', 'vsce publish --oidc'],

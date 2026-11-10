@@ -14,7 +14,7 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: ${{ github.event_name == 'push' && format('release-{0}', github.ref) || 'marketplace-pre-release' }}
+  group: ${{ github.event_name == 'push' && format('stable-publishing-{0}', github.ref) || 'marketplace-pre-release' }}
   cancel-in-progress: false
 
 permissions:
