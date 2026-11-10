@@ -1050,6 +1050,63 @@
         "key": "ctrl+alt+h",
         "mac": "cmd+alt+h",
         "when": "r.interactive.active && (editorLangId == r || notebookEditorFocused)"
+      },
+      {
+        "command": "type",
+        "args": {
+          "text": " <- "
+        },
+        "key": "alt+-",
+        "mac": "alt+-",
+        "when": "config.r.keybindings.rstudio && editorTextFocus && editorLangId =~ /^(r|rmd|quarto)$/"
+      },
+      {
+        "command": "type",
+        "args": {
+          "text": " |> "
+        },
+        "key": "ctrl+shift+m",
+        "mac": "cmd+shift+m",
+        "when": "config.r.keybindings.rstudio && config.r.keybindings.pipe == 'native' && editorTextFocus && editorLangId =~ /^(r|rmd|quarto)$/"
+      },
+      {
+        "command": "type",
+        "args": {
+          "text": " %>% "
+        },
+        "key": "ctrl+shift+m",
+        "mac": "cmd+shift+m",
+        "when": "config.r.keybindings.rstudio && config.r.keybindings.pipe == 'magrittr' && editorTextFocus && editorLangId =~ /^(r|rmd|quarto)$/"
+      },
+      {
+        "command": "r.loadAll",
+        "key": "ctrl+shift+l",
+        "mac": "cmd+shift+l",
+        "when": "config.r.keybindings.rstudio && editorTextFocus && editorLangId =~ /^(r|rmd)$/"
+      },
+      {
+        "command": "r.test",
+        "key": "ctrl+shift+t",
+        "mac": "cmd+shift+t",
+        "when": "config.r.keybindings.rstudio && editorTextFocus && editorLangId =~ /^(r|rmd)$/"
+      },
+      {
+        "command": "r.document",
+        "key": "ctrl+shift+d",
+        "mac": "cmd+shift+d",
+        "when": "config.r.keybindings.rstudio && editorTextFocus && editorLangId =~ /^(r|rmd)$/"
+      },
+      {
+        "command": "r.check",
+        "key": "ctrl+shift+e",
+        "mac": "cmd+shift+e",
+        "when": "config.r.keybindings.rstudio && editorTextFocus && editorLangId =~ /^(r|rmd)$/"
+      },
+      {
+        "command": "r.install",
+        "key": "ctrl+shift+b",
+        "mac": "cmd+shift+b",
+        "when": "config.r.keybindings.rstudio && editorTextFocus && editorLangId =~ /^(r|rmd)$/"
       }
     ],
     "menus": {
@@ -2082,6 +2139,24 @@
           "type": "boolean",
           "default": false,
           "markdownDescription": "Use bracketed paste mode when sending code to terminal. Enable for [radian](https://github.com/randy3k/radian) console."
+        },
+        "r.keybindings.rstudio": {
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "Use RStudio's keyboard shortcuts for R, in R, R Markdown and Quarto files: `Alt+-` inserts ` <- `, `Ctrl+Shift+M` (`Cmd+Shift+M` on macOS) the pipe set in `#r.keybindings.pipe#`; and in R and R Markdown files, `Ctrl+Shift+` `L` loads all, `T` tests, `D` documents, `E` checks and `B` installs the package (`Cmd+Shift+` on macOS). In those files, they replace VS Code's shortcuts for the same keys, such as *Problems* (`Ctrl+Shift+M`) and *Select All Occurrences* (`Ctrl+Shift+L`)."
+        },
+        "r.keybindings.pipe": {
+          "type": "string",
+          "enum": [
+            "native",
+            "magrittr"
+          ],
+          "enumDescriptions": [
+            "The native pipe, ` |> `",
+            "magrittr's pipe, ` %>% `"
+          ],
+          "default": "native",
+          "markdownDescription": "The pipe that `Ctrl+Shift+M` (`Cmd+Shift+M` on macOS) inserts, with `#r.keybindings.rstudio#` on."
         },
         "r.removeLeadingComments": {
           "type": "boolean",
