@@ -335,20 +335,87 @@ test('run pagination fails closed on empty, inconsistent, or duplicate pages', (
         : { total_count: 101, workflow_runs: [item(100)] }).listRuns('owner/repo'), /duplicate workflow runs/);
 });
 
-test('each split publishing job rechecks eligibility and gates its registry', () => {
-    const workflow = readFileSync(join(__dirname, '../workflows/marketplace-pre-release.yml'), 'utf8');
-    for (const [job, name] of [['publish-vs-marketplace', marketplace], ['publish-open-vsx', openVsx]]) {
+test('consolidated release workflow configures trusted publishing and rechecks pre-release eligibility', () => {
+    const workflow = readFileSync(join(__dirname, '../workflows/release.yml'), 'utf8');
+    assert.ok(!workflow.includes('VSCE_PAT'));
+    assert.ok(!workflow.includes('OVSX_PAT'));
+    assert.ok(!workflow.includes('VSCE_TOKEN'));
+    assert.ok(!workflow.includes('OPEN_VSX_TOKEN'));
+    assert.ok(workflow.includes("format('stable-publishing-{0}', github.ref)"));
+    assert.ok(!workflow.includes("format('release-{0}', github.ref)"));
+
+    for (const [job, envName, command] of [
+        ['publish-vs-marketplace', 'vs-marketplace', 'vsce publish --oidc'],
+        ['publish-open-vsx', 'open-vsx', 'ovsx publish --trusted-publishing'],
+    ]) {
         const start = workflow.indexOf(`\n  ${job}:`);
         assert.ok(start >= 0);
-        const end = workflow.indexOf('\n  publish-', start + 1);
-        const body = workflow.slice(start, end < 0 ? undefined : end);
+        const nextJob = workflow.slice(start + 1).search(/\n  [a-z-]+:/);
+        const body = nextJob < 0 ? workflow.slice(start) : workflow.slice(start, start + 1 + nextJob);
+        assert.ok(body.includes(`environment: ${envName}`));
+        assert.ok(body.includes('id-token: write'));
+        assert.ok(body.includes(command));
+    }
+
+    for (const [job, name, envName, command] of [
+        ['prerelease-publish-vs-marketplace', marketplace, 'vs-marketplace', 'vsce publish --oidc --pre-release'],
+        ['prerelease-publish-open-vsx', openVsx, 'open-vsx', 'ovsx publish --trusted-publishing'],
+    ]) {
+        const start = workflow.indexOf(`\n  ${job}:`);
+        assert.ok(start >= 0);
+        const nextJob = workflow.slice(start + 1).search(/\n  [a-z-]+:/);
+        const body = nextJob < 0 ? workflow.slice(start) : workflow.slice(start, start + 1 + nextJob);
+        assert.ok(body.includes(`environment: ${envName}`));
+        assert.ok(body.includes('id-token: write'));
+        assert.ok(body.includes('actions: read'));
         const eligibility = body.indexOf('id: eligibility');
         assert.ok(eligibility >= 0);
         assert.ok(body.indexOf('.github/scripts/marketplace-pre-release-history.js', eligibility) > eligibility);
         const publication = body.indexOf(`- name: ${name}`);
         assert.ok(publication > eligibility);
         assert.ok(body.slice(publication).includes("if: steps.eligibility.outputs.publish == 'true'"));
+        assert.ok(body.slice(publication).includes(command));
     }
+});
+
+test('canonical repository run lookup includes retired marketplace-pre-release workflow ID', () => {
+    const queriedPaths = [];
+    const api = createGhApi((_command, args) => {
+        const path = args.find((arg) => arg.startsWith('repos/'));
+        queriedPaths.push(path);
+        const id = path.includes('/376461048/') ? 10 : 20;
+        return `${JSON.stringify({
+            total_count: 1,
+            workflow_runs: [run(id, '2026-11-10', 'sha-a')],
+        })}\n`;
+    });
+    const runs = api.listRuns('REditorSupport/vscode-R');
+    assert.deepEqual(queriedPaths, [
+        'repos/REditorSupport/vscode-R/actions/workflows/release.yml/runs',
+        'repos/REditorSupport/vscode-R/actions/workflows/376461048/runs',
+    ]);
+    assert.deepEqual(runs.map((item) => item.id), [20, 10]);
+
+    const purgedLegacyApi = createGhApi((_command, args) => {
+        const path = args.find((arg) => arg.startsWith('repos/'));
+        if (path.includes('/376461048/')) {
+            throw new Error('gh: Not Found (HTTP 404)');
+        }
+        return `${JSON.stringify({
+            total_count: 1,
+            workflow_runs: [run(20, '2026-11-10', 'sha-a')],
+        })}\n`;
+    });
+    assert.deepEqual(purgedLegacyApi.listRuns('REditorSupport/vscode-R').map((item) => item.id), [20]);
+
+    const transientFailureApi = createGhApi((_command, args) => {
+        const path = args.find((arg) => arg.startsWith('repos/'));
+        if (path.includes('/376461048/')) {
+            throw new Error('gh: Bad Gateway (HTTP 502)');
+        }
+        return `${JSON.stringify({ total_count: 0, workflow_runs: [] })}\n`;
+    });
+    assert.throws(() => transientFailureApi.listRuns('REditorSupport/vscode-R'), /HTTP 502/);
 });
 
 function splitJobs(options) {
@@ -357,11 +424,17 @@ function splitJobs(options) {
     }));
 }
 
+function prereleaseSplitJobs(options) {
+    return publishJob(options).steps.map((step, index) => ({
+        name: ['prerelease-publish-vs-marketplace', 'prerelease-publish-open-vsx'][index], steps: [step],
+    }));
+}
+
 test('split jobs: re-running only the failed registry job completes the publication', async () => {
     const prior = run(820, '2026-10-05', 'sha-a');
     const current = run(821, '2026-10-06', 'sha-a');
-    const firstAttempt = splitJobs({ openVsxConclusion: 'failure' });
-    const retriedOpenVsx = { ...splitJobs()[1], run_attempt: 2 };
+    const firstAttempt = prereleaseSplitJobs({ openVsxConclusion: 'failure' });
+    const retriedOpenVsx = { ...prereleaseSplitJobs()[1], run_attempt: 2 };
     const jobs = [...firstAttempt, retriedOpenVsx];
     assert.equal(completedBothRegistries(firstAttempt), false);
     assert.equal(completedBothRegistries(jobs), true);
@@ -370,7 +443,11 @@ test('split jobs: re-running only the failed registry job completes the publicat
     });
 });
 
-for (const [format, jobsFor] of [['split jobs', splitJobs], ['old combined job', (options) => [publishJob(options)]]]) {
+for (const [format, jobsFor] of [
+    ['prerelease split jobs', prereleaseSplitJobs],
+    ['legacy split jobs', splitJobs],
+    ['old combined job', (options) => [publishJob(options)]],
+]) {
     test(`${format}: both registries succeeded suppress unchanged SHA`, async () => {
         const prior = run(800, '2026-10-05', 'sha-a');
         const current = run(801, '2026-10-06', 'sha-a');

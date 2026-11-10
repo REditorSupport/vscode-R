@@ -5,13 +5,13 @@ on:
     paths:
       - '.github/scripts/marketplace-pre-release-history.js'
       - '.github/scripts/marketplace-pre-release-history.test.js'
-      - '.github/workflows/marketplace-pre-release.yml'
+      - '.github/workflows/release.yml'
       - '.github/workflows/workflow-helpers.yml'
   pull_request:
     paths:
       - '.github/scripts/marketplace-pre-release-history.js'
       - '.github/scripts/marketplace-pre-release-history.test.js'
-      - '.github/workflows/marketplace-pre-release.yml'
+      - '.github/workflows/release.yml'
       - '.github/workflows/workflow-helpers.yml'
   workflow_dispatch:
 
