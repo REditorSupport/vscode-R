@@ -1381,6 +1381,7 @@ function startGlobalSessionServer(generation: number): Promise<string> {
 
             const rpc = new NativeRpcConnection(socket);
             nativeRpcConnections.set(socket, rpc);
+            let attachment: Promise<void> | undefined;
 
             const handleLine = (buf: Buffer) => {
                 let lineEnd = buf.length;
@@ -1395,6 +1396,22 @@ function startGlobalSessionServer(generation: number): Promise<string> {
                 void (async () => {
                     try {
                         const message = JSON.parse(line) as Record<string, unknown>;
+                        if (
+                            message.method === 'attach' &&
+                            (message.id === undefined || message.id === null)
+                        ) {
+                            attachment = handleNotification(message, socket);
+                            await attachment;
+                            return;
+                        }
+                        // R announces retained devices immediately after attach.
+                        // Native terminal discovery is asynchronous: wait for it
+                        // instead of dropping those first notifications. Once the
+                        // socket is bound, RPC responses must remain independent
+                        // of any UI work still completing in the attach handler.
+                        if (!socket._sessionId && attachment) {
+                            await attachment;
+                        }
                         if (message.method !== 'attach' && !isCurrentSocket(socket)) {
                             return;
                         }

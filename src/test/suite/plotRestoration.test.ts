@@ -686,6 +686,37 @@ suite('Standalone plot restoration', () => {
         assert.strictEqual(panels.length, 2);
     });
 
+    for (const backend of ['httpgd', 'jgd', 'standard'] as const) {
+        test(`${backend} recovers the active session across reloads without focusing its terminal`, async () => {
+            const source = owner('attached', '123');
+            focus(source);
+            sandbox.stub(session, 'resolvePlotSession').returns(source);
+            sandbox.stub(session, 'sessionRequest').resolves({ data: 'plot', format: 'svg' });
+            const showTerminal = sandbox.stub();
+            const unrelatedTerminal = { show: showTerminal } as unknown as vscode.Terminal;
+            sandbox.stub(vscode.window, 'activeTerminal').value(unrelatedTerminal);
+            let value = manager();
+            if (backend === 'httpgd') {
+                await value.showHttpgdPlot('http://localhost:1234/live?token=secret', source);
+            } else if (backend === 'jgd') {
+                value.jgdManager.history.addPlot('device', frame('device'));
+                value.jgdManager.history.setSessionSource('device', source);
+            } else {
+                await value.showStandardPlot(source);
+            }
+            for (let reload = 0; reload < 4; reload++) {
+                await value.dispose();
+                panels = [];
+                value = manager();
+                await callbacks.get('r.plot.showViewers')!();
+                assert.strictEqual(panels.length, 1, `viewer recovered after reload ${reload}`);
+                assert.ok(panels[0].panel.webview.html.includes('R 4.6.0: 123'));
+                assert.strictEqual(session.activeSession, source);
+                sinon.assert.notCalled(showTerminal);
+            }
+        });
+    }
+
     test('multiple JGD devices in one R session reuse one viewer', async () => {
         const source = owner('a', '123');
         focus(source);
