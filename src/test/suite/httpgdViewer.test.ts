@@ -111,6 +111,62 @@ suite('httpgd viewer requests', () => {
         assert.strictEqual(manager.viewers[0].token, 'second');
     });
 
+    for (const token of ['', '?token=fixed']) {
+        for (const exited of [false, true]) {
+            test(`a replacement session gets a new httpgd client (${token || 'no token'}, exited=${exited})`, async () => {
+                const source = {
+                    sessionId: 'original',
+                    host: 'remote',
+                    pid: '123',
+                    rVer: '4.6.0',
+                    processExited: false,
+                };
+                const url = `http://localhost:1234/live${token}`;
+                await manager.showViewer(url, source);
+                const old = manager.viewers[0];
+                const disconnect = sandbox.spy(old.api, 'disconnect');
+                const closePanel = sandbox.stub();
+                old.webviewPanel = { dispose: closePanel } as unknown as vscode.WebviewPanel;
+                manager.registerActiveViewer(old);
+                if (exited) {
+                    old.dispose();
+                }
+                const replacement = { ...source, sessionId: 'replacement', pid: '456' };
+                await manager.showViewer(url, replacement);
+                assert.strictEqual(manager.viewers.length, 1);
+                assert.notStrictEqual(manager.viewers[0], old);
+                assert.deepStrictEqual(manager.viewers[0].connection.source, replacement);
+                assert.strictEqual(manager.viewers[0].isDisposed, false);
+                assert.strictEqual(manager.recentlyActiveViewers.includes(old), false);
+                sinon.assert.calledOnce(disconnect);
+                sinon.assert.calledOnce(closePanel);
+                sinon.assert.calledTwice(connect);
+                old.webviewPanel = undefined;
+            });
+        }
+    }
+
+    test('a disposed httpgd client is replaced even when ownership and credentials match', async () => {
+        const source = {
+            sessionId: 'owner',
+            host: 'remote',
+            pid: '123',
+            rVer: '4.6.0',
+            processExited: false,
+        };
+        const url = 'http://localhost:1234/live?token=fixed';
+        await manager.showViewer(url, source);
+        const old = manager.viewers[0];
+        const show = sandbox.stub(old, 'show');
+        await manager.showViewer(url, { ...source });
+        assert.strictEqual(manager.viewers[0], old, 'same live process still reuses its viewer');
+        sinon.assert.calledOnce(show);
+        old.dispose();
+        await manager.showViewer(url, source);
+        assert.notStrictEqual(manager.viewers[0], old);
+        sinon.assert.calledTwice(connect);
+    });
+
     function lifetime() {
         const source = {
             sessionId: 'owner',

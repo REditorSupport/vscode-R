@@ -162,7 +162,12 @@ export class HttpgdManager {
         }
         if (ind >= 0) {
             const viewer = this.viewers.splice(ind, 1)[0];
-            if (viewer.token === token) {
+            const owner = viewer.connection.source;
+            const sameSession =
+                !source ||
+                !owner ||
+                sessionProcessIdentity(source) === sessionProcessIdentity(owner);
+            if (!viewer.isDisposed && viewer.token === token && sameSession) {
                 viewer.bindSession(source);
                 this.viewers.unshift(viewer);
                 if (!restoring) {
@@ -173,8 +178,8 @@ export class HttpgdManager {
                 }
                 return;
             }
-            // A restarted device can reuse its port with a new authentication
-            // token. Retire the connection rather than reusing stale credentials.
+            // A restarted process can reuse both its port and token. Retire
+            // disposed or differently owned connections as well as stale credentials.
             viewer.dispose();
             viewer.webviewPanel?.dispose();
             this.recentlyActiveViewers = this.recentlyActiveViewers.filter(
@@ -282,6 +287,10 @@ export class HttpgdViewer implements IHttpgdViewer, PlotViewer {
     private sessionConnectionSubscription?: vscode.Disposable;
     private sessionDisconnected = false;
     private restoring: boolean;
+
+    get isDisposed(): boolean {
+        return this.disposed;
+    }
 
     get connection(): HttpgdConnection {
         const url = new URL(this.origin);
