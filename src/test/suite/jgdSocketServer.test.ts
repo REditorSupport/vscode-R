@@ -335,6 +335,66 @@ suite('JGD SocketServer', () => {
             );
         });
 
+        test('coalesces resize bursts until a frame confirms the applied dimensions', async () => {
+            const client = await connect();
+            async function barrier() {
+                client.send({ type: 'metrics_request', id: 42, kind: 'strWidth', str: 'barrier' });
+                assert.strictEqual(
+                    (JSON.parse(await client.readLine()) as JgdMessage).type,
+                    'metrics_response',
+                );
+            }
+            client.send(makePlotMsg('large plot'));
+            await barrier();
+            const id = history.getActiveSessionId();
+            server.handleResize(700, 500, id);
+            for (let width = 701; width <= 900; width++) {
+                server.handleResize(width, 650, id);
+            }
+            assert.deepStrictEqual(JSON.parse(await client.readLine()), {
+                type: 'resize',
+                width: 700,
+                height: 500,
+            });
+            await barrier(); // No intermediate dimensions were sent to R.
+            client.send(makePlotMsg('first replay', 700, 500, { resizeReplay: true }));
+            assert.deepStrictEqual(JSON.parse(await client.readLine()), {
+                type: 'resize',
+                width: 900,
+                height: 650,
+            });
+            client.send(makePlotMsg('final replay', 900, 650, { resizeReplay: true }));
+            await barrier();
+            server.handleResize(900, 650, id);
+            await barrier(); // Confirmed dimensions do not cause another replay.
+            assert.strictEqual(history.count(id), 1);
+            assert.strictEqual(history.currentPlot(id)?.device.width, 900);
+        });
+
+        test('a stale-size frame allows the viewer to request the size again', async () => {
+            const client = await connect();
+            client.send(makePlotMsg('plot'));
+            await waitMs(20);
+            const id = history.getActiveSessionId();
+            server.handleResize(900, 650, id);
+            assert.strictEqual((JSON.parse(await client.readLine()) as JgdMessage).type, 'resize');
+            server.setOnFrame(() => server.handleResize(900, 650, id));
+            // JGD may consume a resize during font measurement and flush the
+            // current drawing at its old size without an idle-handler wakeup.
+            client.send(makePlotMsg('drawing completed', 400, 300, { incremental: true }));
+            assert.deepStrictEqual(JSON.parse(await client.readLine()), {
+                type: 'resize',
+                width: 900,
+                height: 650,
+            });
+            client.send(makePlotMsg('resized', 900, 650, { resizeReplay: true }));
+            client.send({ type: 'metrics_request', id: 43, kind: 'strWidth', str: 'barrier' });
+            assert.strictEqual(
+                (JSON.parse(await client.readLine()) as JgdMessage).type,
+                'metrics_response',
+            );
+        });
+
         test('shared navigation resizes the selected device and deduplicates its live size', async () => {
             const first = await connect();
             const second = await connect();

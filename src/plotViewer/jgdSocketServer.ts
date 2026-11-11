@@ -27,14 +27,20 @@ export interface JgdMessage {
     gc?: Record<string, unknown>;
 }
 
+interface ResizeRequest {
+    width: number;
+    height: number;
+    plotIndex?: number;
+}
+
 interface RSession {
     id: string;
     socket: net.Socket;
     buffer: string;
     welcomeSent: boolean;
-    lastResizeW: number;
-    lastResizeH: number;
-    lastResizeHadPlotIndex: boolean;
+    lastResize?: ResizeRequest;
+    pendingResize?: ResizeRequest;
+    queuedResize?: ResizeRequest;
     dpi: number;
     deviceClosed?: boolean;
     source?: ViewerSessionSource;
@@ -207,9 +213,6 @@ export class JgdSocketServer {
             socket,
             buffer: '',
             welcomeSent: false,
-            lastResizeW: 0,
-            lastResizeH: 0,
-            lastResizeHadPlotIndex: false,
             dpi: 96,
         };
         this.sessions.set(sessionId, session);
@@ -238,8 +241,7 @@ export class JgdSocketServer {
 
                     const dims = this.getDimensionsFn?.(sessionId);
                     if (dims) {
-                        session.lastResizeW = dims.width;
-                        session.lastResizeH = dims.height;
+                        session.lastResize = dims;
                         socket.write(
                             JSON.stringify({
                                 type: 'resize',
@@ -337,6 +339,19 @@ export class JgdSocketServer {
                                 ? msg.plotIndex
                                 : undefined;
 
+                        // A frame reports what R actually drew. A resize read by
+                        // JGD during drawing can be buffered without waking its
+                        // idle handler; it must not permanently suppress a new
+                        // request after the frame arrives.
+                        const queuedResize = session.queuedResize;
+                        session.pendingResize = undefined;
+                        session.queuedResize = undefined;
+                        session.lastResize = {
+                            width: plot.device.width,
+                            height: plot.device.height,
+                            plotIndex: isResizeReplay ? plotIndex : undefined,
+                        };
+
                         let accepted = true;
                         // JGD snapshots retain frame extensions, including
                         // restoring=true. Resize routing must take precedence
@@ -385,6 +400,16 @@ export class JgdSocketServer {
                             }
                             this.onFrameFn?.(session.id, msg);
                         }
+                        // The viewer callback may have requested a newer size.
+                        // Otherwise send only the last size queued during replay.
+                        if (queuedResize && !session.pendingResize) {
+                            this.broadcastResize(
+                                queuedResize.width,
+                                queuedResize.height,
+                                queuedResize.plotIndex,
+                                session.id,
+                            );
+                        }
                     }
                     break;
                 }
@@ -428,25 +453,19 @@ export class JgdSocketServer {
         if (!session || session.deviceClosed) {
             return;
         }
-        if (plotIndex !== undefined) {
-            session.lastResizeW = w;
-            session.lastResizeH = h;
-            session.lastResizeHadPlotIndex = true;
-            const data = JSON.stringify({ type: 'resize', width: w, height: h, plotIndex }) + '\n';
-            session.socket.write(data);
+        const request = { width: w, height: h, plotIndex };
+        if (session.pendingResize) {
+            session.queuedResize = request;
             return;
         }
-
         if (
-            session.lastResizeW === w &&
-            session.lastResizeH === h &&
-            !session.lastResizeHadPlotIndex
+            session.lastResize?.width === w &&
+            session.lastResize.height === h &&
+            session.lastResize.plotIndex === plotIndex
         ) {
             return;
         }
-        session.lastResizeHadPlotIndex = false;
-        session.lastResizeW = w;
-        session.lastResizeH = h;
-        session.socket.write(JSON.stringify({ type: 'resize', width: w, height: h }) + '\n');
+        session.pendingResize = request;
+        session.socket.write(JSON.stringify({ type: 'resize', ...request }) + '\n');
     }
 }
