@@ -163,6 +163,30 @@ suite('JGD SocketServer', () => {
         return client;
     }
 
+    test('disconnect releases only the requested device and leaves other sessions connected', async () => {
+        const first = await connect();
+        first.send(makePlotMsg('first'));
+        first.send({ type: 'metrics_request', id: 1 });
+        await first.readLine();
+        const firstId = history.getActiveSessionId();
+        const second = await connect();
+        second.send(makePlotMsg('second'));
+        second.send({ type: 'metrics_request', id: 2 });
+        await second.readLine();
+        const secondId = history.getActiveSessionId();
+
+        const closed = new Promise<void>((resolve) => first.socket.once('close', () => resolve()));
+        server.disconnect(firstId);
+        await closed;
+        assert.strictEqual(server.isConnected(firstId), false);
+        assert.strictEqual(server.isConnected(secondId), true);
+        second.send(makePlotMsg('still live'));
+        second.send({ type: 'metrics_request', id: 3 });
+        await second.readLine();
+        assert.strictEqual(history.count(secondId), 2);
+        assert.strictEqual(history.currentPlot(secondId)?.device.bg, 'still live');
+    });
+
     suite('frame routing', () => {
         test('resize replays retain their target when snapshots carry restoration metadata', async () => {
             const identity = {

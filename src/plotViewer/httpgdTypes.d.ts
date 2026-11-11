@@ -1,10 +1,9 @@
-import { HttpgdClient, HttpgdPlotId } from './httpgdClient';
+import { HttpgdPlotId } from './httpgdClient';
+import { HttpgdDevices } from './httpgdDevices';
 import * as vscode from 'vscode';
 import { HttpgdManager } from './httpgdViewer';
 import type { ViewerSessionSource } from '../viewerSession';
 import { PreviewPlotLayout } from './webviewMessages';
-
-export type MaybePromise<T> = T | Promise<T>;
 
 export interface HttpgdPlot<T> {
     // unique ID for this plot (w.r.t. this connection/device)
@@ -42,7 +41,7 @@ export class IHttpgdViewer {
     webviewPanel?: vscode.WebviewPanel;
 
     // Api that provides plot contents etc.
-    api: HttpgdClient;
+    api: HttpgdDevices;
 
     // active plots
     plots: HttpgdPlot<string>[];

@@ -70,6 +70,30 @@ export class PlotHistory {
         return this.sessions.get(sessionId)?.source;
     }
 
+    removeSession(source: ViewerSessionSource): void {
+        const key = sessionProcessIdentity(source);
+        const timeline = this.owners.get(key);
+        if (!timeline) {
+            return;
+        }
+        for (const id of timeline.devices) {
+            this.sessions.delete(id);
+            this.timelines.delete(id);
+        }
+        this.owners.delete(key);
+        if (timeline.devices.has(this.activeSessionId)) {
+            this.activeSessionId = '';
+        }
+        this.emitter.emit('change');
+    }
+
+    private retainedTimelines(): Timeline[] {
+        return [...new Set(this.timelines.values())].filter(
+            (timeline) =>
+                !this.sessionSource(timeline.devices.values().next().value!)?.processExited,
+        );
+    }
+
     restoreDeviceIdentity(previousId: string, id: string, source: ViewerSessionSource): void {
         const device = this.sessions.get(previousId);
         if (
@@ -118,25 +142,29 @@ export class PlotHistory {
 
     snapshot(): PlotHistoryState {
         return {
-            activeSessionId: this.activeSessionId,
-            sessions: [...this.sessions].map(([id, history]) => ({
-                id,
-                ...history,
-                source: history.source ? { ...history.source } : undefined,
-                plots: history.plots.map((plot) => {
-                    let snapshot = this.snapshots.get(plot);
-                    if (!snapshot) {
-                        snapshot = structuredClone(plot);
-                        this.snapshots.set(plot, snapshot);
-                    }
-                    return snapshot;
-                }),
-                currentIndex: Math.max(
-                    history.plots.length ? 0 : -1,
-                    history.plots.indexOf(this.currentPlot(id)!),
-                ),
-            })),
-            timelines: [...new Set(this.timelines.values())].map((timeline) => ({
+            activeSessionId: this.sessionSource(this.activeSessionId)?.processExited
+                ? ''
+                : this.activeSessionId,
+            sessions: [...this.sessions]
+                .filter(([, history]) => !history.source?.processExited)
+                .map(([id, history]) => ({
+                    id,
+                    ...history,
+                    source: history.source ? { ...history.source } : undefined,
+                    plots: history.plots.map((plot) => {
+                        let snapshot = this.snapshots.get(plot);
+                        if (!snapshot) {
+                            snapshot = structuredClone(plot);
+                            this.snapshots.set(plot, snapshot);
+                        }
+                        return snapshot;
+                    }),
+                    currentIndex: Math.max(
+                        history.plots.length ? 0 : -1,
+                        history.plots.indexOf(this.currentPlot(id)!),
+                    ),
+                })),
+            timelines: this.retainedTimelines().map((timeline) => ({
                 deviceId: timeline.devices.values().next().value!,
                 plots: timeline.plots.map((plot) => ({
                     deviceId: plot.sessionId,
@@ -148,7 +176,7 @@ export class PlotHistory {
     }
 
     snapshotSelection(): Array<{ deviceId: string; currentIndex: number }> {
-        return [...new Set(this.timelines.values())].map((timeline) => ({
+        return this.retainedTimelines().map((timeline) => ({
             deviceId: timeline.devices.values().next().value!,
             currentIndex: timeline.currentIndex,
         }));
@@ -163,7 +191,12 @@ export class PlotHistory {
         if (!Array.isArray(state.sessions)) {
             return false;
         }
+        let trimmed = false;
         for (const entry of state.sessions) {
+            if (isViewerSessionSource(entry?.source) && entry.source.processExited) {
+                trimmed = true;
+                continue;
+            }
             if (
                 !entry ||
                 typeof entry.id !== 'string' ||
@@ -254,7 +287,6 @@ export class PlotHistory {
                 }
             }
         }
-        let trimmed = false;
         for (const timeline of new Set(this.timelines.values())) {
             for (const plot of timeline.plots) {
                 this.order.set(plot, this.sequence++);

@@ -14,7 +14,7 @@ export interface PlotViewer {
     readonly isActive?: boolean;
     getPanelPath?(): string | undefined;
     show(preserveFocus?: boolean): void;
-    dispose(): void;
+    dispose(keepPanel?: boolean): void;
     handleCommand(command: string, ...args: unknown[]): void | Promise<void>;
 }
 

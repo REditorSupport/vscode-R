@@ -101,12 +101,15 @@ export class StandardPlotViewer implements PlotViewer {
         // Contextual plot commands are not supported by the standard viewer.
     }
 
-    public dispose(): void {
+    public dispose(keepPanel = false): void {
         const panel = this.panel;
         if (panel) {
             this.panel = undefined;
             this.panelGeneration++;
-            panel.dispose();
+            this.pendingPlotRequest = undefined;
+            if (!keepPanel) {
+                panel.dispose();
+            }
         }
     }
 

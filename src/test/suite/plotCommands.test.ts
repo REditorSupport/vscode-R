@@ -96,8 +96,14 @@ suite('Contextual plot commands', () => {
             sandbox.stub(manager.jgdManager, 'getViewers').returns([jgdViewer]);
             const viewer = sandbox.createStubInstance(HttpgdViewer);
             Object.defineProperty(viewer, 'host', { value: 'localhost:1234' });
+            Object.defineProperty(viewer, 'connection', {
+                value: { url: 'http://localhost:1234' },
+            });
+            Object.defineProperty(viewer, 'connections', {
+                value: [{ url: 'http://localhost:1234' }],
+            });
             viewer.getPanelPath.returns('/plot-viewer');
-            manager.httpgdManager.viewers.push(viewer);
+            manager.httpgdManager.registerViewer(viewer);
             sandbox.stub(manager, 'activeViewer').get(() => jgdViewer);
             const openUrl = sandbox.stub(manager.httpgdManager, 'openUrl').resolves();
             manager.initialize();
@@ -125,6 +131,11 @@ suite('Contextual plot commands', () => {
                 assert.strictEqual(viewer.handleCommand.callCount, 1);
                 assert.deepStrictEqual(viewer.handleCommand.firstCall.args, [command, 'plot-id']);
             }
+            viewer.handleCommand.resetHistory();
+            await invoke('r.plot.nextPlot', 'httpgd:ended-session');
+            await invoke('r.plot.prevPlot', vscode.Uri.parse('webview:/ended-session'));
+            assert.strictEqual(viewer.handleCommand.callCount, 0);
+            sinon.assert.notCalled(handleJgdCommand);
             await invoke('r.plot.showViewers');
             sinon.assert.calledOnceWithExactly(showForSession, source);
             assert.strictEqual(viewer.show.callCount, 0);

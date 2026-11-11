@@ -1,4 +1,4 @@
-// Make sure these files contain the same interfaces as ./html/XXX/webviewMessages.d.ts!
+// Shared message types for the plot viewer and its webview.
 
 interface VsCode {
     postMessage: (msg: OutMessage) => void;

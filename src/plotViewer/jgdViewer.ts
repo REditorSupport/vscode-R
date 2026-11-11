@@ -15,6 +15,8 @@ import {
     ViewerSessionSource,
 } from '../viewerSession';
 import { sessionProcessIdentity } from '../sessionIdentity';
+import { PlotLifecycle } from './plotLifecycle';
+import { PlotViewerRegistry } from './plotViewerRegistry';
 
 interface MetricsRequest {
     id: number;
@@ -104,20 +106,49 @@ type WebviewMessage =
 export class JgdManager {
     public server: JgdSocketServer;
     public history: PlotHistory;
-    private viewers = new Map<string, JgdViewer>();
+    private viewers: PlotViewerRegistry<JgdViewer>;
     private extensionUri: vscode.Uri | null = null;
     private historyChangeDisposable: { dispose(): void } | null = null;
     private sessionConnectionDisposable: vscode.Disposable | undefined;
     private started = false;
 
-    constructor() {
+    constructor(lifecycle?: PlotLifecycle) {
         const maxPlots = config().get<number>('plot.jgd.historyLimit', 50);
         this.history = new PlotHistory(maxPlots);
         this.server = new JgdSocketServer(this.history);
+        this.viewers = new PlotViewerRegistry((source) => {
+            const key = sessionProcessIdentity(source);
+            for (const id of this.history.sessionIds()) {
+                const owner = this.history.sessionSource(id);
+                if (owner && sessionProcessIdentity(owner) === key) {
+                    this.server.disconnect(id);
+                }
+            }
+            this.history.removeSession(source);
+        }, lifecycle);
     }
 
     initialize(extensionUri: vscode.Uri) {
         this.extensionUri = extensionUri;
+        // Observe history owners even when their viewer is closed or only restored
+        // from storage. A transport disconnect alone never proves process exit.
+        this.historyChangeDisposable = this.history.onDidChange((id, selectionOnly) => {
+            if (!selectionOnly) {
+                for (const device of id ? [id] : this.history.sessionIds()) {
+                    const source = this.history.sessionSource(device);
+                    if (source) {
+                        this.viewers.lifecycle.observe(source);
+                    }
+                }
+            }
+            if (id) {
+                this.findViewer(id)?.updateToolbar();
+            } else {
+                for (const viewer of this.viewers.values()) {
+                    viewer.updateToolbar();
+                }
+            }
+        });
         this.sessionConnectionDisposable = onDidChangeSessionConnection((event) => {
             if (event.kind === 'connected') {
                 // Binding an owner can rekey or merge viewers during this pass.
@@ -189,16 +220,6 @@ export class JgdManager {
         });
 
         this.server.start();
-
-        this.historyChangeDisposable = this.history.onDidChange((sessionId) => {
-            if (sessionId) {
-                this.findViewer(sessionId)?.updateToolbar();
-            } else {
-                for (const viewer of this.viewers.values()) {
-                    viewer.updateToolbar();
-                }
-            }
-        });
     }
 
     stop() {
@@ -206,10 +227,7 @@ export class JgdManager {
         this.server.stop();
         this.historyChangeDisposable?.dispose();
         this.sessionConnectionDisposable?.dispose();
-        for (const viewer of this.viewers.values()) {
-            viewer.dispose();
-        }
-        this.viewers.clear();
+        this.viewers.dispose();
     }
 
     getViewers(): JgdViewer[] {
@@ -250,10 +268,7 @@ export class JgdManager {
 
     private findViewer(id: string): JgdViewer | undefined {
         const source = this.history.sessionSource(id);
-        return (
-            this.viewers.get(id) ??
-            (source ? this.viewers.get(sessionProcessIdentity(source)) : undefined)
-        );
+        return this.viewers.get(id) ?? this.viewers.forSession(source);
     }
 
     getViewer(sessionId = this.history.getActiveSessionId()): JgdViewer | null {
@@ -265,27 +280,12 @@ export class JgdManager {
     }
 
     private getOrCreateViewer(sessionId: string): JgdViewer {
-        const key = this.viewerKey(sessionId);
-        let viewer = this.viewers.get(key);
-        // A legacy device may acquire its owner after its first frame.
-        const previous = this.viewers.get(sessionId);
-        if (previous && previous !== viewer) {
-            for (const [oldKey, value] of this.viewers) {
-                if (value === previous) {
-                    this.viewers.delete(oldKey);
-                }
-            }
-            if (viewer) {
-                previous.dispose();
-            } else {
-                viewer = previous;
-            }
-        }
-        if (!viewer) {
-            viewer = new JgdViewer(this.extensionUri!, this.history, this.server, sessionId);
-        }
+        const viewer = this.viewers.getOrCreate(
+            this.sourceForDevice(sessionId),
+            sessionId,
+            () => new JgdViewer(this.extensionUri!, this.history, this.server, sessionId),
+        );
         viewer.sessionId = sessionId;
-        this.viewers.set(key, viewer);
         return viewer;
     }
 }
@@ -332,9 +332,12 @@ export class JgdViewer implements PlotViewer {
         return this.panel?.active ?? false;
     }
 
-    dispose(): void {
-        this.panel?.dispose();
+    dispose(keepPanel = false): void {
+        if (!keepPanel) {
+            this.panel?.dispose();
+        }
         this.panel = null;
+        this.metricsCache.clear();
     }
 
     async handleCommand(command: string, ...args: unknown[]): Promise<void> {
@@ -633,6 +636,9 @@ export class JgdViewer implements PlotViewer {
 
         this.panel.iconPath = new UriIcon('graph');
         this.panel.webview.onDidReceiveMessage((raw: WebviewMessage) => {
+            if (!this.panel) {
+                return;
+            }
             switch (raw.type) {
                 case 'ready': {
                     this.updateVisibility(true);

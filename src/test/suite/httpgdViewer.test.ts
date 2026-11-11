@@ -66,7 +66,7 @@ suite('httpgd viewer requests', () => {
 
     test('focusing a correctly sized non-square plot does not request another render', async () => {
         const viewer = new TestViewer('localhost:1234', manager.viewerOptions);
-        manager.viewers.push(viewer);
+        manager.registerViewer(viewer);
         viewer.plots = [{ id: '1', data: '<svg/>', width: 800, height: 600, zoom: 1 }];
         await viewer.focusPlot('1');
         assert.strictEqual(viewer.renderCount, 0);
@@ -82,7 +82,7 @@ suite('httpgd viewer requests', () => {
             refreshTimeoutLength: 10,
             resizeTimeoutLength: 100,
         });
-        manager.viewers.push(viewer);
+        manager.registerViewer(viewer);
         viewer.resize(600, 900);
         await clock.tickAsync(10);
         assert.strictEqual(viewer.renderCount, 0);
@@ -208,7 +208,7 @@ suite('httpgd viewer requests', () => {
             refreshTimeoutLength: 10,
         });
         viewer.activePlot = '1';
-        manager.viewers.push(viewer);
+        manager.registerViewer(viewer);
         const disconnect = sandbox.spy(viewer.api, 'disconnect');
         const errors = sandbox.stub(vscode.window, 'showErrorMessage').resolves();
         const fire = (kind: RSessionConnectionChange['kind'], sessionId = source.sessionId) =>
@@ -228,12 +228,13 @@ suite('httpgd viewer requests', () => {
         };
     }
 
-    test('owning process exit cancels queued work and leaves the open panel intact', async () => {
+    test('owning process exit deletes history and cancels queued work while leaving the rendered plot alone', async () => {
         const clock = sandbox.useFakeTimers();
         const state = lifetime();
         const request = sandbox.stub(state.viewer.api, 'getPlotText').resolves('<svg/>');
         const closePanel = sandbox.stub();
-        state.viewer.webviewPanel = { dispose: closePanel } as unknown as vscode.WebviewPanel;
+        const panel = { dispose: closePanel, webview: { html: '<svg/>' } };
+        state.viewer.webviewPanel = panel as unknown as vscode.WebviewPanel;
         manager.registerActiveViewer(state.viewer);
         state.viewer.queueResize();
         await state.viewer.queueRefresh();
@@ -246,6 +247,10 @@ suite('httpgd viewer requests', () => {
         sinon.assert.calledOnce(state.disconnect);
         sinon.assert.calledOnce(state.released);
         sinon.assert.notCalled(closePanel);
+        assert.strictEqual(panel.webview.html, '<svg/>');
+        assert.strictEqual(state.viewer.webviewPanel, undefined);
+        assert.deepStrictEqual(state.viewer.plots, []);
+        assert.strictEqual(state.viewer.activePlot, undefined);
         sinon.assert.notCalled(state.errors);
         assert.deepStrictEqual(manager.viewers, []);
         assert.deepStrictEqual(manager.recentlyActiveViewers, []);

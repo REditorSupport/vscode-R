@@ -10,6 +10,27 @@
   "standard"
 }
 
+.install_httpgd_device_hook <- function() {
+  open_device <- httpgd::hgd
+  open <- function(owned, ...) {
+    result <- open_device(...)
+    if (owned) {
+      .runtime_track_device()
+    } else {
+      # Explicit devices belong to the caller. Retire any factory registration
+      # whose device number was reused, without taking ownership of the new one.
+      id <- unname(grDevices::dev.cur())
+      state <- .runtime_state()
+      state$devices <- Filter(function(entry) entry$id != id, state$devices)
+    }
+    # Register before notifying: a failed write may stop the runtime immediately.
+    notify_client("httpgd", list(url = httpgd::hgd_url()))
+    invisible(result)
+  }
+  .runtime_rebind("hgd", function(...) open(FALSE, ...), ns = "httpgd")
+  function(...) open(TRUE, silent = TRUE)
+}
+
 # Send runtime notifications after task callbacks return, so transport failure
 # cannot remove the currently executing task callback during runtime cleanup.
 .defer_runtime_notification <- function(method, schedule = later::later) {
@@ -315,17 +336,14 @@ runtime_start <- function(use_rstudioapi = TRUE,
     }
     if (previous %in% grDevices::dev.list()) grDevices::dev.set(previous)
   } else if (selected_backend == "httpgd") {
-    .runtime_set_option("device", function(...) {
-      httpgd::hgd(silent = TRUE)
-      .runtime_track_device()
-      notify_client("httpgd", list(url = httpgd::hgd_url()))
-    })
-    for (entry in .runtime_state()$devices) {
-      devs <- grDevices::dev.list()
-      index <- match(entry$id, devs)
-      if (!is.na(index) && identical(names(devs)[[index]], entry$name) && entry$name %in% c("httpgd", "unigd")) {
-        notify_client("httpgd", list(url = httpgd::hgd_url(which = entry$id), restoring = TRUE))
-      }
+    # Notify for both explicit and default devices; own only factory devices.
+    .runtime_set_option("device", .install_httpgd_device_hook())
+    # Discover live servers on reconnect without adopting their devices. A plain
+    # unigd device has no HTTP server and must not prevent the others restoring.
+    devs <- grDevices::dev.list()
+    for (id in devs[names(devs) %in% c("httpgd", "unigd")]) {
+      url <- tryCatch(httpgd::hgd_url(which = id), error = function(e) NULL)
+      if (!is.null(url)) notify_client("httpgd", list(url = url, restoring = TRUE))
     }
   } else if (selected_backend == "standard") {
     # If a specific interactive backend was explicitly requested but is

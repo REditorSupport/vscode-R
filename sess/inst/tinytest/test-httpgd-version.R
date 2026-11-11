@@ -16,6 +16,7 @@ local({
     identical(package, "httpgd") && !is.null(version)
   }
   env$getNamespaceVersion <- function(package) version
+  env$.install_httpgd_device_hook <- function() function(...) NULL
   versions <- list(NULL, "1.2.0", "2.0.0", "2.0.1", "2.1.4", "10.0.0")
   supported <- c(FALSE, FALSE, FALSE, TRUE, TRUE, TRUE)
   for (i in seq_along(versions)) {

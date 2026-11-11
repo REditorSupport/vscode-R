@@ -123,6 +123,15 @@ export class JgdSocketServer {
         return !!session && !session.deviceClosed;
     }
 
+    disconnect(sessionId: string): void {
+        const session = this.sessions.get(sessionId);
+        if (session) {
+            this.sessions.delete(sessionId);
+            session.socket.destroy();
+            this.notifyConnectionChange(sessionId);
+        }
+    }
+
     private notifyConnectionChange(sessionId: string) {
         const count = this.sessions.size;
         for (const l of this.connectionListeners) {
