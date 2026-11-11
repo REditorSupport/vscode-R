@@ -4,7 +4,11 @@
 \alias{runtime_stop}
 \title{Stop the VS Code runtime integration (internal)}
 \usage{
-runtime_stop()
+runtime_stop(preserve_plots = FALSE)
+}
+\arguments{
+\item{preserve_plots}{Keep live graphics devices and the latest plot while
+reconnecting the same R process after an editor reload.}
 }
 \description{
 Removes runtime callbacks and restores R state installed by runtime_start().

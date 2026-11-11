@@ -4000,7 +4000,11 @@ async function handleNotification(message: Record<string, unknown>, socket: IpcS
         case 'httpgd': {
             if (typeof params.url === 'string' && params.url) {
                 const target = socket._sessionId ? sessions.get(socket._sessionId) : undefined;
-                await globalPlotManager?.showHttpgdPlot(params.url, target);
+                await globalPlotManager?.showHttpgdPlot(
+                    params.url,
+                    target,
+                    params.restoring === true,
+                );
             }
             break;
         }

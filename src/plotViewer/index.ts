@@ -57,6 +57,9 @@ export class CommonPlotManager implements PlotManager {
     private standardViewers = new Map<string, StandardPlotViewer>();
     private restoredStandardSessions: ViewerSessionSource[] = [];
     private disposed = false;
+    private historySaveTimer: NodeJS.Timeout | undefined;
+    private historySubscription: { dispose(): void } | undefined;
+    private historyWrites: Promise<void> = Promise.resolve();
 
     constructor() {
         this.httpgdManager = new HttpgdManager();
@@ -95,6 +98,16 @@ export class CommonPlotManager implements PlotManager {
             ? sources.filter(isViewerSessionSource)
             : [];
         this.httpgdManager.initialize();
+        this.historySubscription = this.jgdManager.history.onDidChange(() => {
+            // Checkpoint during normal operation: shutdown-only writes can be
+            // lost when VS Code tears down the extension host's storage bridge.
+            if (!this.historySaveTimer && !this.disposed) {
+                this.historySaveTimer = setTimeout(() => {
+                    this.historySaveTimer = undefined;
+                    void this.saveJgdHistory();
+                }, 250);
+            }
+        });
 
         for (const cmd of commands) {
             const fullCommand = `r.plot.${cmd}`;
@@ -155,13 +168,14 @@ export class CommonPlotManager implements PlotManager {
         if (!viewer) {
             viewer = new StandardPlotViewer(target);
             this.standardViewers.set(key, viewer);
+            void this.saveStandardSources();
         } else {
             viewer.bindSession(target);
         }
         return viewer;
     }
 
-    public async showHttpgdPlot(url: string, target?: Session): Promise<void> {
+    public async showHttpgdPlot(url: string, target?: Session, restoring = false): Promise<void> {
         const source = target
             ? {
                   sessionId: target.sessionId,
@@ -171,7 +185,7 @@ export class CommonPlotManager implements PlotManager {
                   processExited: target.processExited,
               }
             : undefined;
-        await this.httpgdManager.showViewer(url, source);
+        await this.httpgdManager.showViewer(url, source, false, restoring);
     }
 
     public getJgdEnvVars(): Record<string, string> {
@@ -183,6 +197,31 @@ export class CommonPlotManager implements PlotManager {
             return;
         }
         this.disposed = true;
+        clearTimeout(this.historySaveTimer);
+        this.historySubscription?.dispose();
+        const saved = Promise.all([
+            this.saveJgdHistory(),
+            this.saveStandardSources(),
+            this.httpgdManager.saveConnections(),
+        ]);
+        this.jgdManager.stop();
+        for (const viewer of this.standardViewers.values()) {
+            viewer.dispose();
+        }
+        this.standardPlotViewer.dispose();
+        this.httpgdManager.dispose();
+        await saved;
+    }
+
+    private saveJgdHistory(): Promise<void> {
+        const snapshot = structuredClone(this.jgdManager.history.snapshot());
+        this.historyWrites = this.historyWrites
+            .then(() => extensionContext.workspaceState.update('r.plot.jgdState', snapshot))
+            .catch((error) => console.warn('[Plot Viewer] Could not save JGD state', error));
+        return this.historyWrites;
+    }
+
+    private async saveStandardSources(): Promise<void> {
         const standardSources = new Map(
             this.restoredStandardSessions.map((source) => [sessionProcessIdentity(source), source]),
         );
@@ -194,25 +233,11 @@ export class CommonPlotManager implements PlotManager {
                 );
             }
         }
-        const saved = Promise.all([
-            extensionContext.workspaceState.update(
-                'r.plot.jgdState',
-                this.jgdManager.history.snapshot(),
-            ),
-            extensionContext.workspaceState.update('r.plot.standardSessions', [
-                ...standardSources.values(),
-            ]),
-            this.httpgdManager.saveConnections(),
-        ]);
-        this.jgdManager.stop();
-        for (const viewer of this.standardViewers.values()) {
-            viewer.dispose();
-        }
-        this.standardPlotViewer.dispose();
-        this.httpgdManager.dispose();
-        await saved.catch((error) =>
-            console.warn('[Plot Viewer] Could not save reload state', error),
-        );
+        await extensionContext.workspaceState
+            .update('r.plot.standardSessions', [...standardSources.values()])
+            .then(undefined, (error) =>
+                console.warn('[Plot Viewer] Could not save standard plot sessions', error),
+            );
     }
 
     private async handleCommand(
@@ -221,28 +246,38 @@ export class CommonPlotManager implements PlotManager {
         ...args: unknown[]
     ): Promise<void> {
         if (command === 'showViewers') {
-            await this.httpgdManager.restoreConnections();
+            const source = activeSession;
+            const target = source && resolvePlotSession(source);
             if (this.disposed) {
                 return;
             }
-            let unavailable = false;
-            for (const source of this.restoredStandardSessions) {
-                const target = resolvePlotSession(source);
-                if (target) {
-                    // Opening the panel below requests its plot on readiness. Do
-                    // not wait for R or refresh viewers that are already restored.
-                    this.getStandardViewer(target);
-                } else if (!this.standardViewers.has(sessionProcessIdentity(source))) {
-                    unavailable = true;
-                }
-            }
-            if (unavailable) {
+            if (!target) {
                 void vscode.window.showInformationMessage(
-                    'Attach the original R session to restore its standard plot viewer.',
+                    'Focus an attached R session to show its plot viewer.',
                 );
+                return;
             }
-            for (const viewer of this.viewers) {
-                viewer.show(true);
+            if (this.jgdManager.showForSession(target)) {
+                return;
+            }
+            const httpgd = await this.httpgdManager.restoreConnection(target);
+            if (this.disposed) {
+                return;
+            }
+            if (httpgd) {
+                httpgd.show(true);
+                return;
+            }
+            const key = sessionProcessIdentity(target);
+            if (
+                this.standardViewers.has(key) ||
+                this.restoredStandardSessions.some((saved) => sessionProcessIdentity(saved) === key)
+            ) {
+                this.getStandardViewer(target).show(true);
+            } else {
+                void vscode.window.showInformationMessage(
+                    'No plot is available for the active R session.',
+                );
             }
             return;
         }

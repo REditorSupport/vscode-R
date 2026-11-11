@@ -54,6 +54,7 @@ export class PlotHistory {
         const history = this.sessions.get(sessionId);
         if (history && !history.source) {
             history.source = { ...source };
+            this.emitter.emit('change', sessionId);
         }
     }
 
@@ -227,6 +228,12 @@ export class PlotHistory {
 
     latestPlot(sessionId: string): PlotFrame | undefined {
         return this.sessions.get(sessionId)?.plots.at(-1);
+    }
+
+    invalidateReplayIndices(sessionId: string): void {
+        for (const plot of this.sessions.get(sessionId)?.plots ?? []) {
+            delete plot.rIndex;
+        }
     }
 
     navigatePrevious(sessionId = this.activeSessionId): PlotFrame | null {

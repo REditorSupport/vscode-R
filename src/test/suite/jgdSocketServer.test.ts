@@ -164,6 +164,81 @@ suite('JGD SocketServer', () => {
     }
 
     suite('frame routing', () => {
+        test('reconnects the original logical device without merging other sessions or devices', async () => {
+            const identity = {
+                sessionId: 'session-a',
+                host: 'localhost',
+                pid: '123',
+                rVer: '4.5.0',
+                processExited: false,
+                deviceId: '1',
+            };
+            async function sendFrame(
+                client: ClientHelper,
+                label: string,
+                source: object,
+                restoring = false,
+            ) {
+                client.send(
+                    makePlotMsg(label, 400, 300, {
+                        plotNumber: 0,
+                        newPage: true,
+                        ext: { vscodeR: { ...source, restoring } },
+                    }),
+                );
+                client.send({ type: 'metrics_request', id: 42, kind: 'strWidth', str: 'barrier' });
+                await client.readLine();
+            }
+            const original = await connect();
+            await sendFrame(original, 'original', identity);
+            const id = history.getActiveSessionId();
+            await sendFrame(await connect(), 'other device', { ...identity, deviceId: '2' });
+            await sendFrame(await connect(), 'other session', {
+                ...identity,
+                sessionId: 'session-b',
+                pid: '456',
+            });
+            const replacement = await connect();
+            await sendFrame(replacement, 'restored', identity, true);
+            assert.strictEqual(history.sessionIds().length, 3);
+            assert.strictEqual(history.count(id), 1);
+            assert.strictEqual(history.latestPlot(id)?.device.bg, 'restored');
+            await waitMs(50); // Let the old socket close after its replacement connects.
+            assert.ok(server.isConnected(id));
+            await sendFrame(replacement, 'new plot', identity);
+            assert.strictEqual(history.count(id), 2);
+            assert.strictEqual(history.sessionIds().length, 3);
+        });
+
+        test('reconnect replay does not restore a plot the user deleted', async () => {
+            const identity = {
+                sessionId: 'session-a',
+                host: 'localhost',
+                pid: '123',
+                rVer: '4.5.0',
+                processExited: false,
+                deviceId: '1',
+            };
+            const original = await connect();
+            original.send(makePlotMsg('original', 400, 300, { ext: { vscodeR: identity } }));
+            await waitMs(50);
+            const id = history.getActiveSessionId();
+            history.removeCurrent(id);
+            const replacement = await connect();
+            replacement.send(
+                makePlotMsg('replayed', 400, 300, {
+                    ext: { vscodeR: { ...identity, restoring: true } },
+                }),
+            );
+            replacement.send({ type: 'metrics_request', id: 42, kind: 'strWidth', str: 'barrier' });
+            await replacement.readLine();
+            assert.strictEqual(history.count(id), 0);
+            replacement.send(makePlotMsg('new plot', 400, 300, { ext: { vscodeR: identity } }));
+            replacement.send({ type: 'metrics_request', id: 43, kind: 'strWidth', str: 'barrier' });
+            await replacement.readLine();
+            assert.strictEqual(history.count(id), 1);
+        });
+
         test('resizes only the requested device, regardless of the latest active session', async () => {
             const first = await connect();
             const second = await connect();

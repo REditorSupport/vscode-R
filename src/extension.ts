@@ -380,7 +380,9 @@ export function ensureWorkspaceViewer(): void {
 }
 
 export async function deactivate(): Promise<void> {
-    await shutdownHtmlWidgetViewers(true);
-    await (globalPlotManager as plotViewer.CommonPlotManager)?.dispose();
+    await Promise.all([
+        shutdownHtmlWidgetViewers(true),
+        (globalPlotManager as plotViewer.CommonPlotManager)?.dispose(),
+    ]);
     await session.shutdownSessionWatcher();
 }

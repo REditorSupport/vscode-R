@@ -10,6 +10,7 @@ import { JgdManager } from '../../plotViewer/jgdViewer';
 import type { JgdMessage } from '../../plotViewer/jgdSocketServer';
 import type { PlotFrame } from '../../plotViewer/jgdPlotHistory';
 import { HttpgdClient } from '../../plotViewer/httpgdClient';
+import { HttpgdViewer } from '../../plotViewer/httpgdViewer';
 import { extensionContext } from '../../extension';
 import * as session from '../../session';
 import * as util from '../../util';
@@ -17,6 +18,12 @@ import { mockExtensionContext } from '../common/mockvscode';
 import { waitForValue } from '../common/sessionConnections';
 
 const createRealWebviewPanel = vscode.window.createWebviewPanel;
+
+class RefreshViewer extends HttpgdViewer {
+    receivePlots(ids: string[]): Promise<void> {
+        return this.refreshPlots(ids.map((id) => ({ id })));
+    }
+}
 
 suite('Standalone plot restoration', () => {
     let sandbox: sinon.SinonSandbox;
@@ -134,10 +141,14 @@ suite('Standalone plot restoration', () => {
         } as session.Session;
     }
 
+    function focus(source: session.Session): void {
+        sandbox.stub(session, 'activeSession').value(source);
+    }
+
     test('all plot backends show the exact shared session indicator and retain it after reload', async () => {
         const a = owner('indicator-a', '12101');
         const b = owner('indicator-b', '12102');
-        sandbox.stub(session, 'activeSession').value(b);
+
         sandbox.stub(session, 'sessionRequest').resolves({ data: 'plot', format: 'svg' });
         sandbox
             .stub(session, 'resolvePlotSession')
@@ -152,8 +163,12 @@ suite('Standalone plot restoration', () => {
             first.jgdManager.history.addPlot(source.sessionId, frame(source.sessionId));
             first.jgdManager.history.setSessionSource(source.sessionId, source);
         }
-        async function checkIndicators() {
-            await callbacks.get('r.plot.showViewers')!();
+        async function checkIndicators(value: CommonPlotManager) {
+            for (const source of [a, b]) {
+                await value.showStandardPlot(source);
+                (await value.httpgdManager.restoreConnection(source))!.show();
+                value.jgdManager.showForSession(source);
+            }
             assert.strictEqual(panels.length, 6);
             for (const source of [a, b]) {
                 const label = `R 4.6.0: ${source.pid}`;
@@ -162,7 +177,10 @@ suite('Standalone plot restoration', () => {
                 );
                 assert.strictEqual(owned.length, 3, 'each backend has its own session indicator');
                 for (const item of owned) {
-                    assert.strictEqual(item.panel.title, 'R Plot');
+                    assert.strictEqual(
+                        item.panel.title,
+                        item.panel.viewType === 'jgd.plotPane' ? 'R Plot (JGD)' : 'R Plot',
+                    );
                     assert.ok(item.panel.webview.html.includes('class="viewer-session-tooltip"'));
                     assert.ok(item.panel.webview.html.includes('codicon.css'));
                     item.post.resetHistory();
@@ -174,14 +192,13 @@ suite('Standalone plot restoration', () => {
                 }
             }
         }
-        await checkIndicators();
+        await checkIndicators(first);
         for (const { panel } of panels) {
             panel.dispose();
         }
         await first.dispose();
         panels = [];
-        manager();
-        await checkIndicators();
+        await checkIndicators(manager());
     });
 
     test('JGD binds live devices including late R attachments, but never guesses a restored owner', async () => {
@@ -235,7 +252,8 @@ suite('Standalone plot restoration', () => {
         await value.showHttpgdPlot('http://localhost:1234', source);
         value.jgdManager.history.addPlot('device', frame('device'));
         value.jgdManager.history.setSessionSource('device', source);
-        await callbacks.get('r.plot.showViewers')!();
+        value.httpgdManager.viewers[0].show();
+        value.jgdManager.showForSession(source);
         assert.strictEqual(panels.length, 3);
         kill.callsFake(() => {
             throw Object.assign(new Error('gone'), { code: 'ESRCH' });
@@ -256,7 +274,7 @@ suite('Standalone plot restoration', () => {
     test('httpgd gains the session indicator when an existing URL is attached to R', async () => {
         const value = manager();
         await value.showHttpgdPlot('http://localhost:1234');
-        await callbacks.get('r.plot.showViewers')!();
+        value.httpgdManager.viewers[0].show();
         assert.ok(!panels[0].panel.webview.html.includes('class="viewer-session"'));
         await value.showHttpgdPlot('http://localhost:1234', owner('late-httpgd', '12130'));
         assert.strictEqual(panels.length, 1);
@@ -266,6 +284,33 @@ suite('Standalone plot restoration', () => {
             message: 'viewer-session/update',
             text: 'R 4.6.0: 12130',
         });
+    });
+
+    test('all backends checkpoint restoration state before shutdown', async () => {
+        const source = owner('checkpoint', '12150');
+        sandbox.stub(session, 'sessionRequest').resolves({ data: 'live', format: 'svg' });
+        sandbox.stub(session, 'resolvePlotSession').returns(source);
+        const first = manager();
+        await first.showStandardPlot(source);
+        await first.showHttpgdPlot('http://localhost:1234?token=checkpoint', source);
+        first.jgdManager.history.addPlot('device', frame('device'));
+        first.jgdManager.history.setSessionSource('device', source);
+        await waitForValue(() => (state.has('r.plot.jgdState') ? true : undefined));
+        assert.ok(state.has('r.plot.standardSessions'));
+        assert.ok(state.has('r.plot.httpgdConnectionsKey'));
+        for (const { panel } of panels) {
+            panel.dispose();
+        }
+        panels = [];
+        const restored = manager();
+        // Deliberately do not call first.dispose(): the old extension host may
+        // stop before its shutdown hook can write through VS Code's storage bridge.
+        restored.jgdManager.showForSession(source);
+        (await restored.httpgdManager.restoreConnection(source))!.show();
+        await restored.showStandardPlot(source);
+        assert.strictEqual(panels.length, 3);
+        assert.strictEqual(restored.jgdManager.history.count('device'), 1);
+        assert.strictEqual(restored.httpgdManager.viewers[0].token, 'checkpoint');
     });
 
     test('Show Viewers requests the standard plot from its original attached session after reload', async () => {
@@ -280,6 +325,7 @@ suite('Standalone plot restoration', () => {
         const request = sandbox
             .stub(session, 'sessionRequest')
             .resolves({ data: 'original', format: 'svg' });
+        focus(owner);
         const resolve = sandbox.stub(session, 'resolvePlotSession').returns(owner);
         await first.showStandardPlot(owner);
         await panels[0].receive({ type: 'ready' });
@@ -340,6 +386,190 @@ suite('Standalone plot restoration', () => {
         };
     }
 
+    test('Show Viewer opens only the focused session and never ownerless or empty JGD viewers', async () => {
+        const a = owner('a', '123');
+        const b = owner('b', '456');
+        const active = sandbox.stub(session, 'activeSession').value(a);
+        const resolve = sandbox
+            .stub(session, 'resolvePlotSession')
+            .callsFake((source) => source as session.Session);
+        const value = manager();
+        const metrics = sandbox.spy(value.jgdManager.server, 'setMeasureText');
+        const deliver = startJgd(value);
+        await metrics.firstCall.args[0]({ type: 'metrics_request', id: 1 }, 96, 'temporary-socket');
+        assert.strictEqual(value.jgdManager.getViewers().length, 0);
+        for (const source of [a, b]) {
+            value.jgdManager.history.addPlot(source.sessionId, frame(source.sessionId));
+            value.jgdManager.history.setSessionSource(source.sessionId, source);
+            deliver(source.sessionId, { type: 'frame' });
+        }
+        value.jgdManager.history.addPlot('unknown', frame('unknown'));
+        value.jgdManager.history.addPlot('empty', frame('empty'));
+        value.jgdManager.history.setSessionSource('empty', a);
+        value.jgdManager.history.clear('empty');
+        for (const { panel } of panels) {
+            panel.dispose();
+        }
+        panels = [];
+        await callbacks.get('r.plot.showViewers')!();
+        assert.strictEqual(panels.length, 1);
+        assert.ok(panels[0].panel.webview.html.includes('R 4.6.0: 123'));
+        sinon.assert.calledOnceWithExactly(resolve, a);
+        await callbacks.get('r.plot.showViewers')!();
+        assert.strictEqual(panels.length, 1);
+        active.value(b);
+        await callbacks.get('r.plot.showViewers')!();
+        assert.strictEqual(panels.length, 2);
+        assert.ok(panels[1].panel.webview.html.includes('R 4.6.0: 456'));
+        active.value(undefined);
+        await callbacks.get('r.plot.showViewers')!();
+        assert.strictEqual(panels.length, 2);
+    });
+
+    test('multiple JGD devices in one R session reuse one viewer', async () => {
+        const source = owner('a', '123');
+        focus(source);
+        sandbox.stub(session, 'resolvePlotSession').returns(source);
+        const value = manager();
+        const deliver = startJgd(value);
+        for (const id of ['device-1', 'device-2', 'device-1']) {
+            value.jgdManager.history.addPlot(id, frame(id));
+            value.jgdManager.history.setSessionSource(id, source);
+            deliver(id, { type: 'frame' });
+        }
+        assert.strictEqual(panels.length, 1);
+        assert.strictEqual(value.jgdManager.getViewers().length, 1);
+        assert.strictEqual(value.jgdManager.getViewers()[0].sessionId, 'device-1');
+        panels[0].panel.dispose();
+        await callbacks.get('r.plot.showViewers')!();
+        assert.strictEqual(panels.length, 2, 'one replacement tab after closing');
+    });
+
+    test('JGD reattachment after reload keeps closed viewers closed until Show Viewer or a new plot', async () => {
+        const source = owner('a', '123');
+        focus(source);
+        sandbox.stub(session, 'resolvePlotSession').returns(source);
+        const first = manager();
+        const deliver = startJgd(first);
+        first.jgdManager.history.addPlot('device', frame('device'));
+        first.jgdManager.history.setSessionSource('device', source);
+        deliver('device', { type: 'frame' });
+        panels[0].panel.dispose();
+        await first.dispose();
+        (JgdManager.prototype.start as sinon.SinonStub).resetBehavior();
+        panels = [];
+        const restored = manager();
+        const replay = startJgd(restored);
+        replay('device', { type: 'frame', ext: { vscodeR: { restoring: true } } });
+        replay('device', { type: 'frame', resizeReplay: true });
+        assert.strictEqual(panels.length, 0);
+        assert.strictEqual(restored.jgdManager.history.count('device'), 1);
+        await callbacks.get('r.plot.showViewers')!();
+        assert.strictEqual(panels.length, 1);
+        panels[0].panel.dispose();
+        replay('device', { type: 'frame', ext: { vscodeR: { restoring: true } } });
+        assert.strictEqual(panels.length, 1);
+        restored.jgdManager.history.addPlot('device', frame('device', 'new'));
+        replay('device', { type: 'frame' });
+        assert.strictEqual(panels.length, 2);
+    });
+
+    test('httpgd restoration connects only the focused session', async () => {
+        const a = owner('a', '123');
+        const b = owner('b', '456');
+        focus(a);
+        sandbox.stub(session, 'resolvePlotSession').returns(a);
+        const first = manager();
+        await first.showHttpgdPlot('http://localhost:1234?token=a', a);
+        await first.showHttpgdPlot('http://localhost:1235?token=b', b);
+        await first.dispose();
+        connect.resetHistory();
+        const restored = manager();
+        await callbacks.get('r.plot.showViewers')!();
+        sinon.assert.calledOnce(connect);
+        assert.strictEqual(restored.httpgdManager.viewers.length, 1);
+        assert.strictEqual(restored.httpgdManager.viewers[0].connection.source?.sessionId, 'a');
+        assert.strictEqual(panels.length, 1);
+    });
+
+    test('httpgd reattachment and existing plot updates keep closed panels closed', async () => {
+        const source = owner('a', '123');
+        const value = manager();
+        const viewer = new RefreshViewer('http://localhost:1234', {
+            ...value.httpgdManager.viewerOptions,
+            source,
+            restoring: true,
+        });
+        value.httpgdManager.viewers.push(viewer);
+        sandbox.stub(viewer.api, 'getPlotText').resolves('<svg/>');
+        await viewer.receivePlots(['1']);
+        assert.strictEqual(panels.length, 0);
+        await viewer.receivePlots(['1']);
+        assert.strictEqual(panels.length, 0);
+        viewer.show();
+        assert.strictEqual(panels.length, 1);
+        panels[0].panel.dispose();
+        await value.showHttpgdPlot('http://localhost:1234', source, true);
+        await viewer.receivePlots(['1']);
+        assert.strictEqual(panels.length, 1);
+        await viewer.receivePlots(['1', '2']);
+        assert.strictEqual(panels.length, 2, 'a new plot opens one replacement panel');
+    });
+
+    test('httpgd devices share one visible viewer per session while other sessions remain independent', async () => {
+        const a = owner('a', '123');
+        const b = owner('b', '456');
+        focus(a);
+        sandbox.stub(session, 'resolvePlotSession').returns(a);
+        const value = manager();
+        await value.showHttpgdPlot('http://localhost:1234', a);
+        const first = value.httpgdManager.viewers[0];
+        first.show();
+        await value.showHttpgdPlot('http://localhost:1235', b);
+        const other = value.httpgdManager.viewers[0];
+        other.show();
+        await value.showHttpgdPlot('http://localhost:1236', a);
+        const second = value.httpgdManager.viewers[0];
+        second.show();
+        assert.strictEqual(first.webviewPanel, undefined);
+        assert.ok(second.webviewPanel);
+        assert.ok(other.webviewPanel);
+        first.show();
+        assert.strictEqual(second.webviewPanel, undefined);
+        assert.ok(first.webviewPanel);
+        assert.ok(other.webviewPanel);
+        panels.at(-1)!.panel.dispose();
+        const count = panels.length;
+        await callbacks.get('r.plot.showViewers')!();
+        assert.strictEqual(panels.length, count + 1);
+        assert.ok(first.webviewPanel, 'reopens the last used device for the focused session');
+        assert.strictEqual(second.webviewPanel, undefined);
+    });
+
+    test('standard restoration requests only the focused session', async () => {
+        const a = owner('a', '123');
+        const b = owner('b', '456');
+        focus(a);
+        sandbox.stub(session, 'resolvePlotSession').returns(a);
+        const request = sandbox
+            .stub(session, 'sessionRequest')
+            .resolves({ data: 'svg', format: 'svg' });
+        const first = manager();
+        await first.showStandardPlot(a);
+        await first.showStandardPlot(b);
+        for (const { panel } of panels) {
+            panel.dispose();
+        }
+        await first.dispose();
+        panels = [];
+        manager();
+        await callbacks.get('r.plot.showViewers')!();
+        assert.strictEqual(panels.length, 1);
+        await panels[0].receive({ type: 'ready' });
+        sinon.assert.calledOnce(request);
+        assert.strictEqual(request.firstCall.args[1], a);
+    });
+
     test('JGD frames update only their own viewer without redundant toolbar messages', async () => {
         const value = manager();
         const deliver = startJgd(value);
@@ -358,8 +588,8 @@ suite('Standalone plot restoration', () => {
         assert.strictEqual(panels.length, 2);
         history.setSessionLabel('b', 'r-456-1');
         await panels[1].receive({ type: 'ready' });
-        assert.strictEqual(panels[0].panel.title, 'R Plot');
-        assert.strictEqual(panels[1].panel.title, 'R Plot');
+        assert.strictEqual(panels[0].panel.title, 'R Plot (JGD)');
+        assert.strictEqual(panels[1].panel.title, 'R Plot (JGD)');
         assert.ok(!panels[0].panel.webview.html.includes('session-select'));
         panels[1].post.resetHistory();
 
@@ -382,9 +612,13 @@ suite('Standalone plot restoration', () => {
         const deliver = startJgd(value);
         const resize = sandbox.stub(value.jgdManager.server, 'handleResize');
         const history = value.jgdManager.history;
+        const aOwner = owner('a', '123');
+        focus(aOwner);
+        sandbox.stub(session, 'resolvePlotSession').returns(aOwner);
         for (const id of ['a', 'b']) {
             history.addPlot(id, frame(id, `${id}1`));
             history.addPlot(id, frame(id, `${id}2`));
+            history.setSessionSource(id, id === 'a' ? aOwner : owner('b', '456'));
             deliver(id, { type: 'frame' });
             await panels.at(-1)!.receive({ type: 'ready' });
         }
@@ -455,9 +689,20 @@ suite('Standalone plot restoration', () => {
         history.addPlot('b', frame('b', 'b1'));
         history.addPlot('b', frame('b', 'b2'));
         history.navigatePrevious('a');
+        const a = owner('a', '123');
+        const b = owner('b', '456');
+        history.setSessionSource('a', a);
+        history.setSessionSource('b', b);
+        const active = sandbox.stub(session, 'activeSession').value(a);
+        sandbox
+            .stub(session, 'resolvePlotSession')
+            .callsFake((source) => source as session.Session);
         await first.dispose();
         const restored = manager();
         assert.strictEqual(panels.length, 0);
+        await callbacks.get('r.plot.showViewers')!();
+        assert.strictEqual(panels.length, 1);
+        active.value(b);
         await callbacks.get('r.plot.showViewers')!();
         assert.strictEqual(panels.length, 2);
         for (const [index, id, bg] of [
@@ -472,7 +717,7 @@ suite('Standalone plot restoration', () => {
                     plot: sinon.match({ sessionId: id, device: sinon.match({ bg }) }),
                 }),
             );
-            assert.strictEqual(panels[index].panel.title, 'R Plot');
+            assert.strictEqual(panels[index].panel.title, 'R Plot (JGD)');
         }
         await restored.jgdManager.getViewer('b')!.handleCommand('firstPlot');
         assert.strictEqual(restored.jgdManager.history.currentIndex('a'), 1);
@@ -489,6 +734,7 @@ suite('Standalone plot restoration', () => {
             processExited: false,
         } as session.Session;
         sandbox.stub(session, 'sessionRequest').resolves({ data: 'plot', format: 'svg' });
+        focus(owner);
         const resolve = sandbox.stub(session, 'resolvePlotSession').returns(undefined);
         const information = sandbox.stub(vscode.window, 'showInformationMessage').resolves();
         await first.showStandardPlot(owner);
@@ -505,8 +751,11 @@ suite('Standalone plot restoration', () => {
     });
 
     test('httpgd reconnects with its token and retains live rendering and removal after reload', async () => {
+        const source = owner('httpgd-owner', '14001');
+        focus(source);
+        sandbox.stub(session, 'resolvePlotSession').returns(source);
         const first = manager();
-        await first.showHttpgdPlot('http://localhost:1234/live?token=secret');
+        await first.showHttpgdPlot('http://localhost:1234/live?token=secret', source);
         first.httpgdManager.viewers[0].plots = [
             { id: '1', data: '<svg>not persisted</svg>', width: 400, height: 300, zoom: 1 },
         ];
@@ -535,6 +784,9 @@ suite('Standalone plot restoration', () => {
     });
 
     test('httpgd reload fetches fresh plots from an authenticated server', async () => {
+        const source = owner('httpgd-owner', '14001');
+        focus(source);
+        sandbox.stub(session, 'resolvePlotSession').returns(source);
         connect.callThrough();
         let revision = 1;
         let removed = false;
@@ -575,7 +827,10 @@ suite('Standalone plot restoration', () => {
         try {
             const first = manager();
             const address = server.address() as AddressInfo;
-            await first.showHttpgdPlot(`http://127.0.0.1:${address.port}/live?token=device-token`);
+            await first.showHttpgdPlot(
+                `http://127.0.0.1:${address.port}/live?token=device-token`,
+                source,
+            );
             await waitForValue(() =>
                 first.httpgdManager.viewers[0].plots.length ? true : undefined,
             );
@@ -606,11 +861,14 @@ suite('Standalone plot restoration', () => {
     });
 
     test('httpgd restoration does not replace a device that already attached with a new token', async () => {
+        const source = owner('httpgd-owner', '14001');
+        focus(source);
+        sandbox.stub(session, 'resolvePlotSession').returns(source);
         const first = manager();
-        await first.showHttpgdPlot('http://localhost:1234/live?token=old');
+        await first.showHttpgdPlot('http://localhost:1234/live?token=old', source);
         await first.dispose();
         const restored = manager();
-        await restored.showHttpgdPlot('http://localhost:1234/live?token=new');
+        await restored.showHttpgdPlot('http://localhost:1234/live?token=new', source);
         const live = restored.httpgdManager.viewers[0];
         await callbacks.get('r.plot.showViewers')!();
         assert.deepStrictEqual(restored.httpgdManager.viewers, [live]);
@@ -618,8 +876,11 @@ suite('Standalone plot restoration', () => {
     });
 
     test('httpgd restoration keeps credentials from an attachment arriving at its async boundary', async () => {
+        const source = owner('httpgd-owner', '14001');
+        focus(source);
+        sandbox.stub(session, 'resolvePlotSession').returns(source);
         const first = manager();
-        await first.showHttpgdPlot('http://localhost:1234/live?token=old');
+        await first.showHttpgdPlot('http://localhost:1234/live?token=old', source);
         await first.dispose();
         const restored = manager();
         const show = restored.httpgdManager.showViewer.bind(restored.httpgdManager);
@@ -627,7 +888,7 @@ suite('Standalone plot restoration', () => {
             .stub(restored.httpgdManager, 'showViewer')
             .callsFake((url, source, onlyIfMissing) => {
                 if (new URL(url).searchParams.get('token') === 'old') {
-                    void show('http://localhost:1234/live?token=new');
+                    void show('http://localhost:1234/live?token=new', source);
                 }
                 return show(url, source, onlyIfMissing);
             });
@@ -644,10 +905,10 @@ suite('Standalone plot restoration', () => {
             device: { width: 400, height: 300, dpi: 96, bg: 'magenta' },
             ops: [],
         });
-        first.jgdManager.history.setSessionSource(
-            'old-device',
-            owner('jgd-real-indicator', '12140'),
-        );
+        const source = owner('jgd-real-indicator', '12140');
+        focus(source);
+        sandbox.stub(session, 'resolvePlotSession').returns(source);
+        first.jgdManager.history.setSessionSource('old-device', source);
         await first.dispose();
         let panel: vscode.WebviewPanel | undefined;
         let resolveIndicator!: (message: { label: string; fontLoaded: boolean }) => void;
@@ -732,8 +993,11 @@ suite('Standalone plot restoration', () => {
     });
 
     test('shutdown during credential loading does not reopen a connection or panel', async () => {
+        const source = owner('httpgd-owner', '14001');
+        focus(source);
+        sandbox.stub(session, 'resolvePlotSession').returns(source);
         const first = manager();
-        await first.showHttpgdPlot('http://localhost:1234/live?token=secret');
+        await first.showHttpgdPlot('http://localhost:1234/live?token=secret', source);
         await first.dispose();
         const value = [...secrets.values()][0];
         let finishRead!: (value: string) => void;

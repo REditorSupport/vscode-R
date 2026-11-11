@@ -69,5 +69,8 @@ local({
   expect_warning(scheduled[[3L]](), "Failed to send IPC message")
   expect_null(sess_env$con)
   expect_false(isTRUE(sess:::.runtime_state()$active))
+  expect_equal(grDevices::dev.cur(), getOption("sess.null_dev"))
+  expect_inherits(sess_env$latest_plot_record, "recordedplot")
+  sess:::runtime_stop()
   expect_equal(grDevices::dev.cur(), original_device)
 })

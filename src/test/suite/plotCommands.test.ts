@@ -1,4 +1,5 @@
 import * as assert from 'assert';
+import * as session from '../../session';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as sinon from 'sinon';
@@ -78,6 +79,15 @@ suite('Contextual plot commands', () => {
             sandbox.stub(manager.jgdManager, 'start');
             sandbox.stub(manager.jgdManager, 'getEnvVars').returns({});
             const showJgdViewer = sandbox.stub();
+            const source = {
+                sessionId: 'focused',
+                host: 'host',
+                pid: '123',
+                processExited: false,
+            } as session.Session;
+            sandbox.stub(session, 'activeSession').value(source);
+            sandbox.stub(session, 'resolvePlotSession').returns(source);
+            const showForSession = sandbox.stub(manager.jgdManager, 'showForSession').returns(true);
             const jgdViewer = {
                 show: showJgdViewer,
                 handleCommand: sandbox.stub(),
@@ -117,10 +127,10 @@ suite('Contextual plot commands', () => {
                 assert.deepStrictEqual(viewer.handleCommand.firstCall.args, [command, 'plot-id']);
             }
             await invoke('r.plot.showViewers');
-            assert.strictEqual(viewer.show.callCount, 1);
-            assert.deepStrictEqual(viewer.show.firstCall.args, [true]);
-            sinon.assert.calledOnceWithExactly(showJgdViewer, true);
-            sinon.assert.calledOnceWithExactly(showStandardViewer, true);
+            sinon.assert.calledOnceWithExactly(showForSession, source);
+            assert.strictEqual(viewer.show.callCount, 0);
+            sinon.assert.notCalled(showJgdViewer);
+            sinon.assert.notCalled(showStandardViewer);
             sinon.assert.notCalled(fallback);
         } finally {
             sandbox.restore();

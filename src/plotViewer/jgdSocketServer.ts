@@ -4,6 +4,8 @@ import * as path from 'path';
 import * as fs from 'fs';
 import * as crypto from 'crypto';
 import { PlotHistory, PlotFrame } from './jgdPlotHistory';
+import { isViewerSessionSource, ViewerSessionSource } from '../viewerSession';
+import { sessionProcessIdentity } from '../sessionIdentity';
 
 const SERVER_NAME = 'jgd-vscode';
 
@@ -35,6 +37,7 @@ interface RSession {
     lastResizeHadPlotIndex: boolean;
     dpi: number;
     deviceClosed?: boolean;
+    source?: ViewerSessionSource;
 }
 
 const isWindows = process.platform === 'win32';
@@ -249,24 +252,62 @@ export class JgdSocketServer {
         });
 
         socket.on('close', () => {
-            this.sessions.delete(sessionId);
-            this.notifyConnectionChange(sessionId);
+            if (this.sessions.get(session.id) === session) {
+                this.sessions.delete(session.id);
+                this.notifyConnectionChange(session.id);
+            }
         });
 
         socket.on('error', (err) => {
             console.error(`jgd session ${sessionId} error:`, err.message);
-            this.sessions.delete(sessionId);
-            this.notifyConnectionChange(sessionId);
+            if (this.sessions.get(session.id) === session) {
+                this.sessions.delete(session.id);
+                this.notifyConnectionChange(session.id);
+            }
         });
     }
 
     private handleMessage(session: RSession, line: string) {
+        if (this.sessions.get(session.id) !== session) {
+            return;
+        }
         try {
             const msg = JSON.parse(line) as JgdMessage;
             switch (msg.type) {
                 case 'frame': {
                     const plot = msg.plot;
                     if (plot) {
+                        const identity = msg.ext?.vscodeR;
+                        let restoring = false;
+                        if (
+                            isViewerSessionSource(identity) &&
+                            'deviceId' in identity &&
+                            typeof identity.deviceId === 'string' &&
+                            identity.deviceId.length > 0 &&
+                            identity.deviceId.length <= 256
+                        ) {
+                            const id = `session-${sessionProcessIdentity(identity)}:${identity.deviceId}`;
+                            if (!session.source) {
+                                this.sessions.delete(session.id);
+                                this.sessions.get(id)?.socket.destroy();
+                                session.id = id;
+                                session.source = {
+                                    sessionId: identity.sessionId,
+                                    host: identity.host,
+                                    pid: identity.pid,
+                                    rVer: identity.rVer,
+                                    processExited: false,
+                                };
+                                this.sessions.set(id, session);
+                                // Historical R replay indices belong to the old
+                                // physical device, not this replacement socket.
+                                this.history.invalidateReplayIndices(id);
+                            }
+                            restoring =
+                                session.id === id &&
+                                'restoring' in identity &&
+                                identity.restoring === true;
+                        }
                         if (Number.isFinite(plot.device?.dpi) && plot.device.dpi > 0) {
                             session.dpi = plot.device.dpi;
                         }
@@ -281,7 +322,12 @@ export class JgdSocketServer {
                                 : undefined;
 
                         let accepted = true;
-                        if (isResizeReplay && plotIndex !== undefined) {
+                        if (restoring) {
+                            plot.rIndex = msg.plotNumber;
+                            accepted = msg.incremental
+                                ? this.history.appendOps(session.id, plot as PlotFrame)
+                                : this.history.replaceLatest(session.id, plot as PlotFrame);
+                        } else if (isResizeReplay && plotIndex !== undefined) {
                             accepted = this.history.replaceAtIndex(
                                 session.id,
                                 plotIndex,
@@ -312,6 +358,9 @@ export class JgdSocketServer {
                             accepted = this.history.replaceLatest(session.id, plot as PlotFrame);
                         }
                         if (accepted) {
+                            if (session.source) {
+                                this.history.setSessionSource(session.id, session.source);
+                            }
                             if (typeof deviceLabel === 'string' && deviceLabel) {
                                 this.history.setSessionLabel(session.id, deviceLabel);
                             }

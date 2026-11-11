@@ -21,6 +21,7 @@ export interface HttpgdPlot<T> {
 
 // Example for possible viewer creation options:
 export interface HttpgdViewerOptions {
+    restoring?: boolean;
     parent: HttpgdManager;
     token?: string;
     preserveFocus?: boolean;

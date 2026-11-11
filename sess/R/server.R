@@ -44,7 +44,7 @@ connect <- function(endpoint = NULL, use_rstudioapi = TRUE,
 
   plot_backend <- .resolve_plot_backend(plot_backend)
   # Invalidate poll callbacks and restore a previous runtime before reconnecting.
-  .transport_disconnect(silent = TRUE)
+  .transport_disconnect(silent = TRUE, preserve_plots = TRUE)
   # Metadata belongs to this connect call, not to the R process. In particular,
   # a later native attach must not inherit an external terminal's identity.
   .sess_env$attachment_id <- attachment_id
@@ -339,7 +339,7 @@ connect <- function(endpoint = NULL, use_rstudioapi = TRUE,
       }
       # An attach write/poll failure may itself have queued a retry. Cancel it
       # before scheduling our retry so there is only one pending chain.
-      .transport_disconnect(silent = TRUE)
+      .transport_disconnect(silent = TRUE, preserve_plots = TRUE)
     }
     .schedule_reconnect(settings, .sess_env$transport_generation, schedule)
   }, 1)
@@ -358,7 +358,7 @@ connect <- function(endpoint = NULL, use_rstudioapi = TRUE,
   registration$run(endpoint, setup)
 }
 
-.transport_disconnect <- function(silent = FALSE, reconnect = FALSE) {
+.transport_disconnect <- function(silent = FALSE, reconnect = FALSE, preserve_plots = FALSE) {
   con <- .sess_env$con
   settings <- .sess_env$reconnect
   .sess_env$reconnect <- NULL
@@ -372,7 +372,7 @@ connect <- function(endpoint = NULL, use_rstudioapi = TRUE,
   .sess_env$pending_responses <- list()
 
   if (!is.null(con)) try(close(con), silent = TRUE)
-  runtime_stop()
+  runtime_stop(preserve_plots = reconnect || preserve_plots)
   if (reconnect && !is.null(con)) .schedule_reconnect(settings)
   if (!silent && !is.null(con)) message("[sess] Disconnected from VS Code")
   invisible(NULL)

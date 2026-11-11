@@ -187,7 +187,7 @@
   invisible(id)
 }
 
-.runtime_restore <- function() {
+.runtime_restore <- function(preserve_plots = FALSE) {
   state <- .runtime_state()
 
   for (name in rev(state$task_callbacks)) {
@@ -255,16 +255,17 @@
 
   # Close devices opened through sess's device factory so plotting resumes on
   # the device R selects after the runtime-owned device is removed.
-  for (entry in rev(state$devices)) {
+  for (entry in if (preserve_plots) list() else rev(state$devices)) {
     devices <- grDevices::dev.list()
     index <- if (is.null(devices)) NA_integer_ else match(entry$id, devices)
     if (!is.na(index) && identical(names(devices)[[index]], entry$name)) {
       try(grDevices::dev.off(which = entry$id), silent = TRUE)
     }
   }
-  state$devices <- list()
+  if (!preserve_plots) state$devices <- list()
 
   for (entry in rev(state$fields)) {
+    if (preserve_plots && identical(entry$name, "latest_plot_record")) next
     exists_current <- exists(entry$name, envir = .sess_env, inherits = FALSE)
     current <- if (exists_current) get(entry$name, envir = .sess_env, inherits = FALSE) else NULL
     if (identical(exists_current, entry$installed_exists) &&
@@ -276,15 +277,21 @@
       }
     }
   }
-  state$fields <- list()
+  state$fields <- if (preserve_plots) {
+    Filter(function(entry) identical(entry$name, "latest_plot_record"), state$fields)
+  } else list()
 
   for (name in names(state$options)) {
+    if (preserve_plots && identical(name, "sess.null_dev")) next
     entry <- state$options[[name]]
     if (identical(getOption(name), entry$installed)) {
       try(do.call(options, .runtime_named_value(name, entry$original)), silent = TRUE)
     }
   }
-  state$options <- list()
+  state$options <- if (preserve_plots && "sess.null_dev" %in% names(state$options)) {
+    state$options["sess.null_dev"]
+  } else list()
+  state$preserved_plots <- preserve_plots
   .runtime_clear_viewer_state()
   state$active <- FALSE
   invisible(NULL)
@@ -293,8 +300,10 @@
 #' Stop the VS Code runtime integration (internal)
 #'
 #' Removes runtime callbacks and restores R state installed by runtime_start().
+#' @param preserve_plots Keep live graphics devices and the latest plot while
+#'   reconnecting the same R process after an editor reload.
 #' @keywords internal
-runtime_stop <- function() {
+runtime_stop <- function(preserve_plots = FALSE) {
   state <- .runtime_state()
   if (!isTRUE(state$active) && !length(state$options) &&
         !length(state$bindings) && !length(state$hooks) &&
@@ -305,5 +314,5 @@ runtime_stop <- function() {
   }
   # Prevent callbacks from sending new notifications during cleanup.
   state$active <- FALSE
-  .runtime_restore()
+  .runtime_restore(preserve_plots)
 }
