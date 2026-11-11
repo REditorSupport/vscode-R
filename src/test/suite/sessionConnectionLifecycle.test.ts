@@ -57,6 +57,31 @@ suite('Session Connection Lifecycle API', () => {
         sandbox.restore();
     });
 
+    test('JGD device labels resolve only to a unique connected local R process', async () => {
+        const first = await connections.attach('jgd-local', 55101, os.hostname(), {
+            attachmentId: 'jgd-test',
+            autoActivate: false,
+        });
+        await connections.attach('jgd-remote', 55101, 'external-host', {
+            attachmentId: 'jgd-test',
+            autoActivate: false,
+        });
+        const source = session.resolveJgdSessionSource('r-55101-1');
+        assert.strictEqual(source?.sessionId, 'jgd-local');
+        assert.strictEqual(source?.pid, '55101');
+        assert.strictEqual(source?.rVer, '4.4.0');
+        assert.strictEqual(session.resolveJgdSessionSource('unknown-device'), undefined);
+        const duplicate = await connections.attach('jgd-ambiguous', 55101, os.hostname(), {
+            attachmentId: 'jgd-test',
+            autoActivate: false,
+        });
+        assert.strictEqual(session.resolveJgdSessionSource('r-55101-1'), undefined);
+        await session.cleanupSession('jgd-ambiguous', duplicate);
+        assert.strictEqual(session.resolveJgdSessionSource('r-55101-1')?.sessionId, 'jgd-local');
+        await session.cleanupSession('jgd-local', first);
+        assert.strictEqual(session.resolveJgdSessionSource('r-55101-1'), undefined);
+    });
+
     test('background external attach remains unselected and exposes its current reference', async () => {
         const events: RSessionConnectionChange[] = [];
         const subscription = session.onDidChangeSessionConnection((event) => events.push(event));

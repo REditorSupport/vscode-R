@@ -51,9 +51,10 @@ suite('Standard plot viewer request coordination', () => {
         } as unknown as vscode.WorkspaceConfiguration);
         sandbox.stub(vscode.window, 'createWebviewPanel').callsFake(() => {
             const disposed = new vscode.EventEmitter<void>();
-            let receiveMessage:
-                | ((message: { type: string; width?: number; height?: number }) => Promise<void>)
-                | undefined;
+            const listeners = new Set<(message: unknown) => unknown>();
+            const receiveMessage = async (message: unknown) => {
+                await Promise.all([...listeners].map((listener) => listener(message)));
+            };
             const postMessage = sandbox.stub().resolves(true);
             const panel = {
                 title: 'R Plot',
@@ -62,8 +63,12 @@ suite('Standard plot viewer request coordination', () => {
                 webview: {
                     html: '',
                     postMessage,
-                    onDidReceiveMessage: (listener: typeof receiveMessage) => {
-                        receiveMessage = listener;
+                    asWebviewUri: (uri: vscode.Uri) => uri,
+                    onDidReceiveMessage: (listener: (message: unknown) => unknown) => {
+                        listeners.add(listener);
+                        return new vscode.Disposable(() => {
+                            listeners.delete(listener);
+                        });
                     },
                 },
                 onDidDispose: disposed.event,
@@ -220,7 +225,13 @@ suite('Standard plot viewer request coordination', () => {
     });
 
     test('a bound viewer keeps requesting its owner after the active session changes', async () => {
-        const owner = { sessionId: 'A', pid: '123', rVer: '4.5.0' } as session.Session;
+        const owner = {
+            sessionId: 'A',
+            host: 'external-host',
+            pid: '123',
+            rVer: '4.5.0',
+            processExited: false,
+        } as session.Session;
         viewer = new StandardPlotViewer(owner);
         activeSession.value(owner);
         const response = deferred<unknown>();

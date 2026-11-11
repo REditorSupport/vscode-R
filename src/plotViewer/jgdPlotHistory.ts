@@ -1,4 +1,5 @@
 import { EventEmitter } from 'events';
+import { isViewerSessionSource, ViewerSessionSource } from '../viewerSession';
 
 export interface PlotFrame {
     version: number;
@@ -19,6 +20,7 @@ interface SessionHistory {
     currentIndex: number;
     latestDeleted: boolean;
     label?: string;
+    source?: ViewerSessionSource;
 }
 
 export interface PlotHistoryState {
@@ -42,6 +44,17 @@ export class PlotHistory {
 
     sessionLabel(sessionId: string): string | undefined {
         return this.sessions.get(sessionId)?.label;
+    }
+
+    sessionSource(sessionId: string): ViewerSessionSource | undefined {
+        return this.sessions.get(sessionId)?.source;
+    }
+
+    setSessionSource(sessionId: string, source: ViewerSessionSource): void {
+        const history = this.sessions.get(sessionId);
+        if (history && !history.source) {
+            history.source = { ...source };
+        }
     }
 
     setSessionLabel(sessionId: string, label: string): void {
@@ -89,6 +102,7 @@ export class PlotHistory {
                 currentIndex: entry.plots.length ? Math.max(0, entry.currentIndex - removed) : -1,
                 latestDeleted: entry.latestDeleted,
                 label: typeof entry.label === 'string' ? entry.label.slice(0, 256) : undefined,
+                source: isViewerSessionSource(entry.source) ? { ...entry.source } : undefined,
             });
         }
         this.activeSessionId =

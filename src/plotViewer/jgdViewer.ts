@@ -3,6 +3,12 @@ import { PlotViewer, plotPanelPath } from './types';
 import { PlotHistory, PlotFrame } from './jgdPlotHistory';
 import { JgdSocketServer, JgdMessage } from './jgdSocketServer';
 import { config, UriIcon } from '../util';
+import {
+    getViewerSessionContext,
+    onDidChangeSessionConnection,
+    resolveJgdSessionSource,
+} from '../session';
+import { getViewerSessionScript, viewerSessionStyle, ViewerSessionContext } from '../viewerSession';
 
 interface MetricsRequest {
     id: number;
@@ -95,6 +101,7 @@ export class JgdManager {
     private viewers = new Map<string, JgdViewer>();
     private extensionUri: vscode.Uri | null = null;
     private historyChangeDisposable: { dispose(): void } | null = null;
+    private sessionConnectionDisposable: vscode.Disposable | undefined;
     private started = false;
 
     constructor() {
@@ -105,6 +112,15 @@ export class JgdManager {
 
     initialize(extensionUri: vscode.Uri) {
         this.extensionUri = extensionUri;
+        this.sessionConnectionDisposable = onDidChangeSessionConnection((event) => {
+            if (event.kind === 'connected') {
+                for (const [id, viewer] of this.viewers) {
+                    if (this.server.isConnected(id) && !this.history.sessionSource(id)) {
+                        viewer.updateToolbar();
+                    }
+                }
+            }
+        });
     }
 
     start() {
@@ -153,6 +169,7 @@ export class JgdManager {
         this.started = false;
         this.server.stop();
         this.historyChangeDisposable?.dispose();
+        this.sessionConnectionDisposable?.dispose();
         for (const viewer of this.viewers.values()) {
             viewer.dispose();
         }
@@ -193,6 +210,7 @@ export class JgdViewer implements PlotViewer {
     private panelWidth = 800;
     private panelHeight = 600;
     private lastToolbarState: string | undefined;
+    private sessionContext: ViewerSessionContext | undefined;
 
     constructor(
         private extensionUri: vscode.Uri,
@@ -323,6 +341,11 @@ export class JgdViewer implements PlotViewer {
     }
 
     updateToolbar(force = false) {
+        if (this.resolveSessionContext() && this.panel) {
+            this.sessionContext?.attach(this.panel);
+            this.panel.webview.html = this.getWebviewHtml();
+            this.lastToolbarState = undefined;
+        }
         if (!this.panel) {
             return;
         }
@@ -362,6 +385,25 @@ export class JgdViewer implements PlotViewer {
 
     getPanelDimensions(): { width: number; height: number } {
         return { width: this.panelWidth, height: this.panelHeight };
+    }
+
+    private resolveSessionContext(): boolean {
+        if (this.sessionContext) {
+            return false;
+        }
+        const saved = this.history.sessionSource(this.sessionId);
+        // Restored, disconnected devices must never bind to a reused PID.
+        const source =
+            saved ??
+            (this.server.isConnected(this.sessionId)
+                ? resolveJgdSessionSource(this.history.sessionLabel(this.sessionId) ?? '')
+                : undefined);
+        if (!source) {
+            return false;
+        }
+        this.sessionContext = getViewerSessionContext(source.sessionId, source);
+        this.history.setSessionSource(this.sessionId, source);
+        return Boolean(this.sessionContext);
     }
 
     private canonicalizeFamily(family: string | undefined): string {
@@ -479,6 +521,7 @@ export class JgdViewer implements PlotViewer {
     }
 
     private createPanel(preserveFocus = false) {
+        this.resolveSessionContext();
         const viewColumnConfig =
             config().get<Record<string, string>>('session.viewers.viewColumn') ?? {};
         const plotColumn = viewColumnConfig['plot'] ?? 'Two';
@@ -571,6 +614,7 @@ export class JgdViewer implements PlotViewer {
             this.lastToolbarState = undefined;
         });
         this.panel.onDidChangeViewState(() => this.updateToolbar(true));
+        this.sessionContext?.attach(this.panel);
         this.panel.webview.html = this.getWebviewHtml();
     }
 
@@ -635,12 +679,17 @@ export class JgdViewer implements PlotViewer {
     }
 
     private getWebviewHtml(): string {
+        const webview = this.panel!.webview;
+        const codicons = webview.asWebviewUri(
+            vscode.Uri.joinPath(this.extensionUri, 'dist', 'resources', 'codicon.css'),
+        );
         return `<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src data: blob:;">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource} 'unsafe-inline'; font-src ${webview.cspSource}; script-src 'unsafe-inline'; img-src data: blob:;">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="stylesheet" href="${codicons.toString()}">
 <style>
 * { margin: 0; padding: 0; box-sizing: border-box; }
 body { background: var(--vscode-editor-background); overflow: hidden; display: flex; flex-direction: column; height: 100vh; }
@@ -662,6 +711,7 @@ body { background: var(--vscode-editor-background); overflow: hidden; display: f
     border: 1px solid var(--vscode-dropdown-border); padding: 2px; min-width: 0;
 }
 #plot-info { flex: 1; text-align: center; }
+${viewerSessionStyle}
 #canvas-container { flex: 1; display: flex; align-items: center; justify-content: center; overflow: hidden; }
 canvas { display: block; }
 </style>
@@ -677,6 +727,7 @@ canvas { display: block; }
         <option value="png">PNG</option>
         <option value="svg">SVG</option>
     </select>
+    ${this.sessionContext?.getHtml() ?? ''}
 </div>
 <div id="canvas-container">
     <canvas id="plot-canvas"></canvas>
@@ -693,6 +744,7 @@ ${getRendererScript()}
 function getRendererScript(): string {
     return `
 const vscode = acquireVsCodeApi();
+${getViewerSessionScript()}
 const canvas = document.getElementById('plot-canvas');
 const ctx = canvas.getContext('2d');
 const metricsCanvas = document.getElementById('metrics-canvas');

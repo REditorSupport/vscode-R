@@ -10,7 +10,9 @@ interface Plot {
 }
 
 import { acquireVsCodeApi, ResizeMessage, InMessage, PreviewPlotLayout } from '../webviewMessages';
+import { initializeViewerSession } from '../../viewerSession';
 const vscode = acquireVsCodeApi() as { postMessage: (msg: any) => void };
+initializeViewerSession(vscode);
 
 // globals
 let oldHeight = -1;
@@ -38,7 +40,7 @@ function postResizeMessage(userTriggered: boolean = false) {
     let newHeight = largePlotDiv.clientHeight;
     let newWidth = largePlotDiv.clientWidth;
     if (isFullWindow) {
-        newHeight = window.innerHeight;
+        newHeight = largePlotDiv.clientHeight;
         newWidth = window.innerWidth;
     }
     if (userTriggered || newHeight !== oldHeight || newWidth !== oldWidth) {

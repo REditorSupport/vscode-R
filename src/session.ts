@@ -2709,6 +2709,24 @@ export function resolvePlotSession(source: ViewerSessionSource): Session | undef
         : undefined;
 }
 
+// JGD connects over a local socket and labels devices as r-<pid>-<device>.
+// Never infer ownership from whichever terminal happens to be active.
+export function resolveJgdSessionSource(deviceLabel: string): ViewerSessionSource | undefined {
+    const match = /^r-(\d+)-\d+$/.exec(deviceLabel);
+    if (!match) {
+        return undefined;
+    }
+    const owners = [...sessions.values()].filter(
+        (owner) =>
+            owner.pid === match[1] &&
+            owner.rVer &&
+            isLocalHost(owner.host) &&
+            !owner.processExited &&
+            isConnectedSession(owner),
+    );
+    return owners.length === 1 ? getViewerSessionContext(owners[0].sessionId)?.source : undefined;
+}
+
 export async function getTableHtml(
     webview: Webview,
     file: string | undefined,

@@ -2,11 +2,14 @@
 <html>
 
 <head>
+    <link href="<%= codicons %>" rel="stylesheet">
+    <style><%- sessionStyle %></style>
     <link href="<%= asWebViewPath('style.css') %> " rel="stylesheet">
     <link href="<%= overwriteCssPath %> " rel="stylesheet" class="overwrites" <%- overwriteStyles ? '' : 'disabled' %>>
 </head>
 
 <body>
+    <div id="session-info"><%- sessionHtml %></div>
     <div id="largePlot" plotId=<%- largePlot?.id || '' %>>
         <%- largePlot?.data %>
     </div>

@@ -1,5 +1,6 @@
 import * as assert from 'assert';
 import * as path from 'path';
+import * as os from 'os';
 import * as http from 'node:http';
 import type { AddressInfo } from 'node:net';
 import * as sinon from 'sinon';
@@ -69,7 +70,7 @@ suite('Standalone plot restoration', () => {
         sandbox.stub(vscode.window, 'createWebviewPanel').callsFake((viewType, title) => {
             const panelId = panels.length;
             const disposed = new vscode.EventEmitter<void>();
-            let receive = (_message: unknown): unknown => undefined;
+            const listeners = new Set<(message: unknown) => unknown>();
             const post = sandbox.stub().resolves(true);
             const panel = {
                 title,
@@ -84,9 +85,11 @@ suite('Standalone plot restoration', () => {
                             scheme: 'https',
                             authority: `panel${panelId}.vscode-resource.vscode-cdn.net`,
                         }),
-                    onDidReceiveMessage: (callback: typeof receive) => {
-                        receive = callback;
-                        return new vscode.Disposable(() => {});
+                    onDidReceiveMessage: (callback: (message: unknown) => unknown) => {
+                        listeners.add(callback);
+                        return new vscode.Disposable(() => {
+                            listeners.delete(callback);
+                        });
                     },
                 },
                 onDidDispose: disposed.event,
@@ -97,7 +100,7 @@ suite('Standalone plot restoration', () => {
                 panel,
                 post,
                 receive: async (message) => {
-                    await receive(message);
+                    await Promise.all([...listeners].map((listener) => listener(message)));
                 },
             });
             return panel;
@@ -108,6 +111,9 @@ suite('Standalone plot restoration', () => {
         for (const manager of managers) {
             await manager.dispose();
         }
+        for (const { panel } of panels) {
+            panel.dispose();
+        }
         sandbox.restore();
     });
 
@@ -117,6 +123,149 @@ suite('Standalone plot restoration', () => {
         managers.push(value);
         return value;
     }
+
+    function owner(id: string, pid: string): session.Session {
+        return {
+            sessionId: id,
+            host: 'external-host',
+            pid,
+            rVer: 'R version 4.6.0 (2026-04-24)',
+            processExited: false,
+        } as session.Session;
+    }
+
+    test('all plot backends show the exact shared session indicator and retain it after reload', async () => {
+        const a = owner('indicator-a', '12101');
+        const b = owner('indicator-b', '12102');
+        sandbox.stub(session, 'activeSession').value(b);
+        sandbox.stub(session, 'sessionRequest').resolves({ data: 'plot', format: 'svg' });
+        sandbox
+            .stub(session, 'resolvePlotSession')
+            .callsFake((source) => (source.sessionId === a.sessionId ? a : b));
+        const first = manager();
+        for (const [index, source] of [a, b].entries()) {
+            await first.showStandardPlot(source);
+            await first.showHttpgdPlot(
+                `http://localhost:${1234 + index}/live?token=secret`,
+                source,
+            );
+            first.jgdManager.history.addPlot(source.sessionId, frame(source.sessionId));
+            first.jgdManager.history.setSessionSource(source.sessionId, source);
+        }
+        async function checkIndicators() {
+            await callbacks.get('r.plot.showViewers')!();
+            assert.strictEqual(panels.length, 6);
+            for (const source of [a, b]) {
+                const label = `R 4.6.0: ${source.pid}`;
+                const owned = panels.filter(({ panel }) =>
+                    panel.webview.html.includes(`aria-label="${label}"`),
+                );
+                assert.strictEqual(owned.length, 3, 'each backend has its own session indicator');
+                for (const item of owned) {
+                    assert.ok(item.panel.webview.html.includes('class="viewer-session-tooltip"'));
+                    assert.ok(item.panel.webview.html.includes('codicon.css'));
+                    item.post.resetHistory();
+                    await item.receive({ message: 'viewer-session/ready' });
+                    sinon.assert.calledWithExactly(item.post, {
+                        message: 'viewer-session/update',
+                        text: label,
+                    });
+                }
+            }
+        }
+        await checkIndicators();
+        for (const { panel } of panels) {
+            panel.dispose();
+        }
+        await first.dispose();
+        panels = [];
+        manager();
+        await checkIndicators();
+    });
+
+    test('JGD binds live devices including late R attachments, but never guesses a restored owner', async () => {
+        const events = new vscode.EventEmitter<import('../../api').RSessionConnectionChange>();
+        sandbox.stub(session, 'onDidChangeSessionConnection').callsFake(events.event);
+        const a = owner('jgd-owner-a', '12111');
+        const b = owner('jgd-owner-b', '12112');
+        const resolve = sandbox.stub(session, 'resolveJgdSessionSource');
+        resolve.withArgs('r-12111-1').returns(a);
+        const value = manager();
+        const live = sandbox
+            .stub(value.jgdManager.server, 'isConnected')
+            .callsFake((id) => id !== 'restored');
+        const deliver = startJgd(value);
+        for (const [id, label] of [
+            ['a', 'r-12111-1'],
+            ['b', 'r-12112-1'],
+            ['restored', 'r-12113-1'],
+        ]) {
+            value.jgdManager.history.addPlot(id, frame(id));
+            value.jgdManager.history.setSessionLabel(id, label);
+            deliver(id, { type: 'frame' });
+        }
+        assert.ok(panels[0].panel.webview.html.includes('R 4.6.0: 12111'));
+        assert.ok(!panels[1].panel.webview.html.includes('class="viewer-session"'));
+        resolve.withArgs('r-12112-1').returns(b);
+        events.fire({
+            kind: 'connected',
+            session: { sessionId: b.sessionId, connectionId: 'late' },
+        });
+        assert.ok(panels[1].panel.webview.html.includes('R 4.6.0: 12112'));
+        sinon.assert.neverCalledWith(resolve, 'r-12113-1');
+        assert.strictEqual(value.jgdManager.history.sessionSource('b')?.sessionId, b.sessionId);
+        live.returns(false);
+        value.jgdManager.getViewer('a')!.updateToolbar();
+        await panels[0].receive({ message: 'viewer-session/ready' });
+        sinon.assert.calledWith(panels[0].post, {
+            message: 'viewer-session/update',
+            text: 'R 4.6.0: 12111',
+        });
+        events.dispose();
+    });
+
+    test('plot indicators update on owning process exit and release observations on tab close', async () => {
+        const clock = sandbox.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
+        const kill = sandbox.stub(process, 'kill').returns(true);
+        const source = owner('plot-exit', '12120');
+        source.host = os.hostname();
+        const value = manager();
+        await value.showStandardPlot(source);
+        await value.showHttpgdPlot('http://localhost:1234', source);
+        value.jgdManager.history.addPlot('device', frame('device'));
+        value.jgdManager.history.setSessionSource('device', source);
+        await callbacks.get('r.plot.showViewers')!();
+        assert.strictEqual(panels.length, 3);
+        kill.callsFake(() => {
+            throw Object.assign(new Error('gone'), { code: 'ESRCH' });
+        });
+        await clock.tickAsync(1000);
+        for (const { panel, post } of panels) {
+            sinon.assert.calledWith(post, {
+                message: 'viewer-session/update',
+                text: 'R: (not attached)',
+            });
+            panel.dispose();
+        }
+        kill.resetHistory();
+        await clock.tickAsync(2000);
+        sinon.assert.notCalled(kill);
+    });
+
+    test('httpgd gains the session indicator when an existing URL is attached to R', async () => {
+        const value = manager();
+        await value.showHttpgdPlot('http://localhost:1234');
+        await callbacks.get('r.plot.showViewers')!();
+        assert.ok(!panels[0].panel.webview.html.includes('class="viewer-session"'));
+        await value.showHttpgdPlot('http://localhost:1234', owner('late-httpgd', '12130'));
+        assert.strictEqual(panels.length, 1);
+        assert.ok(panels[0].panel.webview.html.includes('R 4.6.0: 12130'));
+        await panels[0].receive({ message: 'viewer-session/ready' });
+        sinon.assert.calledWith(panels[0].post, {
+            message: 'viewer-session/update',
+            text: 'R 4.6.0: 12130',
+        });
+    });
 
     test('Show Viewers requests the standard plot from its original attached session after reload', async () => {
         const first = manager();
@@ -494,8 +643,16 @@ suite('Standalone plot restoration', () => {
             device: { width: 400, height: 300, dpi: 96, bg: 'magenta' },
             ops: [],
         });
+        first.jgdManager.history.setSessionSource(
+            'old-device',
+            owner('jgd-real-indicator', '12140'),
+        );
         await first.dispose();
         let panel: vscode.WebviewPanel | undefined;
+        let resolveIndicator!: (message: { label: string; fontLoaded: boolean }) => void;
+        const indicator = new Promise<{ label: string; fontLoaded: boolean }>((resolve) => {
+            resolveIndicator = resolve;
+        });
         let resolveReady!: () => void;
         let resolveExport!: (data: string) => void;
         const ready = new Promise<void>((resolve) => {
@@ -507,14 +664,24 @@ suite('Standalone plot restoration', () => {
         (vscode.window.createWebviewPanel as sinon.SinonStub).callsFake(
             (...args: Parameters<typeof createRealWebviewPanel>) => {
                 panel = createRealWebviewPanel(...args);
-                panel.webview.onDidReceiveMessage((message: { type: string; data?: string }) => {
-                    if (message.type === 'ready') {
-                        resolveReady();
-                    }
-                    if (message.type === 'export_data' && message.data) {
-                        resolveExport(message.data);
-                    }
-                });
+                panel.webview.onDidReceiveMessage(
+                    (message: {
+                        type: string;
+                        data?: string;
+                        label: string;
+                        fontLoaded: boolean;
+                    }) => {
+                        if (message.type === 'indicator-check') {
+                            resolveIndicator(message);
+                        }
+                        if (message.type === 'ready') {
+                            resolveReady();
+                        }
+                        if (message.type === 'export_data' && message.data) {
+                            resolveExport(message.data);
+                        }
+                    },
+                );
                 return panel;
             },
         );
@@ -529,7 +696,23 @@ suite('Standalone plot restoration', () => {
         });
         try {
             await callbacks.get('r.plot.showViewers')!();
+            panel!.webview.html = panel!.webview.html.replace(
+                '</body>',
+                `<script>
+                window.addEventListener('load', async () => {
+                    await document.fonts.ready;
+                    vscode.postMessage({ type: 'indicator-check', label: document.querySelector('.viewer-session').getAttribute('aria-label'), fontLoaded: document.fonts.check('16px codicon') });
+                });
+            </script></body>`,
+            );
             await Promise.race([ready, timeout]);
+            const details = await Promise.race([indicator, timeout]);
+            assert.strictEqual(details.label, 'R 4.6.0: 12140');
+            assert.strictEqual(
+                details.fontLoaded,
+                true,
+                'the shared information icon font loads under the JGD CSP',
+            );
             await panel!.webview.postMessage({
                 type: 'export',
                 format: 'svg',

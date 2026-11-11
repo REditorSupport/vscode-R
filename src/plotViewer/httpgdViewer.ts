@@ -5,7 +5,14 @@ import * as path from 'path';
 import * as fs from 'fs';
 import ejs from 'ejs';
 import { randomUUID } from 'crypto';
-import { formatSessionLabel, isViewerSessionSource, ViewerSessionSource } from '../viewerSession';
+import {
+    formatSessionLabel,
+    isViewerSessionSource,
+    viewerSessionStyle,
+    ViewerSessionContext,
+    ViewerSessionSource,
+} from '../viewerSession';
+import { getViewerSessionContext } from '../session';
 
 import { asViewColumn, config, setContext, UriIcon, makeWebviewCommandUriString } from '../util';
 import { extensionContext } from '../extension';
@@ -132,6 +139,7 @@ export class HttpgdManager {
         if (ind >= 0) {
             const viewer = this.viewers.splice(ind, 1)[0];
             if (viewer.token === token) {
+                viewer.bindSession(source);
                 this.viewers.unshift(viewer);
                 viewer.show();
                 return;
@@ -191,6 +199,9 @@ export class HttpgdManager {
 }
 
 interface EjsData {
+    sessionHtml: string;
+    sessionStyle: string;
+    codicons: string;
     overwriteStyles: boolean;
     previewPlotLayout: PreviewPlotLayout;
     activePlot?: HttpgdPlotId;
@@ -218,7 +229,8 @@ export class HttpgdViewer implements IHttpgdViewer, PlotViewer {
     webviewPanel?: vscode.WebviewPanel;
     readonly api: HttpgdClient;
     private disposed = false;
-    private readonly source?: ViewerSessionSource;
+    private source?: ViewerSessionSource;
+    private sessionContext?: ViewerSessionContext;
 
     get connection(): HttpgdConnection {
         const url = new URL(this.origin);
@@ -276,7 +288,7 @@ export class HttpgdViewer implements IHttpgdViewer, PlotViewer {
         this.origin = url.origin;
         this.id = this.host;
         this.token = options.token;
-        this.source = options.source;
+        this.bindSession(options.source);
         this.parent = options.parent;
 
         this.api = new HttpgdClient(this.origin, this.token);
@@ -361,6 +373,18 @@ export class HttpgdViewer implements IHttpgdViewer, PlotViewer {
                 return this.openExternal();
             case 'toggleFullWindow':
                 return this.toggleFullWindow();
+        }
+    }
+
+    public bindSession(source?: ViewerSessionSource): void {
+        if (!source || this.source) {
+            return;
+        }
+        this.source = { ...source };
+        this.sessionContext = getViewerSessionContext(source.sessionId, source);
+        if (this.webviewPanel) {
+            this.sessionContext?.attach(this.webviewPanel);
+            this.refreshHtml();
         }
     }
 
@@ -724,6 +748,19 @@ export class HttpgdViewer implements IHttpgdViewer, PlotViewer {
             overwriteCssPath = asWebViewPath('styleOverwrites.css');
         }
         return {
+            sessionHtml: this.sessionContext?.getHtml() ?? '',
+            sessionStyle: viewerSessionStyle,
+            codicons:
+                this.webviewPanel?.webview
+                    .asWebviewUri(
+                        vscode.Uri.joinPath(
+                            extensionContext.extensionUri,
+                            'dist',
+                            'resources',
+                            'codicon.css',
+                        ),
+                    )
+                    .toString() ?? '',
             overwriteStyles: this.stripStyles,
             previewPlotLayout: this.previewPlotLayout,
             plots: this.plots,
@@ -754,6 +791,7 @@ export class HttpgdViewer implements IHttpgdViewer, PlotViewer {
         webviewPanel.webview.onDidReceiveMessage((e: OutMessage) => {
             this.handleWebviewMessage(e);
         });
+        this.sessionContext?.attach(webviewPanel);
         return webviewPanel;
     }
 
