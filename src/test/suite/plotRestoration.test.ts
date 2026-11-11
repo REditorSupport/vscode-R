@@ -1290,14 +1290,14 @@ suite('Standalone plot restoration', () => {
         sinon.assert.calledOnceWithExactly(replacementCommand, 'hidePlot', 'replacement-plot');
     });
 
-    test('httpgd refreshes changed inactive plots but reuses unchanged geometry', async () => {
+    test('httpgd reuses inactive geometry and applies its latest size once reactivated', async () => {
         const value = manager();
         const viewer = new RefreshViewer(
             'http://localhost:1234',
             value.httpgdManager.viewerOptions,
         );
         value.httpgdManager.registerViewer(viewer);
-        sandbox.stub(viewer.api, 'isActive').returns(false);
+        const active = sandbox.stub(viewer.api, 'isActive').returns(false);
         const render = sandbox.stub(viewer.api, 'getPlotText').resolves('<svg>original</svg>');
         await viewer.receivePlots(['a'], new Set(['a']));
         render.resolves('<svg>annotation</svg>');
@@ -1308,6 +1308,57 @@ suite('Standalone plot restoration', () => {
         viewer.viewWidth = 900;
         await viewer.receivePlots(['a']);
         assert.strictEqual(viewer.plots[0].width, 900);
+        sinon.assert.calledTwice(render);
+
+        viewer.viewWidth = 1000;
+        viewer.viewHeight = 700;
+        viewer.zoom = 1.2;
+        await viewer.receivePlots(['a']);
+        sinon.assert.calledTwice(render);
+
+        // dev.set() changes activity without changing the drawing's update ID.
+        active.returns(true);
+        await viewer.receivePlots(['a'], new Set());
+        sinon.assert.calledThrice(render);
+        assert.deepStrictEqual(render.lastCall.args, [
+            { id: 'a', width: 1000, height: 700, zoom: 1.2, renderer: 'svgp' },
+        ]);
+        await viewer.receivePlots(['a'], new Set());
+        sinon.assert.calledThrice(render);
+        active.returns(false);
+        await viewer.receivePlots(['a']);
+        active.returns(true);
+        await viewer.receivePlots(['a'], new Set());
+        sinon.assert.calledThrice(render);
+    });
+
+    test('httpgd defers background plot resizing until selected on its active device', async () => {
+        const value = manager();
+        const viewer = new RefreshViewer(
+            'http://localhost:1234',
+            value.httpgdManager.viewerOptions,
+        );
+        value.httpgdManager.registerViewer(viewer);
+        const active = sandbox.stub(viewer.api, 'isActive').returns(false);
+        sandbox.stub(viewer.api, 'getPlots').returns([{ id: 'a' }, { id: 'b' }]);
+        const render = sandbox.stub(viewer.api, 'getPlotText').resolves('<svg>retained</svg>');
+        await viewer.receivePlots(['a', 'b'], new Set(['a', 'b']));
+        viewer.viewWidth = 1000;
+        await viewer.focusPlot('a');
+        await viewer.focusPlot('b');
+        render.resetHistory();
+
+        active.returns(true);
+        await viewer.receivePlots(['a', 'b'], new Set());
+        sinon.assert.calledOnce(render);
+        assert.strictEqual(render.firstCall.args[0].id, 'b');
+        // Both cache entries already have the current viewport dimensions.
+        // Focusing the other plot must still replay its deferred geometry.
+        await viewer.focusPlot('a');
+        sinon.assert.calledTwice(render);
+        assert.strictEqual(render.lastCall.args[0].id, 'a');
+        await viewer.focusPlot('a');
+        await viewer.receivePlots(['a', 'b'], new Set());
         sinon.assert.calledTwice(render);
     });
 
@@ -1503,6 +1554,15 @@ suite('Standalone plot restoration', () => {
             viewer.viewHeight = 680;
             await viewer.focusPlot();
             assert.strictEqual(viewer.plots[0].width, 920);
+            assert.ok(viewer.plots[0].data.includes('FIRST DEVICE'));
+            assert.ok(!viewer.plots[0].data.includes('width="920.00"'));
+            // Reactivation alone must apply the deferred size, without another
+            // resize event, new plot, or annotation to invalidate the drawing.
+            await evaluate('dev.set(first_device); "OK"');
+            await waitForValue(() =>
+                viewer.plots[0].data.includes('width="920.00"') ? true : undefined,
+            );
+            assert.ok(viewer.plots[0].data.includes('height="680.00"'));
             assert.ok(viewer.plots[0].data.includes('FIRST DEVICE'));
             const file = path.join(directory, 'first.svg');
             await viewer.exportPlot(viewer.activePlot, 'svgp', file);

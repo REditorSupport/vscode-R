@@ -16,6 +16,9 @@ export interface HttpgdPlot<T> {
     height: number;
     width: number;
     zoom: number;
+
+    // The viewport size above was applied by scaling; replay it when the device is active.
+    resizeDeferred?: boolean;
 }
 
 /** Received images persist independently of device servers; credentials remain in SecretStorage. */

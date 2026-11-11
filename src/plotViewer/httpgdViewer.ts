@@ -839,7 +839,8 @@ export class HttpgdViewer implements IHttpgdViewer, PlotViewer {
             this.canRefresh &&
             (plt.height !== this.viewHeight ||
                 plt.width !== this.viewWidth ||
-                plt.zoom !== this.zoom)
+                plt.zoom !== this.zoom ||
+                (plt.resizeDeferred && this.api.isActive(plt.id) && this.api.isAvailable(plt.id)))
         ) {
             await this.refreshPlots(this.api.getPlots());
         } else {
@@ -1159,7 +1160,12 @@ export class HttpgdViewer implements IHttpgdViewer, PlotViewer {
             }
             const plot = existing.get(id);
             return (
-                force || !plot || this.stalePlots.has(id) || (!changed && id === this.activePlot)
+                force ||
+                !plot ||
+                this.stalePlots.has(id) ||
+                (id === this.activePlot &&
+                    (!changed ||
+                        (plot.resizeDeferred && this.api.isActive(id) && this.api.isAvailable(id))))
             );
         });
         const results = await Promise.allSettled(
@@ -1269,13 +1275,22 @@ export class HttpgdViewer implements IHttpgdViewer, PlotViewer {
         zoom: number,
         cached: HttpgdPlot<string> | null = this.plots.find((plot) => plot.id === id) ?? null,
     ): Promise<HttpgdPlot<string>> {
-        if (
-            cached &&
-            (!this.api.isAvailable(id) || (!this.api.isActive(id) && !this.stalePlots.has(id)))
-        ) {
+        const active = this.api.isActive(id);
+        const scaled = cached && {
+            ...cached,
+            width,
+            height,
+            zoom,
+            resizeDeferred:
+                cached.resizeDeferred ||
+                cached.width !== width ||
+                cached.height !== height ||
+                cached.zoom !== zoom,
+        };
+        if (scaled && (!this.api.isAvailable(id) || (!active && !this.stalePlots.has(id)))) {
             // Unchanged inactive plots only need scaling. Changed content must
             // still be fetched; HttpgdDevices omits resize arguments for it.
-            return { ...cached, width, height, zoom };
+            return scaled;
         }
         const args = {
             id: id,
@@ -1289,12 +1304,12 @@ export class HttpgdViewer implements IHttpgdViewer, PlotViewer {
             svg = await this.api.getPlotText(args);
         } catch (error) {
             if (
-                cached &&
+                scaled &&
                 ['ECONNREFUSED', 'ECONNRESET'].includes(
                     (error as NodeJS.ErrnoException)?.code ?? '',
                 )
             ) {
-                return { ...cached, width, height, zoom };
+                return scaled;
             }
             throw error;
         }
@@ -1304,6 +1319,8 @@ export class HttpgdViewer implements IHttpgdViewer, PlotViewer {
             height: height,
             width: width,
             zoom: zoom,
+            // Inactive-device requests omit geometry even when fetching changed content.
+            resizeDeferred: !active,
         };
         return plt;
     }
