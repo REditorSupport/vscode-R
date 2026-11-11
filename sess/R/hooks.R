@@ -265,6 +265,17 @@ runtime_start <- function(use_rstudioapi = TRUE,
     # each retained device and replay its current plot with the same logical ID.
     previous <- grDevices::dev.cur()
     retained <- .runtime_state()$devices
+    # Explicit jgd::jgd() calls bypass our device factory. Recover live devices
+    # belonging to VS Code too, leaving other renderers' devices untouched.
+    devs <- grDevices::dev.list()
+    for (id in devs[names(devs) == "jgd"]) {
+      if (any(vapply(retained, function(entry) entry$id == id, logical(1)))) next
+      grDevices::dev.set(id)
+      info <- tryCatch(jgd::jgd_server_info(), error = function(e) NULL)
+      if (identical(info$server_name, "jgd-vscode")) {
+        retained[[length(retained) + 1L]] <- list(id = unname(id), name = "jgd")
+      }
+    }
     state$devices <- list()
     for (entry in retained) {
       devs <- grDevices::dev.list()

@@ -56,21 +56,29 @@ suite('Live R plot reconnect', function () {
         }
     });
 
-    for (const [backend, reuseDevice] of [
-        ['jgd', false],
-        ['jgd', true],
-        ['standard', false],
-        ['httpgd', false],
+    for (const [backend, deviceMode] of [
+        ['jgd', 'default'],
+        ['jgd', 'reused'],
+        ['jgd', 'explicit'],
+        ['standard', 'default'],
+        ['httpgd', 'default'],
     ] as const) {
+        const reuseDevice = deviceMode === 'reused';
+        const explicitDevice = deviceMode === 'explicit';
         const name = reuseDevice
             ? 'jgd preserves closed-device history when R reuses a device number'
-            : `${backend} retains its live R plot across renderer and session reconnect`;
+            : explicitDevice
+              ? 'explicit JGD devices resume plot delivery after reconnect'
+              : `${backend} retains its live R plot across renderer and session reconnect`;
         test(name, async () => {
             let history = new PlotHistory();
             let jgd: JgdSocketServer;
             let server: net.Server;
             let r: ChildProcessWithoutNullStreams | undefined;
             let httpgd: HttpgdClient | undefined;
+            let externalRenderer: net.Server | undefined;
+            const externalSockets = new Set<net.Socket>();
+            const externalFrames: JgdMessage[] = [];
             const sockets = new Set<net.Socket>();
             const notifications: Array<{
                 method: string;
@@ -164,6 +172,9 @@ suite('Live R plot reconnect', function () {
                         `Sys.setenv(JGD_SOCKET=${JSON.stringify(jgd!.getSocketPath())}); sess::connect(${JSON.stringify(endpoint)}, use_rstudioapi=FALSE, plot_backend="${backend}"); TRUE`,
                     );
                 await connect();
+                if (explicitDevice) {
+                    await evaluate('jgd::jgd(); TRUE');
+                }
                 await evaluate('plot(1:3, main="first plot"); TRUE');
                 if (backend === 'jgd') {
                     await until(() => (history.count() === 1 ? true : undefined));
@@ -188,7 +199,9 @@ suite('Live R plot reconnect', function () {
                             ? history.getActiveSessionId()
                             : undefined,
                     );
-                    assert.ok(history.sessionSource(originalId)?.sessionId);
+                    if (!explicitDevice) {
+                        assert.ok(history.sessionSource(originalId)?.sessionId);
+                    }
                 } else if (backend === 'httpgd') {
                     httpgdUrl = await until(
                         () => notifications.find((item) => item.method === 'httpgd')?.params.url,
@@ -210,6 +223,49 @@ suite('Live R plot reconnect', function () {
                     );
                 }
                 const deviceIds = history.sessionIds();
+                if (explicitDevice) {
+                    externalRenderer = net.createServer((socket) => {
+                        externalSockets.add(socket);
+                        socket.on('close', () => externalSockets.delete(socket));
+                        socket.write(
+                            JSON.stringify({
+                                type: 'server_info',
+                                serverName: 'other-renderer',
+                                protocolVersion: 1,
+                                transport: 'tcp',
+                            }) + '\n',
+                        );
+                        let buffer = '';
+                        socket.on('data', (data) => {
+                            buffer += data.toString();
+                            let end: number;
+                            while ((end = buffer.indexOf('\n')) >= 0) {
+                                const message = JSON.parse(buffer.slice(0, end)) as JgdMessage;
+                                buffer = buffer.slice(end + 1);
+                                if (message.type === 'metrics_request') {
+                                    socket.write(
+                                        JSON.stringify({
+                                            type: 'metrics_response',
+                                            id: message.id,
+                                            width: 8,
+                                            ascent: 8,
+                                            descent: 2,
+                                        }) + '\n',
+                                    );
+                                } else if (message.type === 'frame') {
+                                    externalFrames.push(message);
+                                }
+                            }
+                        });
+                    });
+                    await new Promise<void>((resolve) =>
+                        externalRenderer!.listen(0, '127.0.0.1', resolve),
+                    );
+                    const port = (externalRenderer.address() as net.AddressInfo).port;
+                    await evaluate(
+                        `own_device <- dev.cur(); jgd::jgd(socket="tcp://127.0.0.1:${port}"); external_device <- dev.cur(); plot(1:2, main="external renderer"); dev.set(own_device); TRUE`,
+                    );
+                }
                 const saved: unknown = JSON.parse(JSON.stringify(history.snapshot()));
                 await stopServers();
                 await evaluate('sess:::.transport_disconnect(silent=TRUE, reconnect=TRUE); TRUE');
@@ -218,7 +274,39 @@ suite('Live R plot reconnect', function () {
                 notifications.length = 0;
                 await startServers();
                 await connect();
-                if (backend === 'jgd') {
+                if (explicitDevice) {
+                    // The untracked device has no logical ID yet. Reopening
+                    // assigns one, while retaining its archived JSON history.
+                    const restoredId = await until(() =>
+                        history.sessionIds().find((id) => !deviceIds.includes(id)),
+                    );
+                    assert.ok(history.sessionSource(restoredId)?.sessionId);
+                    assert.ok(jgd!.isConnected(restoredId));
+                    assert.equal(history.count(restoredId), 1);
+                    assert.equal(history.count(originalId), 2);
+                    assert.ok(
+                        JSON.stringify(history.latestPlot(restoredId)?.ops).includes(
+                            'before reload',
+                        ),
+                    );
+                    await evaluate('plot(2:4, main="after reload"); TRUE');
+                    await until(() => (history.count(restoredId) === 2 ? true : undefined));
+                    assert.ok(
+                        JSON.stringify(history.latestPlot(restoredId)?.ops).includes(
+                            'after reload',
+                        ),
+                    );
+                    await evaluate(
+                        'restored_device <- dev.cur(); stopifnot(restored_device != external_device); dev.set(external_device); stopifnot(jgd::jgd_server_info()$server_name == "other-renderer"); plot(2:1, main="still external"); dev.set(restored_device); TRUE',
+                    );
+                    await until(() =>
+                        externalFrames.some((message) =>
+                            JSON.stringify(message.plot?.ops).includes('still external'),
+                        )
+                            ? true
+                            : undefined,
+                    );
+                } else if (backend === 'jgd') {
                     await until(() =>
                         jgd!.isConnected(originalId!) &&
                         history.latestPlot(originalId!)?.rIndex === 0
@@ -327,6 +415,12 @@ suite('Live R plot reconnect', function () {
                     await exited;
                 }
                 await stopServers();
+                for (const socket of externalSockets) {
+                    socket.destroy();
+                }
+                if (externalRenderer) {
+                    await new Promise<void>((resolve) => externalRenderer!.close(() => resolve()));
+                }
             }
         });
     }
