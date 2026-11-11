@@ -52,9 +52,10 @@ suite('httpgd viewer requests', () => {
         } as vscode.WorkspaceConfiguration);
         manager = new HttpgdManager();
     });
-    teardown(() => {
+    teardown(async () => {
         try {
-            manager?.viewers.forEach((viewer) => viewer.dispose());
+            manager.dispose();
+            await manager.saveConnections();
         } finally {
             sandbox.restore();
         }
@@ -230,6 +231,7 @@ suite('httpgd viewer requests', () => {
         const request = sandbox.stub(state.viewer.api, 'getPlotText').resolves('<svg/>');
         const closePanel = sandbox.stub();
         state.viewer.webviewPanel = { dispose: closePanel } as unknown as vscode.WebviewPanel;
+        manager.registerActiveViewer(state.viewer);
         state.viewer.queueResize();
         await state.viewer.queueRefresh();
         state.exit();
@@ -242,8 +244,15 @@ suite('httpgd viewer requests', () => {
         sinon.assert.calledOnce(state.released);
         sinon.assert.notCalled(closePanel);
         sinon.assert.notCalled(state.errors);
+        assert.deepStrictEqual(manager.viewers, []);
+        assert.deepStrictEqual(manager.recentlyActiveViewers, []);
+        state.viewer.show();
+        manager.registerActiveViewer(state.viewer);
+        assert.deepStrictEqual(manager.recentlyActiveViewers, []);
         connect.resetHistory();
         state.fire('connected');
+        await manager.showViewer('http://localhost:1234', { ...state.source });
+        assert.strictEqual(await manager.restoreConnection({ ...state.source }), undefined);
         sinon.assert.notCalled(connect);
         state.viewer.webviewPanel = undefined;
     });

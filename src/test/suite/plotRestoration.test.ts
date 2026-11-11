@@ -16,6 +16,8 @@ import * as session from '../../session';
 import * as util from '../../util';
 import { mockExtensionContext } from '../common/mockvscode';
 import { waitForValue } from '../common/sessionConnections';
+import { sessionProcessIdentity } from '../../sessionIdentity';
+import type { ViewerSessionSource } from '../../viewerSession';
 
 const createRealWebviewPanel = vscode.window.createWebviewPanel;
 const executeRealCommand = vscode.commands.executeCommand;
@@ -65,6 +67,10 @@ suite('Standalone plot restoration', () => {
                 return Promise.resolve();
             },
         );
+        (extensionContext.secrets.delete as sinon.SinonStub).callsFake((key: string) => {
+            secrets.delete(key);
+            return Promise.resolve();
+        });
         sandbox.stub(vscode.commands, 'registerCommand').callsFake((command, callback) => {
             callbacks.set(command, callback as (...args: unknown[]) => Promise<void>);
             return new vscode.Disposable(() => {});
@@ -145,6 +151,173 @@ suite('Standalone plot restoration', () => {
     function focus(source: session.Session): void {
         sandbox.stub(session, 'activeSession').value(source);
     }
+
+    function processExits() {
+        const exited = new Set<string>();
+        const listeners = new Map<string, Set<() => void>>();
+        sandbox.stub(session, 'getViewerSessionContext').callsFake((_id, source) => {
+            if (!source) {
+                return undefined;
+            }
+            const key = sessionProcessIdentity(source);
+            let callbacks = listeners.get(key);
+            if (!callbacks) {
+                callbacks = new Set();
+                listeners.set(key, callbacks);
+            }
+            const observers = callbacks;
+            return {
+                source,
+                sessionId: source.sessionId,
+                get hasExited() {
+                    return exited.has(key);
+                },
+                observeExit: (callback) => {
+                    observers.add(callback);
+                    return { dispose: () => observers.delete(callback) };
+                },
+                attach: () => {},
+                getHtml: () => '',
+            };
+        });
+        return {
+            exit(source: ViewerSessionSource) {
+                const key = sessionProcessIdentity(source);
+                exited.add(key);
+                for (const callback of listeners.get(key) ?? []) {
+                    callback();
+                }
+            },
+            listeners,
+        };
+    }
+
+    test('httpgd process exit removes only its connections and saved credentials, keeping panels', async () => {
+        const exits = processExits();
+        const source = owner('httpgd-owner', '14001');
+        const replacement = owner(source.sessionId, '14002');
+        const value = manager();
+        await value.showHttpgdPlot('http://localhost:1234?token=old-1', source);
+        await value.showHttpgdPlot('http://localhost:1235?token=old-2', source);
+        const old = [...value.httpgdManager.viewers];
+        old[0].show();
+        const panel = old[0].webviewPanel;
+        const close = sandbox.spy(panel!, 'dispose');
+        const disconnects = old.map((viewer) => sandbox.spy(viewer.api, 'disconnect'));
+        await value.showHttpgdPlot('http://localhost:1236?token=replacement', replacement);
+        await value.httpgdManager.showViewer('http://localhost:1237?token=unowned');
+        exits.exit(source);
+        await value.httpgdManager.saveConnections();
+        for (const disconnect of disconnects) {
+            sinon.assert.calledOnce(disconnect);
+        }
+        sinon.assert.notCalled(close);
+        assert.strictEqual(old[0].webviewPanel, panel);
+        assert.strictEqual(value.httpgdManager.viewers.length, 2);
+        assert.ok(
+            old.every((viewer) => !value.httpgdManager.recentlyActiveViewers.includes(viewer)),
+        );
+        const saved = JSON.parse([...secrets.values()][0]) as Array<{
+            source?: ViewerSessionSource;
+        }>;
+        assert.strictEqual(saved.length, 2);
+        assert.ok(saved.some((connection) => connection.source?.pid === replacement.pid));
+        assert.ok(saved.some((connection) => !connection.source));
+        await value.dispose();
+        const restored = manager();
+        assert.strictEqual(await restored.httpgdManager.restoreConnection(source), undefined);
+        assert.ok(await restored.httpgdManager.restoreConnection(replacement));
+    });
+
+    test('httpgd saved connections are cleaned on exit even without reopening a viewer', async () => {
+        const exits = processExits();
+        const source = owner('httpgd-owner', '14001');
+        const first = manager();
+        await first.showHttpgdPlot('http://localhost:1234?token=secret', source);
+        await first.dispose();
+        const restored = manager();
+        await restored.httpgdManager.saveConnections();
+        assert.strictEqual(restored.httpgdManager.viewers.length, 0);
+        assert.strictEqual(secrets.size, 1, 'reload preserves the live session');
+        connect.resetHistory();
+        exits.exit(source);
+        await waitForValue(() =>
+            secrets.size === 0 && !state.get('r.plot.httpgdConnectionsKey') ? true : undefined,
+        );
+        await restored.httpgdManager.saveConnections();
+        assert.strictEqual(secrets.size, 0);
+        assert.strictEqual(state.get('r.plot.httpgdConnectionsKey'), undefined);
+        assert.strictEqual(exits.listeners.get(sessionProcessIdentity(source))?.size, 0);
+        assert.strictEqual(await restored.httpgdManager.restoreConnection(source), undefined);
+        sinon.assert.notCalled(connect);
+    });
+
+    test('httpgd exit during credential loading prevents a pending restore from reconnecting', async () => {
+        const exits = processExits();
+        const source = owner('httpgd-owner', '14001');
+        const first = manager();
+        await first.showHttpgdPlot('http://localhost:1234?token=secret', source);
+        await first.dispose();
+        const saved = [...secrets.values()][0];
+        let load!: (value: string) => void;
+        (extensionContext.secrets.get as sinon.SinonStub).returns(
+            new Promise<string>((resolve) => {
+                load = resolve;
+            }),
+        );
+        const restored = manager();
+        const pending = restored.httpgdManager.restoreConnection(source);
+        exits.exit(source);
+        connect.resetHistory();
+        load(saved);
+        assert.strictEqual(await pending, undefined);
+        await restored.httpgdManager.saveConnections();
+        assert.strictEqual(secrets.size, 0);
+        assert.strictEqual(state.get('r.plot.httpgdConnectionsKey'), undefined);
+        sinon.assert.notCalled(connect);
+    });
+
+    test('httpgd exit during a credential write removes that write after it completes', async () => {
+        const exits = processExits();
+        const source = owner('httpgd-owner', '14001');
+        const value = manager();
+        let stored!: () => void;
+        let started!: () => void;
+        const writing = new Promise<void>((resolve) => {
+            started = resolve;
+        });
+        (extensionContext.secrets.store as sinon.SinonStub).onFirstCall().callsFake(
+            (key: string, data: string) =>
+                new Promise<void>((resolve) => {
+                    stored = () => {
+                        secrets.set(key, data);
+                        resolve();
+                    };
+                    started();
+                }),
+        );
+        const opening = value.showHttpgdPlot('http://localhost:1234?token=secret', source);
+        await writing;
+        exits.exit(source);
+        stored();
+        await opening;
+        await value.httpgdManager.saveConnections();
+        assert.strictEqual(secrets.size, 0);
+        assert.strictEqual(state.get('r.plot.httpgdConnectionsKey'), undefined);
+        assert.deepStrictEqual(value.httpgdManager.viewers, []);
+    });
+
+    test('httpgd already exited owners cannot register a new connection', async () => {
+        const exits = processExits();
+        const source = owner('httpgd-owner', '14001');
+        exits.exit(source);
+        const value = manager();
+        await value.showHttpgdPlot('http://localhost:1234?token=secret', source);
+        await value.httpgdManager.saveConnections();
+        assert.deepStrictEqual(value.httpgdManager.viewers, []);
+        assert.strictEqual(secrets.size, 0);
+        sinon.assert.notCalled(connect);
+    });
 
     test('all plot backends show the exact shared session indicator and retain it after reload', async () => {
         const a = owner('indicator-a', '12101');

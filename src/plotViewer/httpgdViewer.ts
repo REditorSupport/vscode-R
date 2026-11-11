@@ -63,12 +63,18 @@ export class HttpgdManager {
     private secretKey: string | undefined;
     private disposed = false;
     private connectionWrites: Promise<void> = Promise.resolve();
+    private exitedSessions = new Set<string>();
+    private savedSessionSubscriptions = new Map<string, { dispose(): void }>();
 
     dispose(): void {
         this.disposed = true;
         for (const viewer of this.viewers) {
             viewer.dispose();
         }
+        for (const subscription of this.savedSessionSubscriptions.values()) {
+            subscription.dispose();
+        }
+        this.savedSessionSubscriptions.clear();
     }
 
     initialize(): void {
@@ -78,19 +84,82 @@ export class HttpgdManager {
             this.savedConnections = Promise.resolve(extensionContext.secrets.get(this.secretKey))
                 .then((value) => {
                     const connections: unknown = value ? JSON.parse(value) : [];
-                    return Array.isArray(connections) ? connections.filter(isHttpgdConnection) : [];
+                    const saved = Array.isArray(connections)
+                        ? connections.filter(isHttpgdConnection)
+                        : [];
+                    if (!this.disposed) {
+                        for (const connection of saved) {
+                            this.observeSavedSession(connection.source);
+                        }
+                    }
+                    return saved;
                 })
                 .catch(() => []);
         }
     }
 
+    private hasExited(source?: ViewerSessionSource): boolean {
+        return Boolean(
+            source &&
+            (source.processExited || this.exitedSessions.has(sessionProcessIdentity(source))),
+        );
+    }
+
+    private observeSavedSession(source?: ViewerSessionSource): void {
+        if (!source) {
+            return;
+        }
+        const key = sessionProcessIdentity(source);
+        if (this.exitedSessions.has(key) || this.savedSessionSubscriptions.has(key)) {
+            return;
+        }
+        const context = getViewerSessionContext(source.sessionId, source);
+        if (context) {
+            this.savedSessionSubscriptions.set(
+                key,
+                context.observeExit(() => this.sessionExited(source)),
+            );
+        }
+        if (source.processExited || context?.hasExited) {
+            this.sessionExited(source);
+        }
+    }
+
+    public sessionExited(source: ViewerSessionSource): void {
+        const key = sessionProcessIdentity(source);
+        if (this.disposed || this.exitedSessions.has(key)) {
+            return;
+        }
+        // Remember confirmed exits so delayed restoration cannot resurrect them.
+        this.exitedSessions.add(key);
+        this.savedSessionSubscriptions.get(key)?.dispose();
+        this.savedSessionSubscriptions.delete(key);
+        const belongsToSession = (viewer: HttpgdViewer) => {
+            const owner = viewer.connection.source;
+            return owner && sessionProcessIdentity(owner) === key;
+        };
+        for (const viewer of this.viewers) {
+            if (belongsToSession(viewer)) {
+                viewer.dispose();
+            }
+        }
+        this.viewers = this.viewers.filter((viewer) => !belongsToSession(viewer));
+        this.recentlyActiveViewers = this.recentlyActiveViewers.filter(
+            (viewer) => !belongsToSession(viewer),
+        );
+        void this.saveConnections();
+    }
+
     async restoreConnection(source: ViewerSessionSource): Promise<HttpgdViewer | undefined> {
+        if (this.disposed || this.hasExited(source)) {
+            return undefined;
+        }
         const key = sessionProcessIdentity(source);
         const matches = (owner?: ViewerSessionSource) =>
             owner && sessionProcessIdentity(owner) === key;
         const existing = () =>
-            [...this.recentlyActiveViewers, ...this.viewers].find((viewer) =>
-                matches(viewer.connection.source),
+            [...this.recentlyActiveViewers, ...this.viewers].find(
+                (viewer) => !viewer.isDisposed && matches(viewer.connection.source),
             );
         if (existing()) {
             return existing();
@@ -114,15 +183,27 @@ export class HttpgdManager {
 
     private async writeConnections(): Promise<void> {
         const connections = new Map(
-            (await this.savedConnections).map((connection) => [
-                new URL(connection.url).origin,
-                connection,
-            ]),
+            (await this.savedConnections)
+                .filter((connection) => !this.hasExited(connection.source))
+                .map((connection) => [new URL(connection.url).origin, connection]),
         );
         for (const viewer of this.viewers) {
-            connections.set(viewer.origin, viewer.connection);
+            // Extension shutdown disposes clients before its queued save runs.
+            // Only confirmed process exits invalidate restoration credentials.
+            if (!this.hasExited(viewer.connection.source)) {
+                connections.set(viewer.origin, viewer.connection);
+            }
         }
+        this.savedConnections = Promise.resolve([...connections.values()]);
         if (!connections.size) {
+            if (this.secretKey) {
+                await extensionContext.secrets.delete(this.secretKey);
+                await extensionContext.workspaceState.update(
+                    'r.plot.httpgdConnectionsKey',
+                    undefined,
+                );
+                this.secretKey = undefined;
+            }
             return;
         }
         this.secretKey ??= `r.plot.httpgd.${randomUUID()}`;
@@ -149,7 +230,7 @@ export class HttpgdManager {
         restoring = false,
     ): Promise<void> {
         await Promise.resolve();
-        if (this.disposed) {
+        if (this.disposed || this.hasExited(source)) {
             return;
         }
         const url = new URL(urlString);
@@ -169,6 +250,9 @@ export class HttpgdManager {
                 sessionProcessIdentity(source) === sessionProcessIdentity(owner);
             if (!viewer.isDisposed && viewer.token === token && sameSession) {
                 viewer.bindSession(source);
+                if (viewer.isDisposed) {
+                    return;
+                }
                 this.viewers.unshift(viewer);
                 if (!restoring) {
                     viewer.show();
@@ -200,6 +284,9 @@ export class HttpgdManager {
         this.viewerOptions.source = source;
         this.viewerOptions.restoring = restoring;
         const viewer = new HttpgdViewer(url.origin, this.viewerOptions);
+        if (viewer.isDisposed) {
+            return;
+        }
         this.viewers.unshift(viewer);
         if (!onlyIfMissing) {
             await this.saveConnections();
@@ -207,6 +294,9 @@ export class HttpgdManager {
     }
 
     public registerActiveViewer(viewer: HttpgdViewer): void {
+        if (this.disposed || viewer.isDisposed) {
+            return;
+        }
         const ind = this.recentlyActiveViewers.indexOf(viewer);
         if (ind >= 0) {
             this.recentlyActiveViewers.splice(ind, 1);
@@ -454,7 +544,11 @@ export class HttpgdViewer implements IHttpgdViewer, PlotViewer {
         }
         this.source = { ...source };
         this.sessionContext = getViewerSessionContext(source.sessionId, source);
-        this.sessionExitSubscription = this.sessionContext?.observeExit(() => this.dispose());
+        const onExit = () => {
+            this.dispose();
+            this.parent.sessionExited(source);
+        };
+        this.sessionExitSubscription = this.sessionContext?.observeExit(onExit);
         this.sessionConnectionSubscription = onDidChangeSessionConnection((event) => {
             if (event.session.sessionId !== source.sessionId || this.disposed) {
                 return;
@@ -470,8 +564,8 @@ export class HttpgdViewer implements IHttpgdViewer, PlotViewer {
                 this.connect();
             }
         });
-        if (this.sessionContext?.hasExited) {
-            this.dispose();
+        if (source.processExited || this.sessionContext?.hasExited) {
+            onExit();
         }
         if (this.webviewPanel) {
             this.sessionContext?.attach(this.webviewPanel);
@@ -480,6 +574,9 @@ export class HttpgdViewer implements IHttpgdViewer, PlotViewer {
     }
 
     public show(preserveFocus?: boolean): void {
+        if (this.disposed) {
+            return;
+        }
         this.restoring = false;
         preserveFocus ??= this.showOptions.preserveFocus;
         if (!this.webviewPanel) {
