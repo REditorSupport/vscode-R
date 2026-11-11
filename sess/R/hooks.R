@@ -240,6 +240,9 @@ runtime_start <- function(use_rstudioapi = TRUE,
       }
       devices <- .runtime_state()$devices
       devices[[length(devices)]]$key <- key
+      devices[[length(devices)]]$renderer_device_id <- unname(
+        jgd::jgd_server_info()$server_info["deviceId"]
+      )
       state$devices <- devices
       # Carry the logical device identity across a new renderer socket. Device
       # numbers and JGD's native counter can change when the device is reopened.
@@ -270,16 +273,23 @@ runtime_start <- function(use_rstudioapi = TRUE,
     # belonging to VS Code too, leaving other renderers' devices untouched.
     devs <- grDevices::dev.list()
     for (id in devs[names(devs) == "jgd"]) {
-      if (any(vapply(retained, function(entry) entry$id == id, logical(1)))) next
       grDevices::dev.set(id)
       info <- tryCatch(jgd::jgd_server_info(), error = function(e) NULL)
+      previous_device_id <- unname(info$server_info["deviceId"])
+      if (length(previous_device_id) != 1L || is.na(previous_device_id) || !nzchar(previous_device_id)) {
+        previous_device_id <- NULL
+      }
+      # An explicit jgd() can reuse a managed device's number without calling
+      # our factory. Only the renderer's per-connection ID proves continuity.
+      same_device <- vapply(retained, function(entry) {
+        entry$id == id && !is.null(previous_device_id) &&
+          identical(entry$renderer_device_id, previous_device_id)
+      }, logical(1))
+      if (any(same_device)) next
+      retained <- Filter(function(entry) entry$id != id, retained)
       if (identical(info$server_name, "jgd-vscode")) {
         # JGD retains the renderer welcome even after its socket disconnects.
         # Carry its original identity so reconnect preserves the saved history.
-        previous_device_id <- unname(info$server_info["deviceId"])
-        if (length(previous_device_id) != 1L || is.na(previous_device_id) || !nzchar(previous_device_id)) {
-          previous_device_id <- NULL
-        }
         retained[[length(retained) + 1L]] <- list(
           id = unname(id), name = "jgd", previous_device_id = previous_device_id
         )

@@ -47,6 +47,9 @@ export class PlotHistory {
     private owners = new Map<string, Timeline>();
     private order = new WeakMap<PlotFrame, number>();
     private sequence = 0;
+    // Checkpoints own immutable copies. Reuse unchanged frames across saves,
+    // while the live history remains mutable for incremental drawing.
+    private snapshots = new WeakMap<PlotFrame, PlotFrame>();
     private activeSessionId: string = '';
     private maxPlots: number;
     private emitter = new EventEmitter();
@@ -87,10 +90,12 @@ export class PlotHistory {
         timeline.devices.add(id);
         for (const plot of device.plots) {
             plot.sessionId = id;
+            this.snapshots.delete(plot);
         }
         if (this.activeSessionId === previousId) {
             this.activeSessionId = id;
         }
+        this.emitter.emit('change', id);
     }
 
     setSessionSource(sessionId: string, source: ViewerSessionSource): void {
@@ -117,6 +122,15 @@ export class PlotHistory {
             sessions: [...this.sessions].map(([id, history]) => ({
                 id,
                 ...history,
+                source: history.source ? { ...history.source } : undefined,
+                plots: history.plots.map((plot) => {
+                    let snapshot = this.snapshots.get(plot);
+                    if (!snapshot) {
+                        snapshot = structuredClone(plot);
+                        this.snapshots.set(plot, snapshot);
+                    }
+                    return snapshot;
+                }),
                 currentIndex: Math.max(
                     history.plots.length ? 0 : -1,
                     history.plots.indexOf(this.currentPlot(id)!),
@@ -133,13 +147,21 @@ export class PlotHistory {
         };
     }
 
-    restore(value: unknown): void {
+    snapshotSelection(): Array<{ deviceId: string; currentIndex: number }> {
+        return [...new Set(this.timelines.values())].map((timeline) => ({
+            deviceId: timeline.devices.values().next().value!,
+            currentIndex: timeline.currentIndex,
+        }));
+    }
+
+    /** Returns whether enforcing the history limit changed the saved content. */
+    restore(value: unknown, selection?: unknown): boolean {
         if (!value || typeof value !== 'object') {
-            return;
+            return false;
         }
         const state = value as Partial<PlotHistoryState>;
         if (!Array.isArray(state.sessions)) {
-            return;
+            return false;
         }
         for (const entry of state.sessions) {
             if (
@@ -156,7 +178,10 @@ export class PlotHistory {
             ) {
                 continue;
             }
-            const plots = entry.plots.map((plot) => ({ ...plot, sessionId: entry.id }));
+            const plots = entry.plots.map((plot) => ({
+                ...structuredClone(plot),
+                sessionId: entry.id,
+            }));
             for (const plot of plots) {
                 this.order.set(plot, this.sequence++);
             }
@@ -208,13 +233,37 @@ export class PlotHistory {
                 timeline.currentIndex = saved.currentIndex;
             }
         }
+        if (Array.isArray(selection)) {
+            for (const entry of selection as unknown[]) {
+                if (!entry || typeof entry !== 'object') {
+                    continue;
+                }
+                const saved = entry as Partial<{ deviceId: string; currentIndex: number }>;
+                const timeline =
+                    typeof saved.deviceId === 'string'
+                        ? this.timelines.get(saved.deviceId)
+                        : undefined;
+                if (
+                    timeline &&
+                    typeof saved.currentIndex === 'number' &&
+                    Number.isInteger(saved.currentIndex) &&
+                    saved.currentIndex >= (timeline.plots.length ? 0 : -1) &&
+                    saved.currentIndex < timeline.plots.length
+                ) {
+                    timeline.currentIndex = saved.currentIndex;
+                }
+            }
+        }
+        let trimmed = false;
         for (const timeline of new Set(this.timelines.values())) {
             for (const plot of timeline.plots) {
                 this.order.set(plot, this.sequence++);
             }
+            trimmed ||= timeline.plots.length > this.maxPlots;
             this.trim(timeline);
         }
         this.emitter.emit('change');
+        return trimmed;
     }
 
     private bindOwner(id: string, source: ViewerSessionSource, trim = true): void {
@@ -258,7 +307,9 @@ export class PlotHistory {
         device.plots.splice(index, 1);
     }
 
-    onDidChange(listener: (sessionId?: string) => void): { dispose(): void } {
+    onDidChange(listener: (sessionId?: string, selectionOnly?: boolean) => void): {
+        dispose(): void;
+    } {
         this.emitter.on('change', listener);
         return {
             dispose: () => {
@@ -311,6 +362,7 @@ export class PlotHistory {
             return true;
         }
         const latest = session.plots[session.plots.length - 1];
+        this.snapshots.delete(latest);
         const newOps = plot.ops || [];
         for (const op of newOps) {
             latest.ops.push(op);
@@ -369,6 +421,7 @@ export class PlotHistory {
     private replaceFrame(old: PlotFrame, plot: PlotFrame): void {
         // Preserve reference identity in both indexes and the original arrival order.
         const rIndex = old.rIndex ?? plot.rIndex;
+        this.snapshots.delete(old);
         Object.assign(old, plot, { sessionId: old.sessionId, rIndex });
     }
 
@@ -389,7 +442,9 @@ export class PlotHistory {
     invalidateReplayIndices(sessionId: string): void {
         for (const plot of this.sessions.get(sessionId)?.plots ?? []) {
             delete plot.rIndex;
+            this.snapshots.delete(plot);
         }
+        this.emitter.emit('change', sessionId);
     }
 
     navigatePrevious(sessionId = this.activeSessionId): PlotFrame | null {
@@ -419,7 +474,7 @@ export class PlotHistory {
             return null;
         }
         session.currentIndex = index;
-        this.emitter.emit('change', sessionId);
+        this.emitter.emit('change', sessionId, true);
         return session.plots[session.currentIndex];
     }
 

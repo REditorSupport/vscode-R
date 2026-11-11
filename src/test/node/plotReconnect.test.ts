@@ -59,14 +59,15 @@ suite('Live R plot reconnect', function () {
     for (const [backend, deviceMode] of [
         ['jgd', 'default'],
         ['jgd', 'reused'],
+        ['jgd', 'explicit-reused'],
         ['jgd', 'explicit'],
         ['standard', 'default'],
         ['httpgd', 'default'],
     ] as const) {
-        const reuseDevice = deviceMode === 'reused';
-        const explicitDevice = deviceMode === 'explicit';
+        const reuseDevice = deviceMode === 'reused' || deviceMode === 'explicit-reused';
+        const explicitDevice = deviceMode === 'explicit' || deviceMode === 'explicit-reused';
         const name = reuseDevice
-            ? 'jgd preserves closed-device history when R reuses a device number'
+            ? `jgd preserves closed-device history when ${explicitDevice ? 'an explicit device' : 'R'} reuses a device number`
             : explicitDevice
               ? 'explicit JGD devices resume plot delivery after reconnect'
               : `${backend} retains its live R plot across renderer and session reconnect`;
@@ -172,7 +173,7 @@ suite('Live R plot reconnect', function () {
                         `Sys.setenv(JGD_SOCKET=${JSON.stringify(jgd!.getSocketPath())}); sess::connect(${JSON.stringify(endpoint)}, use_rstudioapi=FALSE, plot_backend="${backend}"); TRUE`,
                     );
                 await connect();
-                if (explicitDevice) {
+                if (explicitDevice && !reuseDevice) {
                     await evaluate('jgd::jgd(); TRUE');
                 }
                 await evaluate('plot(1:3, main="first plot"); TRUE');
@@ -184,6 +185,9 @@ suite('Live R plot reconnect', function () {
                     : undefined;
                 if (reuseDevice) {
                     await evaluate('old_device <- dev.cur(); dev.off(); TRUE');
+                    if (explicitDevice) {
+                        await evaluate('jgd::jgd(); TRUE');
+                    }
                 }
                 await evaluate('plot(3:1, main="before reload"); TRUE');
                 if (reuseDevice) {
@@ -194,8 +198,10 @@ suite('Live R plot reconnect', function () {
                 let httpgdUrl: string | undefined;
                 if (backend === 'jgd') {
                     originalId = await until(() =>
-                        history.count() === plotsBeforeReload &&
-                        history.getActiveSessionId() !== closedHistory?.id
+                        history
+                            .snapshot()
+                            .sessions.reduce((n, entry) => n + entry.plots.length, 0) ===
+                            plotsBeforeReload && history.getActiveSessionId() !== closedHistory?.id
                             ? history.getActiveSessionId()
                             : undefined,
                     );
@@ -294,9 +300,18 @@ suite('Live R plot reconnect', function () {
                     assert.ok(jgd!.isConnected(restoredId));
                     assert.equal(history.count(restoredId), 2);
                     assert.equal(history.count(originalId), 0);
-                    assert.equal(history.sessionIds().length, 1);
+                    assert.equal(history.sessionIds().length, reuseDevice ? 2 : 1);
+                    if (closedHistory) {
+                        assert.deepEqual(
+                            history
+                                .snapshot()
+                                .sessions.find((entry) => entry.id === closedHistory.id)?.plots,
+                            closedHistory.plots,
+                        );
+                        assert.equal(jgd!.isConnected(closedHistory.id), false);
+                    }
                     history.navigateFirst(restoredId);
-                    assert.equal(history.currentRIndex(restoredId), undefined);
+                    assert.equal(history.currentRIndex(restoredId), closedHistory?.plots[0].rIndex);
                     assert.ok(
                         JSON.stringify(history.currentPlot(restoredId)?.ops).includes('first plot'),
                     );

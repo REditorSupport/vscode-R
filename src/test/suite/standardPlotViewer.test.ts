@@ -233,6 +233,7 @@ suite('Standard plot viewer request coordination', () => {
             processExited: false,
         } as session.Session;
         viewer = new StandardPlotViewer(owner);
+        sandbox.stub(session, 'resolvePlotSession').returns(owner);
         activeSession.value(owner);
         const response = deferred<unknown>();
         const request = sandbox.stub(session, 'sessionRequest').returns(response.promise);
@@ -252,6 +253,43 @@ suite('Standard plot viewer request coordination', () => {
         viewer.show();
         assert.strictEqual(panels.length, 2);
         assert.ok(panels[1].panel.webview.html.includes("type: 'ready'"));
+    });
+
+    test('a bound viewer discards an old connection response and drains the reattached request', async () => {
+        const owner = {
+            sessionId: 'bound',
+            host: 'external-host',
+            pid: '123',
+            rVer: '4.6.0',
+            processExited: false,
+        } as session.Session;
+        viewer = new StandardPlotViewer(owner);
+        const resolve = sandbox.stub(session, 'resolvePlotSession').returns(owner);
+        const old = deferred<unknown>();
+        const request = sandbox.stub(session, 'sessionRequest');
+        request.onFirstCall().returns(old.promise);
+        request.onSecondCall().resolves({ data: 'reattached', format: 'svg' });
+        await viewer.update();
+        const initial = panels[0].ready();
+        const reattached = {
+            sessionId: owner.sessionId,
+            host: owner.host,
+            pid: owner.pid,
+            rVer: owner.rVer,
+            processExited: false,
+        } as session.Session;
+        resolve.returns(reattached);
+        const resize = panels[0].resize(700, 500);
+        old.resolve({ data: 'stale', format: 'svg' });
+        await Promise.all([initial, resize]);
+        assert.strictEqual(request.lastCall.args[1], reattached);
+        sinon.assert.calledOnceWithExactly(
+            panels[0].postMessage.withArgs(sinon.match({ type: 'update' })),
+            { type: 'update', data: 'reattached', format: 'svg' },
+        );
+        resolve.returns(undefined);
+        await panels[0].resize(800, 600);
+        sinon.assert.calledTwice(request);
     });
 
     test('keeps a different active session queued when the old session returns no data', async () => {

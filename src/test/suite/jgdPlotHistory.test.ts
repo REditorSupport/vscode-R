@@ -507,6 +507,45 @@ suite('JGD PlotHistory', () => {
         });
     });
 
+    test('checkpoints reuse unchanged frames and isolate every kind of live frame mutation', () => {
+        const owner = {
+            sessionId: 'owner',
+            host: 'host',
+            pid: '123',
+            rVer: '4.6.0',
+            processExited: false,
+        };
+        history.addPlot('a', { ...makePlot('A'), rIndex: 0 });
+        history.setSessionSource('a', owner);
+        history.addPlot('b', makePlot('B'));
+        const first = history.snapshot();
+        const original = structuredClone(first);
+        history.appendOps('a', { ...makePlot('A'), ops: [{ op: 'text', str: 'extra' }] });
+        const appended = history.snapshot();
+        assert.strictEqual(appended.sessions[1].plots[0], first.sessions[1].plots[0]);
+        assert.strictEqual(appended.sessions[0].plots[0].ops.length, 2);
+        assert.deepStrictEqual(first, original);
+        history.replaceAtIndex('a', 0, makePlot('resized'));
+        const replayed = history.snapshot();
+        assert.strictEqual(replayed.sessions[0].plots[0].device.bg, 'resized');
+        assert.strictEqual(appended.sessions[0].plots[0].device.bg, 'A');
+        history.restoreDeviceIdentity('a', 'new-a', owner);
+        history.invalidateReplayIndices('new-a');
+        const reconnected = history.snapshot().sessions.find((entry) => entry.id === 'new-a')!;
+        assert.strictEqual(reconnected.plots[0].sessionId, 'new-a');
+        assert.strictEqual(reconnected.plots[0].rIndex, undefined);
+        assert.strictEqual(replayed.sessions[0].plots[0].sessionId, 'a');
+        assert.strictEqual(replayed.sessions[0].plots[0].rIndex, 0);
+        const restored = new PlotHistory();
+        restored.restore(first);
+        restored.appendOps('a', makePlot('more'));
+        assert.deepStrictEqual(
+            first,
+            original,
+            'restoration must not share mutable geometry with storage',
+        );
+    });
+
     suite('events', () => {
         test('restores each session navigation independently from reload state', () => {
             history.addPlot('a', makePlot('A1'));

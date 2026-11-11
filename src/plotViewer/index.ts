@@ -10,6 +10,8 @@ import { getMigratedSetting } from '../configuration';
 import { activeSession, resolvePlotSession, Session } from '../session';
 import { sessionProcessIdentity } from '../sessionIdentity';
 import { isViewerSessionSource, ViewerSessionSource } from '../viewerSession';
+import { randomUUID } from 'crypto';
+import type { PlotHistoryState } from './jgdPlotHistory';
 
 export type PlotBackend = 'auto' | 'standard' | 'httpgd' | 'jgd' | 'native';
 
@@ -59,7 +61,10 @@ export class CommonPlotManager implements PlotManager {
     private disposed = false;
     private historySaveTimer: NodeJS.Timeout | undefined;
     private historySubscription: { dispose(): void } | undefined;
-    private historyWrites: Promise<void> = Promise.resolve();
+    private historyWrites: Promise<void> | undefined;
+    private historyContentDirty = false;
+    private historySelectionDirty = false;
+    private historyCheckpointId: string | undefined;
 
     constructor() {
         this.httpgdManager = new HttpgdManager();
@@ -92,13 +97,29 @@ export class CommonPlotManager implements PlotManager {
 
     public initialize(): void {
         this.jgdManager.initialize(extensionContext.extensionUri);
-        this.jgdManager.history.restore(extensionContext.workspaceState.get('r.plot.jgdState'));
+        const saved = extensionContext.workspaceState.get<
+            PlotHistoryState & { checkpointId?: string }
+        >('r.plot.jgdState');
+        const selection = extensionContext.workspaceState.get<{
+            checkpointId?: string;
+            positions?: unknown;
+        }>('r.plot.jgdSelection');
+        this.historyCheckpointId = saved?.checkpointId;
+        const trimmed = this.jgdManager.history.restore(
+            saved,
+            this.historyCheckpointId && selection?.checkpointId === this.historyCheckpointId
+                ? selection.positions
+                : undefined,
+        );
+        this.historyContentDirty = !this.historyCheckpointId || trimmed;
         const sources = extensionContext.workspaceState.get<unknown>('r.plot.standardSessions');
         this.restoredStandardSessions = Array.isArray(sources)
             ? sources.filter(isViewerSessionSource)
             : [];
         this.httpgdManager.initialize();
-        this.historySubscription = this.jgdManager.history.onDidChange(() => {
+        this.historySubscription = this.jgdManager.history.onDidChange((_id, selectionOnly) => {
+            this.historyContentDirty ||= !selectionOnly;
+            this.historySelectionDirty = true;
             // Checkpoint during normal operation: shutdown-only writes can be
             // lost when VS Code tears down the extension host's storage bridge.
             if (!this.historySaveTimer && !this.disposed) {
@@ -214,10 +235,39 @@ export class CommonPlotManager implements PlotManager {
     }
 
     private saveJgdHistory(): Promise<void> {
-        const snapshot = structuredClone(this.jgdManager.history.snapshot());
-        this.historyWrites = this.historyWrites
-            .then(() => extensionContext.workspaceState.update('r.plot.jgdState', snapshot))
-            .catch((error) => console.warn('[Plot Viewer] Could not save JGD state', error));
+        // Keep one writer and coalesce changes arriving during storage I/O.
+        // Navigation writes only small cursor metadata, never plot geometry.
+        this.historyWrites ??= Promise.resolve()
+            .then(async () => {
+                while (this.historyContentDirty || this.historySelectionDirty) {
+                    const contentDirty = this.historyContentDirty;
+                    this.historyContentDirty = false;
+                    this.historySelectionDirty = false;
+                    if (contentDirty) {
+                        const checkpointId = randomUUID();
+                        await extensionContext.workspaceState.update('r.plot.jgdState', {
+                            ...this.jgdManager.history.snapshot(),
+                            checkpointId,
+                        });
+                        this.historyCheckpointId = checkpointId;
+                    }
+                    // Tie cursors to their frame checkpoint so an interrupted write
+                    // cannot apply old indices to a different set of retained plots.
+                    if (!this.historyContentDirty) {
+                        await extensionContext.workspaceState.update('r.plot.jgdSelection', {
+                            checkpointId: this.historyCheckpointId,
+                            positions: this.jgdManager.history.snapshotSelection(),
+                        });
+                    }
+                }
+            })
+            .catch((error) => {
+                this.historyContentDirty = true;
+                console.warn('[Plot Viewer] Could not save JGD state', error);
+            })
+            .finally(() => {
+                this.historyWrites = undefined;
+            });
         return this.historyWrites;
     }
 

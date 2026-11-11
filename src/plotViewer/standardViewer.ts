@@ -41,14 +41,13 @@ export class StandardPlotViewer implements PlotViewer {
         return this.source;
     }
 
-    constructor(private owner?: session.Session) {
+    constructor(owner?: session.Session) {
         if (owner) {
             this.bindSession(owner);
         }
     }
 
     bindSession(owner: session.Session): void {
-        this.owner = owner;
         this.source = {
             sessionId: owner.sessionId,
             host: owner.host,
@@ -80,7 +79,12 @@ export class StandardPlotViewer implements PlotViewer {
     }
 
     public show(preserveFocus?: boolean): void {
-        if (!this.panel && this.owner && !this.owner.processExited) {
+        if (
+            !this.panel &&
+            this.source &&
+            !this.source.processExited &&
+            !this.sessionContext?.hasExited
+        ) {
             this.createPanel(
                 asViewColumn(
                     config().get<string>('session.viewers.viewColumn.plot'),
@@ -159,7 +163,10 @@ export class StandardPlotViewer implements PlotViewer {
 
     private requestPlot(): Promise<void> {
         const panel = this.panel;
-        if (!panel || this.owner?.processExited || (!this.owner && !session.globalPipePath)) {
+        const targetSession = this.source
+            ? session.resolvePlotSession(this.source)
+            : session.activeSession;
+        if (!panel || (this.source ? !targetSession : !session.globalPipePath)) {
             return Promise.resolve();
         }
 
@@ -167,7 +174,7 @@ export class StandardPlotViewer implements PlotViewer {
         this.pendingPlotRequest = {
             panel,
             panelGeneration: this.panelGeneration,
-            targetSession: this.owner ?? session.activeSession,
+            targetSession,
             width: this.viewWidth,
             height: this.viewHeight,
             format: conf.get<string>('plot.format', 'svglite'),
@@ -265,10 +272,11 @@ export class StandardPlotViewer implements PlotViewer {
 
     private isCurrentRequest(request: PendingPlotRequest): boolean {
         return (
-            (this.owner ? !this.owner.processExited : Boolean(session.globalPipePath)) &&
+            (this.source ? Boolean(request.targetSession) : Boolean(session.globalPipePath)) &&
             this.panel === request.panel &&
             this.panelGeneration === request.panelGeneration &&
-            (this.owner ?? session.activeSession) === request.targetSession
+            (this.source ? session.resolvePlotSession(this.source) : session.activeSession) ===
+                request.targetSession
         );
     }
 

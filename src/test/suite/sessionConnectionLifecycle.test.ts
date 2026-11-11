@@ -12,6 +12,7 @@ import { pathExists } from '../../fileSystem';
 import { SessConsentService } from '../../sessConsent';
 import { mockExtensionContext } from '../common/mockvscode';
 import { deferred, SessionConnections, waitForValue } from '../common/sessionConnections';
+import { StandardPlotViewer } from '../../plotViewer/standardViewer';
 
 async function waitForFileRemoval(filePath: string): Promise<void> {
     for (let attempt = 0; attempt < 100; attempt++) {
@@ -55,6 +56,55 @@ suite('Session Connection Lifecycle API', () => {
         session.deferWorkspaceRefresh();
         await session.shutdownSessionWatcher();
         sandbox.restore();
+    });
+
+    test('standard plot resize follows a reattachment but never a replacement R process', async () => {
+        const messages = new vscode.EventEmitter<{
+            type: string;
+            width?: number;
+            height?: number;
+        }>();
+        const disposed = new vscode.EventEmitter<void>();
+        sandbox.stub(vscode.window, 'createWebviewPanel').returns({
+            webview: {
+                html: '',
+                asWebviewUri: (uri: vscode.Uri) => uri,
+                postMessage: () => Promise.resolve(true),
+                onDidReceiveMessage: messages.event,
+            },
+            onDidDispose: disposed.event,
+            dispose: () => disposed.fire(),
+        } as unknown as vscode.WebviewPanel);
+        const request = sandbox
+            .stub(session, 'sessionRequest')
+            .resolves({ data: 'plot', format: 'svg' });
+        const attach = async (pid: number) => {
+            await connections.attach('standard-reconnect', pid, 'external-host');
+            await session.activateSessionById('standard-reconnect');
+            return session.activeSession!;
+        };
+        const original = await attach(55150);
+        const viewer = new StandardPlotViewer(original);
+        try {
+            await viewer.update();
+            messages.fire({ type: 'ready' });
+            await waitForValue(() => (request.calledOnce ? true : undefined));
+            assert.strictEqual(request.lastCall.args[1], original);
+            const reattached = await attach(55150);
+            assert.notStrictEqual(reattached, original);
+            assert.ok(original.socket.destroyed);
+            messages.fire({ type: 'resize', width: 700, height: 500 });
+            await waitForValue(() => (request.calledTwice ? true : undefined));
+            assert.strictEqual(request.lastCall.args[1], reattached);
+            await attach(55151);
+            messages.fire({ type: 'resize', width: 800, height: 600 });
+            await new Promise((resolve) => setImmediate(resolve));
+            sinon.assert.calledTwice(request);
+        } finally {
+            viewer.dispose();
+            messages.dispose();
+            disposed.dispose();
+        }
     });
 
     test('JGD device labels resolve only to a unique connected local R process', async () => {

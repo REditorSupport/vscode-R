@@ -8,14 +8,14 @@ import * as vscode from 'vscode';
 import { CommonPlotManager } from '../../plotViewer';
 import { JgdManager } from '../../plotViewer/jgdViewer';
 import type { JgdMessage } from '../../plotViewer/jgdSocketServer';
-import type { PlotFrame } from '../../plotViewer/jgdPlotHistory';
+import type { PlotFrame, PlotHistoryState } from '../../plotViewer/jgdPlotHistory';
 import { HttpgdClient } from '../../plotViewer/httpgdClient';
 import { HttpgdViewer } from '../../plotViewer/httpgdViewer';
 import { extensionContext } from '../../extension';
 import * as session from '../../session';
 import * as util from '../../util';
 import { mockExtensionContext } from '../common/mockvscode';
-import { waitForValue } from '../common/sessionConnections';
+import { deferred, waitForValue } from '../common/sessionConnections';
 import { sessionProcessIdentity } from '../../sessionIdentity';
 import type { ViewerSessionSource } from '../../viewerSession';
 
@@ -460,6 +460,91 @@ suite('Standalone plot restoration', () => {
         });
     });
 
+    test('JGD navigation checkpoints only cursors and restores them without rewriting frames', async () => {
+        const clock = sandbox.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+        const first = manager();
+        const history = first.jgdManager.history;
+        history.addPlot('device', frame('device', 'first'));
+        history.addPlot('device', frame('device', 'second'));
+        await clock.tickAsync(250);
+        const snapshot = sandbox.spy(history, 'snapshot');
+        const update = (extensionContext.workspaceState as unknown as { update: sinon.SinonStub })
+            .update;
+        update.resetHistory();
+        history.navigateFirst('device');
+        await clock.tickAsync(250);
+        sinon.assert.notCalled(snapshot);
+        sinon.assert.neverCalledWith(update, 'r.plot.jgdState');
+        sinon.assert.calledWith(update, 'r.plot.jgdSelection');
+        assert.strictEqual(manager().jgdManager.history.currentPlot('device')?.device.bg, 'first');
+        await first.dispose();
+        sinon.assert.notCalled(snapshot);
+        sinon.assert.neverCalledWith(update, 'r.plot.jgdState');
+
+        // A crash between the content and cursor writes leaves mismatched IDs.
+        state.set('r.plot.jgdSelection', {
+            checkpointId: 'obsolete',
+            positions: [{ deviceId: 'device', currentIndex: 0 }],
+        });
+        assert.strictEqual(manager().jgdManager.history.currentPlot('device')?.device.bg, 'second');
+    });
+
+    test('JGD coalesces pending checkpoints without mutating an in-flight snapshot', async () => {
+        const clock = sandbox.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+        const gate = deferred<void>();
+        const writes: PlotHistoryState[] = [];
+        (extensionContext.workspaceState.update as sinon.SinonStub).callsFake(
+            async (key: string, value: unknown) => {
+                if (key === 'r.plot.jgdState') {
+                    writes.push(value as PlotHistoryState);
+                    if (writes.length === 1) {
+                        await gate.promise;
+                    }
+                }
+                state.set(key, structuredClone(value));
+            },
+        );
+        const first = manager();
+        const history = first.jgdManager.history;
+        history.addPlot('device', frame('device', 'first'));
+        await clock.tickAsync(250);
+        for (let i = 0; i < 3; i++) {
+            history.appendOps('device', {
+                ...frame('device'),
+                ops: [{ op: 'text', str: String(i) }],
+            });
+            await clock.tickAsync(250);
+        }
+        assert.strictEqual(writes.length, 1, 'do not queue full snapshots behind a slow write');
+        assert.deepStrictEqual(
+            writes[0].sessions[0].plots[0].ops,
+            [],
+            'live drawing must not change the pending snapshot',
+        );
+        gate.resolve();
+        await first.dispose();
+        assert.strictEqual(writes.length, 2);
+        assert.strictEqual(manager().jgdManager.history.currentPlot('device')?.ops.length, 3);
+    });
+
+    test('JGD checkpoints a reduced history limit before saving new cursor positions', async () => {
+        const clock = sandbox.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+        const first = manager();
+        for (const bg of ['first', 'second', 'third']) {
+            first.jgdManager.history.addPlot('device', frame('device', bg));
+        }
+        await first.dispose();
+        (util.config as sinon.SinonStub).returns({
+            get: (key: string, fallback: unknown) =>
+                key === 'plot.jgd.historyLimit' ? 2 : fallback,
+        });
+        const restored = manager();
+        assert.strictEqual(restored.jgdManager.history.count('device'), 2);
+        restored.jgdManager.history.navigateFirst('device');
+        await clock.tickAsync(250);
+        assert.strictEqual(manager().jgdManager.history.currentPlot('device')?.device.bg, 'second');
+    });
+
     test('all backends checkpoint restoration state before shutdown', async () => {
         const source = owner('checkpoint', '12150');
         sandbox.stub(session, 'sessionRequest').resolves({ data: 'live', format: 'svg' });
@@ -511,6 +596,7 @@ suite('Standalone plot restoration', () => {
         panels = [];
         request.resetHistory();
         request.resolves({ data: 'fresh-from-R', format: 'svg' });
+        resolve.resetHistory();
         manager();
         assert.strictEqual(panels.length, 0);
         await callbacks.get('r.plot.showViewers')!();
