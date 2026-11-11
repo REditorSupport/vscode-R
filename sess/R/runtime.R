@@ -179,6 +179,10 @@
   if (is.null(devices)) return(invisible(NULL))
   name <- names(devices)[match(id, devices)]
   if (length(name) && !is.na(name)) {
+    # A newly opened device can reuse a number from dev.off(). Retire that
+    # registration so its logical plot identity cannot be replayed onto the
+    # replacement device during reconnect.
+    state$devices <- Filter(function(entry) entry$id != unname(id), state$devices)
     state$devices[[length(state$devices) + 1L]] <- list(
       id = unname(id),
       name = name
