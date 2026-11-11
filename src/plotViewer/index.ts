@@ -363,8 +363,15 @@ export class CommonPlotManager implements PlotManager {
                         return url.host === hostOrWebviewUri || url.origin === hostOrWebviewUri;
                     }),
                 );
-        } else if (hostOrWebviewUri instanceof vscode.Uri) {
-            viewer = this.viewers.find((v) => v.getPanelPath?.() === hostOrWebviewUri.path);
+        } else if (
+            hostOrWebviewUri instanceof vscode.Uri &&
+            hostOrWebviewUri.scheme === 'webview-panel'
+        ) {
+            // Editor toolbar actions belong to the focused panel. Resource URLs
+            // returned by asWebviewUri are shared across panels, not editor IDs.
+            // Use only a currently focused live viewer, never the recent fallback:
+            // an ended session can still have its rendered tab open.
+            viewer = this.viewers.find((candidate) => candidate.isActive);
         }
 
         // A command from an ended session's retained tab must not target another session.

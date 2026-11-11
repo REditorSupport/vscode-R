@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { PlotViewer, plotPanelPath } from './types';
+import { PlotViewer } from './types';
 import { PlotHistory, PlotFrame } from './jgdPlotHistory';
 import { JgdSocketServer, JgdMessage } from './jgdSocketServer';
 import { config, UriIcon } from '../util';
@@ -322,10 +322,6 @@ export class JgdViewer implements PlotViewer {
             this.sendPlotToWebview(plot);
         }
         this.updateToolbar();
-    }
-
-    getPanelPath(): string | undefined {
-        return plotPanelPath(this.panel);
     }
 
     get isActive(): boolean {

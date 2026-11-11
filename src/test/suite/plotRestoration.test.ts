@@ -1359,6 +1359,19 @@ suite('Standalone plot restoration', () => {
             const viewer = first.httpgdManager.viewers[0];
             await waitForValue(() => (viewer.plots.length === 1 ? true : undefined));
             const panel = viewer.webviewPanel;
+            await evaluate('plot(1:100, main="SECOND SAME DEVICE"); "OK"');
+            await waitForValue(() => (viewer.plots.length === 2 ? true : undefined));
+            const toolbarUri = vscode.Uri.parse(
+                'webview-panel:webview-panel/webview-RPlot-live-httpgd',
+            );
+            await callbacks.get('r.plot.prevPlot')!(toolbarUri, { groupId: 0 });
+            assert.strictEqual(viewer.activePlot, viewer.plots[0].id);
+            assert.ok(viewer.plots[0].data.includes('FIRST DEVICE'));
+            await callbacks.get('r.plot.nextPlot')!(toolbarUri, { groupId: 0 });
+            assert.strictEqual(viewer.activePlot, viewer.plots[1].id);
+            assert.ok(viewer.plots[1].data.includes('SECOND SAME DEVICE'));
+            await viewer.closePlot(viewer.plots[1].id);
+            await waitForValue(() => (viewer.plots.length === 1 ? true : undefined));
             const secondUrl = await evaluate(
                 'dev.new(); plot(1:100, main="SECOND DEVICE"); httpgd::hgd_url()',
             );
@@ -1550,8 +1563,10 @@ suite('Standalone plot restoration', () => {
         assert.notStrictEqual(a.id, b.id);
         Object.assign(panels[0].panel, { active: false });
         assert.strictEqual(value.activeViewer, b);
+        Object.assign(panels[0].panel, { active: true });
+        Object.assign(panels[1].panel, { active: false });
         await callbacks.get('r.plot.prevPlot')!(
-            vscode.Uri.from({ scheme: 'webview', path: a.getPanelPath()! }),
+            vscode.Uri.parse('webview-panel:webview-panel/webview-jgd.plotPane-a'),
         );
         assert.strictEqual(history.currentIndex('a'), 1);
         assert.strictEqual(history.currentIndex('b'), 2);

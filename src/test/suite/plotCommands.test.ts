@@ -102,7 +102,7 @@ suite('Contextual plot commands', () => {
             Object.defineProperty(viewer, 'connections', {
                 value: [{ url: 'http://localhost:1234' }],
             });
-            viewer.getPanelPath.returns('/plot-viewer');
+            const focused = sandbox.stub(viewer, 'isActive').get(() => true);
             manager.httpgdManager.registerViewer(viewer);
             sandbox.stub(manager, 'activeViewer').get(() => jgdViewer);
             const openUrl = sandbox.stub(manager.httpgdManager, 'openUrl').resolves();
@@ -115,7 +115,10 @@ suite('Contextual plot commands', () => {
             };
             for (const command of toolbarCommands) {
                 viewer.handleCommand.resetHistory();
-                await invoke(command, vscode.Uri.parse('webview:/plot-viewer'));
+                await invoke(
+                    command,
+                    vscode.Uri.parse('webview-panel:webview-panel/webview-RPlot-live-panel'),
+                );
                 if (command === 'r.plot.openUrl') {
                     sinon.assert.calledOnce(openUrl);
                 } else {
@@ -133,7 +136,11 @@ suite('Contextual plot commands', () => {
             }
             viewer.handleCommand.resetHistory();
             await invoke('r.plot.nextPlot', 'httpgd:ended-session');
-            await invoke('r.plot.prevPlot', vscode.Uri.parse('webview:/ended-session'));
+            focused.get(() => false);
+            await invoke(
+                'r.plot.prevPlot',
+                vscode.Uri.parse('webview-panel:webview-panel/webview-RPlot-ended-panel'),
+            );
             assert.strictEqual(viewer.handleCommand.callCount, 0);
             sinon.assert.notCalled(handleJgdCommand);
             await invoke('r.plot.showViewers');

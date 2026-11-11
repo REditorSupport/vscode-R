@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import { asViewColumn, config, UriIcon } from '../util';
 import * as session from '../session';
-import { PlotViewer, plotPanelPath } from './types';
+import { PlotViewer } from './types';
 import {
     getViewerSessionScript,
     viewerSessionStyle,
@@ -57,10 +57,6 @@ export class StandardPlotViewer implements PlotViewer {
 
     get isActive(): boolean {
         return this.panel?.active ?? false;
-    }
-
-    getPanelPath(): string | undefined {
-        return plotPanelPath(this.panel);
     }
 
     public async update(restoring = false): Promise<void> {

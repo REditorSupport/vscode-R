@@ -35,7 +35,7 @@ import {
     PreviewPlotLayoutMessage,
     ToggleFullWindowMessage,
 } from './webviewMessages';
-import { PlotViewer, plotPanelPath } from './types';
+import { PlotViewer } from './types';
 
 interface HttpgdConnection {
     url: string;
@@ -738,10 +738,6 @@ export class HttpgdViewer implements IHttpgdViewer, PlotViewer {
         } else if (!mightBeInBackground) {
             await setContext('r.plot.active', false);
         }
-    }
-
-    public getPanelPath(): string | undefined {
-        return plotPanelPath(this.webviewPanel);
     }
 
     public get isActive(): boolean {
