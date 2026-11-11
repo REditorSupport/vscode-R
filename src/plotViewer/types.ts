@@ -22,6 +22,6 @@ export interface PlotManager {
     viewers: PlotViewer[];
     activeViewer: PlotViewer | undefined;
     initialize(): void;
-    showStandardPlot(target?: Session): Promise<void>;
+    showStandardPlot(target: Session): Promise<void>;
     showHttpgdPlot(url: string, target?: Session, restoring?: boolean): Promise<void>;
 }

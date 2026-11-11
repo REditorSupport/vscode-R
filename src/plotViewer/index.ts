@@ -54,7 +54,6 @@ const commands = [
 
 export class CommonPlotManager implements PlotManager {
     public httpgdManager: HttpgdManager;
-    public standardPlotViewer: StandardPlotViewer;
     public jgdManager: JgdManager;
     private standardViewers = new Map<string, StandardPlotViewer>();
     private restoredStandardSessions: ViewerSessionSource[] = [];
@@ -68,14 +67,12 @@ export class CommonPlotManager implements PlotManager {
 
     constructor() {
         this.httpgdManager = new HttpgdManager();
-        this.standardPlotViewer = new StandardPlotViewer();
         this.jgdManager = new JgdManager();
     }
 
     get viewers(): PlotViewer[] {
         const viewers: PlotViewer[] = [...this.httpgdManager.viewers];
         viewers.push(...this.jgdManager.getViewers());
-        viewers.push(this.standardPlotViewer);
         viewers.push(...this.standardViewers.values());
         return viewers;
     }
@@ -86,13 +83,9 @@ export class CommonPlotManager implements PlotManager {
             return focused;
         }
         if (jgdEnabled()) {
-            return (
-                this.jgdManager.getViewer() ||
-                this.httpgdManager.getRecentViewer() ||
-                this.standardPlotViewer
-            );
+            return this.jgdManager.getViewer() || this.httpgdManager.getRecentViewer();
         }
-        return this.httpgdManager.getRecentViewer() || this.standardPlotViewer;
+        return this.httpgdManager.getRecentViewer();
     }
 
     public initialize(): void {
@@ -176,8 +169,8 @@ export class CommonPlotManager implements PlotManager {
         }
     }
 
-    public async showStandardPlot(target = activeSession): Promise<void> {
-        if (!target || this.disposed) {
+    public async showStandardPlot(target: Session): Promise<void> {
+        if (this.disposed) {
             return;
         }
         await this.getStandardViewer(target).update();
@@ -229,7 +222,6 @@ export class CommonPlotManager implements PlotManager {
         for (const viewer of this.standardViewers.values()) {
             viewer.dispose();
         }
-        this.standardPlotViewer.dispose();
         this.httpgdManager.dispose();
         await saved;
     }
@@ -276,12 +268,7 @@ export class CommonPlotManager implements PlotManager {
             this.restoredStandardSessions.map((source) => [sessionProcessIdentity(source), source]),
         );
         for (const viewer of this.standardViewers.values()) {
-            if (viewer.sessionSource) {
-                standardSources.set(
-                    sessionProcessIdentity(viewer.sessionSource),
-                    viewer.sessionSource,
-                );
-            }
+            standardSources.set(sessionProcessIdentity(viewer.sessionSource), viewer.sessionSource);
         }
         await extensionContext.workspaceState
             .update('r.plot.standardSessions', [...standardSources.values()])

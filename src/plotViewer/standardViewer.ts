@@ -18,7 +18,7 @@ interface PlotResponse {
 interface PendingPlotRequest {
     panel: vscode.WebviewPanel;
     panelGeneration: number;
-    targetSession: session.Session | undefined;
+    targetSession: session.Session;
     width: number;
     height: number;
     format: string;
@@ -34,17 +34,15 @@ export class StandardPlotViewer implements PlotViewer {
     private pendingPlotRequest: PendingPlotRequest | undefined;
     private plotRequest: Promise<void> | undefined;
 
-    private source: ViewerSessionSource | undefined;
+    private source!: ViewerSessionSource;
     private sessionContext: ViewerSessionContext | undefined;
 
-    get sessionSource(): ViewerSessionSource | undefined {
+    get sessionSource(): ViewerSessionSource {
         return this.source;
     }
 
-    constructor(owner?: session.Session) {
-        if (owner) {
-            this.bindSession(owner);
-        }
+    constructor(owner: session.Session) {
+        this.bindSession(owner);
     }
 
     bindSession(owner: session.Session): void {
@@ -79,12 +77,7 @@ export class StandardPlotViewer implements PlotViewer {
     }
 
     public show(preserveFocus?: boolean): void {
-        if (
-            !this.panel &&
-            this.source &&
-            !this.source.processExited &&
-            !this.sessionContext?.hasExited
-        ) {
+        if (!this.panel && !this.source.processExited && !this.sessionContext?.hasExited) {
             this.createPanel(
                 asViewColumn(
                     config().get<string>('session.viewers.viewColumn.plot'),
@@ -154,19 +147,15 @@ export class StandardPlotViewer implements PlotViewer {
         });
         // Install the receiver before starting the document so its first ready
         // message cannot be missed, even without a visible layout/resize event.
-        this.sessionContext = this.source
-            ? session.getViewerSessionContext(this.source.sessionId, this.source)
-            : undefined;
+        this.sessionContext = session.getViewerSessionContext(this.source.sessionId, this.source);
         this.sessionContext?.attach(panel);
         panel.webview.html = this.getHtml();
     }
 
     private requestPlot(): Promise<void> {
         const panel = this.panel;
-        const targetSession = this.source
-            ? session.resolvePlotSession(this.source)
-            : session.activeSession;
-        if (!panel || (this.source ? !targetSession : !session.globalPipePath)) {
+        const targetSession = session.resolvePlotSession(this.source);
+        if (!panel || !targetSession) {
             return Promise.resolve();
         }
 
@@ -272,15 +261,13 @@ export class StandardPlotViewer implements PlotViewer {
 
     private isCurrentRequest(request: PendingPlotRequest): boolean {
         return (
-            (this.source ? Boolean(request.targetSession) : Boolean(session.globalPipePath)) &&
             this.panel === request.panel &&
             this.panelGeneration === request.panelGeneration &&
-            (this.source ? session.resolvePlotSession(this.source) : session.activeSession) ===
-                request.targetSession
+            session.resolvePlotSession(this.source) === request.targetSession
         );
     }
 
-    private discardPendingForSession(targetSession: session.Session | undefined): void {
+    private discardPendingForSession(targetSession: session.Session): void {
         if (this.pendingPlotRequest?.targetSession === targetSession) {
             this.pendingPlotRequest = undefined;
         }

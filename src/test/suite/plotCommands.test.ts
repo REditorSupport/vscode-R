@@ -88,18 +88,17 @@ suite('Contextual plot commands', () => {
             sandbox.stub(session, 'activeSession').value(source);
             sandbox.stub(session, 'resolvePlotSession').returns(source);
             const showForSession = sandbox.stub(manager.jgdManager, 'showForSession').returns(true);
+            const handleJgdCommand = sandbox.stub();
             const jgdViewer = {
                 show: showJgdViewer,
-                handleCommand: sandbox.stub(),
+                handleCommand: handleJgdCommand,
             } as unknown as JgdViewer;
             sandbox.stub(manager.jgdManager, 'getViewers').returns([jgdViewer]);
             const viewer = sandbox.createStubInstance(HttpgdViewer);
             Object.defineProperty(viewer, 'host', { value: 'localhost:1234' });
             viewer.getPanelPath.returns('/plot-viewer');
             manager.httpgdManager.viewers.push(viewer);
-            const showStandardViewer = sandbox.stub(manager.standardPlotViewer, 'show');
-            const fallback = sandbox.stub(manager.standardPlotViewer, 'handleCommand');
-            sandbox.stub(manager, 'activeViewer').get(() => manager.standardPlotViewer);
+            sandbox.stub(manager, 'activeViewer').get(() => jgdViewer);
             const openUrl = sandbox.stub(manager.httpgdManager, 'openUrl').resolves();
             manager.initialize();
 
@@ -130,8 +129,7 @@ suite('Contextual plot commands', () => {
             sinon.assert.calledOnceWithExactly(showForSession, source);
             assert.strictEqual(viewer.show.callCount, 0);
             sinon.assert.notCalled(showJgdViewer);
-            sinon.assert.notCalled(showStandardViewer);
-            sinon.assert.notCalled(fallback);
+            sinon.assert.notCalled(handleJgdCommand);
         } finally {
             sandbox.restore();
         }

@@ -307,6 +307,50 @@ suite('Standalone plot restoration', () => {
         assert.deepStrictEqual(value.httpgdManager.viewers, []);
     });
 
+    for (const failure of ['read', 'json', 'shape'] as const) {
+        test(`httpgd ${failure} failure is reported and cannot erase saved credentials`, async () => {
+            const source = owner('httpgd-owner', '14001');
+            const key = 'saved-connections';
+            const saved = failure === 'json' ? '{"token":"must-not-be-reported"' : '{}';
+            state.set('r.plot.httpgdConnectionsKey', key);
+            secrets.set(key, saved);
+            if (failure === 'read') {
+                (extensionContext.secrets.get as sinon.SinonStub).rejects(new Error('read failed'));
+            }
+            const report = sandbox.stub(vscode.window, 'showErrorMessage').resolves(undefined);
+            sandbox.stub(console, 'warn');
+            const value = manager();
+            await assert.rejects(value.httpgdManager.restoreConnection(source), {
+                message: 'Could not load saved httpgd plot connections.',
+            });
+            sinon.assert.calledOnce(report);
+            assert.deepStrictEqual(report.firstCall.args, [
+                'Could not load saved httpgd plot connections.',
+            ]);
+            await value.httpgdManager.saveConnections();
+            // A newly announced device still works, but must not overwrite
+            // credentials for other sessions that could not be read.
+            await value.showHttpgdPlot('http://localhost:1234?token=new-device', source);
+            assert.ok(await value.httpgdManager.restoreConnection(source));
+            await value.dispose();
+            assert.strictEqual(state.get('r.plot.httpgdConnectionsKey'), key);
+            assert.strictEqual(secrets.get(key), saved);
+            assert.strictEqual((extensionContext.secrets.store as sinon.SinonStub).callCount, 0);
+            assert.strictEqual((extensionContext.secrets.delete as sinon.SinonStub).callCount, 0);
+        });
+    }
+
+    test('a missing httpgd secret is empty storage and accepts a new connection', async () => {
+        const source = owner('httpgd-owner', '14001');
+        state.set('r.plot.httpgdConnectionsKey', 'missing-secret');
+        const report = sandbox.stub(vscode.window, 'showErrorMessage').resolves(undefined);
+        const value = manager();
+        assert.strictEqual(await value.httpgdManager.restoreConnection(source), undefined);
+        await value.showHttpgdPlot('http://localhost:1234?token=new-device', source);
+        assert.ok(secrets.get('missing-secret')?.includes('new-device'));
+        sinon.assert.notCalled(report);
+    });
+
     test('httpgd already exited owners cannot register a new connection', async () => {
         const exits = processExits();
         const source = owner('httpgd-owner', '14001');
@@ -684,6 +728,29 @@ suite('Standalone plot restoration', () => {
         active.value(undefined);
         await callbacks.get('r.plot.showViewers')!();
         assert.strictEqual(panels.length, 2);
+    });
+
+    test('a missing saved JGD device does not select another session during restore', async () => {
+        const a = owner('a', '123');
+        const b = owner('b', '456');
+        focus(a);
+        sandbox.stub(session, 'resolvePlotSession').returns(a);
+        const first = manager();
+        for (const source of [a, b]) {
+            first.jgdManager.history.addPlot(source.sessionId, frame(source.sessionId));
+            first.jgdManager.history.setSessionSource(source.sessionId, source);
+        }
+        await first.dispose();
+        const saved = state.get('r.plot.jgdState') as PlotHistoryState;
+        saved.activeSessionId = 'missing-device';
+        const restored = manager();
+        assert.strictEqual(restored.jgdManager.history.getActiveSessionId(), '');
+        assert.strictEqual(restored.jgdManager.getViewer(), null);
+        assert.strictEqual(panels.length, 0);
+        await callbacks.get('r.plot.showViewers')!();
+        assert.strictEqual(panels.length, 1);
+        assert.ok(panels[0].panel.webview.html.includes('R 4.6.0: 123'));
+        assert.strictEqual(restored.jgdManager.history.count('b'), 1);
     });
 
     for (const backend of ['httpgd', 'jgd', 'standard'] as const) {

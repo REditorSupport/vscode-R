@@ -200,7 +200,7 @@ export class PlotHistory {
         this.activeSessionId =
             state.activeSessionId && this.sessions.has(state.activeSessionId)
                 ? state.activeSessionId
-                : (this.sessionIds().at(-1) ?? '');
+                : '';
         // Older snapshots only stored per-device histories. Group those by owner;
         // newer snapshots also retain the exact interleaving and session cursor.
         for (const [id, device] of this.sessions) {
@@ -338,16 +338,6 @@ export class PlotHistory {
         timeline.plots.push(plot);
         timeline.currentIndex = timeline.plots.length - 1;
         this.trim(timeline);
-        this.activeSessionId = sessionId;
-        this.emitter.emit('change', sessionId);
-    }
-
-    replaceCurrent(sessionId: string, plot: PlotFrame) {
-        const old = this.currentPlot(sessionId);
-        if (!old) {
-            return this.addPlot(sessionId, plot);
-        }
-        this.replaceFrame(old, plot);
         this.activeSessionId = sessionId;
         this.emitter.emit('change', sessionId);
     }

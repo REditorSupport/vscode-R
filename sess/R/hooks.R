@@ -247,15 +247,13 @@ runtime_start <- function(use_rstudioapi = TRUE,
       # Carry the logical device identity across a new renderer socket. Device
       # numbers and JGD's native counter can change when the device is reopened.
       set_identity <- function(restoring = FALSE) {
-        if ("jgd_frame_ext" %in% getNamespaceExports("jgd")) {
-          jgd::jgd_frame_ext(jsonlite::toJSON(list(vscodeR = list(
-            sessionId = .session_id(), host = unname(Sys.info()[["nodename"]]),
-            pid = as.character(Sys.getpid()),
-            rVer = sprintf("%s.%s", R.version$major, R.version$minor),
-            processExited = FALSE, deviceId = key, restoring = restoring,
-            previousDeviceId = previous_device_id
-          )), auto_unbox = TRUE))
-        }
+        jgd::jgd_frame_ext(jsonlite::toJSON(list(vscodeR = list(
+          sessionId = .session_id(), host = unname(Sys.info()[["nodename"]]),
+          pid = as.character(Sys.getpid()),
+          rVer = sprintf("%s.%s", R.version$major, R.version$minor),
+          processExited = FALSE, deviceId = key, restoring = restoring,
+          previousDeviceId = previous_device_id
+        )), auto_unbox = TRUE))
       }
       set_identity(!is.null(recorded))
       if (!is.null(recorded)) {

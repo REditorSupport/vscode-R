@@ -64,7 +64,6 @@ export class JgdSocketServer {
     private connectionListeners: ConnectionChangeListener[] = [];
     private readyListeners: (() => void)[] = [];
 
-    private resizeListener: ((w: number, h: number) => void) | null = null;
     private measureTextFn: JgdMeasureText | null = null;
     private getDimensionsFn: JgdGetDimensions | null = null;
     private onFrameFn: ((sessionId: string, msg: JgdMessage) => void) | null = null;
@@ -86,10 +85,6 @@ export class JgdSocketServer {
 
     onConnectionChange(listener: ConnectionChangeListener) {
         this.connectionListeners.push(listener);
-    }
-
-    setResizeListener(listener: (w: number, h: number) => void) {
-        this.resizeListener = listener;
     }
 
     setMeasureText(fn: JgdMeasureText) {

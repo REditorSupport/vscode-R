@@ -122,32 +122,6 @@ suite('JGD PlotHistory', () => {
         });
     });
 
-    suite('replaceCurrent', () => {
-        test('replaces the current plot in place', () => {
-            history.addPlot('s1', makePlot('A'));
-            history.addPlot('s1', makePlot('B'));
-            history.replaceCurrent('s1', makePlot('B2'));
-            assert.strictEqual(history.count(), 2);
-            assert.strictEqual(history.currentPlot()?.device.bg, 'B2');
-        });
-
-        test('falls back to addPlot on empty session', () => {
-            history.replaceCurrent('s1', makePlot('A'));
-            assert.strictEqual(history.count(), 1);
-            assert.strictEqual(history.currentPlot()?.device.bg, 'A');
-        });
-
-        test('replaces at navigated position, not latest', () => {
-            history.addPlot('s1', makePlot('A'));
-            history.addPlot('s1', makePlot('B'));
-            history.navigatePrevious();
-            history.replaceCurrent('s1', makePlot('A2'));
-            assert.strictEqual(history.currentPlot()?.device.bg, 'A2');
-            history.navigateNext();
-            assert.strictEqual(history.currentPlot()?.device.bg, 'B');
-        });
-    });
-
     suite('replaceLatest', () => {
         test('replaces the latest plot regardless of navigation', () => {
             history.addPlot('s1', makePlot('A'));
@@ -582,8 +556,10 @@ suite('JGD PlotHistory', () => {
                 ],
             });
             assert.deepStrictEqual(restored.sessionIds(), ['valid']);
-            assert.strictEqual(restored.count(), 1);
-            assert.strictEqual(restored.currentPlot()?.device.bg, 'latest');
+            assert.strictEqual(restored.getActiveSessionId(), '');
+            assert.strictEqual(restored.currentPlot(), null);
+            assert.strictEqual(restored.count('valid'), 1);
+            assert.strictEqual(restored.currentPlot('valid')?.device.bg, 'latest');
         });
 
         test('emits change on addPlot', () => {

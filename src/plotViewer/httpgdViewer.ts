@@ -83,10 +83,11 @@ export class HttpgdManager {
             // URLs contain device tokens, so keep them in SecretStorage.
             this.savedConnections = Promise.resolve(extensionContext.secrets.get(this.secretKey))
                 .then((value) => {
-                    const connections: unknown = value ? JSON.parse(value) : [];
-                    const saved = Array.isArray(connections)
-                        ? connections.filter(isHttpgdConnection)
-                        : [];
+                    const connections: unknown = value === undefined ? [] : JSON.parse(value);
+                    if (!Array.isArray(connections)) {
+                        throw new Error('Invalid saved httpgd connections');
+                    }
+                    const saved = connections.filter(isHttpgdConnection);
                     if (!this.disposed) {
                         for (const connection of saved) {
                             this.observeSavedSession(connection.source);
@@ -94,7 +95,15 @@ export class HttpgdManager {
                     }
                     return saved;
                 })
-                .catch(() => []);
+                .catch(() => {
+                    // Parse errors can contain token-bearing JSON. Expose only
+                    // a fixed message and keep the load rejected so a later save
+                    // cannot overwrite unread credentials with an empty list.
+                    throw new Error('Could not load saved httpgd plot connections.');
+                });
+            void this.savedConnections.catch((error: Error) => {
+                void vscode.window.showErrorMessage(error.message);
+            });
         }
     }
 

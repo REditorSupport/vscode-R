@@ -653,7 +653,11 @@ suite('Session Communication', () => {
         // observer before issuing the R command so an earlier/stale panel response
         // cannot satisfy this phase.
         const plotManager = extension.globalPlotManager as plotViewer.CommonPlotManager;
-        plotManager.standardPlotViewer.dispose();
+        for (const viewer of plotManager.viewers) {
+            if (viewer.id === 'standard') {
+                viewer.dispose();
+            }
+        }
         let resolvePlotUpdate!: (
             message: { type: string; data?: string; format?: string },
             delivered: boolean,
