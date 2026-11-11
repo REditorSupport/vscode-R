@@ -18,6 +18,7 @@ import { mockExtensionContext } from '../common/mockvscode';
 import { waitForValue } from '../common/sessionConnections';
 
 const createRealWebviewPanel = vscode.window.createWebviewPanel;
+const executeRealCommand = vscode.commands.executeCommand;
 
 class RefreshViewer extends HttpgdViewer {
     receivePlots(ids: string[]): Promise<void> {
@@ -1079,6 +1080,128 @@ suite('Standalone plot restoration', () => {
         } finally {
             clearTimeout(timer);
             panel?.dispose();
+        }
+    });
+
+    test('a retained JGD tab redraws plots made while hidden without resizing R', async () => {
+        interface Inspection {
+            hidden: boolean;
+            background: string;
+            container: number[];
+            canvas: number[];
+            pixel: number[];
+        }
+        let panel: vscode.WebviewPanel | undefined;
+        let inspection: Inspection | undefined;
+        (vscode.window.createWebviewPanel as sinon.SinonStub).callsFake(
+            (...args: Parameters<typeof createRealWebviewPanel>) => {
+                panel = createRealWebviewPanel(...args);
+                panel.webview.onDidReceiveMessage((message: { type: string } & Inspection) => {
+                    if (message.type === 'canvas-inspection') {
+                        inspection = message;
+                    }
+                });
+                return panel;
+            },
+        );
+        const value = manager();
+        const history = value.jgdManager.history;
+        history.addPlot('device', frame('device', 'blue'));
+        const viewer = value.jgdManager.getViewer('device')!;
+        const resize = sandbox.spy(value.jgdManager.server, 'handleResize');
+        viewer.show();
+        panel!.webview.html = panel!.webview.html.replace(
+            '</body>',
+            `<script>
+            window.addEventListener('message', async (event) => {
+                if (event.data.type !== 'inspect-canvas') return;
+                if (event.data.visible) await new Promise(requestAnimationFrame);
+                await replayChain;
+                vscode.postMessage({
+                    type: 'canvas-inspection', hidden: document.hidden,
+                    background: currentPlot?.device.bg,
+                    container: [container.clientWidth, container.clientHeight],
+                    canvas: [canvas.clientWidth, canvas.clientHeight],
+                    pixel: Array.from(ctx.getImageData(0, 0, 1, 1).data)
+                });
+            });
+        </script></body>`,
+        );
+        const inspect = async () => {
+            inspection = undefined;
+            await panel!.webview.postMessage({ type: 'inspect-canvas', visible: panel!.visible });
+            return waitForValue(() => inspection);
+        };
+        let coveringEditor: vscode.TextEditor | undefined;
+        try {
+            const size = await waitForValue(() => resize.lastCall?.args);
+            // Model an R frame already rendered at this viewport's dimensions.
+            // Showing the same-sized tab again should only redraw the canvas.
+            const plot = {
+                ...frame('device', 'blue'),
+                device: { ...frame('device').device, width: size[0], height: size[1], bg: 'blue' },
+            };
+            history.replaceLatest('device', plot);
+            viewer.showPlot(history.currentPlot('device')!);
+            const visible = await inspect();
+            assert.deepStrictEqual(visible.canvas, visible.container);
+            assert.deepStrictEqual(visible.pixel, [0, 0, 255, 255]);
+            resize.resetHistory();
+
+            const document = await vscode.workspace.openTextDocument({
+                content: 'Cover the plot tab',
+                language: 'plaintext',
+            });
+            coveringEditor = await vscode.window.showTextDocument(document, {
+                viewColumn: panel!.viewColumn,
+            });
+            await waitForValue(() => (!panel!.visible ? true : undefined));
+            const next = {
+                ...plot,
+                device: { ...plot.device, bg: 'magenta' },
+                ops: Array.from({ length: 10000 }, () => ({
+                    op: 'circle',
+                    x: 50,
+                    y: 50,
+                    r: 1,
+                    gc: { col: 'black' },
+                })),
+            };
+            history.addPlot('device', next);
+            viewer.showPlot(next);
+            const hidden = await inspect();
+            assert.strictEqual(
+                hidden.background,
+                'magenta',
+                'the newest plot reached the hidden webview',
+            );
+
+            panel!.reveal();
+            await waitForValue(() => (panel!.visible ? true : undefined));
+            const shown = await inspect();
+            assert.deepStrictEqual(
+                shown.container,
+                visible.container,
+                'the viewport did not change',
+            );
+            assert.deepStrictEqual(
+                shown.canvas,
+                shown.container,
+                'visibility alone restores the full canvas',
+            );
+            assert.deepStrictEqual(
+                shown.pixel,
+                [255, 0, 255, 255],
+                'the canvas contains the newly selected plot',
+            );
+            assert.strictEqual(history.count('device'), 2);
+            sinon.assert.notCalled(resize);
+        } finally {
+            panel?.dispose();
+            if (coveringEditor) {
+                await vscode.window.showTextDocument(coveringEditor.document);
+                await executeRealCommand('workbench.action.revertAndCloseActiveEditor');
+            }
         }
     });
 

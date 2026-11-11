@@ -301,6 +301,7 @@ export class JgdViewer implements PlotViewer {
     private panelWidth = 800;
     private panelHeight = 600;
     private lastToolbarState: string | undefined;
+    private lastPanelVisibility: boolean | undefined;
     private sessionContext: ViewerSessionContext | undefined;
 
     constructor(
@@ -634,6 +635,7 @@ export class JgdViewer implements PlotViewer {
         this.panel.webview.onDidReceiveMessage((raw: WebviewMessage) => {
             switch (raw.type) {
                 case 'ready': {
+                    this.updateVisibility(true);
                     const plot = this.history.currentPlot(this.sessionId);
                     if (plot) {
                         this.sendPlotToWebview(plot);
@@ -700,8 +702,12 @@ export class JgdViewer implements PlotViewer {
             this.panel = null;
             this.metricsCache.clear();
             this.lastToolbarState = undefined;
+            this.lastPanelVisibility = undefined;
         });
-        this.panel.onDidChangeViewState(() => this.updateToolbar(true));
+        this.panel.onDidChangeViewState(() => {
+            this.updateVisibility();
+            this.updateToolbar(true);
+        });
         this.sessionContext?.attach(this.panel);
         this.panel.webview.html = this.getWebviewHtml();
     }
@@ -742,7 +748,15 @@ export class JgdViewer implements PlotViewer {
     }
 
     private sendPlotToWebview(plot: PlotFrame) {
-        void this.panel?.webview.postMessage({ type: 'render', plot });
+        void this.panel?.webview.postMessage({ type: 'render', plot, visible: this.panel.visible });
+    }
+
+    private updateVisibility(force = false) {
+        if (!this.panel || (!force && this.panel.visible === this.lastPanelVisibility)) {
+            return;
+        }
+        this.lastPanelVisibility = this.panel.visible;
+        void this.panel.webview.postMessage({ type: 'visibility', visible: this.panel.visible });
     }
 
     private async handleExportData(msg: WebviewExportData) {
@@ -839,6 +853,9 @@ const metricsCanvas = document.getElementById('metrics-canvas');
 const metricsCtx = metricsCanvas.getContext('2d');
 
 let currentPlot = null;
+// A retained tab can be hidden without changing document.hidden.
+// VS Code's panel state is authoritative for whether this layout is usable.
+let panelVisible = false;
 document.getElementById('btn-prev').addEventListener('click', () => {
     vscode.postMessage({ type: 'navigate', direction: 'previous' });
 });
@@ -860,20 +877,40 @@ const container = document.getElementById('canvas-container');
 let resizeTimer = null;
 let lastSentW = 0;
 let lastSentH = 0;
+function reportViewportSize() {
+    if (!panelVisible || document.hidden) return;
+    const w = container.clientWidth;
+    const h = container.clientHeight;
+    if (w <= 0 || h <= 0) return;
+    if (w !== lastSentW || h !== lastSentH) {
+        lastSentW = w;
+        lastSentH = h;
+        vscode.postMessage({ type: 'resize', width: w, height: h });
+    }
+}
 const resizeObserver = new ResizeObserver(() => {
+    if (!panelVisible || document.hidden) return;
     if (currentPlot) replay(currentPlot);
     clearTimeout(resizeTimer);
-    resizeTimer = setTimeout(() => {
-        const w = container.clientWidth;
-        const h = container.clientHeight;
-        if (w !== lastSentW || h !== lastSentH) {
-            lastSentW = w;
-            lastSentH = h;
-            vscode.postMessage({ type: 'resize', width: w, height: h });
-        }
-    }, 300);
+    resizeTimer = setTimeout(reportViewportSize, 300);
 });
 resizeObserver.observe(container);
+
+function refreshVisibility() {
+    if (!panelVisible || document.hidden) {
+        clearTimeout(resizeTimer);
+        ++replayGeneration;
+        return;
+    }
+    // A retained, hidden webview has a temporary layout. Its visible size
+    // may be unchanged, so ResizeObserver alone cannot restore the canvas.
+    requestAnimationFrame(() => {
+        if (!panelVisible || document.hidden) return;
+        if (currentPlot) replay(currentPlot);
+        reportViewportSize();
+    });
+}
+document.addEventListener('visibilitychange', refreshVisibility);
 
 (function warmupMetrics() {
     const fonts = [
@@ -910,7 +947,12 @@ window.addEventListener('message', (event) => {
     switch (msg.type) {
         case 'render':
             currentPlot = msg.plot;
+            panelVisible = msg.visible;
             replay(msg.plot);
+            break;
+        case 'visibility':
+            panelVisible = msg.visible;
+            refreshVisibility();
             break;
         case 'clear':
             currentPlot = null;
@@ -1057,7 +1099,7 @@ async function replay(plot) {
 }
 
 async function doReplay(plot, gen) {
-    if (replayGeneration !== gen) return;
+    if (replayGeneration !== gen || !panelVisible || document.hidden) return;
 
     const dpr = window.devicePixelRatio || 1;
     const containerW = container.clientWidth;
