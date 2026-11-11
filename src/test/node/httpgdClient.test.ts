@@ -183,6 +183,18 @@ suite('Internal httpgd client', () => {
         await until(() => client.getPlots().length === 2);
         assert.deepStrictEqual(notifications, [['1'], ['1', '2']]);
     });
+    test('reports a refused server and refreshes unchanged history when it becomes available again', async () => {
+        let unavailable = 0;
+        client.onUnavailable(() => unavailable++);
+        await client.connect();
+        const port = (server.address() as AddressInfo).port;
+        await new Promise<void>((resolve) => server.close(() => resolve()));
+        await assert.rejects(client.getPlotText({ id: '1' }), { code: 'ECONNREFUSED' });
+        assert.ok(unavailable > 0);
+        await new Promise<void>((resolve) => server.listen(port, '127.0.0.1', resolve));
+        await until(() => notifications.length > 1);
+        assert.deepStrictEqual(notifications.at(-1), ['1']);
+    });
     test('uses native WebSocket notifications and falls back after a disconnect', async () => {
         await client.connect();
         const socket = TestWebSocket.instances[0];

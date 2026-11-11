@@ -70,7 +70,9 @@ export class HttpgdClient {
     private renderersLoaded = false;
     private refreshTask?: Promise<void>;
     private refreshPending = false;
+    private unavailable = false;
     private readonly listeners = new Set<(value: HttpgdPlotsResponse) => void>();
+    private readonly unavailableListeners = new Set<() => void>();
 
     constructor(host: string, token?: string, options: ClientOptions = {}) {
         this.base = new URL(host.includes('://') ? host : `http://${host}`);
@@ -107,11 +109,19 @@ export class HttpgdClient {
         this.listeners.add(listener);
     }
 
+    public onUnavailable(listener: () => void): void {
+        this.unavailableListeners.add(listener);
+    }
+
     public getPlots(): HttpgdIdResponse[] {
         return this.snapshot?.plots ?? [];
     }
     public getRenderers(): HttpgdRendererResponse[] {
         return this.renderers;
+    }
+
+    public async refreshState(): Promise<void> {
+        await this.updateState(await this.json(this.url('/state')));
     }
 
     public async getPlotText(request: HttpgdPlotRequest): Promise<string> {
@@ -151,7 +161,25 @@ export class HttpgdClient {
         }
         // Rendering and exports may be slow; preserve httpgd-js's lack of a
         // request timeout while still cancelling requests on disconnect.
-        const response = await getHttpResponse(url, { headers: this.headers, signal });
+        let response;
+        try {
+            response = await getHttpResponse(url, { headers: this.headers, signal });
+        } catch (error) {
+            if (
+                !signal.aborted &&
+                ['ECONNREFUSED', 'ECONNRESET'].includes(
+                    (error as NodeJS.ErrnoException)?.code ?? '',
+                )
+            ) {
+                this.unavailable = true;
+                this.closeWebSocket();
+                this.schedulePoll(this.retryInterval);
+                for (const listener of this.unavailableListeners) {
+                    listener();
+                }
+            }
+            throw error;
+        }
         if (response.status !== 200) {
             throw new Error(`httpgd request failed (${response.status})`);
         }
@@ -211,6 +239,7 @@ export class HttpgdClient {
                 return { id: plot.id };
             });
             this.snapshot = { state: state(value.state), plots };
+            this.unavailable = false;
             // TODO: Revisit this notification boundary if httpgd and JGD viewer
             // updates are unified. Their transports remain separate for now.
             for (const listener of this.listeners) {
@@ -223,6 +252,7 @@ export class HttpgdClient {
         const next = state(value);
         const previous = this.snapshot?.state;
         if (
+            this.unavailable ||
             !previous ||
             previous.upid !== next.upid ||
             previous.hsize !== next.hsize ||
@@ -251,7 +281,7 @@ export class HttpgdClient {
             if (!this.renderersLoaded) {
                 await this.loadRenderers();
             }
-            await this.updateState(await this.json(this.url('/state')));
+            await this.refreshState();
             if (!this.socket && Date.now() >= this.retryAt) {
                 this.openWebSocket();
             }

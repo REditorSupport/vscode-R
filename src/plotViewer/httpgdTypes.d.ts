@@ -1,5 +1,5 @@
 import { HttpgdPlotId } from './httpgdClient';
-import { HttpgdDevices } from './httpgdDevices';
+import { HttpgdDevices, HttpgdPlotReference } from './httpgdDevices';
 import * as vscode from 'vscode';
 import { HttpgdManager } from './httpgdViewer';
 import type { ViewerSessionSource } from '../viewerSession';
@@ -20,6 +20,7 @@ export interface HttpgdPlot<T> {
 
 // Example for possible viewer creation options:
 export interface HttpgdViewerOptions {
+    plotOrder?: HttpgdPlotReference[];
     restoring?: boolean;
     parent: HttpgdManager;
     token?: string;

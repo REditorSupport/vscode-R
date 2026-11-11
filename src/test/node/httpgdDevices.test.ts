@@ -8,6 +8,7 @@ suite('httpgd session history', () => {
     let session: HttpgdDevices;
     let clients: HttpgdClient[];
     let updates: Map<HttpgdClient, (snapshot: HttpgdPlotsResponse) => void>;
+    let unavailable: Map<HttpgdClient, () => void>;
     let bytes: sinon.SinonStub;
     let remove: sinon.SinonStub;
     let disconnect: sinon.SinonStub;
@@ -16,6 +17,13 @@ suite('httpgd session history', () => {
         sandbox = sinon.createSandbox();
         clients = [];
         updates = new Map();
+        unavailable = new Map();
+        sandbox.stub(HttpgdClient.prototype, 'onUnavailable').callsFake(function (
+            this: HttpgdClient,
+            callback,
+        ) {
+            unavailable.set(this, callback);
+        });
         sandbox.stub(HttpgdClient.prototype, 'onPlotsChanged').callsFake(function (
             this: HttpgdClient,
             callback,
@@ -24,6 +32,7 @@ suite('httpgd session history', () => {
             updates.set(this, callback);
         });
         sandbox.stub(HttpgdClient.prototype, 'connect').resolves();
+        sandbox.stub(HttpgdClient.prototype, 'refreshState').resolves();
         disconnect = sandbox.stub(HttpgdClient.prototype, 'disconnect');
         bytes = sandbox
             .stub(HttpgdClient.prototype, 'getPlotBytes')
@@ -133,5 +142,83 @@ suite('httpgd session history', () => {
             plots: [{ id: '1' }],
         });
         assert.deepEqual([...changes.at(-1)!], ['1']);
+    });
+
+    test('restores interleaving independently of snapshot arrival and prunes only the reporting device', async () => {
+        publish(0, ['1']);
+        await session.addDevice('http://localhost:1235', 'second');
+        publish(1, ['1']);
+        publish(0, ['1', '2']);
+        const order = session.plotOrder;
+        session.disconnect();
+        session = new HttpgdDevices('http://localhost:1234', 'first', true, order);
+        await session.addDevice('http://localhost:1235', 'second', true);
+        await session.connect();
+        publish(3, ['1']);
+        assert.deepEqual(session.plotOrder, order, 'retain pending device references');
+        publish(2, ['1', '2']);
+        assert.deepEqual(
+            session.getPlots().map(({ id }) => session.plotConnection(id).origin),
+            ['http://localhost:1234', 'http://localhost:1235', 'http://localhost:1234'],
+        );
+        assert.deepEqual(session.plotOrder, order);
+        publish(2, ['2']);
+        assert.deepEqual(session.plotOrder, order.slice(1));
+        session.removeDevice('http://localhost:1235');
+        assert.deepEqual(session.plotOrder, order.slice(2));
+    });
+
+    test('checkpoints only order changes, not drawing or device-selection updates', () => {
+        const changes: boolean[] = [];
+        session.onPlotsChanged((_plots, _restoring, _changed, orderChanged) =>
+            changes.push(orderChanged),
+        );
+        publish(0, ['1']);
+        updates.get(clients[0])!({
+            state: { upid: 2, hsize: 1, active: false },
+            plots: [{ id: '1' }],
+        });
+        publish(0, ['1']);
+        publish(0, []);
+        assert.deepEqual(changes, [true, false, false, true]);
+    });
+
+    test('unavailable devices yield to the next visible live plot and recover on a fresh snapshot', async () => {
+        publish(0, ['1']);
+        await session.addDevice('http://localhost:1235', 'second');
+        publish(1, ['1']);
+        publish(0, ['1', '2']);
+        const ids = session.getPlots().map(({ id }) => id);
+        const changed = sandbox.spy();
+        session.onDeviceUnavailable(changed);
+        unavailable.get(clients[0])!();
+        assert.equal(session.isActive(ids[2]), false);
+        assert.equal(await session.nextAvailablePlot(ids[2]), ids[1]);
+        assert.equal(await session.nextAvailablePlot(ids[0], new Set([ids[0], ids[2]])), undefined);
+        unavailable.get(clients[0])!();
+        sinon.assert.calledOnce(changed);
+        publish(0, ['1', '2']);
+        assert.equal(session.isActive(ids[2]), true);
+        assert.equal(await session.nextAvailablePlot(ids[2]), undefined);
+        unavailable.get(clients[0])!();
+        unavailable.get(clients[1])!();
+        assert.equal(await session.nextAvailablePlot(ids[2]), undefined);
+        assert.equal(session.getPlots().length, 3, 'retain rendered history');
+    });
+
+    test('chooses the next server in device order despite interleaved plots', async () => {
+        publish(0, ['1']);
+        await session.addDevice('http://localhost:1235', 'second');
+        publish(1, ['1']);
+        publish(0, ['1', '2']);
+        await session.addDevice('http://localhost:1236', 'third');
+        publish(2, ['1']);
+        publish(1, ['1', '2']);
+        const ids = session.getPlots().map(({ id }) => id);
+        unavailable.get(clients[0])!();
+        assert.equal(await session.nextAvailablePlot(ids[2]), ids[4]);
+        assert.equal(await session.nextAvailablePlot(ids[2], new Set(ids.slice(0, 4))), ids[1]);
+        unavailable.get(clients[1])!();
+        assert.equal(await session.nextAvailablePlot(ids[2]), ids[3]);
     });
 });

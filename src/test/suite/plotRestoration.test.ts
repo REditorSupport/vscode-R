@@ -48,9 +48,12 @@ class LayoutViewer extends HttpgdViewer {
                 if (data.message !== 'inspect-layout') return;
                 if (data.dragHeight !== undefined) {
                     const handler = document.getElementById('handler');
-                    handler.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+                    const plot = document.getElementById('largePlot');
+                    const bounds = handler.getBoundingClientRect();
+                    const startY = bounds.top + bounds.height / 2;
+                    handler.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, clientY: startY }));
                     document.dispatchEvent(new MouseEvent('mousemove', {
-                        clientY: document.body.offsetTop + data.dragHeight + 5 - window.scrollY,
+                        clientY: startY + data.dragHeight - plot.clientHeight,
                         bubbles: true
                     }));
                     document.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
@@ -1387,8 +1390,7 @@ suite('Standalone plot restoration', () => {
         assert.strictEqual(render.getCalls().filter((call) => call.args[0].id === '3').length, 1);
     });
 
-    test('live httpgd dev.new shares navigation, resize, export, reload and exit cleanup', async function () {
-        this.timeout(30000);
+    async function startHttpgdR(context: Mocha.Context) {
         try {
             const probe = await promisify(execFile)('Rscript', [
                 '--vanilla',
@@ -1396,13 +1398,11 @@ suite('Standalone plot restoration', () => {
                 'cat(requireNamespace("httpgd", quietly=TRUE) && requireNamespace("jsonlite", quietly=TRUE))',
             ]);
             if (probe.stdout.trim() !== 'TRUE') {
-                this.skip();
+                context.skip();
             }
         } catch {
-            this.skip();
+            context.skip();
         }
-        connect.callThrough();
-        const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'httpgd-session-'));
         const r = spawn('R', ['--vanilla', '--slave', '--interactive']);
         const exited = new Promise<void>((resolve) => r.once('exit', () => resolve()));
         let output = '';
@@ -1433,6 +1433,25 @@ suite('Standalone plot restoration', () => {
             assert.strictEqual(typeof result, 'string', line);
             return result as string;
         };
+        return {
+            r,
+            evaluate,
+            exited,
+            async dispose() {
+                if (r.exitCode === null && r.signalCode === null) {
+                    r.kill();
+                }
+                await exited;
+            },
+        };
+    }
+
+    test('live httpgd dev.new shares navigation, resize, export, reload and exit cleanup', async function () {
+        this.timeout(30000);
+        connect.callThrough();
+        const process = await startHttpgdR(this);
+        const { r, evaluate, exited } = process;
+        const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'httpgd-session-'));
         try {
             const source = owner('live-httpgd', String(r.pid));
             source.host = os.hostname();
@@ -1486,11 +1505,23 @@ suite('Standalone plot restoration', () => {
             assert.ok(viewer.plots[0].data.includes('width="960.00"'));
             assert.ok(viewer.plots[0].data.includes('FIRST DEVICE'));
             panel!.dispose();
+            const titles = (plots: HttpgdViewer['plots']) =>
+                plots.map((plot) => plot.data.match(/FIRST DEVICE|SECOND DEVICE|THIRD PLOT/)?.[0]);
+            const originalOrder = titles(viewer.plots);
+            await waitForValue(() => {
+                const key = state.get('r.plot.httpgdConnectionsKey') as string;
+                const saved = JSON.parse(secrets.get(key) ?? '[]') as typeof viewer.connections;
+                const order = saved.flatMap((connection) => connection.plotOrder ?? []);
+                return JSON.stringify(order) === JSON.stringify(viewer.api.plotOrder)
+                    ? true
+                    : undefined;
+            });
             await first.dispose();
             const restored = manager();
             await callbacks.get('r.plot.showViewers')!();
             const live = restored.httpgdManager.viewers[0];
             await waitForValue(() => (live.plots.length === 3 ? true : undefined));
+            assert.deepStrictEqual(titles(live.plots), originalOrder);
             assert.strictEqual(restored.httpgdManager.viewers.length, 1);
             assert.strictEqual(live.connections.length, 2);
             const second = live.plots.find((plot) => plot.data.includes('SECOND DEVICE'))!;
@@ -1522,11 +1553,90 @@ suite('Standalone plot restoration', () => {
             assert.strictEqual(live.api.getPlots().length, 0);
             retainedPanel.dispose();
         } finally {
-            if (r.exitCode === null && r.signalCode === null) {
-                r.kill();
-            }
-            await exited;
+            await process.dispose();
             await fs.rm(directory, { recursive: true, force: true });
+        }
+    });
+
+    test('live httpgd switches to the next available device and resizes quietly after the last dev.off()', async function () {
+        this.timeout(30000);
+        connect.callThrough();
+        (vscode.window.createWebviewPanel as sinon.SinonStub).callsFake(
+            (...args: Parameters<typeof createRealWebviewPanel>) => createRealWebviewPanel(...args),
+        );
+        const errors = sandbox.stub(vscode.window, 'showErrorMessage').resolves();
+        const process = await startHttpgdR(this);
+        const originalLayout = await executeRealCommand('vscode.getEditorLayout');
+        let viewer: HttpgdViewer | undefined;
+        const document = await vscode.workspace.openTextDocument({ language: 'plaintext' });
+        try {
+            await vscode.window.showTextDocument(document, { viewColumn: vscode.ViewColumn.One });
+            const layout = (width: number) =>
+                executeRealCommand('vscode.setEditorLayout', {
+                    orientation: 0,
+                    groups: [{ size: 1 - width }, { size: width }],
+                });
+            await layout(0.6);
+            const source = owner('live-httpgd-close', String(process.r.pid));
+            source.host = os.hostname();
+            const value = manager();
+            const first = await process.evaluate(
+                'options(device=function(...) httpgd::hgd(silent=TRUE)); plot(1:5, main="FIRST DEVICE"); first_device <- dev.cur(); httpgd::hgd_url()',
+            );
+            await value.showHttpgdPlot(first, source);
+            viewer = value.httpgdManager.viewers[0];
+            await waitForValue(() => (viewer!.plots.length === 1 ? true : undefined));
+            viewer.show(false);
+            await waitForValue(() => (viewer!.plots[0].width !== 800 ? true : undefined));
+            const firstId = viewer.plots[0].id;
+            const second = await process.evaluate(
+                'dev.new(); plot(5:1, main="SECOND DEVICE"); httpgd::hgd_url()',
+            );
+            await value.showHttpgdPlot(second, source);
+            await waitForValue(() => (viewer!.plots.length === 2 ? true : undefined));
+            assert.notStrictEqual(viewer.activePlot, firstId);
+            const secondId = viewer.activePlot;
+            const third = await process.evaluate(
+                'dev.new(); plot(1:10, main="THIRD DEVICE"); httpgd::hgd_url()',
+            );
+            await value.showHttpgdPlot(third, source);
+            await waitForValue(() => (viewer!.plots.length === 3 ? true : undefined));
+            const thirdId = viewer.activePlot;
+            await process.evaluate('dev.off(first_device); "OK"');
+            assert.strictEqual(viewer.activePlot, thirdId);
+            await process.evaluate('dev.off(); "OK"');
+            await waitForValue(() => (viewer!.activePlot === secondId ? true : undefined));
+            await process.evaluate('dev.off(); "OK"');
+            const render = sandbox.spy(viewer.api, 'getPlotText');
+            for (const width of [0.3, 0.5]) {
+                const before = viewer.viewWidth;
+                await layout(width);
+                await waitForValue(() => (viewer!.viewWidth !== before ? true : undefined));
+                await new Promise((resolve) => setTimeout(resolve, 200));
+            }
+            assert.ok(
+                render.callCount <= 1,
+                'Only the first resize may discover the closed server',
+            );
+            sinon.assert.notCalled(errors);
+            assert.strictEqual(viewer.activePlot, secondId);
+            assert.ok(
+                viewer.plots.find((plot) => plot.id === secondId)!.data.includes('SECOND DEVICE'),
+            );
+        } finally {
+            viewer?.webviewPanel?.dispose();
+            await process.dispose();
+            for (const group of vscode.window.tabGroups.all) {
+                for (const tab of group.tabs) {
+                    if (
+                        tab.input instanceof vscode.TabInputText &&
+                        tab.input.uri.toString() === document.uri.toString()
+                    ) {
+                        await vscode.window.tabGroups.close(tab);
+                    }
+                }
+            }
+            await executeRealCommand('vscode.setEditorLayout', originalLayout);
         }
     });
 
