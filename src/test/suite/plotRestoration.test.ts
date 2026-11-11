@@ -445,6 +445,64 @@ suite('Standalone plot restoration', () => {
         assert.strictEqual(panels.length, 2, 'one replacement tab after closing');
     });
 
+    test('JGD measures an earlier device through its session viewer without switching plots', async () => {
+        const value = manager();
+        const metrics = sandbox.spy(value.jgdManager.server, 'setMeasureText');
+        const deliver = startJgd(value);
+        const source = owner('a', '123');
+        for (const id of ['device-1', 'device-2', 'other-session']) {
+            value.jgdManager.history.addPlot(id, frame(id));
+            value.jgdManager.history.setSessionSource(
+                id,
+                id === 'other-session' ? owner('b', '456') : source,
+            );
+            deliver(id, { type: 'frame' });
+        }
+        const viewer = value.jgdManager.getViewers()[0];
+        const selectedPlot = value.jgdManager.history.currentPlot(viewer.sessionId);
+        for (const item of panels) {
+            item.post.resetHistory();
+        }
+        const measure = metrics.firstCall.args[0];
+        const measured = measure(
+            { type: 'metrics_request', id: 7, kind: 'strWidth', str: 'W' },
+            96,
+            'device-1',
+        );
+        sinon.assert.calledOnce(panels[0].post);
+        sinon.assert.notCalled(panels[1].post);
+        const request = panels[0].post.lastCall.args[0] as { type: string; id: number };
+        assert.strictEqual(request.type, 'metrics_request');
+        await panels[0].receive({
+            type: 'metrics_response',
+            id: request.id,
+            originalId: 7,
+            width: 42,
+            ascent: 10,
+            descent: 3,
+        });
+        assert.deepStrictEqual(await measured, {
+            type: 'metrics_response',
+            id: 7,
+            width: 42,
+            ascent: 10,
+            descent: 3,
+        });
+        assert.strictEqual(viewer.sessionId, 'device-2');
+        assert.strictEqual(value.jgdManager.history.currentPlot(viewer.sessionId), selectedPlot);
+        assert.strictEqual(panels.length, 2);
+
+        panels[0].panel.dispose();
+        assert.deepStrictEqual(await measure({ type: 'metrics_request', id: 8 }, 96, 'device-1'), {
+            type: 'metrics_response',
+            id: 8,
+            width: 0,
+            ascent: 0,
+            descent: 0,
+        });
+        assert.strictEqual(panels.length, 2, 'metrics must not reopen a closed viewer');
+    });
+
     test('JGD reattachment after reload keeps closed viewers closed until Show Viewer or a new plot', async () => {
         const source = owner('a', '123');
         focus(source);

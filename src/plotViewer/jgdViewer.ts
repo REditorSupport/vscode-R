@@ -165,8 +165,12 @@ export class JgdManager {
         this.server.setMeasureText((request: JgdMessage, _dpi, sessionId) => {
             // Metrics can arrive before the first frame identifies the device.
             // They must not create an ownerless viewer for the temporary socket ID.
+            // Known devices share their owner's renderer even when that viewer
+            // is displaying another device. Measuring must not switch the plot.
+            const viewer =
+                this.findViewer(sessionId) ?? this.viewers.get(this.viewerKey(sessionId));
             return (
-                this.findViewer(sessionId)?.measureText(request as unknown as MetricsRequest) ??
+                viewer?.measureText(request as unknown as MetricsRequest) ??
                 Promise.resolve({
                     type: 'metrics_response',
                     id: request.id,
