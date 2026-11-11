@@ -164,6 +164,25 @@ suite('JGD SocketServer', () => {
     }
 
     suite('frame routing', () => {
+        test('resizes only the selected device, including its latest plot', async () => {
+            const first = await connect();
+            const second = await connect();
+            first.send(makePlotMsg('A'));
+            second.send(makePlotMsg('B'));
+            await waitMs(50);
+            const firstId = history
+                .sessionIds()
+                .find((id) => history.latestPlot(id)?.device.bg === 'A')!;
+            history.selectSession(firstId);
+            server.handleResize(1000, 700);
+            assert.strictEqual((JSON.parse(await first.readLine()) as JgdMessage).type, 'resize');
+            second.send({ type: 'metrics_request', id: 42, kind: 'strWidth', str: 'barrier' });
+            assert.strictEqual(
+                (JSON.parse(await second.readLine()) as JgdMessage).type,
+                'metrics_response',
+            );
+        });
+
         test('routes normal frame to addPlot', async () => {
             const client = await connect();
 

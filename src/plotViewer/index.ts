@@ -7,6 +7,9 @@ import { JgdManager } from './jgdViewer';
 import { extensionContext } from '../extension';
 import { config } from '../util';
 import { getMigratedSetting } from '../configuration';
+import { activeSession, resolvePlotSession, Session } from '../session';
+import { sessionProcessIdentity } from '../sessionIdentity';
+import { isViewerSessionSource, ViewerSessionSource } from '../viewerSession';
 
 export type PlotBackend = 'auto' | 'standard' | 'httpgd' | 'jgd' | 'native';
 
@@ -51,6 +54,9 @@ export class CommonPlotManager implements PlotManager {
     public httpgdManager: HttpgdManager;
     public standardPlotViewer: StandardPlotViewer;
     public jgdManager: JgdManager;
+    private standardViewers = new Map<string, StandardPlotViewer>();
+    private restoredStandardSessions: ViewerSessionSource[] = [];
+    private disposed = false;
 
     constructor() {
         this.httpgdManager = new HttpgdManager();
@@ -65,10 +71,15 @@ export class CommonPlotManager implements PlotManager {
             viewers.push(jgdViewer);
         }
         viewers.push(this.standardPlotViewer);
+        viewers.push(...this.standardViewers.values());
         return viewers;
     }
 
     get activeViewer(): PlotViewer | undefined {
+        const focused = this.viewers.find((viewer) => viewer.isActive);
+        if (focused) {
+            return focused;
+        }
         if (jgdEnabled()) {
             return (
                 this.jgdManager.getViewer() ||
@@ -81,6 +92,12 @@ export class CommonPlotManager implements PlotManager {
 
     public initialize(): void {
         this.jgdManager.initialize(extensionContext.extensionUri);
+        this.jgdManager.history.restore(extensionContext.workspaceState.get('r.plot.jgdState'));
+        const sources = extensionContext.workspaceState.get<unknown>('r.plot.standardSessions');
+        this.restoredStandardSessions = Array.isArray(sources)
+            ? sources.filter(isViewerSessionSource)
+            : [];
+        this.httpgdManager.initialize();
 
         for (const cmd of commands) {
             const fullCommand = `r.plot.${cmd}`;
@@ -88,7 +105,7 @@ export class CommonPlotManager implements PlotManager {
                 vscode.commands.registerCommand(
                     fullCommand,
                     (hostOrWebviewUri?: string | vscode.Uri, ...args: unknown[]) => {
-                        void this.handleCommand(cmd, hostOrWebviewUri, ...args);
+                        return this.handleCommand(cmd, hostOrWebviewUri, ...args);
                     },
                 ),
             );
@@ -125,20 +142,73 @@ export class CommonPlotManager implements PlotManager {
         }
     }
 
-    public async showStandardPlot(): Promise<void> {
-        await this.standardPlotViewer.update();
+    public async showStandardPlot(target = activeSession): Promise<void> {
+        if (!target) {
+            return;
+        }
+        const key = sessionProcessIdentity(target);
+        let viewer = this.standardViewers.get(key);
+        if (!viewer) {
+            viewer = new StandardPlotViewer(target);
+            this.standardViewers.set(key, viewer);
+        } else {
+            viewer.bindSession(target);
+        }
+        await viewer.update();
     }
 
-    public async showHttpgdPlot(url: string): Promise<void> {
-        await this.httpgdManager.showViewer(url);
+    public async showHttpgdPlot(url: string, target?: Session): Promise<void> {
+        const source = target
+            ? {
+                  sessionId: target.sessionId,
+                  host: target.host,
+                  pid: target.pid,
+                  rVer: target.rVer,
+                  processExited: target.processExited,
+              }
+            : undefined;
+        await this.httpgdManager.showViewer(url, source);
     }
 
     public getJgdEnvVars(): Record<string, string> {
         return this.jgdManager.getEnvVars();
     }
 
-    public dispose(): void {
+    public async dispose(): Promise<void> {
+        if (this.disposed) {
+            return;
+        }
+        this.disposed = true;
+        const standardSources = new Map(
+            this.restoredStandardSessions.map((source) => [sessionProcessIdentity(source), source]),
+        );
+        for (const viewer of this.standardViewers.values()) {
+            if (viewer.sessionSource) {
+                standardSources.set(
+                    sessionProcessIdentity(viewer.sessionSource),
+                    viewer.sessionSource,
+                );
+            }
+        }
+        const saved = Promise.all([
+            extensionContext.workspaceState.update(
+                'r.plot.jgdState',
+                this.jgdManager.history.snapshot(),
+            ),
+            extensionContext.workspaceState.update('r.plot.standardSessions', [
+                ...standardSources.values(),
+            ]),
+            this.httpgdManager.saveConnections(),
+        ]);
         this.jgdManager.stop();
+        for (const viewer of this.standardViewers.values()) {
+            viewer.dispose();
+        }
+        this.standardPlotViewer.dispose();
+        this.httpgdManager.dispose();
+        await saved.catch((error) =>
+            console.warn('[Plot Viewer] Could not save reload state', error),
+        );
     }
 
     private async handleCommand(
@@ -147,6 +217,24 @@ export class CommonPlotManager implements PlotManager {
         ...args: unknown[]
     ): Promise<void> {
         if (command === 'showViewers') {
+            await this.httpgdManager.restoreConnections();
+            if (this.disposed) {
+                return;
+            }
+            let unavailable = false;
+            for (const source of this.restoredStandardSessions) {
+                const target = resolvePlotSession(source);
+                if (target) {
+                    await this.showStandardPlot(target);
+                } else if (!this.standardViewers.has(sessionProcessIdentity(source))) {
+                    unavailable = true;
+                }
+            }
+            if (unavailable) {
+                void vscode.window.showInformationMessage(
+                    'Attach the original R session to restore its standard plot viewer.',
+                );
+            }
             for (const viewer of this.viewers) {
                 viewer.show(true);
             }
@@ -162,12 +250,10 @@ export class CommonPlotManager implements PlotManager {
         let viewer: PlotViewer | undefined;
         if (typeof hostOrWebviewUri === 'string') {
             viewer = this.httpgdManager.viewers.find(
-                (v: HttpgdViewer) => v.host === hostOrWebviewUri,
+                (v: HttpgdViewer) => v.id === hostOrWebviewUri || v.host === hostOrWebviewUri,
             );
         } else if (hostOrWebviewUri instanceof vscode.Uri) {
-            viewer = this.httpgdManager.viewers.find(
-                (v: HttpgdViewer) => v.getPanelPath() === hostOrWebviewUri.path,
-            );
+            viewer = this.viewers.find((v) => v.getPanelPath?.() === hostOrWebviewUri.path);
         }
 
         // Fallback to active viewer

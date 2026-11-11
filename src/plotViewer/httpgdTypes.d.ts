@@ -1,6 +1,7 @@
 import { HttpgdClient, HttpgdPlotId } from './httpgdClient';
 import * as vscode from 'vscode';
-import { HttpgdManager } from '.';
+import { HttpgdManager } from './httpgdViewer';
+import type { ViewerSessionSource } from '../viewerSession';
 import { PreviewPlotLayout } from './webviewMessages';
 
 export type MaybePromise<T> = T | Promise<T>;
@@ -30,6 +31,7 @@ export interface HttpgdViewerOptions {
     previewPlotLayout?: PreviewPlotLayout;
     resizeTimeoutLength?: number;
     refreshTimeoutLength?: number;
+    source?: ViewerSessionSource;
 }
 
 // Roughly combines the functionality of HttpgdNavigator and HttpgdViewer

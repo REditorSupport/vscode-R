@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { PlotViewer } from './types';
+import { PlotViewer, plotPanelPath } from './types';
 import { PlotHistory, PlotFrame } from './jgdPlotHistory';
 import { JgdSocketServer, JgdMessage } from './jgdSocketServer';
 import { config, UriIcon } from '../util';
@@ -80,6 +80,8 @@ interface WebviewDeleteCurrent {
 }
 
 type WebviewMessage =
+    | { type: 'ready' }
+    | { type: 'selectSession'; sessionId: string }
     | WebviewMetricsResponse
     | WebviewMetricsWarmup
     | WebviewExportData
@@ -111,18 +113,17 @@ export class JgdManager {
             return;
         }
         this.started = true;
-        this.server.setOnFrame((_sessionId, msg: JgdMessage) => {
+        this.server.setOnFrame(() => {
             const current = this.history.currentPlot();
             if (current) {
                 this.getOrCreateViewer().showPlot(current);
-            } else if (msg.plot) {
-                this.getOrCreateViewer().showPlot(msg.plot as PlotFrame);
             }
         });
 
         this.server.setOnDeviceClosed((_sessionId) => {
             this.viewer?.updateToolbar();
         });
+        this.server.onConnectionChange(() => this.viewer?.updateToolbar());
 
         this.server.setMeasureText((request: JgdMessage) => {
             return this.getOrCreateViewer().measureText(request as unknown as MetricsRequest);
@@ -135,6 +136,7 @@ export class JgdManager {
         this.server.start();
 
         this.historyChangeDisposable = this.history.onDidChange(() => {
+            this.viewer?.updateToolbar();
             void vscode.commands.executeCommand(
                 'setContext',
                 'r.plot.canGoBack',
@@ -157,6 +159,9 @@ export class JgdManager {
     }
 
     getViewer(): JgdViewer | null {
+        if (!this.viewer && this.history.sessionIds().length && this.extensionUri) {
+            return this.getOrCreateViewer();
+        }
         return this.viewer;
     }
 
@@ -197,6 +202,15 @@ export class JgdViewer implements PlotViewer {
         if (plot) {
             this.sendPlotToWebview(plot);
         }
+        this.updateToolbar();
+    }
+
+    getPanelPath(): string | undefined {
+        return plotPanelPath(this.panel);
+    }
+
+    get isActive(): boolean {
+        return this.panel?.active ?? false;
     }
 
     dispose(): void {
@@ -312,10 +326,24 @@ export class JgdViewer implements PlotViewer {
     }
 
     updateToolbar() {
+        const selected = this.history.getActiveSessionId();
+        const sessions = this.history.sessionIds().map((id, index) => {
+            const deviceLabel = this.history.sessionLabel(id);
+            const process = deviceLabel && /^r-(\d+)-(\d+)$/.exec(deviceLabel);
+            const label = process
+                ? `R PID ${process[1]} · device ${process[2]}`
+                : deviceLabel || `JGD session ${index + 1}`;
+            return { id, label: `${label}${this.server.isConnected(id) ? '' : ' (disconnected)'}` };
+        });
+        if (this.panel) {
+            this.panel.title = `R Plot (${sessions.find((item) => item.id === selected)?.label ?? 'JGD'})`;
+        }
         void this.panel?.webview.postMessage({
             type: 'toolbar',
             current: this.history.currentIndex(),
             total: this.history.count(),
+            sessions,
+            selected,
         });
     }
 
@@ -459,10 +487,29 @@ export class JgdViewer implements PlotViewer {
         );
 
         this.panel.iconPath = new UriIcon('graph');
-        this.panel.webview.html = this.getWebviewHtml();
-
         this.panel.webview.onDidReceiveMessage((raw: WebviewMessage) => {
             switch (raw.type) {
+                case 'ready': {
+                    const plot = this.history.currentPlot();
+                    if (plot) {
+                        this.sendPlotToWebview(plot);
+                    }
+                    this.updateToolbar();
+                    break;
+                }
+                case 'selectSession': {
+                    if (this.history.selectSession(raw.sessionId)) {
+                        const plot = this.history.currentPlot();
+                        if (plot) {
+                            this.sendPlotToWebview(plot);
+                        } else {
+                            void this.panel?.webview.postMessage({ type: 'clear' });
+                        }
+                        this.updateToolbar();
+                        this.server.handleResize(this.panelWidth, this.panelHeight);
+                    }
+                    break;
+                }
                 case 'metrics_response': {
                     const resolver = this.pendingMetrics.get(raw.id);
                     if (resolver) {
@@ -522,6 +569,7 @@ export class JgdViewer implements PlotViewer {
             this.panel = null;
             this.metricsCache.clear();
         });
+        this.panel.webview.html = this.getWebviewHtml();
     }
 
     private async handleExportRequest(format: 'png' | 'svg') {
@@ -607,6 +655,11 @@ body { background: var(--vscode-editor-background); overflow: hidden; display: f
 }
 #toolbar button:hover { background: var(--vscode-button-secondaryHoverBackground); }
 #toolbar button:disabled { opacity: 0.4; cursor: default; }
+#toolbar select {
+    color: var(--vscode-dropdown-foreground); background: var(--vscode-dropdown-background);
+    border: 1px solid var(--vscode-dropdown-border); padding: 2px; min-width: 0;
+}
+#session-select { max-width: 45%; }
 #plot-info { flex: 1; text-align: center; }
 #canvas-container { flex: 1; display: flex; align-items: center; justify-content: center; overflow: hidden; }
 canvas { display: block; }
@@ -614,6 +667,7 @@ canvas { display: block; }
 </head>
 <body>
 <div id="toolbar">
+    <select id="session-select" aria-label="Plot session"></select>
     <button id="btn-prev" title="Previous plot">&#9664;</button>
     <button id="btn-next" title="Next plot">&#9654;</button>
     <button id="btn-delete" title="Remove current plot">&#10005;</button>
@@ -645,6 +699,10 @@ const metricsCanvas = document.getElementById('metrics-canvas');
 const metricsCtx = metricsCanvas.getContext('2d');
 
 let currentPlot = null;
+
+document.getElementById('session-select').addEventListener('change', (event) => {
+    vscode.postMessage({ type: 'selectSession', sessionId: event.target.value });
+});
 
 document.getElementById('btn-prev').addEventListener('click', () => {
     vscode.postMessage({ type: 'navigate', direction: 'previous' });
@@ -724,6 +782,14 @@ window.addEventListener('message', (event) => {
             ctx.clearRect(0, 0, canvas.width, canvas.height);
             break;
         case 'toolbar':
+            const select = document.getElementById('session-select');
+            select.replaceChildren(...msg.sessions.map(session => {
+                const option = document.createElement('option');
+                option.value = session.id;
+                option.textContent = session.label;
+                return option;
+            }));
+            select.value = msg.selected;
             document.getElementById('plot-info').textContent =
                 msg.total > 0 ? msg.current + ' / ' + msg.total : 'No plots';
             document.getElementById('btn-prev').disabled = msg.current <= 1;
@@ -738,6 +804,8 @@ window.addEventListener('message', (event) => {
             break;
     }
 });
+
+vscode.postMessage({ type: 'ready' });
 
 function applyGc(ctx, gc) {
     ctx.globalCompositeOperation = 'source-over';

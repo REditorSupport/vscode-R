@@ -9,6 +9,21 @@ export interface ViewerSessionSource {
     processExited: boolean;
 }
 
+export function isViewerSessionSource(value: unknown): value is ViewerSessionSource {
+    if (!value || typeof value !== 'object') {
+        return false;
+    }
+    const source = value as Partial<ViewerSessionSource>;
+    return (
+        typeof source.sessionId === 'string' &&
+        source.sessionId.length > 0 &&
+        typeof source.host === 'string' &&
+        typeof source.pid === 'string' &&
+        typeof source.rVer === 'string' &&
+        typeof source.processExited === 'boolean'
+    );
+}
+
 export interface ViewerSessionContext {
     readonly sessionId: string;
     readonly source: Readonly<ViewerSessionSource>;

@@ -219,6 +219,30 @@ suite('Standard plot viewer request coordination', () => {
         sinon.assert.notCalled(panels[0].postMessage);
     });
 
+    test('a bound viewer keeps requesting its owner after the active session changes', async () => {
+        const owner = { sessionId: 'A', pid: '123', rVer: '4.5.0' } as session.Session;
+        viewer = new StandardPlotViewer(owner);
+        activeSession.value(owner);
+        const response = deferred<unknown>();
+        const request = sandbox.stub(session, 'sessionRequest').returns(response.promise);
+        await viewer.update();
+        const ready = panels[0].ready();
+        activeSession.value({ sessionId: 'B' });
+        response.resolve({ data: 'A plot', format: 'svg' });
+        await ready;
+        sinon.assert.calledWithExactly(panels[0].postMessage, {
+            type: 'update',
+            data: 'A plot',
+            format: 'svg',
+        });
+        await panels[0].resize(300, 400);
+        assert.strictEqual(request.lastCall.args[1], owner);
+        viewer.dispose();
+        viewer.show();
+        assert.strictEqual(panels.length, 2);
+        assert.ok(panels[1].panel.webview.html.includes("type: 'ready'"));
+    });
+
     test('keeps a different active session queued when the old session returns no data', async () => {
         const sessionA = { sessionId: 'A' } as session.Session;
         const sessionB = { sessionId: 'B' } as session.Session;

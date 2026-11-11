@@ -381,6 +381,6 @@ export function ensureWorkspaceViewer(): void {
 
 export async function deactivate(): Promise<void> {
     await shutdownHtmlWidgetViewers(true);
-    (globalPlotManager as plotViewer.CommonPlotManager)?.dispose();
+    await (globalPlotManager as plotViewer.CommonPlotManager)?.dispose();
     await session.shutdownSessionWatcher();
 }

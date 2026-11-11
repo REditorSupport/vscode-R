@@ -2382,13 +2382,6 @@ export function removeSessionFiles(): void {
     console.info('[removeSessionFiles] Done');
 }
 
-async function updatePlot() {
-    if (!globalPipePath) {
-        return;
-    }
-    await globalPlotManager?.showStandardPlot();
-}
-
 export function deferWorkspaceRefresh(terminal?: vscode.Terminal): void {
     const target = terminal ? terminalRegistry.ownerOf(terminal) : activeSession;
     if (target) {
@@ -2704,6 +2697,16 @@ export function getViewerSessionContext(
             ? saved
             : attached;
     return owner ? createViewerSessionContext(owner, sessionProcessMonitor) : undefined;
+}
+
+export function resolvePlotSession(source: ViewerSessionSource): Session | undefined {
+    const target = sessions.get(source.sessionId);
+    return target &&
+        !target.processExited &&
+        isConnectedSession(target) &&
+        sessionProcessIdentity(target) === sessionProcessIdentity(source)
+        ? target
+        : undefined;
 }
 
 export async function getTableHtml(
@@ -3952,7 +3955,7 @@ async function handleNotification(message: Record<string, unknown>, socket: IpcS
                 return;
             }
             if (typeof params.plot_url === 'string' && params.plot_url) {
-                await globalPlotManager?.showHttpgdPlot(params.plot_url);
+                await globalPlotManager?.showHttpgdPlot(params.plot_url, session);
             }
             if (isLiveSessionSocket(socket) && isCurrentSocket(socket) && mayApplyUiEffects()) {
                 scheduleWorkspaceRefresh(0);
@@ -3978,7 +3981,8 @@ async function handleNotification(message: Record<string, unknown>, socket: IpcS
         }
         case 'httpgd': {
             if (typeof params.url === 'string' && params.url) {
-                await globalPlotManager?.showHttpgdPlot(params.url);
+                const target = socket._sessionId ? sessions.get(socket._sessionId) : undefined;
+                await globalPlotManager?.showHttpgdPlot(params.url, target);
             }
             break;
         }
@@ -4077,7 +4081,10 @@ async function handleNotification(message: Record<string, unknown>, socket: IpcS
             break;
         }
         case 'plot_updated': {
-            void updatePlot();
+            const target = socket._sessionId && sessions.get(socket._sessionId);
+            if (target && target.socket === socket) {
+                void globalPlotManager?.showStandardPlot(target);
+            }
             break;
         }
         case 'restart_r': {

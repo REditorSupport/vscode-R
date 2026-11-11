@@ -208,6 +208,36 @@ suite('Session Connection Lifecycle API', () => {
         assert.notStrictEqual(newReference.connectionId, oldReference.connectionId);
     });
 
+    test('standard plot notifications target their originating session, not the active terminal', async () => {
+        const showStandardPlot = sandbox.stub().resolves();
+        sandbox.stub(extension, 'globalPlotManager').value({ showStandardPlot });
+        const first = await connections.attach('standard-a', 55040, 'external-host');
+        await connections.attach('standard-b', 55041, 'external-host');
+        await session.activateSessionById('standard-b');
+        first.emit(
+            'data',
+            Buffer.from(JSON.stringify({ method: 'plot_updated', params: {} }) + '\n'),
+        );
+        await waitForValue(() => (showStandardPlot.calledOnce ? true : undefined));
+        assert.strictEqual(
+            (showStandardPlot.firstCall.args[0] as session.Session).sessionId,
+            'standard-a',
+        );
+        assert.strictEqual(session.activeSession?.sessionId, 'standard-b');
+        const owner = showStandardPlot.firstCall.args[0] as session.Session;
+        assert.strictEqual(session.resolvePlotSession(owner), owner);
+        assert.strictEqual(
+            session.resolvePlotSession({
+                sessionId: owner.sessionId,
+                host: owner.host,
+                pid: 'different-process',
+                rVer: owner.rVer,
+                processExited: false,
+            }),
+            undefined,
+        );
+    });
+
     test('attach UI effects preserve native behavior but ignore background and superseded choices', async () => {
         const showHttpgdPlot = sandbox.stub().resolves();
         sandbox
@@ -239,7 +269,12 @@ suite('Session Connection Lifecycle API', () => {
             plotUrl: 'http://127.0.0.1:55031',
         });
         await waitForValue(() => (showHttpgdPlot.calledOnce ? true : undefined));
-        assert.deepStrictEqual(showHttpgdPlot.firstCall.args, ['http://127.0.0.1:55031']);
+        assert.strictEqual(showHttpgdPlot.firstCall.args[0], 'http://127.0.0.1:55031');
+        assert.strictEqual(
+            (showHttpgdPlot.firstCall.args[1] as session.Session).sessionId,
+            'plot-native-background',
+            'plots belong to their notifying session even when a different session is active',
+        );
         assert.strictEqual(
             session.activeSession,
             selected,

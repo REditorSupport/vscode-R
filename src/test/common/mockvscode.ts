@@ -29,7 +29,11 @@ export function mockExtensionContext(extension_root: string, sandbox: sinon.Sino
             path.join(os.tmpdir(), 'vscode-r-test-global-storage', String(process.pid)),
         ),
         logUri: sandbox.stub(),
-        secrets: sandbox.stub(),
+        secrets: {
+            get: sandbox.stub().resolves(undefined),
+            store: sandbox.stub().resolves(),
+            delete: sandbox.stub().resolves(),
+        },
         storageUri: sandbox.stub(),
         subscriptions: [],
         workspaceState: {

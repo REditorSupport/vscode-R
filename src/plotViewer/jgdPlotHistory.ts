@@ -18,16 +18,106 @@ interface SessionHistory {
     plots: PlotFrame[];
     currentIndex: number;
     latestDeleted: boolean;
+    label?: string;
+}
+
+export interface PlotHistoryState {
+    activeSessionId: string;
+    selectedSessionId?: string;
+    sessions: Array<SessionHistory & { id: string }>;
 }
 
 export class PlotHistory {
     private sessions: Map<string, SessionHistory> = new Map();
     private activeSessionId: string = '';
+    private selectedSessionId: string | undefined;
     private maxPlots: number;
     private emitter = new EventEmitter();
 
     constructor(maxPlots: number = 50) {
-        this.maxPlots = maxPlots;
+        this.maxPlots = Math.max(1, Math.floor(maxPlots) || 50);
+    }
+
+    sessionIds(): string[] {
+        return [...this.sessions.keys()];
+    }
+
+    sessionLabel(sessionId: string): string | undefined {
+        return this.sessions.get(sessionId)?.label;
+    }
+
+    setSessionLabel(sessionId: string, label: string): void {
+        const history = this.sessions.get(sessionId);
+        if (history && history.label !== label) {
+            history.label = label.slice(0, 256);
+            this.emitter.emit('change');
+        }
+    }
+
+    snapshot(): PlotHistoryState {
+        return {
+            activeSessionId: this.activeSessionId,
+            selectedSessionId: this.selectedSessionId,
+            sessions: [...this.sessions].map(([id, history]) => ({ id, ...history })),
+        };
+    }
+
+    restore(value: unknown): void {
+        if (!value || typeof value !== 'object') {
+            return;
+        }
+        const state = value as Partial<PlotHistoryState>;
+        if (!Array.isArray(state.sessions)) {
+            return;
+        }
+        for (const entry of state.sessions) {
+            if (
+                !entry ||
+                typeof entry.id !== 'string' ||
+                !entry.id ||
+                !Array.isArray(entry.plots) ||
+                !entry.plots.every(isPlotFrame) ||
+                !Number.isInteger(entry.currentIndex) ||
+                entry.currentIndex < -1 ||
+                entry.currentIndex >= entry.plots.length ||
+                (entry.plots.length > 0 && entry.currentIndex < 0) ||
+                typeof entry.latestDeleted !== 'boolean'
+            ) {
+                continue;
+            }
+            const removed = Math.max(0, entry.plots.length - this.maxPlots);
+            this.sessions.set(entry.id, {
+                plots: entry.plots.slice(removed),
+                currentIndex: entry.plots.length ? Math.max(0, entry.currentIndex - removed) : -1,
+                latestDeleted: entry.latestDeleted,
+                label: typeof entry.label === 'string' ? entry.label.slice(0, 256) : undefined,
+            });
+        }
+        this.activeSessionId =
+            state.activeSessionId && this.sessions.has(state.activeSessionId)
+                ? state.activeSessionId
+                : (this.sessionIds().at(-1) ?? '');
+        this.selectedSessionId =
+            state.selectedSessionId && this.sessions.has(state.selectedSessionId)
+                ? state.selectedSessionId
+                : undefined;
+        this.emitter.emit('change');
+    }
+
+    selectSession(sessionId: string): boolean {
+        if (!this.sessions.has(sessionId)) {
+            return false;
+        }
+        this.selectedSessionId = sessionId;
+        this.activeSessionId = sessionId;
+        this.emitter.emit('change');
+        return true;
+    }
+
+    private activate(sessionId: string): void {
+        if (!this.selectedSessionId) {
+            this.activeSessionId = sessionId;
+        }
     }
 
     onDidChange(listener: () => void): { dispose(): void } {
@@ -52,7 +142,7 @@ export class PlotHistory {
             session.plots.shift();
         }
         session.currentIndex = session.plots.length - 1;
-        this.activeSessionId = sessionId;
+        this.activate(sessionId);
         this.emitter.emit('change');
     }
 
@@ -66,7 +156,7 @@ export class PlotHistory {
             plot.rIndex = old.rIndex;
         }
         session.plots[session.currentIndex] = plot;
-        this.activeSessionId = sessionId;
+        this.activate(sessionId);
         this.emitter.emit('change');
     }
 
@@ -88,7 +178,7 @@ export class PlotHistory {
         if (plot.frameExt) {
             latest.frameExt = plot.frameExt;
         }
-        this.activeSessionId = sessionId;
+        this.activate(sessionId);
         this.emitter.emit('change');
         return true;
     }
@@ -104,7 +194,6 @@ export class PlotHistory {
         }
         plot.rIndex = rIndex;
         session.plots[idx] = plot;
-        this.activeSessionId = sessionId;
         this.emitter.emit('change');
         return true;
     }
@@ -132,7 +221,6 @@ export class PlotHistory {
             plot.rIndex = expectedRIndex;
         }
         session.plots[session.plots.length - 1] = plot;
-        this.activeSessionId = sessionId;
         this.emitter.emit('change');
         return true;
     }
@@ -224,4 +312,28 @@ export class PlotHistory {
         this.emitter.emit('change');
         return session.plots[session.currentIndex];
     }
+}
+
+function isPlotFrame(value: unknown): value is PlotFrame {
+    if (!value || typeof value !== 'object') {
+        return false;
+    }
+    const frame = value as Partial<PlotFrame>;
+    const device = frame.device;
+    return (
+        typeof frame.version === 'number' &&
+        typeof frame.sessionId === 'string' &&
+        Array.isArray(frame.ops) &&
+        Boolean(
+            device &&
+            Number.isFinite(device.width) &&
+            device.width > 0 &&
+            Number.isFinite(device.height) &&
+            device.height > 0 &&
+            Number.isFinite(device.dpi) &&
+            device.dpi > 0 &&
+            (device.bg === null || typeof device.bg === 'string'),
+        ) &&
+        (frame.rIndex === undefined || (Number.isInteger(frame.rIndex) && frame.rIndex >= 0))
+    );
 }

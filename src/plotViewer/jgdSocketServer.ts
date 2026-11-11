@@ -34,6 +34,7 @@ interface RSession {
     lastResizeH: number;
     lastResizeHadPlotIndex: boolean;
     dpi: number;
+    deviceClosed?: boolean;
 }
 
 const isWindows = process.platform === 'win32';
@@ -52,7 +53,6 @@ export class JgdSocketServer {
     private socketDir: string = '';
     private sessions: Map<string, RSession> = new Map();
     private connectionListeners: ConnectionChangeListener[] = [];
-    private sessionCounter = 0;
     private readyListeners: (() => void)[] = [];
 
     private resizeListener: ((w: number, h: number) => void) | null = null;
@@ -100,19 +100,22 @@ export class JgdSocketServer {
     }
 
     handleResize(w: number, h: number) {
+        const sessionId = this.history.getActiveSessionId();
         const idx = this.history.currentIndex();
         const total = this.history.count();
         if ((total > 0 && idx < total) || (total > 0 && this.history.isLatestDeleted())) {
             const rIndex = this.history.currentRIndex();
             if (rIndex !== undefined) {
-                const sessionId = this.history.getActiveSessionId();
                 this.broadcastResize(w, h, rIndex, sessionId);
-            } else {
-                this.broadcastResize(w, h);
             }
         } else {
-            this.broadcastResize(w, h);
+            this.broadcastResize(w, h, undefined, sessionId);
         }
+    }
+
+    isConnected(sessionId: string): boolean {
+        const session = this.sessions.get(sessionId);
+        return !!session && !session.deviceClosed;
     }
 
     private notifyConnectionChange() {
@@ -191,7 +194,8 @@ export class JgdSocketServer {
     }
 
     private handleConnection(socket: net.Socket) {
-        const sessionId = `session-${++this.sessionCounter}`;
+        // A new device must never acquire a restored device's replay indices.
+        const sessionId = `session-${crypto.randomUUID()}`;
         // Metrics requests omit DPI. Use JGD's default until a frame announces
         // the device's resolution, then keep it specific to this connection.
         const session: RSession = {
@@ -267,6 +271,7 @@ export class JgdSocketServer {
                         if (Number.isFinite(plot.device?.dpi) && plot.device.dpi > 0) {
                             session.dpi = plot.device.dpi;
                         }
+                        const deviceLabel = plot.sessionId;
                         plot.sessionId = session.id;
                         plot.frameExt = msg.ext ?? null;
 
@@ -308,6 +313,9 @@ export class JgdSocketServer {
                             this.history.replaceLatest(session.id, plot as PlotFrame);
                         }
                         if (accepted) {
+                            if (typeof deviceLabel === 'string' && deviceLabel) {
+                                this.history.setSessionLabel(session.id, deviceLabel);
+                            }
                             this.onFrameFn?.(session.id, msg);
                         }
                     }
@@ -329,6 +337,7 @@ export class JgdSocketServer {
 
                 case 'close':
                     console.log(`jgd: session ${session.id} device closed`);
+                    session.deviceClosed = true;
                     this.onDeviceClosedFn?.(session.id);
                     break;
 
@@ -353,7 +362,7 @@ export class JgdSocketServer {
                 return;
             }
             const session = this.sessions.get(sessionId);
-            if (!session) {
+            if (!session || session.deviceClosed) {
                 return;
             }
             session.lastResizeW = w;
@@ -366,6 +375,9 @@ export class JgdSocketServer {
 
         const data = JSON.stringify({ type: 'resize', width: w, height: h }) + '\n';
         for (const session of this.sessions.values()) {
+            if (session.id !== sessionId || session.deviceClosed) {
+                continue;
+            }
             if (session.lastResizeW === w && session.lastResizeH === h) {
                 if (!session.lastResizeHadPlotIndex) {
                     continue;

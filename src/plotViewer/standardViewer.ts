@@ -1,7 +1,8 @@
 import * as vscode from 'vscode';
 import { asViewColumn, config, UriIcon } from '../util';
 import * as session from '../session';
-import { PlotViewer } from './types';
+import { PlotViewer, plotPanelPath } from './types';
+import { formatSessionLabel, ViewerSessionSource } from '../viewerSession';
 
 interface PlotResponse {
     data: string;
@@ -29,6 +30,37 @@ export class StandardPlotViewer implements PlotViewer {
     private pendingPlotRequest: PendingPlotRequest | undefined;
     private plotRequest: Promise<void> | undefined;
 
+    private source: ViewerSessionSource | undefined;
+
+    get sessionSource(): ViewerSessionSource | undefined {
+        return this.source;
+    }
+
+    constructor(private owner?: session.Session) {
+        if (owner) {
+            this.bindSession(owner);
+        }
+    }
+
+    bindSession(owner: session.Session): void {
+        this.owner = owner;
+        this.source = {
+            sessionId: owner.sessionId,
+            host: owner.host,
+            pid: owner.pid,
+            rVer: owner.rVer,
+            processExited: owner.processExited,
+        };
+    }
+
+    get isActive(): boolean {
+        return this.panel?.active ?? false;
+    }
+
+    getPanelPath(): string | undefined {
+        return plotPanelPath(this.panel);
+    }
+
     public async update(): Promise<void> {
         const viewColumn = asViewColumn(
             config().get<string>('session.viewers.viewColumn.plot'),
@@ -43,6 +75,14 @@ export class StandardPlotViewer implements PlotViewer {
     }
 
     public show(preserveFocus?: boolean): void {
+        if (!this.panel && this.owner && !this.owner.processExited) {
+            this.createPanel(
+                asViewColumn(
+                    config().get<string>('session.viewers.viewColumn.plot'),
+                    vscode.ViewColumn.Two,
+                ),
+            );
+        }
         if (this.panel) {
             this.panel.reveal(undefined, preserveFocus);
         }
@@ -64,7 +104,9 @@ export class StandardPlotViewer implements PlotViewer {
     private createPanel(viewColumn: vscode.ViewColumn) {
         const panel = vscode.window.createWebviewPanel(
             'r.standardPlot',
-            'R Plot',
+            this.source
+                ? `R Plot (${formatSessionLabel(this.source.rVer, this.source.pid)})`
+                : 'R Plot',
             {
                 viewColumn,
                 preserveFocus: true,
@@ -110,14 +152,14 @@ export class StandardPlotViewer implements PlotViewer {
 
     private requestPlot(): Promise<void> {
         const panel = this.panel;
-        if (!session.globalPipePath || !panel) {
+        if (!panel || this.owner?.processExited || (!this.owner && !session.globalPipePath)) {
             return Promise.resolve();
         }
 
         this.pendingPlotRequest = {
             panel,
             panelGeneration: this.panelGeneration,
-            targetSession: session.activeSession,
+            targetSession: this.owner ?? session.activeSession,
             width: this.viewWidth,
             height: this.viewHeight,
             format: config().get<string>('plot.format', 'svglite'),
@@ -217,10 +259,10 @@ export class StandardPlotViewer implements PlotViewer {
 
     private isCurrentRequest(request: PendingPlotRequest): boolean {
         return (
-            Boolean(session.globalPipePath) &&
+            (this.owner ? !this.owner.processExited : Boolean(session.globalPipePath)) &&
             this.panel === request.panel &&
             this.panelGeneration === request.panelGeneration &&
-            session.activeSession === request.targetSession
+            (this.owner ?? session.activeSession) === request.targetSession
         );
     }
 

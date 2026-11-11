@@ -4,6 +4,8 @@ import { HttpgdPlot, IHttpgdViewer, HttpgdViewerOptions } from './httpgdTypes';
 import * as path from 'path';
 import * as fs from 'fs';
 import ejs from 'ejs';
+import { randomUUID } from 'crypto';
+import { formatSessionLabel, isViewerSessionSource, ViewerSessionSource } from '../viewerSession';
 
 import { asViewColumn, config, setContext, UriIcon, makeWebviewCommandUriString } from '../util';
 import { extensionContext } from '../extension';
@@ -19,12 +21,91 @@ import {
     PreviewPlotLayoutMessage,
     ToggleFullWindowMessage,
 } from './webviewMessages';
-import { PlotViewer } from './types';
+import { PlotViewer, plotPanelPath } from './types';
+
+interface HttpgdConnection {
+    url: string;
+    source?: ViewerSessionSource;
+}
+
+function isHttpgdConnection(value: unknown): value is HttpgdConnection {
+    if (!value || typeof value !== 'object') {
+        return false;
+    }
+    const connection = value as Partial<HttpgdConnection>;
+    try {
+        return (
+            typeof connection.url === 'string' &&
+            ['http:', 'https:'].includes(new URL(connection.url).protocol) &&
+            (connection.source === undefined || isViewerSessionSource(connection.source))
+        );
+    } catch {
+        return false;
+    }
+}
 
 export class HttpgdManager {
     viewers: HttpgdViewer[] = [];
     viewerOptions: HttpgdViewerOptions;
     recentlyActiveViewers: HttpgdViewer[] = [];
+    private savedConnections: Promise<HttpgdConnection[]> = Promise.resolve([]);
+    private restoring: Promise<void> | undefined;
+    private secretKey: string | undefined;
+    private disposed = false;
+
+    dispose(): void {
+        this.disposed = true;
+        for (const viewer of this.viewers) {
+            viewer.dispose();
+        }
+    }
+
+    initialize(): void {
+        this.secretKey = extensionContext.workspaceState.get<string>('r.plot.httpgdConnectionsKey');
+        if (this.secretKey) {
+            // URLs contain device tokens, so keep them in SecretStorage.
+            this.savedConnections = Promise.resolve(extensionContext.secrets.get(this.secretKey))
+                .then((value) => {
+                    const connections: unknown = value ? JSON.parse(value) : [];
+                    return Array.isArray(connections) ? connections.filter(isHttpgdConnection) : [];
+                })
+                .catch(() => []);
+        }
+    }
+
+    restoreConnections(): Promise<void> {
+        this.restoring ??= this.savedConnections.then(async (connections) => {
+            for (const connection of connections) {
+                const origin = new URL(connection.url).origin;
+                // A session may already have attached with newer credentials.
+                if (!this.viewers.some((viewer) => viewer.origin === origin)) {
+                    await this.showViewer(connection.url, connection.source);
+                }
+            }
+        });
+        return this.restoring;
+    }
+
+    async saveConnections(): Promise<void> {
+        const connections = new Map(
+            (await this.savedConnections).map((connection) => [
+                new URL(connection.url).origin,
+                connection,
+            ]),
+        );
+        for (const viewer of this.viewers) {
+            connections.set(viewer.origin, viewer.connection);
+        }
+        if (!connections.size) {
+            return;
+        }
+        this.secretKey ??= `r.plot.httpgd.${randomUUID()}`;
+        await extensionContext.secrets.store(
+            this.secretKey,
+            JSON.stringify([...connections.values()]),
+        );
+        await extensionContext.workspaceState.update('r.plot.httpgdConnectionsKey', this.secretKey);
+    }
 
     constructor() {
         const htmlRoot = extensionContext.asAbsolutePath('dist/webviews/httpgd');
@@ -35,8 +116,11 @@ export class HttpgdManager {
         };
     }
 
-    public async showViewer(urlString: string): Promise<void> {
+    public async showViewer(urlString: string, source?: ViewerSessionSource): Promise<void> {
         await Promise.resolve();
+        if (this.disposed) {
+            return;
+        }
         const url = new URL(urlString);
         const token = url.searchParams.get('token') || undefined;
         const ind = this.viewers.findIndex((viewer) => viewer.origin === url.origin);
@@ -66,6 +150,7 @@ export class HttpgdManager {
         this.viewerOptions.resizeTimeoutLength = conf.get('plot.timing.resizeInterval', 100);
         this.viewerOptions.fullWindow = conf.get('plot.defaults.fullWindowMode', false);
         this.viewerOptions.token = token;
+        this.viewerOptions.source = source;
         const viewer = new HttpgdViewer(url.origin, this.viewerOptions);
         this.viewers.unshift(viewer);
     }
@@ -128,6 +213,15 @@ export class HttpgdViewer implements IHttpgdViewer, PlotViewer {
     webviewPanel?: vscode.WebviewPanel;
     readonly api: HttpgdClient;
     private disposed = false;
+    private readonly source?: ViewerSessionSource;
+
+    get connection(): HttpgdConnection {
+        const url = new URL(this.origin);
+        if (this.token) {
+            url.searchParams.set('token', this.token);
+        }
+        return { url: url.toString(), source: this.source };
+    }
     plots: HttpgdPlot<string>[] = [];
     activePlot?: HttpgdPlotId;
     hiddenPlots: HttpgdPlotId[] = [];
@@ -177,6 +271,7 @@ export class HttpgdViewer implements IHttpgdViewer, PlotViewer {
         this.origin = url.origin;
         this.id = this.host;
         this.token = options.token;
+        this.source = options.source;
         this.parent = options.parent;
 
         this.api = new HttpgdClient(this.origin, this.token);
@@ -428,13 +523,11 @@ export class HttpgdViewer implements IHttpgdViewer, PlotViewer {
     }
 
     public getPanelPath(): string | undefined {
-        if (!this.webviewPanel) {
-            return undefined;
-        }
-        const dummyUri = this.webviewPanel.webview.asWebviewUri(vscode.Uri.file(''));
-        const m = /^[^.]*/.exec(dummyUri.authority);
-        const webviewId = m?.[0] || '';
-        return `webview-panel/webview-${webviewId}`;
+        return plotPanelPath(this.webviewPanel);
+    }
+
+    public get isActive(): boolean {
+        return this.webviewPanel?.active ?? false;
     }
 
     protected getIndex(id: HttpgdPlotId): number {
@@ -631,7 +724,7 @@ export class HttpgdViewer implements IHttpgdViewer, PlotViewer {
             plots: this.plots,
             largePlot: this.plots[this.activeIndex],
             activePlot: this.activePlot,
-            host: this.host,
+            host: this.id,
             asLocalPath: asLocalPath,
             asWebViewPath: asWebViewPath,
             makeCommandUri: makeWebviewCommandUriString,
@@ -642,7 +735,9 @@ export class HttpgdViewer implements IHttpgdViewer, PlotViewer {
     protected makeNewWebview(showOptions?: ShowOptions): vscode.WebviewPanel {
         const webviewPanel = vscode.window.createWebviewPanel(
             'RPlot',
-            'R Plot',
+            this.source
+                ? `R Plot (${formatSessionLabel(this.source.rVer, this.source.pid)})`
+                : 'R Plot',
             showOptions || this.showOptions,
             this.webviewOptions,
         );

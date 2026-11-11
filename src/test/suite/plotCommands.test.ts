@@ -66,7 +66,7 @@ suite('Contextual plot commands', () => {
         );
     });
 
-    test('plot commands remain registered and route to the appropriate viewers', () => {
+    test('plot commands remain registered and route to the appropriate viewers', async () => {
         const sandbox = sinon.createSandbox();
         try {
             mockExtensionContext(extensionRoot, sandbox);
@@ -96,11 +96,11 @@ suite('Contextual plot commands', () => {
             const invoke = (command: string, ...args: unknown[]) => {
                 const registration = register.getCalls().find((call) => call.args[0] === command);
                 assert.ok(registration, `${command} must remain registered`);
-                (registration.args[1] as (...args: unknown[]) => void)(...args);
+                return (registration.args[1] as (...args: unknown[]) => Promise<void>)(...args);
             };
             for (const command of toolbarCommands) {
                 viewer.handleCommand.resetHistory();
-                invoke(command, vscode.Uri.parse('webview:/plot-viewer'));
+                await invoke(command, vscode.Uri.parse('webview:/plot-viewer'));
                 if (command === 'r.plot.openUrl') {
                     sinon.assert.calledOnce(openUrl);
                 } else {
@@ -112,11 +112,11 @@ suite('Contextual plot commands', () => {
             }
             for (const command of ['showIndex', 'hidePlot']) {
                 viewer.handleCommand.resetHistory();
-                invoke(`r.plot.${command}`, 'localhost:1234', 'plot-id');
+                await invoke(`r.plot.${command}`, 'localhost:1234', 'plot-id');
                 assert.strictEqual(viewer.handleCommand.callCount, 1);
                 assert.deepStrictEqual(viewer.handleCommand.firstCall.args, [command, 'plot-id']);
             }
-            invoke('r.plot.showViewers');
+            await invoke('r.plot.showViewers');
             assert.strictEqual(viewer.show.callCount, 1);
             assert.deepStrictEqual(viewer.show.firstCall.args, [true]);
             sinon.assert.calledOnceWithExactly(showJgdViewer, true);

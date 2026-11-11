@@ -73,7 +73,7 @@ suite('Session Communication', () => {
         plotPanelCleanup?.();
         plotPanelCleanup = undefined;
         const plotManager = extension.globalPlotManager as plotViewer.CommonPlotManager | undefined;
-        plotManager?.standardPlotViewer.dispose();
+        await plotManager?.dispose();
         const attachedSessionId = session.activeSession?.sessionId;
         if (rTerminal.rTerm) {
             rTerminal.rTerm.dispose();
