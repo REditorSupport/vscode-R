@@ -139,6 +139,9 @@ export class JgdManager {
         }
         this.started = true;
         this.server.setOnFrame((sessionId, message) => {
+            // Resolve the owner before reading the session cursor: the first frame
+            // from an explicit jgd() device may join an existing timeline here.
+            this.sourceForDevice(sessionId);
             const current = this.history.currentPlot(sessionId);
             if (current) {
                 const metadata = message.ext?.vscodeR;
@@ -246,7 +249,11 @@ export class JgdManager {
     }
 
     private findViewer(id: string): JgdViewer | undefined {
-        return [...this.viewers.values()].find((viewer) => viewer.sessionId === id);
+        const source = this.history.sessionSource(id);
+        return (
+            this.viewers.get(id) ??
+            (source ? this.viewers.get(sessionProcessIdentity(source)) : undefined)
+        );
     }
 
     getViewer(sessionId = this.history.getActiveSessionId()): JgdViewer | null {
@@ -261,7 +268,7 @@ export class JgdManager {
         const key = this.viewerKey(sessionId);
         let viewer = this.viewers.get(key);
         // A legacy device may acquire its owner after its first frame.
-        const previous = this.findViewer(sessionId);
+        const previous = this.viewers.get(sessionId);
         if (previous && previous !== viewer) {
             for (const [oldKey, value] of this.viewers) {
                 if (value === previous) {
@@ -423,6 +430,11 @@ export class JgdViewer implements PlotViewer {
         }
         this.sendPlotToWebview(plot);
         this.updateToolbar();
+        // A device can join an already-sized panel without a ResizeObserver event.
+        // The server deduplicates requests per device while R is still drawing.
+        if (plot.device.width !== this.panelWidth || plot.device.height !== this.panelHeight) {
+            this.server.handleResize(this.panelWidth, this.panelHeight, this.sessionId);
+        }
     }
 
     updateToolbar(force = false) {

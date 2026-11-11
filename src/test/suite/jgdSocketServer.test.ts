@@ -242,7 +242,7 @@ suite('JGD SocketServer', () => {
             assert.deepStrictEqual(history.latestPlot(id), latest);
         });
 
-        test('reconnects the original logical device without merging other sessions or devices', async () => {
+        test('reconnects the original device within its shared session history', async () => {
             const identity = {
                 sessionId: 'session-a',
                 host: 'localhost',
@@ -279,12 +279,12 @@ suite('JGD SocketServer', () => {
             const replacement = await connect();
             await sendFrame(replacement, 'restored', identity, true);
             assert.strictEqual(history.sessionIds().length, 3);
-            assert.strictEqual(history.count(id), 1);
+            assert.strictEqual(history.count(id), 2);
             assert.strictEqual(history.latestPlot(id)?.device.bg, 'restored');
             await waitMs(50); // Let the old socket close after its replacement connects.
             assert.ok(server.isConnected(id));
             await sendFrame(replacement, 'new plot', identity);
-            assert.strictEqual(history.count(id), 2);
+            assert.strictEqual(history.count(id), 3);
             assert.strictEqual(history.sessionIds().length, 3);
         });
 
@@ -333,6 +333,61 @@ suite('JGD SocketServer', () => {
                 (JSON.parse(await second.readLine()) as JgdMessage).type,
                 'metrics_response',
             );
+        });
+
+        test('shared navigation resizes the selected device and deduplicates its live size', async () => {
+            const first = await connect();
+            const second = await connect();
+            const source = {
+                sessionId: 'r',
+                host: 'host',
+                pid: '123',
+                rVer: '4.5.0',
+                processExited: false,
+            };
+            async function send(
+                client: ClientHelper,
+                label: string,
+                deviceId: string,
+                plotNumber: number,
+            ) {
+                client.send(
+                    makePlotMsg(label, 400, 300, {
+                        plotNumber,
+                        newPage: true,
+                        ext: { vscodeR: { ...source, deviceId } },
+                    }),
+                );
+                client.send({ type: 'metrics_request', id: 42, kind: 'strWidth', str: 'barrier' });
+                await client.readLine();
+            }
+            await send(first, 'A0', 'a', 0);
+            const firstId = history.getActiveSessionId();
+            await send(second, 'B0', 'b', 0);
+            const secondId = history.getActiveSessionId();
+            await send(first, 'A1', 'a', 1);
+            history.navigatePrevious(firstId); // B0 is still B's live plot.
+            server.handleResize(900, 700, firstId);
+            assert.deepStrictEqual(JSON.parse(await second.readLine()), {
+                type: 'resize',
+                width: 900,
+                height: 700,
+            });
+            server.handleResize(900, 700, firstId);
+            second.send({ type: 'metrics_request', id: 43, kind: 'strWidth', str: 'barrier' });
+            assert.strictEqual(
+                (JSON.parse(await second.readLine()) as JgdMessage).type,
+                'metrics_response',
+            );
+            history.navigateFirst(secondId); // A0 needs A's snapshot index, not B's.
+            server.handleResize(900, 700, secondId);
+            assert.deepStrictEqual(JSON.parse(await first.readLine()), {
+                type: 'resize',
+                width: 900,
+                height: 700,
+                plotIndex: 0,
+            });
+            assert.strictEqual(history.currentPlot(firstId)?.device.bg, 'A0');
         });
 
         test('routes normal frame to addPlot', async () => {

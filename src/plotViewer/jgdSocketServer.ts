@@ -103,15 +103,17 @@ export class JgdSocketServer {
     }
 
     handleResize(w: number, h: number, sessionId: string) {
-        const idx = this.history.currentIndex(sessionId);
-        const total = this.history.count(sessionId);
-        if ((total > 0 && idx < total) || (total > 0 && this.history.isLatestDeleted(sessionId))) {
-            const rIndex = this.history.currentRIndex(sessionId);
-            if (rIndex !== undefined) {
-                this.broadcastResize(w, h, rIndex, sessionId);
+        const plot = this.history.currentPlot(sessionId);
+        const deviceId = plot?.sessionId ?? sessionId;
+        if (
+            plot &&
+            (plot !== this.history.latestPlot(deviceId) || this.history.isLatestDeleted(deviceId))
+        ) {
+            if (plot.rIndex !== undefined) {
+                this.broadcastResize(w, h, plot.rIndex, deviceId);
             }
         } else {
-            this.broadcastResize(w, h, undefined, sessionId);
+            this.broadcastResize(w, h, undefined, deviceId);
         }
     }
 
@@ -230,6 +232,7 @@ export class JgdSocketServer {
                         serverName: SERVER_NAME,
                         protocolVersion: 1,
                         transport: isWindows ? 'npipe' : 'unix',
+                        serverInfo: { deviceId: sessionId },
                     };
                     socket.write(JSON.stringify(welcome) + '\n');
 
@@ -298,6 +301,19 @@ export class JgdSocketServer {
                                     rVer: identity.rVer,
                                     processExited: false,
                                 };
+                                if (
+                                    'restoring' in identity &&
+                                    identity.restoring === true &&
+                                    'previousDeviceId' in identity &&
+                                    typeof identity.previousDeviceId === 'string' &&
+                                    !this.isConnected(identity.previousDeviceId)
+                                ) {
+                                    this.history.restoreDeviceIdentity(
+                                        identity.previousDeviceId,
+                                        id,
+                                        session.source,
+                                    );
+                                }
                                 this.sessions.set(id, session);
                                 // Historical R replay indices belong to the old
                                 // physical device, not this replacement socket.

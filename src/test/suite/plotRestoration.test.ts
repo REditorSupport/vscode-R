@@ -405,8 +405,8 @@ suite('Standalone plot restoration', () => {
         }
         value.jgdManager.history.addPlot('unknown', frame('unknown'));
         value.jgdManager.history.addPlot('empty', frame('empty'));
-        value.jgdManager.history.setSessionSource('empty', a);
         value.jgdManager.history.clear('empty');
+        value.jgdManager.history.setSessionSource('empty', a);
         for (const { panel } of panels) {
             panel.dispose();
         }
@@ -443,6 +443,38 @@ suite('Standalone plot restoration', () => {
         panels[0].panel.dispose();
         await callbacks.get('r.plot.showViewers')!();
         assert.strictEqual(panels.length, 2, 'one replacement tab after closing');
+    });
+
+    test('an explicit device joins the session history and gets the existing panel dimensions', async () => {
+        const value = manager();
+        const deliver = startJgd(value);
+        const history = value.jgdManager.history;
+        const source = owner('a', '123');
+        const resize = sandbox.stub(value.jgdManager.server, 'handleResize');
+        sandbox.stub(value.jgdManager.server, 'isConnected').returns(true);
+        sandbox
+            .stub(session, 'resolveJgdSessionSource')
+            .callsFake((label) => (label === 'r-123-2' ? source : undefined));
+        history.addPlot('managed', frame('managed', 'first'));
+        history.setSessionSource('managed', source);
+        deliver('managed', { type: 'frame' });
+        await panels[0].receive({ type: 'resize', width: 900, height: 700 });
+        resize.resetHistory();
+        history.addPlot('explicit', frame('explicit', 'second'));
+        history.setSessionLabel('explicit', 'r-123-2');
+        deliver('explicit', { type: 'frame', newPage: true });
+        assert.strictEqual(panels.length, 1);
+        assert.strictEqual(history.count('managed'), 2);
+        sinon.assert.calledOnceWithExactly(resize, 900, 700, 'explicit');
+        sinon.assert.calledWith(panels[0].post, { type: 'toolbar', current: 2, total: 2 });
+        const viewer = value.jgdManager.getViewers()[0];
+        await viewer.handleCommand('prevPlot');
+        assert.strictEqual(history.currentPlot('explicit')?.device.bg, 'first');
+        history.replaceLatest('explicit', frame('explicit', 'second resized'));
+        deliver('explicit', { type: 'frame', resizeReplay: true });
+        assert.strictEqual(history.currentPlot('explicit')?.device.bg, 'first');
+        await viewer.handleCommand('nextPlot');
+        assert.strictEqual(history.currentPlot('managed')?.device.bg, 'second resized');
     });
 
     test('JGD measures an earlier device through its session viewer without switching plots', async () => {

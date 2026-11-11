@@ -231,7 +231,7 @@ runtime_start <- function(use_rstudioapi = TRUE,
     package_version(getNamespaceVersion("httpgd")) >= "2.0.1"
   selected_backend <- .select_plot_backend(plot_backend, has_httpgd, has_jgd)
   if (selected_backend == "jgd") {
-    open_jgd_device <- function(key = NULL, recorded = NULL) {
+    open_jgd_device <- function(key = NULL, recorded = NULL, previous_device_id = NULL) {
       jgd::jgd()
       .runtime_track_device()
       if (is.null(key)) {
@@ -249,7 +249,8 @@ runtime_start <- function(use_rstudioapi = TRUE,
             sessionId = .session_id(), host = unname(Sys.info()[["nodename"]]),
             pid = as.character(Sys.getpid()),
             rVer = sprintf("%s.%s", R.version$major, R.version$minor),
-            processExited = FALSE, deviceId = key, restoring = restoring
+            processExited = FALSE, deviceId = key, restoring = restoring,
+            previousDeviceId = previous_device_id
           )), auto_unbox = TRUE))
         }
       }
@@ -273,7 +274,15 @@ runtime_start <- function(use_rstudioapi = TRUE,
       grDevices::dev.set(id)
       info <- tryCatch(jgd::jgd_server_info(), error = function(e) NULL)
       if (identical(info$server_name, "jgd-vscode")) {
-        retained[[length(retained) + 1L]] <- list(id = unname(id), name = "jgd")
+        # JGD retains the renderer welcome even after its socket disconnects.
+        # Carry its original identity so reconnect preserves the saved history.
+        previous_device_id <- unname(info$server_info["deviceId"])
+        if (length(previous_device_id) != 1L || is.na(previous_device_id) || !nzchar(previous_device_id)) {
+          previous_device_id <- NULL
+        }
+        retained[[length(retained) + 1L]] <- list(
+          id = unname(id), name = "jgd", previous_device_id = previous_device_id
+        )
       }
     }
     state$devices <- list()
@@ -288,7 +297,7 @@ runtime_start <- function(use_rstudioapi = TRUE,
       grDevices::dev.set(entry$id)
       recorded <- tryCatch(grDevices::recordPlot(), error = function(e) NULL)
       tryCatch(grDevices::dev.off(entry$id), error = function(e) NULL)
-      open_jgd_device(entry$key, recorded)
+      open_jgd_device(entry$key, recorded, entry$previous_device_id)
       if (identical(unname(previous), entry$id)) previous <- grDevices::dev.cur()
     }
     if (previous %in% grDevices::dev.list()) grDevices::dev.set(previous)

@@ -189,7 +189,7 @@ suite('Live R plot reconnect', function () {
                 if (reuseDevice) {
                     await evaluate('stopifnot(dev.cur() == old_device); TRUE');
                 }
-                const plotsBeforeReload = reuseDevice ? 1 : 2;
+                const plotsBeforeReload = 2;
                 let originalId: string | undefined;
                 let httpgdUrl: string | undefined;
                 if (backend === 'jgd') {
@@ -199,7 +199,17 @@ suite('Live R plot reconnect', function () {
                             ? history.getActiveSessionId()
                             : undefined,
                     );
-                    if (!explicitDevice) {
+                    if (explicitDevice) {
+                        // The extension resolves explicit devices through the attached
+                        // session and native PID label before persisting their history.
+                        const source = await evaluate(
+                            'list(sessionId=sess:::.session_id(), host=unname(Sys.info()[["nodename"]]), pid=as.character(Sys.getpid()), rVer=as.character(getRversion()), processExited=FALSE)',
+                        );
+                        history.setSessionSource(
+                            originalId,
+                            source as unknown as import('../../viewerSession').ViewerSessionSource,
+                        );
+                    } else {
                         assert.ok(history.sessionSource(originalId)?.sessionId);
                     }
                 } else if (backend === 'httpgd') {
@@ -275,22 +285,29 @@ suite('Live R plot reconnect', function () {
                 await startServers();
                 await connect();
                 if (explicitDevice) {
-                    // The untracked device has no logical ID yet. Reopening
-                    // assigns one, while retaining its archived JSON history.
+                    // Reopening assigns a logical ID and transfers the existing
+                    // timeline entry, rather than duplicating its current plot.
                     const restoredId = await until(() =>
                         history.sessionIds().find((id) => !deviceIds.includes(id)),
                     );
                     assert.ok(history.sessionSource(restoredId)?.sessionId);
                     assert.ok(jgd!.isConnected(restoredId));
-                    assert.equal(history.count(restoredId), 1);
-                    assert.equal(history.count(originalId), 2);
+                    assert.equal(history.count(restoredId), 2);
+                    assert.equal(history.count(originalId), 0);
+                    assert.equal(history.sessionIds().length, 1);
+                    history.navigateFirst(restoredId);
+                    assert.equal(history.currentRIndex(restoredId), undefined);
+                    assert.ok(
+                        JSON.stringify(history.currentPlot(restoredId)?.ops).includes('first plot'),
+                    );
+                    history.navigateLast(restoredId);
                     assert.ok(
                         JSON.stringify(history.latestPlot(restoredId)?.ops).includes(
                             'before reload',
                         ),
                     );
                     await evaluate('plot(2:4, main="after reload"); TRUE');
-                    await until(() => (history.count(restoredId) === 2 ? true : undefined));
+                    await until(() => (history.count(restoredId) === 3 ? true : undefined));
                     assert.ok(
                         JSON.stringify(history.latestPlot(restoredId)?.ops).includes(
                             'after reload',
@@ -332,7 +349,7 @@ suite('Live R plot reconnect', function () {
                     history.navigateFirst(originalId);
                     assert.equal(
                         history.currentRIndex(originalId),
-                        reuseDevice ? 0 : undefined,
+                        reuseDevice ? closedHistory!.plots[0].rIndex : undefined,
                         'old replay indices must not target the replacement device',
                     );
                     history.navigateLast(originalId);
