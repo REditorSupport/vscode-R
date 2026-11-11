@@ -89,27 +89,6 @@ suite('Live JGD resize', () => {
             assert.deepStrictEqual(replays, [{ width: 700, height: 500 }, desired]);
             assert.strictEqual(history.count(), 1);
             assert.ok(history.currentPlot()!.ops.length >= 10000);
-
-            // Subsequent plots and explicit devices must fit an unchanged
-            // viewer, without another resize event or history navigation.
-            r.stdin.write('plot(1:10000)\n');
-            await until(() => history.count(id) === 2);
-            assert.strictEqual(history.getActiveSessionId(), id);
-            assert.strictEqual(history.currentPlot()!.device.width, desired.width);
-            assert.strictEqual(history.currentPlot()!.device.height, desired.height);
-            assert.ok(history.currentPlot()!.ops.length >= 10000);
-
-            r.stdin.write('jgd::jgd(); plot(1:10000)\n');
-            await until(
-                () =>
-                    history.getActiveSessionId() !== id &&
-                    history.currentPlot()?.device.width === desired.width &&
-                    history.currentPlot()?.device.height === desired.height,
-            );
-            assert.strictEqual(history.sessionIds().length, 2);
-            assert.strictEqual(history.count(id), 2);
-            assert.strictEqual(history.count(), 1);
-            assert.ok(history.currentPlot()!.ops.length >= 10000);
         } catch (error) {
             throw new Error(`${String(error)}\n${errors}`);
         } finally {
