@@ -322,12 +322,10 @@ export class JgdSocketServer {
                                 : undefined;
 
                         let accepted = true;
-                        if (restoring) {
-                            plot.rIndex = msg.plotNumber;
-                            accepted = msg.incremental
-                                ? this.history.appendOps(session.id, plot as PlotFrame)
-                                : this.history.replaceLatest(session.id, plot as PlotFrame);
-                        } else if (isResizeReplay && plotIndex !== undefined) {
+                        // JGD snapshots retain frame extensions, including
+                        // restoring=true. Resize routing must take precedence
+                        // so historical replays cannot replace the latest plot.
+                        if (isResizeReplay && plotIndex !== undefined) {
                             accepted = this.history.replaceAtIndex(
                                 session.id,
                                 plotIndex,
@@ -344,6 +342,11 @@ export class JgdSocketServer {
                                 plot as PlotFrame,
                                 plotNumber,
                             );
+                        } else if (restoring) {
+                            plot.rIndex = msg.plotNumber;
+                            accepted = msg.incremental
+                                ? this.history.appendOps(session.id, plot as PlotFrame)
+                                : this.history.replaceLatest(session.id, plot as PlotFrame);
                         } else if (msg.incremental) {
                             accepted = this.history.appendOps(session.id, plot as PlotFrame);
                         } else if (msg.newPage) {

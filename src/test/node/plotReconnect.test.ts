@@ -6,7 +6,7 @@ import * as net from 'node:net';
 import { spawn, execFile, ChildProcessWithoutNullStreams } from 'node:child_process';
 import { promisify } from 'node:util';
 import { PlotHistory } from '../../plotViewer/jgdPlotHistory';
-import { JgdSocketServer } from '../../plotViewer/jgdSocketServer';
+import { JgdMessage, JgdSocketServer } from '../../plotViewer/jgdSocketServer';
 import { HttpgdClient } from '../../plotViewer/httpgdClient';
 
 const run = promisify(execFile);
@@ -216,6 +216,36 @@ suite('Live R plot reconnect', function () {
                     await evaluate('plot(2:4, main="after reload"); TRUE');
                     await until(() => (history.count(originalId) === 3 ? true : undefined));
                     assert.deepEqual(history.sessionIds(), [originalId]);
+
+                    // JGD stores frame extensions in snapshots, so resizing the
+                    // restored plot still sends restoring=true after a new plot.
+                    const latest = structuredClone(history.latestPlot(originalId!));
+                    history.navigatePrevious(originalId);
+                    assert.equal(history.currentRIndex(originalId), 0);
+                    let resized: JgdMessage | undefined;
+                    jgd!.setOnFrame((_id, message) => {
+                        if (message.resizeReplay) {
+                            resized = message;
+                        }
+                    });
+                    jgd!.handleResize(900, 700, originalId!);
+                    await evaluate('.Call(jgd:::C_jgd_poll_resize); TRUE');
+                    const response = await until(() => resized);
+                    assert.equal(response.plotIndex, 0);
+                    assert.equal(
+                        (response.ext?.vscodeR as { restoring?: boolean })?.restoring,
+                        true,
+                    );
+                    assert.equal(history.currentPlot(originalId)?.device.width, 900);
+                    assert.equal(history.currentPlot(originalId)?.device.height, 700);
+                    assert.equal(history.currentRIndex(originalId), 0);
+                    assert.equal(history.currentIndex(originalId), 2);
+                    assert.equal(history.count(originalId), 3);
+                    assert.deepEqual(
+                        history.latestPlot(originalId!),
+                        latest,
+                        'resizing the restored historical plot must preserve the new plot',
+                    );
                 } else if (backend === 'httpgd') {
                     assert.equal(
                         await until(

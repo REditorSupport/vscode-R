@@ -164,6 +164,84 @@ suite('JGD SocketServer', () => {
     }
 
     suite('frame routing', () => {
+        test('resize replays retain their target when snapshots carry restoration metadata', async () => {
+            const identity = {
+                sessionId: 'session-a',
+                host: 'localhost',
+                pid: '123',
+                rVer: '4.5.0',
+                processExited: false,
+                deviceId: '1',
+            };
+            async function sendFrame(client: ClientHelper, message: object) {
+                client.send(message);
+                client.send({ type: 'metrics_request', id: 42, kind: 'strWidth', str: 'barrier' });
+                await client.readLine();
+            }
+            const original = await connect();
+            await sendFrame(
+                original,
+                makePlotMsg('original', 400, 300, {
+                    newPage: true,
+                    plotNumber: 0,
+                    ext: { vscodeR: identity },
+                }),
+            );
+            const id = history.getActiveSessionId();
+            const replacement = await connect();
+            const ext = { vscodeR: { ...identity, restoring: true } };
+            await sendFrame(
+                replacement,
+                makePlotMsg('restored', 400, 300, {
+                    newPage: true,
+                    plotNumber: 0,
+                    ext,
+                }),
+            );
+            assert.strictEqual(history.count(id), 1, 'initial replay replaces the latest plot');
+            await sendFrame(
+                replacement,
+                makePlotMsg('new plot', 400, 300, {
+                    newPage: true,
+                    plotNumber: 1,
+                    ext: { vscodeR: identity },
+                }),
+            );
+            const latest = structuredClone(history.latestPlot(id));
+            history.navigatePrevious(id);
+            const resize = makePlotMsg('resized restored plot', 900, 700, {
+                resizeReplay: true,
+                plotIndex: 0,
+                plotNumber: 1,
+                ext,
+            });
+            await sendFrame(replacement, resize);
+            assert.strictEqual(history.currentPlot(id)?.device.bg, 'resized restored plot');
+            assert.strictEqual(history.currentRIndex(id), 0);
+            assert.strictEqual(history.currentIndex(id), 1);
+            assert.strictEqual(history.count(id), 2);
+            assert.deepStrictEqual(history.latestPlot(id), latest);
+
+            history.removeCurrent(id);
+            await sendFrame(replacement, resize);
+            assert.strictEqual(
+                history.count(id),
+                1,
+                'late resize must not resurrect a deleted plot',
+            );
+            assert.deepStrictEqual(history.latestPlot(id), latest);
+
+            await sendFrame(
+                replacement,
+                makePlotMsg('stale current-page resize', 900, 700, {
+                    resizeReplay: true,
+                    plotNumber: 0,
+                    ext,
+                }),
+            );
+            assert.deepStrictEqual(history.latestPlot(id), latest);
+        });
+
         test('reconnects the original logical device without merging other sessions or devices', async () => {
             const identity = {
                 sessionId: 'session-a',
