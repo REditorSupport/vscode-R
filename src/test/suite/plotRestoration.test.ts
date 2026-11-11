@@ -162,6 +162,7 @@ suite('Standalone plot restoration', () => {
                 );
                 assert.strictEqual(owned.length, 3, 'each backend has its own session indicator');
                 for (const item of owned) {
+                    assert.strictEqual(item.panel.title, 'R Plot');
                     assert.ok(item.panel.webview.html.includes('class="viewer-session-tooltip"'));
                     assert.ok(item.panel.webview.html.includes('codicon.css'));
                     item.post.resetHistory();
@@ -357,8 +358,8 @@ suite('Standalone plot restoration', () => {
         assert.strictEqual(panels.length, 2);
         history.setSessionLabel('b', 'r-456-1');
         await panels[1].receive({ type: 'ready' });
-        assert.ok(panels[0].panel.title.includes('123'));
-        assert.ok(panels[1].panel.title.includes('456'));
+        assert.strictEqual(panels[0].panel.title, 'R Plot');
+        assert.strictEqual(panels[1].panel.title, 'R Plot');
         assert.ok(!panels[0].panel.webview.html.includes('session-select'));
         panels[1].post.resetHistory();
 
@@ -471,7 +472,7 @@ suite('Standalone plot restoration', () => {
                     plot: sinon.match({ sessionId: id, device: sinon.match({ bg }) }),
                 }),
             );
-            assert.ok(panels[index].panel.title.includes('disconnected'));
+            assert.strictEqual(panels[index].panel.title, 'R Plot');
         }
         await restored.jgdManager.getViewer('b')!.handleCommand('firstPlot');
         assert.strictEqual(restored.jgdManager.history.currentIndex('a'), 1);

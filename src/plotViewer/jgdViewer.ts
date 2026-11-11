@@ -349,15 +349,6 @@ export class JgdViewer implements PlotViewer {
         if (!this.panel) {
             return;
         }
-        const deviceLabel = this.history.sessionLabel(this.sessionId);
-        const process = deviceLabel && /^r-(\d+)-(\d+)$/.exec(deviceLabel);
-        const label = process
-            ? `R PID ${process[1]} · device ${process[2]}`
-            : deviceLabel || `JGD ${this.sessionId}`;
-        const title = `R Plot (${label}${this.server.isConnected(this.sessionId) ? '' : ' (disconnected)'})`;
-        if (this.panel.title !== title) {
-            this.panel.title = title;
-        }
         const message = {
             type: 'toolbar',
             current: this.history.currentIndex(this.sessionId),
@@ -534,7 +525,7 @@ export class JgdViewer implements PlotViewer {
 
         this.panel = vscode.window.createWebviewPanel(
             'jgd.plotPane',
-            'R Plot (JGD)',
+            'R Plot',
             { viewColumn, preserveFocus },
             {
                 enableScripts: true,

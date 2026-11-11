@@ -6,7 +6,6 @@ import * as fs from 'fs';
 import ejs from 'ejs';
 import { randomUUID } from 'crypto';
 import {
-    formatSessionLabel,
     isViewerSessionSource,
     viewerSessionStyle,
     ViewerSessionContext,
@@ -777,9 +776,7 @@ export class HttpgdViewer implements IHttpgdViewer, PlotViewer {
     protected makeNewWebview(showOptions?: ShowOptions): vscode.WebviewPanel {
         const webviewPanel = vscode.window.createWebviewPanel(
             'RPlot',
-            this.source
-                ? `R Plot (${formatSessionLabel(this.source.rVer, this.source.pid)})`
-                : 'R Plot',
+            'R Plot',
             showOptions || this.showOptions,
             this.webviewOptions,
         );

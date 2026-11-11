@@ -3,7 +3,6 @@ import { asViewColumn, config, UriIcon } from '../util';
 import * as session from '../session';
 import { PlotViewer, plotPanelPath } from './types';
 import {
-    formatSessionLabel,
     getViewerSessionScript,
     viewerSessionStyle,
     ViewerSessionContext,
@@ -110,9 +109,7 @@ export class StandardPlotViewer implements PlotViewer {
     private createPanel(viewColumn: vscode.ViewColumn) {
         const panel = vscode.window.createWebviewPanel(
             'r.standardPlot',
-            this.source
-                ? `R Plot (${formatSessionLabel(this.source.rVer, this.source.pid)})`
-                : 'R Plot',
+            'R Plot',
             {
                 viewColumn,
                 preserveFocus: true,
