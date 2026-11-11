@@ -26,8 +26,14 @@ const createRealWebviewPanel = vscode.window.createWebviewPanel;
 const executeRealCommand = vscode.commands.executeCommand;
 
 class RefreshViewer extends HttpgdViewer {
-    receivePlots(ids: string[]): Promise<void> {
-        return this.refreshPlots(ids.map((id) => ({ id })));
+    receivePlots(ids: string[], changed?: ReadonlySet<string>, force = false): Promise<void> {
+        return this.refreshPlots(
+            ids.map((id) => ({ id })),
+            false,
+            force,
+            undefined,
+            changed,
+        );
     }
 }
 
@@ -1272,6 +1278,87 @@ suite('Standalone plot restoration', () => {
         sinon.assert.notCalled(replacementCommand);
         await callbacks.get('r.plot.hidePlot')!('localhost:1234', 'replacement-plot');
         sinon.assert.calledOnceWithExactly(replacementCommand, 'hidePlot', 'replacement-plot');
+    });
+
+    test('httpgd refreshes changed inactive plots but reuses unchanged geometry', async () => {
+        const value = manager();
+        const viewer = new RefreshViewer(
+            'http://localhost:1234',
+            value.httpgdManager.viewerOptions,
+        );
+        value.httpgdManager.registerViewer(viewer);
+        sandbox.stub(viewer.api, 'isActive').returns(false);
+        const render = sandbox.stub(viewer.api, 'getPlotText').resolves('<svg>original</svg>');
+        await viewer.receivePlots(['a'], new Set(['a']));
+        render.resolves('<svg>annotation</svg>');
+        await viewer.receivePlots(['a'], new Set(['a']));
+        assert.strictEqual(viewer.plots[0].data, '<svg>annotation</svg>');
+        sinon.assert.calledTwice(render);
+
+        viewer.viewWidth = 900;
+        await viewer.receivePlots(['a']);
+        assert.strictEqual(viewer.plots[0].width, 900);
+        sinon.assert.calledTwice(render);
+    });
+
+    test('httpgd commits healthy devices when a closed device has an uncached plot', async () => {
+        const value = manager();
+        const viewer = new RefreshViewer(
+            'http://localhost:1234',
+            value.httpgdManager.viewerOptions,
+        );
+        value.httpgdManager.registerViewer(viewer);
+        sandbox.stub(viewer.api, 'isActive').callsFake((id) => id.startsWith('b'));
+        const render = sandbox.stub(viewer.api, 'getPlotText').resolves('<svg/>');
+        const error = sandbox.stub(vscode.window, 'showErrorMessage');
+        await viewer.receivePlots(['a1', 'b1'], new Set(['a1', 'b1']));
+        const retained = viewer.plots[0];
+        render.withArgs(sinon.match({ id: 'a2' })).rejects(new Error('device closed'));
+        await viewer.receivePlots(['a1', 'b1', 'a2', 'b2'], new Set(['a2', 'b2']));
+        assert.deepStrictEqual(
+            viewer.plots.map((plot) => plot.id),
+            ['a1', 'b1', 'b2'],
+        );
+        assert.strictEqual(viewer.plots[0], retained);
+        assert.strictEqual(viewer.activePlot, 'b2');
+        sinon.assert.calledOnce(error);
+
+        // Another device's notifications must not keep retrying the closed one.
+        await viewer.receivePlots(['a1', 'b1', 'a2', 'b2', 'b3'], new Set(['b3']));
+        assert.strictEqual(viewer.activePlot, 'b3');
+        sinon.assert.calledOnce(render.withArgs(sinon.match({ id: 'a2' })));
+        sinon.assert.calledOnce(error);
+
+        // An explicit refresh can recover a temporarily unavailable device.
+        render.withArgs(sinon.match({ id: 'a2' })).resolves('<svg>recovered</svg>');
+        await viewer.receivePlots(['a1', 'b1', 'a2', 'b2', 'b3'], new Set(), true);
+        assert.ok(viewer.plots.some((plot) => plot.id === 'a2'));
+    });
+
+    test('httpgd keeps failed content invalidated until its device becomes active again', async () => {
+        const value = manager();
+        const viewer = new RefreshViewer(
+            'http://localhost:1234',
+            value.httpgdManager.viewerOptions,
+        );
+        value.httpgdManager.registerViewer(viewer);
+        const active = sandbox.stub(viewer.api, 'isActive').returns(false);
+        const render = sandbox.stub(viewer.api, 'getPlotText').resolves('<svg>original</svg>');
+        sandbox.stub(vscode.window, 'showErrorMessage');
+        await viewer.receivePlots(['a'], new Set(['a']));
+        render.rejects(new Error('temporarily unavailable'));
+        await viewer.receivePlots(['a'], new Set(['a']));
+        assert.strictEqual(viewer.plots[0].data, '<svg>original</svg>');
+        await viewer.receivePlots(['a'], new Set());
+        sinon.assert.calledTwice(render);
+
+        active.returns(true);
+        render.resolves('<svg>annotation</svg>');
+        await viewer.receivePlots(['a'], new Set());
+        assert.strictEqual(viewer.plots[0].data, '<svg>annotation</svg>');
+        sinon.assert.calledThrice(render);
+        await viewer.receivePlots(['a'], new Set());
+        sinon.assert.calledThrice(render);
     });
 
     test('httpgd coalesces notifications arriving during a slow render without losing plots', async () => {

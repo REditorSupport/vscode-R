@@ -61,3 +61,42 @@ if (requireNamespace("httpgd", quietly = TRUE) &&
   expect_true(replacement %in% grDevices::dev.list())
   expect_true(first %in% grDevices::dev.list())
 })
+
+if (requireNamespace("httpgd", quietly = TRUE) &&
+    packageVersion("httpgd") >= "2.0.1") local({
+  # A restored-device notification can fail after attach succeeds. No runtime
+  # hooks or bindings may be installed after that failure cleans up the runtime.
+  has_rstudioapi <- requireNamespace("rstudioapi", quietly = TRUE)
+  original_available <- if (has_rstudioapi) rstudioapi::isAvailable else NULL
+  original_hook <- getHook(packageEvent("rstudioapi", "onLoad"))
+  original_callbacks <- getTaskCallbackNames()
+  original_device <- getOption("device")
+  original_hgd <- httpgd::hgd
+  sess_env <- sess:::.sess_env
+  previous_connection <- sess_env$con
+  httpgd::hgd(silent = TRUE)
+  device <- grDevices::dev.cur()
+  cons <- processx::conn_create_pipepair()
+  close(cons[[1L]])
+  sess_env$con <- cons[[2L]]
+  on.exit({
+    sess:::runtime_stop()
+    sess_env$con <- previous_connection
+    try(close(cons[[2L]]), silent = TRUE)
+    if (device %in% grDevices::dev.list()) grDevices::dev.off(device)
+  }, add = TRUE)
+
+  suppressWarnings(sess:::runtime_start(use_rstudioapi = TRUE, plot_backend = "httpgd"))
+  expect_null(sess_env$con)
+  state <- sess:::.runtime_state()
+  expect_false(isTRUE(state$active))
+  for (field in c("hooks", "bindings", "task_callbacks", "options", "s3_methods")) {
+    expect_length(state[[field]], 0L)
+  }
+  expect_identical(getTaskCallbackNames(), original_callbacks)
+  expect_identical(getHook(packageEvent("rstudioapi", "onLoad")), original_hook)
+  expect_identical(getOption("device"), original_device)
+  expect_identical(httpgd::hgd, original_hgd)
+  if (has_rstudioapi) expect_identical(rstudioapi::isAvailable, original_available)
+  expect_true(device %in% grDevices::dev.list())
+})

@@ -361,6 +361,8 @@ export class HttpgdViewer implements IHttpgdViewer, PlotViewer {
     private refreshTask?: Promise<void>;
     private requestGeneration = 0;
     private changedPlots = new Set<string>();
+    private stalePlots = new Set<string>();
+    private failedPlots = new Set<string>();
     private pendingReveal = false;
 
     get isDisposed(): boolean {
@@ -895,26 +897,66 @@ export class HttpgdViewer implements IHttpgdViewer, PlotViewer {
         const hidden = new Set(this.hiddenPlots);
         const existing = new Map(this.plots.map((plot) => [plot.id, plot]));
         const plotIds = plotsIdResponse.map((x) => x.id).filter((id) => !hidden.has(id));
-        const newPlotPromises = plotIds.map(async (id) => {
+        const incoming = new Set(plotIds);
+        for (const tracked of [this.stalePlots, this.failedPlots]) {
+            for (const id of tracked) {
+                if (!incoming.has(id)) {
+                    tracked.delete(id);
+                }
+            }
+        }
+        for (const id of changed ?? []) {
+            if (incoming.has(id)) {
+                this.stalePlots.add(id);
+                this.failedPlots.delete(id);
+            }
+        }
+        const refreshIds = plotIds.filter((id) => {
+            // A closed device must not be retried on every other device's update.
+            // Retry on content changes, reactivation, reconnect or explicit refresh.
+            if (this.failedPlots.has(id) && !this.api.isActive(id) && !force) {
+                return false;
+            }
             const plot = existing.get(id);
-            if (force || !plot || (changed ? changed.has(id) : id === this.activePlot)) {
-                return await this.getPlotContent(
+            return (
+                force || !plot || this.stalePlots.has(id) || (!changed && id === this.activePlot)
+            );
+        });
+        const results = await Promise.allSettled(
+            refreshIds.map((id) =>
+                this.getPlotContent(
                     id,
                     this.viewWidth,
                     this.viewHeight,
                     this.zoom,
-                    plot ?? null,
-                );
-            } else {
-                return plot;
-            }
-        });
-        const newPlots = await Promise.all(newPlotPromises);
+                    existing.get(id) ?? null,
+                ),
+            ),
+        );
         if (!this.canRefresh || generation !== this.requestGeneration) {
             return;
         }
+        const refreshed = new Map<string, HttpgdPlot<string>>();
+        results.forEach((result, index) => {
+            const id = refreshIds[index];
+            if (result.status === 'fulfilled') {
+                refreshed.set(id, result.value);
+                this.stalePlots.delete(id);
+                this.failedPlots.delete(id);
+            } else {
+                if (!this.failedPlots.has(id)) {
+                    this.reportRefreshError(result.reason);
+                }
+                this.failedPlots.add(id);
+            }
+        });
+        // Preserve cached failures, omit unavailable uncached plots, and commit
+        // successful renders from other devices without losing their updates.
+        const newPlots = plotIds
+            .map((id) => refreshed.get(id) ?? existing.get(id))
+            .filter((plot): plot is HttpgdPlot<string> => plot !== undefined);
         const oldPlotIds = new Set(this.plots.map((plt) => plt.id));
-        const newPlotIds = new Set(plotIds);
+        const newPlotIds = new Set(newPlots.map((plot) => plot.id));
         this.plots = newPlots;
         this.restoring = false;
         const added = this.plots.filter((plot) => !oldPlotIds.has(plot.id));
@@ -981,9 +1023,9 @@ export class HttpgdViewer implements IHttpgdViewer, PlotViewer {
         zoom: number,
         cached: HttpgdPlot<string> | null = this.plots.find((plot) => plot.id === id) ?? null,
     ): Promise<HttpgdPlot<string>> {
-        if (cached && !this.api.isActive(id)) {
-            // SVG scales with the panel. Do not replay or refetch a retained
-            // inactive device, which may already have been closed in R.
+        if (cached && !this.api.isActive(id) && !this.stalePlots.has(id)) {
+            // Unchanged inactive plots only need scaling. Changed content must
+            // still be fetched; HttpgdDevices omits resize arguments for it.
             return { ...cached, width, height, zoom };
         }
         const args = {
@@ -1183,6 +1225,8 @@ export class HttpgdViewer implements IHttpgdViewer, PlotViewer {
         this.plots = [];
         this.hiddenPlots = [];
         this.activePlot = undefined;
+        this.stalePlots.clear();
+        this.failedPlots.clear();
         this.api.releasePlots();
     }
 
@@ -1190,6 +1234,7 @@ export class HttpgdViewer implements IHttpgdViewer, PlotViewer {
         this.requestGeneration++;
         this.pendingRefresh = undefined;
         this.changedPlots.clear();
+        this.failedPlots.clear();
         this.pendingReveal = false;
         clearTimeout(this.resizeTimeout);
         clearTimeout(this.refreshTimeout);

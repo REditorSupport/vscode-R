@@ -338,13 +338,6 @@ runtime_start <- function(use_rstudioapi = TRUE,
   } else if (selected_backend == "httpgd") {
     # Notify for both explicit and default devices; own only factory devices.
     .runtime_set_option("device", .install_httpgd_device_hook())
-    # Discover live servers on reconnect without adopting their devices. A plain
-    # unigd device has no HTTP server and must not prevent the others restoring.
-    devs <- grDevices::dev.list()
-    for (id in devs[names(devs) %in% c("httpgd", "unigd")]) {
-      url <- tryCatch(httpgd::hgd_url(which = id), error = function(e) NULL)
-      if (!is.null(url)) notify_client("httpgd", list(url = url, restoring = TRUE))
-    }
   } else if (selected_backend == "standard") {
     # If a specific interactive backend was explicitly requested but is
     # unavailable, warn before silently degrading to the standard viewer.
@@ -452,10 +445,19 @@ runtime_start <- function(use_rstudioapi = TRUE,
   .runtime_add_task_callback(.workspace_update_task_callback, name = "sess.workspace")
 
   completed <- TRUE
-  # Announce the refreshed record only after setup is complete: a failed write
+  # Announce retained plots only after setup is complete: a failed write
   # can stop the runtime, so no callbacks should be installed after this point.
   if (selected_backend == "standard" && !is.null(.sess_env$latest_plot_record)) {
     notify_client("plot_updated", list(restoring = TRUE))
+  } else if (selected_backend == "httpgd") {
+    # Discover live servers without adopting their devices. A plain unigd
+    # device has no HTTP server and must not prevent the others restoring.
+    devs <- grDevices::dev.list()
+    for (id in devs[names(devs) %in% c("httpgd", "unigd")]) {
+      url <- tryCatch(httpgd::hgd_url(which = id), error = function(e) NULL)
+      if (!is.null(url)) notify_client("httpgd", list(url = url, restoring = TRUE))
+      if (!isTRUE(state$active)) break
+    }
   }
   invisible(NULL)
 }
