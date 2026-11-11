@@ -23,14 +23,12 @@ interface SessionHistory {
 
 export interface PlotHistoryState {
     activeSessionId: string;
-    selectedSessionId?: string;
     sessions: Array<SessionHistory & { id: string }>;
 }
 
 export class PlotHistory {
     private sessions: Map<string, SessionHistory> = new Map();
     private activeSessionId: string = '';
-    private selectedSessionId: string | undefined;
     private maxPlots: number;
     private emitter = new EventEmitter();
 
@@ -47,17 +45,17 @@ export class PlotHistory {
     }
 
     setSessionLabel(sessionId: string, label: string): void {
+        label = label.slice(0, 256);
         const history = this.sessions.get(sessionId);
         if (history && history.label !== label) {
-            history.label = label.slice(0, 256);
-            this.emitter.emit('change');
+            history.label = label;
+            this.emitter.emit('change', sessionId);
         }
     }
 
     snapshot(): PlotHistoryState {
         return {
             activeSessionId: this.activeSessionId,
-            selectedSessionId: this.selectedSessionId,
             sessions: [...this.sessions].map(([id, history]) => ({ id, ...history })),
         };
     }
@@ -97,30 +95,10 @@ export class PlotHistory {
             state.activeSessionId && this.sessions.has(state.activeSessionId)
                 ? state.activeSessionId
                 : (this.sessionIds().at(-1) ?? '');
-        this.selectedSessionId =
-            state.selectedSessionId && this.sessions.has(state.selectedSessionId)
-                ? state.selectedSessionId
-                : undefined;
         this.emitter.emit('change');
     }
 
-    selectSession(sessionId: string): boolean {
-        if (!this.sessions.has(sessionId)) {
-            return false;
-        }
-        this.selectedSessionId = sessionId;
-        this.activeSessionId = sessionId;
-        this.emitter.emit('change');
-        return true;
-    }
-
-    private activate(sessionId: string): void {
-        if (!this.selectedSessionId) {
-            this.activeSessionId = sessionId;
-        }
-    }
-
-    onDidChange(listener: () => void): { dispose(): void } {
+    onDidChange(listener: (sessionId?: string) => void): { dispose(): void } {
         this.emitter.on('change', listener);
         return {
             dispose: () => {
@@ -142,8 +120,8 @@ export class PlotHistory {
             session.plots.shift();
         }
         session.currentIndex = session.plots.length - 1;
-        this.activate(sessionId);
-        this.emitter.emit('change');
+        this.activeSessionId = sessionId;
+        this.emitter.emit('change', sessionId);
     }
 
     replaceCurrent(sessionId: string, plot: PlotFrame) {
@@ -156,8 +134,8 @@ export class PlotHistory {
             plot.rIndex = old.rIndex;
         }
         session.plots[session.currentIndex] = plot;
-        this.activate(sessionId);
-        this.emitter.emit('change');
+        this.activeSessionId = sessionId;
+        this.emitter.emit('change', sessionId);
     }
 
     appendOps(sessionId: string, plot: PlotFrame): boolean {
@@ -178,8 +156,8 @@ export class PlotHistory {
         if (plot.frameExt) {
             latest.frameExt = plot.frameExt;
         }
-        this.activate(sessionId);
-        this.emitter.emit('change');
+        this.activeSessionId = sessionId;
+        this.emitter.emit('change', sessionId);
         return true;
     }
 
@@ -194,7 +172,7 @@ export class PlotHistory {
         }
         plot.rIndex = rIndex;
         session.plots[idx] = plot;
-        this.emitter.emit('change');
+        this.emitter.emit('change', sessionId);
         return true;
     }
 
@@ -221,12 +199,12 @@ export class PlotHistory {
             plot.rIndex = expectedRIndex;
         }
         session.plots[session.plots.length - 1] = plot;
-        this.emitter.emit('change');
+        this.emitter.emit('change', sessionId);
         return true;
     }
 
-    currentPlot(): PlotFrame | null {
-        const session = this.sessions.get(this.activeSessionId);
+    currentPlot(sessionId = this.activeSessionId): PlotFrame | null {
+        const session = this.sessions.get(sessionId);
         if (!session || session.currentIndex < 0) {
             return null;
         }
@@ -237,23 +215,34 @@ export class PlotHistory {
         return this.sessions.get(sessionId)?.plots.at(-1);
     }
 
-    navigatePrevious(): PlotFrame | null {
-        const session = this.sessions.get(this.activeSessionId);
-        if (!session || session.currentIndex <= 0) {
-            return null;
-        }
-        session.currentIndex--;
-        this.emitter.emit('change');
-        return session.plots[session.currentIndex];
+    navigatePrevious(sessionId = this.activeSessionId): PlotFrame | null {
+        return this.navigateTo(this.currentIndex(sessionId) - 2, sessionId);
     }
 
-    navigateNext(): PlotFrame | null {
-        const session = this.sessions.get(this.activeSessionId);
-        if (!session || session.currentIndex >= session.plots.length - 1) {
+    navigateNext(sessionId = this.activeSessionId): PlotFrame | null {
+        return this.navigateTo(this.currentIndex(sessionId), sessionId);
+    }
+
+    navigateFirst(sessionId = this.activeSessionId): PlotFrame | null {
+        return this.navigateTo(0, sessionId);
+    }
+
+    navigateLast(sessionId = this.activeSessionId): PlotFrame | null {
+        return this.navigateTo(this.count(sessionId) - 1, sessionId);
+    }
+
+    private navigateTo(index: number, sessionId: string): PlotFrame | null {
+        const session = this.sessions.get(sessionId);
+        if (
+            !session ||
+            index < 0 ||
+            index >= session.plots.length ||
+            index === session.currentIndex
+        ) {
             return null;
         }
-        session.currentIndex++;
-        this.emitter.emit('change');
+        session.currentIndex = index;
+        this.emitter.emit('change', sessionId);
         return session.plots[session.currentIndex];
     }
 
@@ -261,38 +250,38 @@ export class PlotHistory {
         return this.activeSessionId;
     }
 
-    currentIndex(): number {
-        const session = this.sessions.get(this.activeSessionId);
+    currentIndex(sessionId = this.activeSessionId): number {
+        const session = this.sessions.get(sessionId);
         return session ? session.currentIndex + 1 : 0;
     }
 
-    currentRIndex(): number | undefined {
-        const plot = this.currentPlot();
+    currentRIndex(sessionId = this.activeSessionId): number | undefined {
+        const plot = this.currentPlot(sessionId);
         return plot?.rIndex;
     }
 
-    count(): number {
-        const session = this.sessions.get(this.activeSessionId);
+    count(sessionId = this.activeSessionId): number {
+        const session = this.sessions.get(sessionId);
         return session ? session.plots.length : 0;
     }
 
-    clear() {
-        const session = this.sessions.get(this.activeSessionId);
+    clear(sessionId = this.activeSessionId) {
+        const session = this.sessions.get(sessionId);
         if (session) {
             session.plots = [];
             session.currentIndex = -1;
             session.latestDeleted = false;
         }
-        this.emitter.emit('change');
+        this.emitter.emit('change', sessionId);
     }
 
-    isLatestDeleted(): boolean {
-        const session = this.sessions.get(this.activeSessionId);
+    isLatestDeleted(sessionId = this.activeSessionId): boolean {
+        const session = this.sessions.get(sessionId);
         return session ? session.latestDeleted : false;
     }
 
-    removeCurrent(): PlotFrame | null {
-        const session = this.sessions.get(this.activeSessionId);
+    removeCurrent(sessionId = this.activeSessionId): PlotFrame | null {
+        const session = this.sessions.get(sessionId);
         if (!session || session.plots.length === 0) {
             return null;
         }
@@ -303,13 +292,13 @@ export class PlotHistory {
         }
         if (session.plots.length === 0) {
             session.currentIndex = -1;
-            this.emitter.emit('change');
+            this.emitter.emit('change', sessionId);
             return null;
         }
         if (session.currentIndex >= session.plots.length) {
             session.currentIndex = session.plots.length - 1;
         }
-        this.emitter.emit('change');
+        this.emitter.emit('change', sessionId);
         return session.plots[session.currentIndex];
     }
 }

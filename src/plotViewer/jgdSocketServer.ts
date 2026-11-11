@@ -7,7 +7,7 @@ import { PlotHistory, PlotFrame } from './jgdPlotHistory';
 
 const SERVER_NAME = 'jgd-vscode';
 
-export type ConnectionChangeListener = (count: number) => void;
+export type ConnectionChangeListener = (count: number, sessionId: string) => void;
 
 export interface JgdMessage {
     type: string;
@@ -40,11 +40,11 @@ interface RSession {
 const isWindows = process.platform === 'win32';
 
 export interface JgdMeasureText {
-    (request: JgdMessage, dpi: number): Promise<unknown>;
+    (request: JgdMessage, dpi: number, sessionId: string): Promise<unknown>;
 }
 
 export interface JgdGetDimensions {
-    (): { width: number; height: number } | null;
+    (sessionId: string): { width: number; height: number } | null;
 }
 
 export class JgdSocketServer {
@@ -99,12 +99,11 @@ export class JgdSocketServer {
         this.onDeviceClosedFn = fn;
     }
 
-    handleResize(w: number, h: number) {
-        const sessionId = this.history.getActiveSessionId();
-        const idx = this.history.currentIndex();
-        const total = this.history.count();
-        if ((total > 0 && idx < total) || (total > 0 && this.history.isLatestDeleted())) {
-            const rIndex = this.history.currentRIndex();
+    handleResize(w: number, h: number, sessionId: string) {
+        const idx = this.history.currentIndex(sessionId);
+        const total = this.history.count(sessionId);
+        if ((total > 0 && idx < total) || (total > 0 && this.history.isLatestDeleted(sessionId))) {
+            const rIndex = this.history.currentRIndex(sessionId);
             if (rIndex !== undefined) {
                 this.broadcastResize(w, h, rIndex, sessionId);
             }
@@ -118,10 +117,10 @@ export class JgdSocketServer {
         return !!session && !session.deviceClosed;
     }
 
-    private notifyConnectionChange() {
+    private notifyConnectionChange(sessionId: string) {
         const count = this.sessions.size;
         for (const l of this.connectionListeners) {
-            l(count);
+            l(count, sessionId);
         }
     }
 
@@ -209,7 +208,7 @@ export class JgdSocketServer {
             dpi: 96,
         };
         this.sessions.set(sessionId, session);
-        this.notifyConnectionChange();
+        this.notifyConnectionChange(sessionId);
 
         socket.on('data', (data) => {
             session.buffer += data.toString();
@@ -231,7 +230,7 @@ export class JgdSocketServer {
                     };
                     socket.write(JSON.stringify(welcome) + '\n');
 
-                    const dims = this.getDimensionsFn?.();
+                    const dims = this.getDimensionsFn?.(sessionId);
                     if (dims) {
                         session.lastResizeW = dims.width;
                         session.lastResizeH = dims.height;
@@ -251,13 +250,13 @@ export class JgdSocketServer {
 
         socket.on('close', () => {
             this.sessions.delete(sessionId);
-            this.notifyConnectionChange();
+            this.notifyConnectionChange(sessionId);
         });
 
         socket.on('error', (err) => {
             console.error(`jgd session ${sessionId} error:`, err.message);
             this.sessions.delete(sessionId);
-            this.notifyConnectionChange();
+            this.notifyConnectionChange(sessionId);
         });
     }
 
@@ -310,7 +309,7 @@ export class JgdSocketServer {
                             }
                             this.history.addPlot(session.id, plot as PlotFrame);
                         } else {
-                            this.history.replaceLatest(session.id, plot as PlotFrame);
+                            accepted = this.history.replaceLatest(session.id, plot as PlotFrame);
                         }
                         if (accepted) {
                             if (typeof deviceLabel === 'string' && deviceLabel) {
@@ -324,7 +323,7 @@ export class JgdSocketServer {
 
                 case 'metrics_request':
                     if (this.measureTextFn) {
-                        void this.measureTextFn(msg, session.dpi)
+                        void this.measureTextFn(msg, session.dpi, session.id)
                             .then((response: unknown) => {
                                 const resp = JSON.stringify(response) + '\n';
                                 session.socket.write(resp);
@@ -357,14 +356,11 @@ export class JgdSocketServer {
     }
 
     private broadcastResize(w: number, h: number, plotIndex?: number, sessionId?: string) {
+        const session = sessionId ? this.sessions.get(sessionId) : undefined;
+        if (!session || session.deviceClosed) {
+            return;
+        }
         if (plotIndex !== undefined) {
-            if (!sessionId) {
-                return;
-            }
-            const session = this.sessions.get(sessionId);
-            if (!session || session.deviceClosed) {
-                return;
-            }
             session.lastResizeW = w;
             session.lastResizeH = h;
             session.lastResizeHadPlotIndex = true;
@@ -373,20 +369,16 @@ export class JgdSocketServer {
             return;
         }
 
-        const data = JSON.stringify({ type: 'resize', width: w, height: h }) + '\n';
-        for (const session of this.sessions.values()) {
-            if (session.id !== sessionId || session.deviceClosed) {
-                continue;
-            }
-            if (session.lastResizeW === w && session.lastResizeH === h) {
-                if (!session.lastResizeHadPlotIndex) {
-                    continue;
-                }
-            }
-            session.lastResizeHadPlotIndex = false;
-            session.lastResizeW = w;
-            session.lastResizeH = h;
-            session.socket.write(data);
+        if (
+            session.lastResizeW === w &&
+            session.lastResizeH === h &&
+            !session.lastResizeHadPlotIndex
+        ) {
+            return;
         }
+        session.lastResizeHadPlotIndex = false;
+        session.lastResizeW = w;
+        session.lastResizeH = h;
+        session.socket.write(JSON.stringify({ type: 'resize', width: w, height: h }) + '\n');
     }
 }

@@ -6,6 +6,8 @@ import * as sinon from 'sinon';
 import * as vscode from 'vscode';
 import { CommonPlotManager } from '../../plotViewer';
 import { JgdManager } from '../../plotViewer/jgdViewer';
+import type { JgdMessage } from '../../plotViewer/jgdSocketServer';
+import type { PlotFrame } from '../../plotViewer/jgdPlotHistory';
 import { HttpgdClient } from '../../plotViewer/httpgdClient';
 import { extensionContext } from '../../extension';
 import * as session from '../../session';
@@ -65,6 +67,7 @@ suite('Standalone plot restoration', () => {
             get: (_key: string, fallback: unknown) => fallback,
         } as vscode.WorkspaceConfiguration);
         sandbox.stub(vscode.window, 'createWebviewPanel').callsFake((viewType, title) => {
+            const panelId = panels.length;
             const disposed = new vscode.EventEmitter<void>();
             let receive = (_message: unknown): unknown => undefined;
             const post = sandbox.stub().resolves(true);
@@ -79,7 +82,7 @@ suite('Standalone plot restoration', () => {
                     asWebviewUri: (uri: vscode.Uri) =>
                         uri.with({
                             scheme: 'https',
-                            authority: `panel${panels.length}.vscode-resource.vscode-cdn.net`,
+                            authority: `panel${panelId}.vscode-resource.vscode-cdn.net`,
                         }),
                     onDidReceiveMessage: (callback: typeof receive) => {
                         receive = callback;
@@ -149,6 +152,181 @@ suite('Standalone plot restoration', () => {
             data: 'fresh-from-R',
             format: 'svg',
         });
+        request.resetHistory();
+        resolve.resetHistory();
+        await callbacks.get('r.plot.showViewers')!();
+        sinon.assert.notCalled(request);
+        sinon.assert.calledOnce(resolve);
+        assert.strictEqual(panels.length, 1);
+        const reattached = {
+            sessionId: owner.sessionId,
+            host: owner.host,
+            pid: owner.pid,
+            rVer: owner.rVer,
+            processExited: false,
+        } as session.Session;
+        resolve.returns(reattached);
+        panels[0].panel.dispose();
+        await callbacks.get('r.plot.showViewers')!();
+        await panels[1].receive({ type: 'ready' });
+        sinon.assert.calledOnce(request);
+        assert.strictEqual(request.lastCall.args[1], reattached);
+    });
+
+    function startJgd(value: CommonPlotManager) {
+        (JgdManager.prototype.start as sinon.SinonStub).callThrough();
+        sandbox.stub(value.jgdManager.server, 'start');
+        const onFrame = sandbox.stub(value.jgdManager.server, 'setOnFrame');
+        value.jgdManager.start();
+        return onFrame.firstCall.args[0] as (id: string, message: JgdMessage) => void;
+    }
+
+    function frame(sessionId: string, bg = 'white'): PlotFrame {
+        return {
+            version: 1,
+            sessionId,
+            device: { width: 400, height: 300, dpi: 96, bg },
+            ops: [],
+        };
+    }
+
+    test('JGD frames update only their own viewer without redundant toolbar messages', async () => {
+        const value = manager();
+        const deliver = startJgd(value);
+        const history = value.jgdManager.history;
+        history.addPlot('a', frame('a'));
+        history.setSessionLabel('a', 'r-123-1');
+        deliver('a', { type: 'frame' });
+        await panels[0].receive({ type: 'ready' });
+        const post = panels[0].post;
+        post.resetHistory();
+        for (let index = 0; index < 100; index++) {
+            history.addPlot('b', frame('b'));
+            deliver('b', { type: 'frame' });
+        }
+        sinon.assert.notCalled(post);
+        assert.strictEqual(panels.length, 2);
+        history.setSessionLabel('b', 'r-456-1');
+        await panels[1].receive({ type: 'ready' });
+        assert.ok(panels[0].panel.title.includes('123'));
+        assert.ok(panels[1].panel.title.includes('456'));
+        assert.ok(!panels[0].panel.webview.html.includes('session-select'));
+        panels[1].post.resetHistory();
+
+        for (let index = 0; index < 100; index++) {
+            history.appendOps('a', { ...frame('a'), ops: [{ op: 'line', index }] });
+            deliver('a', { type: 'frame' });
+        }
+        assert.strictEqual(post.withArgs(sinon.match({ type: 'render' })).callCount, 100);
+        sinon.assert.notCalled(post.withArgs(sinon.match({ type: 'toolbar' })));
+        sinon.assert.notCalled(panels[1].post);
+        assert.strictEqual(history.currentPlot('a')?.ops.length, 100);
+        await panels[0].receive({ type: 'ready' });
+        sinon.assert.calledOnce(post.withArgs(sinon.match({ type: 'toolbar' })));
+    });
+
+    test('JGD tabs independently navigate, resize, measure text, remove plots and reopen', async () => {
+        const value = manager();
+        const metrics = sandbox.spy(value.jgdManager.server, 'setMeasureText');
+        const dimensions = sandbox.spy(value.jgdManager.server, 'setGetDimensions');
+        const deliver = startJgd(value);
+        const resize = sandbox.stub(value.jgdManager.server, 'handleResize');
+        const history = value.jgdManager.history;
+        for (const id of ['a', 'b']) {
+            history.addPlot(id, frame(id, `${id}1`));
+            history.addPlot(id, frame(id, `${id}2`));
+            deliver(id, { type: 'frame' });
+            await panels.at(-1)!.receive({ type: 'ready' });
+        }
+        const a = value.jgdManager.getViewer('a')!;
+        const b = value.jgdManager.getViewer('b')!;
+        assert.notStrictEqual(a.id, b.id);
+        Object.assign(panels[0].panel, { active: false });
+        assert.strictEqual(value.activeViewer, b);
+        await callbacks.get('r.plot.prevPlot')!(
+            vscode.Uri.from({ scheme: 'webview', path: a.getPanelPath()! }),
+        );
+        assert.strictEqual(history.currentIndex('a'), 1);
+        assert.strictEqual(history.currentIndex('b'), 2);
+        sinon.assert.calledWithExactly(resize, 800, 600, 'a');
+        await panels[0].receive({ type: 'resize', width: 700, height: 500 });
+        await panels[1].receive({ type: 'resize', width: 900, height: 650 });
+        sinon.assert.calledWithExactly(resize, 700, 500, 'a');
+        sinon.assert.calledWithExactly(resize, 900, 650, 'b');
+        const getDimensions = dimensions.firstCall.args[0];
+        assert.deepStrictEqual(getDimensions('a'), { width: 700, height: 500 });
+        assert.deepStrictEqual(getDimensions('b'), { width: 900, height: 650 });
+        const measure = metrics.firstCall.args[0];
+        panels[0].post.resetHistory();
+        panels[1].post.resetHistory();
+        const measured = measure(
+            { type: 'metrics_request', id: 7, kind: 'strWidth', str: 'x' },
+            96,
+            'a',
+        );
+        const request = panels[0].post.lastCall.args[0] as { id: number };
+        sinon.assert.notCalled(panels[1].post);
+        await panels[0].receive({
+            type: 'metrics_response',
+            id: request.id,
+            originalId: 7,
+            width: 42,
+            ascent: 10,
+            descent: 3,
+        });
+        assert.deepStrictEqual(await measured, {
+            type: 'metrics_response',
+            id: 7,
+            width: 42,
+            ascent: 10,
+            descent: 3,
+        });
+        await panels[0].receive({ type: 'deleteCurrent' });
+        assert.strictEqual(history.count('a'), 1);
+        assert.strictEqual(history.count('b'), 2);
+        await b.handleCommand('resetPlots');
+        assert.strictEqual(history.count('a'), 1);
+        assert.strictEqual(history.count('b'), 0);
+        panels[0].panel.dispose();
+        await callbacks.get('r.plot.showViewers')!();
+        assert.strictEqual(panels.length, 3, 'only the closed tab is recreated');
+        await panels[2].receive({ type: 'ready' });
+        sinon.assert.calledWith(
+            panels[2].post,
+            sinon.match({ type: 'render', plot: sinon.match({ sessionId: 'a' }) }),
+        );
+    });
+
+    test('JGD restores separate tabs with each session history position after reload', async () => {
+        const first = manager();
+        const history = first.jgdManager.history;
+        history.addPlot('a', frame('a', 'a1'));
+        history.addPlot('a', frame('a', 'a2'));
+        history.addPlot('b', frame('b', 'b1'));
+        history.addPlot('b', frame('b', 'b2'));
+        history.navigatePrevious('a');
+        await first.dispose();
+        const restored = manager();
+        assert.strictEqual(panels.length, 0);
+        await callbacks.get('r.plot.showViewers')!();
+        assert.strictEqual(panels.length, 2);
+        for (const [index, id, bg] of [
+            [0, 'a', 'a1'],
+            [1, 'b', 'b2'],
+        ] as const) {
+            await panels[index].receive({ type: 'ready' });
+            sinon.assert.calledWith(
+                panels[index].post,
+                sinon.match({
+                    type: 'render',
+                    plot: sinon.match({ sessionId: id, device: sinon.match({ bg }) }),
+                }),
+            );
+            assert.ok(panels[index].panel.title.includes('disconnected'));
+        }
+        await restored.jgdManager.getViewer('b')!.handleCommand('firstPlot');
+        assert.strictEqual(restored.jgdManager.history.currentIndex('a'), 1);
+        assert.strictEqual(restored.jgdManager.history.currentIndex('b'), 1);
     });
 
     test('standard restoration waits for the owning session instead of showing an archived image', async () => {
@@ -287,6 +465,25 @@ suite('Standalone plot restoration', () => {
         await callbacks.get('r.plot.showViewers')!();
         assert.deepStrictEqual(restored.httpgdManager.viewers, [live]);
         assert.strictEqual(live.token, 'new');
+    });
+
+    test('httpgd restoration keeps credentials from an attachment arriving at its async boundary', async () => {
+        const first = manager();
+        await first.showHttpgdPlot('http://localhost:1234/live?token=old');
+        await first.dispose();
+        const restored = manager();
+        const show = restored.httpgdManager.showViewer.bind(restored.httpgdManager);
+        sandbox
+            .stub(restored.httpgdManager, 'showViewer')
+            .callsFake((url, source, onlyIfMissing) => {
+                if (new URL(url).searchParams.get('token') === 'old') {
+                    void show('http://localhost:1234/live?token=new');
+                }
+                return show(url, source, onlyIfMissing);
+            });
+        await callbacks.get('r.plot.showViewers')!();
+        assert.strictEqual(restored.httpgdManager.viewers.length, 1);
+        assert.strictEqual(restored.httpgdManager.viewers[0].token, 'new');
     });
 
     test('a real JGD webview receives and exports restored frames after its ready handshake', async () => {

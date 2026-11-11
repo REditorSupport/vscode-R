@@ -66,10 +66,7 @@ export class CommonPlotManager implements PlotManager {
 
     get viewers(): PlotViewer[] {
         const viewers: PlotViewer[] = [...this.httpgdManager.viewers];
-        const jgdViewer = this.jgdManager.getViewer();
-        if (jgdViewer) {
-            viewers.push(jgdViewer);
-        }
+        viewers.push(...this.jgdManager.getViewers());
         viewers.push(this.standardPlotViewer);
         viewers.push(...this.standardViewers.values());
         return viewers;
@@ -127,6 +124,9 @@ export class CommonPlotManager implements PlotManager {
     // Start the JGD server when the backend allows it, so switching to jgd
     // takes effect on the next R (re)start without reloading VS Code.
     private applyBackend(): void {
+        if (this.disposed) {
+            return;
+        }
         const backend = resolveBackend();
         void vscode.commands.executeCommand('setContext', 'r.plot.backend', backend);
         const envCollection = extensionContext.environmentVariableCollection;
@@ -143,9 +143,13 @@ export class CommonPlotManager implements PlotManager {
     }
 
     public async showStandardPlot(target = activeSession): Promise<void> {
-        if (!target) {
+        if (!target || this.disposed) {
             return;
         }
+        await this.getStandardViewer(target).update();
+    }
+
+    private getStandardViewer(target: Session): StandardPlotViewer {
         const key = sessionProcessIdentity(target);
         let viewer = this.standardViewers.get(key);
         if (!viewer) {
@@ -154,7 +158,7 @@ export class CommonPlotManager implements PlotManager {
         } else {
             viewer.bindSession(target);
         }
-        await viewer.update();
+        return viewer;
     }
 
     public async showHttpgdPlot(url: string, target?: Session): Promise<void> {
@@ -225,7 +229,9 @@ export class CommonPlotManager implements PlotManager {
             for (const source of this.restoredStandardSessions) {
                 const target = resolvePlotSession(source);
                 if (target) {
-                    await this.showStandardPlot(target);
+                    // Opening the panel below requests its plot on readiness. Do
+                    // not wait for R or refresh viewers that are already restored.
+                    this.getStandardViewer(target);
                 } else if (!this.standardViewers.has(sessionProcessIdentity(source))) {
                     unavailable = true;
                 }

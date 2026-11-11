@@ -164,7 +164,7 @@ suite('JGD SocketServer', () => {
     }
 
     suite('frame routing', () => {
-        test('resizes only the selected device, including its latest plot', async () => {
+        test('resizes only the requested device, regardless of the latest active session', async () => {
             const first = await connect();
             const second = await connect();
             first.send(makePlotMsg('A'));
@@ -173,8 +173,7 @@ suite('JGD SocketServer', () => {
             const firstId = history
                 .sessionIds()
                 .find((id) => history.latestPlot(id)?.device.bg === 'A')!;
-            history.selectSession(firstId);
-            server.handleResize(1000, 700);
+            server.handleResize(1000, 700, firstId);
             assert.strictEqual((JSON.parse(await first.readLine()) as JgdMessage).type, 'resize');
             second.send({ type: 'metrics_request', id: 42, kind: 'strWidth', str: 'barrier' });
             assert.strictEqual(
@@ -246,7 +245,7 @@ suite('JGD SocketServer', () => {
             assert.strictEqual(history.count(), 1);
             assert.strictEqual(history.currentPlot()?.device.bg, 'RED');
 
-            server.handleResize(1000, 700);
+            server.handleResize(1000, 700, history.getActiveSessionId());
             const resizeMsg = JSON.parse(await client.readLine()) as {
                 type: string;
                 plotIndex: number;
@@ -318,11 +317,11 @@ suite('JGD SocketServer', () => {
             assert.strictEqual(measuredRequests.length, 1);
         });
 
-        test('font measurement uses each device DPI without leaking across connections', async () => {
+        test('font measurement receives the owning session and DPI without leaking across connections', async () => {
             const first = await connect();
             const second = await connect();
-            server.setMeasureText((request, dpi) =>
-                Promise.resolve({ type: 'metrics_response', id: request.id, dpi }),
+            server.setMeasureText((request, dpi, sessionId) =>
+                Promise.resolve({ type: 'metrics_response', id: request.id, dpi, sessionId }),
             );
             first.send({
                 type: 'frame',
@@ -335,8 +334,18 @@ suite('JGD SocketServer', () => {
             });
             first.send({ type: 'metrics_request', id: 1, kind: 'strWidth', str: 'hello' });
             second.send({ type: 'metrics_request', id: 2, kind: 'strWidth', str: 'hello' });
-            assert.strictEqual((JSON.parse(await first.readLine()) as { dpi: number }).dpi, 144);
-            assert.strictEqual((JSON.parse(await second.readLine()) as { dpi: number }).dpi, 96);
+            const firstResponse = JSON.parse(await first.readLine()) as {
+                dpi: number;
+                sessionId: string;
+            };
+            const secondResponse = JSON.parse(await second.readLine()) as {
+                dpi: number;
+                sessionId: string;
+            };
+            assert.strictEqual(firstResponse.dpi, 144);
+            assert.strictEqual(secondResponse.dpi, 96);
+            assert.strictEqual(firstResponse.sessionId, history.getActiveSessionId());
+            assert.notStrictEqual(firstResponse.sessionId, secondResponse.sessionId);
         });
     });
 });

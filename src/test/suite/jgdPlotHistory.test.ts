@@ -65,6 +65,19 @@ suite('JGD PlotHistory', () => {
             assert.strictEqual(history.navigateNext(), null);
             assert.strictEqual(history.currentIndex(), 3);
         });
+
+        test('first and last navigation emit one change without visiting intermediate plots', () => {
+            let changes = 0;
+            history.onDidChange(() => changes++);
+            assert.strictEqual(history.navigateFirst()?.device.bg, 'A');
+            assert.strictEqual(changes, 1);
+            assert.strictEqual(history.navigateFirst(), null);
+            assert.strictEqual(changes, 1);
+            assert.strictEqual(history.navigateLast()?.device.bg, 'C');
+            assert.strictEqual(changes, 2);
+            assert.strictEqual(history.navigateLast(), null);
+            assert.strictEqual(changes, 2);
+        });
     });
 
     suite('removeCurrent', () => {
@@ -327,29 +340,29 @@ suite('JGD PlotHistory', () => {
     });
 
     suite('multi-session', () => {
-        test('selects an existing session without drawing and retains its navigation', () => {
+        test('navigates and removes plots in one session without changing another', () => {
             history.addPlot('s1', makePlot('A'));
             history.addPlot('s1', makePlot('B'));
-            history.navigatePrevious();
             history.addPlot('s2', makePlot('C'));
-            assert.deepStrictEqual(history.sessionIds(), ['s1', 's2']);
-            assert.ok(history.selectSession('s1'));
-            assert.strictEqual(history.currentPlot()?.device.bg, 'A');
             history.addPlot('s2', makePlot('D'));
-            assert.strictEqual(history.currentPlot()?.device.bg, 'A');
-            assert.ok(history.selectSession('s2'));
-            assert.strictEqual(history.currentPlot()?.device.bg, 'D');
-            assert.strictEqual(history.selectSession('missing'), false);
-            assert.strictEqual(history.getActiveSessionId(), 's2');
+            assert.deepStrictEqual(history.sessionIds(), ['s1', 's2']);
+            assert.strictEqual(history.navigatePrevious('s1')?.device.bg, 'A');
+            assert.strictEqual(history.currentPlot('s2')?.device.bg, 'D');
+            history.removeCurrent('s1');
+            assert.strictEqual(history.currentPlot('s1')?.device.bg, 'B');
+            assert.strictEqual(history.currentIndex('s2'), 2);
+            history.clear('s1');
+            assert.strictEqual(history.count('s1'), 0);
+            assert.strictEqual(history.count('s2'), 2);
         });
 
-        test('a late resize reply cannot switch the selected session', () => {
+        test('a late resize reply changes only its own session', () => {
             history.addPlot('s1', { ...makePlot('A'), rIndex: 0 });
             history.addPlot('s2', makePlot('B'));
             history.replaceAtIndex('s1', 0, makePlot('A resized'));
             assert.strictEqual(history.getActiveSessionId(), 's2');
-            history.selectSession('s1');
-            assert.strictEqual(history.currentPlot()?.device.bg, 'A resized');
+            assert.strictEqual(history.currentPlot('s1')?.device.bg, 'A resized');
+            assert.strictEqual(history.currentPlot('s2')?.device.bg, 'B');
         });
 
         test('tracks plots independently per session', () => {
@@ -365,7 +378,7 @@ suite('JGD PlotHistory', () => {
     });
 
     suite('events', () => {
-        test('restores selection and per-session navigation from reload state', () => {
+        test('restores each session navigation independently from reload state', () => {
             history.addPlot('a', makePlot('A1'));
             history.addPlot('a', makePlot('A2'));
             history.removeCurrent();
@@ -373,17 +386,16 @@ suite('JGD PlotHistory', () => {
             history.addPlot('b', makePlot('B1'));
             history.addPlot('b', makePlot('B2'));
             history.navigatePrevious();
-            history.selectSession('a');
             const restored = new PlotHistory();
             restored.restore(JSON.parse(JSON.stringify(history.snapshot())) as unknown);
-            assert.strictEqual(restored.getActiveSessionId(), 'a');
+            assert.strictEqual(restored.getActiveSessionId(), 'b');
             assert.strictEqual(restored.sessionLabel('a'), 'r-123-1');
-            assert.strictEqual(restored.isLatestDeleted(), true);
+            assert.strictEqual(restored.isLatestDeleted('a'), true);
             restored.addPlot('new-device', makePlot('new'));
-            assert.strictEqual(restored.getActiveSessionId(), 'a');
-            restored.selectSession('b');
-            assert.strictEqual(restored.currentPlot()?.device.bg, 'B1');
-            assert.strictEqual(restored.navigateNext()?.device.bg, 'B2');
+            assert.strictEqual(restored.getActiveSessionId(), 'new-device');
+            assert.strictEqual(restored.currentPlot('a')?.device.bg, 'A1');
+            assert.strictEqual(restored.currentPlot('b')?.device.bg, 'B1');
+            assert.strictEqual(restored.navigateNext('b')?.device.bg, 'B2');
         });
 
         test('restoration ignores invalid frames and applies the current history limit', () => {

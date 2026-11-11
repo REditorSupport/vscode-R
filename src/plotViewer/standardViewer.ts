@@ -24,8 +24,6 @@ export class StandardPlotViewer implements PlotViewer {
     private panel: vscode.WebviewPanel | undefined;
     private viewWidth: number = 800;
     private viewHeight: number = 600;
-    private plotData: string | undefined;
-    private plotFormat: string | undefined;
     private panelGeneration = 0;
     private pendingPlotRequest: PendingPlotRequest | undefined;
     private plotRequest: Promise<void> | undefined;
@@ -156,14 +154,15 @@ export class StandardPlotViewer implements PlotViewer {
             return Promise.resolve();
         }
 
+        const conf = config();
         this.pendingPlotRequest = {
             panel,
             panelGeneration: this.panelGeneration,
             targetSession: this.owner ?? session.activeSession,
             width: this.viewWidth,
             height: this.viewHeight,
-            format: config().get<string>('plot.format', 'svglite'),
-            devArgs: config().get<Record<string, unknown>>('plot.devArgs'),
+            format: conf.get<string>('plot.format', 'svglite'),
+            devArgs: conf.get<Record<string, unknown>>('plot.devArgs'),
         };
         return this.startPlotDrain();
     }
@@ -246,12 +245,10 @@ export class StandardPlotViewer implements PlotViewer {
             }
 
             if (this.isCurrentRequest(request)) {
-                this.plotData = response.data;
-                this.plotFormat = response.format || request.format;
                 void request.panel.webview.postMessage({
                     type: 'update',
-                    data: this.plotData,
-                    format: this.plotFormat,
+                    data: response.data,
+                    format: response.format || request.format,
                 });
             }
         }

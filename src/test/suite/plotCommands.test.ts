@@ -82,7 +82,7 @@ suite('Contextual plot commands', () => {
                 show: showJgdViewer,
                 handleCommand: sandbox.stub(),
             } as unknown as JgdViewer;
-            sandbox.stub(manager.jgdManager, 'getViewer').returns(jgdViewer);
+            sandbox.stub(manager.jgdManager, 'getViewers').returns([jgdViewer]);
             const viewer = sandbox.createStubInstance(HttpgdViewer);
             Object.defineProperty(viewer, 'host', { value: 'localhost:1234' });
             viewer.getPanelPath.returns('/plot-viewer');

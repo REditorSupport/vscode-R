@@ -76,11 +76,7 @@ export class HttpgdManager {
     restoreConnections(): Promise<void> {
         this.restoring ??= this.savedConnections.then(async (connections) => {
             for (const connection of connections) {
-                const origin = new URL(connection.url).origin;
-                // A session may already have attached with newer credentials.
-                if (!this.viewers.some((viewer) => viewer.origin === origin)) {
-                    await this.showViewer(connection.url, connection.source);
-                }
+                await this.showViewer(connection.url, connection.source, true);
             }
         });
         return this.restoring;
@@ -116,7 +112,11 @@ export class HttpgdManager {
         };
     }
 
-    public async showViewer(urlString: string, source?: ViewerSessionSource): Promise<void> {
+    public async showViewer(
+        urlString: string,
+        source?: ViewerSessionSource,
+        onlyIfMissing = false,
+    ): Promise<void> {
         await Promise.resolve();
         if (this.disposed) {
             return;
@@ -124,6 +124,11 @@ export class HttpgdManager {
         const url = new URL(urlString);
         const token = url.searchParams.get('token') || undefined;
         const ind = this.viewers.findIndex((viewer) => viewer.origin === url.origin);
+        // Check after the async boundary: a new device may have attached while
+        // restoration was pending. Never replace its credentials with saved ones.
+        if (onlyIfMissing && ind >= 0) {
+            return;
+        }
         if (ind >= 0) {
             const viewer = this.viewers.splice(ind, 1)[0];
             if (viewer.token === token) {
