@@ -63,7 +63,12 @@ export class StandardPlotViewer implements PlotViewer {
         return plotPanelPath(this.panel);
     }
 
-    public async update(): Promise<void> {
+    public async update(restoring = false): Promise<void> {
+        if (restoring) {
+            // Refresh retained panels without creating or revealing a viewer.
+            await this.requestPlot();
+            return;
+        }
         const viewColumn = asViewColumn(
             config().get<string>('session.viewers.viewColumn.plot'),
             vscode.ViewColumn.Two,
@@ -84,6 +89,8 @@ export class StandardPlotViewer implements PlotViewer {
                     vscode.ViewColumn.Two,
                 ),
             );
+        } else if (this.panel) {
+            void this.requestPlot();
         }
         if (this.panel) {
             this.panel.reveal(undefined, preserveFocus);

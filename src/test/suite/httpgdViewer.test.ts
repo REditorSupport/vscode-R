@@ -11,6 +11,9 @@ import type { ViewerSessionContext } from '../../viewerSession';
 import type { RSessionConnectionChange } from '../../api';
 
 class LifecycleViewer extends HttpgdViewer {
+    resizeTo(width: number, height: number): void {
+        this.handleResize(height, width);
+    }
     resizeNow(): void {
         this.handleResize(600, 900, true);
     }
@@ -255,6 +258,44 @@ suite('httpgd viewer requests', () => {
         assert.strictEqual(await manager.restoreConnection({ ...state.source }), undefined);
         sinon.assert.notCalled(connect);
         state.viewer.webviewPanel = undefined;
+    });
+
+    test('reconnect renders at the viewport size received while disconnected despite a late old render', async () => {
+        const clock = sandbox.useFakeTimers();
+        const state = lifetime();
+        let finish!: (svg: string) => void;
+        const request = sandbox.stub(state.viewer.api, 'getPlotText');
+        request.onFirstCall().returns(
+            new Promise<string>((resolve) => {
+                finish = resolve;
+            }),
+        );
+        request.onSecondCall().resolves('<svg/>');
+        state.viewer.resizeNow();
+        state.resolve.returns(undefined);
+        state.fire('disconnected');
+        state.viewer.resizeTo(1200, 700);
+        finish('<svg/>');
+        await clock.tickAsync(200);
+        sinon.assert.calledOnce(request);
+
+        state.resolve.returns(state.source as session.Session);
+        state.fire('connected');
+        await state.viewer.queueRefresh();
+        await clock.tickAsync(10);
+        sinon.assert.calledTwice(request);
+        assert.deepStrictEqual(request.secondCall.args[0], {
+            id: '1',
+            width: 1200,
+            height: 700,
+            zoom: 1,
+            renderer: 'svgp',
+        });
+        assert.strictEqual(
+            state.viewer.webviewPanel,
+            undefined,
+            'reconnect must not reopen a closed panel',
+        );
     });
 
     test('session disconnect suppresses in-flight refresh errors and reconnect resumes only its owner', async () => {

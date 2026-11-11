@@ -350,6 +350,7 @@ export class HttpgdManager {
 }
 
 interface EjsData {
+    plotHeight: number;
     sessionHtml: string;
     sessionStyle: string;
     codicons: string;
@@ -762,11 +763,12 @@ export class HttpgdViewer implements IHttpgdViewer, PlotViewer {
     }
 
     protected handleResize(height: number, width: number, userTriggered: boolean = false): void {
+        // Keep viewport changes while disconnected for the reconnect snapshot.
+        this.viewHeight = height;
+        this.viewWidth = width;
         if (!this.canRefresh) {
             return;
         }
-        this.viewHeight = height;
-        this.viewWidth = width;
         if (userTriggered || this.resizeTimeoutLength === 0) {
             if (this.resizeTimeout) {
                 clearTimeout(this.resizeTimeout);
@@ -924,8 +926,6 @@ export class HttpgdViewer implements IHttpgdViewer, PlotViewer {
             width: width,
             zoom: zoom,
         };
-        this.viewHeight = plt.height;
-        this.viewWidth = plt.width;
         return plt;
     }
 
@@ -966,6 +966,7 @@ export class HttpgdViewer implements IHttpgdViewer, PlotViewer {
             overwriteCssPath = asWebViewPath('styleOverwrites.css');
         }
         return {
+            plotHeight: this.viewHeight,
             sessionHtml: this.sessionContext?.getHtml() ?? '',
             sessionStyle: viewerSessionStyle,
             codicons:

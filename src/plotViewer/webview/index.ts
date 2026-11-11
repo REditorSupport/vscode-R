@@ -20,7 +20,6 @@ let oldWidth = -1;
 
 const handler = document.querySelector('#handler') as HTMLDivElement;
 const largePlotDiv = document.querySelector('#largePlot') as HTMLDivElement;
-const largeSvg = largePlotDiv.querySelector('svg') as SVGElement;
 const cssLink = document.querySelector('link.overwrites') as HTMLLinkElement;
 const smallPlotDiv = document.querySelector('#smallPlots') as HTMLDivElement;
 
@@ -168,7 +167,6 @@ function toggleFullWindowMode(useFullWindow: boolean): void {
 ////
 
 window.onload = () => {
-    largePlotDiv.style.height = `${largeSvg.clientHeight}px`;
     postResizeMessage(true);
 };
 

@@ -4122,7 +4122,7 @@ async function handleNotification(message: Record<string, unknown>, socket: IpcS
         case 'plot_updated': {
             const target = socket._sessionId && sessions.get(socket._sessionId);
             if (target && target.socket === socket) {
-                void globalPlotManager?.showStandardPlot(target);
+                void globalPlotManager?.showStandardPlot(target, params.restoring === true);
             }
             break;
         }

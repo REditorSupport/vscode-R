@@ -28,6 +28,36 @@ class RefreshViewer extends HttpgdViewer {
     }
 }
 
+class LayoutViewer extends HttpgdViewer {
+    protected override makeHtml(): string {
+        return super.makeHtml().replace(
+            '<head>',
+            `<head><script>
+            const testApi = acquireVsCodeApi();
+            window.acquireVsCodeApi = () => testApi;
+            window.addEventListener('message', async ({ data }) => {
+                if (data.message !== 'inspect-layout') return;
+                if (data.dragHeight !== undefined) {
+                    const handler = document.getElementById('handler');
+                    handler.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+                    document.dispatchEvent(new MouseEvent('mousemove', {
+                        clientY: document.body.offsetTop + data.dragHeight + 5 - window.scrollY,
+                        bubbles: true
+                    }));
+                    document.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+                }
+                await new Promise(requestAnimationFrame);
+                const plot = document.getElementById('largePlot');
+                testApi.postMessage({ message: 'layout-inspection',
+                    width: plot.clientWidth, height: plot.clientHeight,
+                    windowWidth: innerWidth, windowHeight: innerHeight,
+                    fullWindow: document.body.classList.contains('fullWindow') });
+            });
+        </script>`,
+        );
+    }
+}
+
 suite('Standalone plot restoration', () => {
     let sandbox: sinon.SinonSandbox;
     let state: Map<string, unknown>;
@@ -655,9 +685,10 @@ suite('Standalone plot restoration', () => {
         request.resetHistory();
         resolve.resetHistory();
         await callbacks.get('r.plot.showViewers')!();
-        sinon.assert.notCalled(request);
-        sinon.assert.calledOnce(resolve);
+        sinon.assert.calledOnce(request);
+        assert.strictEqual(request.firstCall.args[1], owner);
         assert.strictEqual(panels.length, 1);
+        request.resetHistory();
         const reattached = {
             sessionId: owner.sessionId,
             host: owner.host,
@@ -994,6 +1025,45 @@ suite('Standalone plot restoration', () => {
         assert.strictEqual(second.webviewPanel, undefined);
     });
 
+    test('standard reconnect refreshes only its existing panel without revealing or reopening it', async () => {
+        const a = owner('a', '123');
+        const b = owner('b', '456');
+        const reattached = owner('a', '123');
+        focus(b);
+        sandbox
+            .stub(session, 'resolvePlotSession')
+            .callsFake((source) => (source.sessionId === a.sessionId ? reattached : b));
+        const request = sandbox
+            .stub(session, 'sessionRequest')
+            .resolves({ data: 'old', format: 'svg' });
+        const value = manager();
+        await value.showStandardPlot(a);
+        await value.showStandardPlot(b);
+        await panels[0].receive({ type: 'ready' });
+        request.resetHistory();
+        panels[0].post.resetHistory();
+        request.resolves({ data: 'drawn-while-disconnected', format: 'svg' });
+
+        await value.showStandardPlot(reattached, true);
+        sinon.assert.calledOnce(request);
+        assert.strictEqual(request.firstCall.args[1], reattached);
+        sinon.assert.calledWith(panels[0].post, {
+            type: 'update',
+            data: 'drawn-while-disconnected',
+            format: 'svg',
+        });
+        sinon.assert.notCalled((panels[0].panel as unknown as { reveal: sinon.SinonStub }).reveal);
+        sinon.assert.notCalled(panels[1].post);
+
+        panels[0].panel.dispose();
+        request.resetHistory();
+        await value.showStandardPlot(reattached, true);
+        await value.showStandardPlot(owner('never-opened', '789'), true);
+        sinon.assert.notCalled(request);
+        assert.strictEqual(panels.length, 2);
+        assert.strictEqual(value.viewers.length, 2);
+    });
+
     test('standard restoration requests only the focused session', async () => {
         const a = owner('a', '123');
         const b = owner('b', '456');
@@ -1230,6 +1300,125 @@ suite('Standalone plot restoration', () => {
         await callbacks.get('r.plot.showViewers')!();
         sinon.assert.calledOnce(connect);
     });
+
+    for (const fullWindow of [false, true]) {
+        test(`httpgd ${fullWindow ? 'full-window' : 'divider'} layout follows a resized group after closing and reopening`, async () => {
+            interface Layout {
+                width: number;
+                height: number;
+                windowWidth: number;
+                windowHeight: number;
+                fullWindow: boolean;
+            }
+            let inspection: Layout | undefined;
+            (vscode.window.createWebviewPanel as sinon.SinonStub).callsFake(
+                (...args: Parameters<typeof createRealWebviewPanel>) => {
+                    const panel = createRealWebviewPanel(...args);
+                    panel.webview.onDidReceiveMessage((message: Layout & { message: string }) => {
+                        if (message.message === 'layout-inspection') {
+                            inspection = message;
+                        }
+                    });
+                    return panel;
+                },
+            );
+            const layout = (width: number, height: number) =>
+                executeRealCommand('vscode.setEditorLayout', {
+                    orientation: 0,
+                    groups: [
+                        { size: 1 - width },
+                        { size: width, groups: [{ size: height }, { size: 1 - height }] },
+                    ],
+                });
+            const value = manager();
+            const viewer = new LayoutViewer('http://localhost:1234', {
+                ...value.httpgdManager.viewerOptions,
+                fullWindow,
+                resizeTimeoutLength: 0,
+                source: owner('layout', '14002'),
+            });
+            value.httpgdManager.viewers.push(viewer);
+            const svg = (width: number, height: number) =>
+                `<svg xmlns="http://www.w3.org/2000/svg" class="httpgd" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}"><rect width="100%" height="100%" fill="blue"/></svg>`;
+            viewer.plots = [{ id: '1', data: svg(800, 400), width: 800, height: 400, zoom: 1 }];
+            viewer.activePlot = '1';
+            const render = sandbox
+                .stub(viewer.api, 'getPlotText')
+                .callsFake((request) => Promise.resolve(svg(request.width!, request.height!)));
+            const inspect = async (dragHeight?: number): Promise<Layout> => {
+                inspection = undefined;
+                await viewer.webviewPanel!.webview.postMessage({
+                    message: 'inspect-layout',
+                    dragHeight,
+                });
+                return waitForValue(() => inspection);
+            };
+            const originalLayout = await executeRealCommand('vscode.getEditorLayout');
+            const documents: vscode.TextDocument[] = [];
+            try {
+                for (const viewColumn of [
+                    vscode.ViewColumn.One,
+                    vscode.ViewColumn.Two,
+                    vscode.ViewColumn.Three,
+                ]) {
+                    const document = await vscode.workspace.openTextDocument({
+                        language: 'plaintext',
+                    });
+                    documents.push(document);
+                    await vscode.window.showTextDocument(document, { viewColumn, preview: false });
+                }
+                await layout(0.7, 0.75);
+                viewer.show();
+                await waitForValue(() => (render.called ? true : undefined));
+                const enlarged = await inspect(fullWindow ? undefined : 240);
+                assert.strictEqual(enlarged.fullWindow, fullWindow);
+                if (!fullWindow) {
+                    assert.strictEqual(enlarged.height, 240);
+                }
+                viewer.webviewPanel!.dispose();
+                assert.strictEqual(viewer.webviewPanel, undefined);
+                await layout(0.4, 0.5);
+                render.resetHistory();
+                viewer.show();
+                await waitForValue(() => (render.called ? true : undefined));
+                const reopened = await inspect();
+                assert.ok(reopened.windowWidth < enlarged.windowWidth);
+                assert.ok(reopened.windowHeight < enlarged.windowHeight);
+                assert.strictEqual(reopened.fullWindow, fullWindow);
+                assert.strictEqual(
+                    viewer.viewWidth,
+                    fullWindow ? reopened.windowWidth : reopened.width,
+                );
+                assert.strictEqual(viewer.viewHeight, reopened.height);
+                if (fullWindow) {
+                    assert.strictEqual(reopened.height, reopened.windowHeight - 28);
+                } else {
+                    assert.strictEqual(
+                        reopened.height,
+                        enlarged.height,
+                        'preserve the divider height when reopening',
+                    );
+                }
+            } finally {
+                viewer.webviewPanel?.dispose();
+                for (const group of vscode.window.tabGroups.all) {
+                    for (const tab of group.tabs) {
+                        if (
+                            tab.input instanceof vscode.TabInputText &&
+                            documents.some(
+                                (document) =>
+                                    document.uri.toString() ===
+                                    (tab.input as vscode.TabInputText).uri.toString(),
+                            )
+                        ) {
+                            await vscode.window.tabGroups.close(tab);
+                        }
+                    }
+                }
+                await executeRealCommand('vscode.setEditorLayout', originalLayout);
+            }
+        });
+    }
 
     test('httpgd reload fetches fresh plots from an authenticated server', async () => {
         const source = owner('httpgd-owner', '14001');

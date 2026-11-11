@@ -231,8 +231,8 @@ runtime_start <- function(use_rstudioapi = TRUE,
     package_version(getNamespaceVersion("httpgd")) >= "2.0.1"
   selected_backend <- .select_plot_backend(plot_backend, has_httpgd, has_jgd)
   if (selected_backend == "jgd") {
-    open_jgd_device <- function(key = NULL, recorded = NULL, previous_device_id = NULL) {
-      jgd::jgd()
+    open_jgd_device <- function(key = NULL, recorded = NULL, previous_device_id = NULL, ...) {
+      jgd::jgd(...)
       .runtime_track_device()
       if (is.null(key)) {
         .sess_env$plot_device_sequence <- (.sess_env$plot_device_sequence %||% 0L) + 1L
@@ -303,9 +303,14 @@ runtime_start <- function(use_rstudioapi = TRUE,
         next
       }
       grDevices::dev.set(entry$id)
+      # Capture the live size and resolution before closing this device. Explicit
+      # jgd() calls may use a different DPI, and the renderer may have resized it.
+      size <- grDevices::dev.size("in")
+      dpi <- grDevices::dev.size("px")[[1L]] / size[[1L]]
       recorded <- tryCatch(grDevices::recordPlot(), error = function(e) NULL)
       tryCatch(grDevices::dev.off(entry$id), error = function(e) NULL)
-      open_jgd_device(entry$key, recorded, entry$previous_device_id)
+      open_jgd_device(entry$key, recorded, entry$previous_device_id,
+                      width = size[[1L]], height = size[[2L]], dpi = dpi)
       if (identical(unname(previous), entry$id)) previous <- grDevices::dev.cur()
     }
     if (previous %in% grDevices::dev.list()) grDevices::dev.set(previous)
@@ -429,5 +434,10 @@ runtime_start <- function(use_rstudioapi = TRUE,
   .runtime_add_task_callback(.workspace_update_task_callback, name = "sess.workspace")
 
   completed <- TRUE
+  # Announce the refreshed record only after setup is complete: a failed write
+  # can stop the runtime, so no callbacks should be installed after this point.
+  if (selected_backend == "standard" && !is.null(.sess_env$latest_plot_record)) {
+    notify_client("plot_updated", list(restoring = TRUE))
+  }
   invisible(NULL)
 }

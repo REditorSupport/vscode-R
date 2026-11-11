@@ -169,11 +169,14 @@ export class CommonPlotManager implements PlotManager {
         }
     }
 
-    public async showStandardPlot(target: Session): Promise<void> {
+    public async showStandardPlot(target: Session, restoring = false): Promise<void> {
         if (this.disposed) {
             return;
         }
-        await this.getStandardViewer(target).update();
+        const viewer = restoring
+            ? this.standardViewers.get(sessionProcessIdentity(target))
+            : this.getStandardViewer(target);
+        await viewer?.update(restoring);
     }
 
     private getStandardViewer(target: Session): StandardPlotViewer {

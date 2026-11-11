@@ -174,7 +174,7 @@ suite('Live R plot reconnect', function () {
                     );
                 await connect();
                 if (explicitDevice && !reuseDevice) {
-                    await evaluate('jgd::jgd(); TRUE');
+                    await evaluate('jgd::jgd(width=4, height=3, dpi=144); TRUE');
                 }
                 await evaluate('plot(1:3, main="first plot"); TRUE');
                 if (backend === 'jgd') {
@@ -186,7 +186,7 @@ suite('Live R plot reconnect', function () {
                 if (reuseDevice) {
                     await evaluate('old_device <- dev.cur(); dev.off(); TRUE');
                     if (explicitDevice) {
-                        await evaluate('jgd::jgd(); TRUE');
+                        await evaluate('jgd::jgd(width=4, height=3, dpi=144); TRUE');
                     }
                 }
                 await evaluate('plot(3:1, main="before reload"); TRUE');
@@ -239,6 +239,19 @@ suite('Live R plot reconnect', function () {
                     );
                 }
                 const deviceIds = history.sessionIds();
+                if (backend === 'jgd') {
+                    // Preserve the live viewport size, not just the dimensions
+                    // originally passed to the device factory.
+                    jgd!.handleResize(864, 648, originalId!);
+                    await evaluate('.Call(jgd:::C_jgd_poll_resize); TRUE');
+                    await until(() =>
+                        history.latestPlot(originalId!)?.device.width === 864 &&
+                        history.latestPlot(originalId!)?.device.height === 648
+                            ? true
+                            : undefined,
+                    );
+                    await evaluate('device_geometry <- c(dev.size("in"), dev.size("px")); TRUE');
+                }
                 if (explicitDevice) {
                     externalRenderer = net.createServer((socket) => {
                         externalSockets.add(socket);
@@ -285,11 +298,19 @@ suite('Live R plot reconnect', function () {
                 const saved: unknown = JSON.parse(JSON.stringify(history.snapshot()));
                 await stopServers();
                 await evaluate('sess:::.transport_disconnect(silent=TRUE, reconnect=TRUE); TRUE');
+                if (backend === 'standard') {
+                    await evaluate('plot(2:4, main="while disconnected"); TRUE');
+                }
                 history = new PlotHistory();
                 history.restore(saved);
                 notifications.length = 0;
                 await startServers();
                 await connect();
+                if (backend === 'jgd') {
+                    await evaluate(
+                        'stopifnot(isTRUE(all.equal(c(dev.size("in"), dev.size("px")), device_geometry))); TRUE',
+                    );
+                }
                 if (explicitDevice) {
                     // Reopening assigns a logical ID and transfers the existing
                     // timeline entry, rather than duplicating its current plot.
@@ -428,15 +449,20 @@ suite('Live R plot reconnect', function () {
                     });
                     assert.ok(svg.includes('before reload'));
                 } else {
-                    assert.ok(
-                        !notifications.some((item) => item.method === 'plot_updated'),
-                        'reattachment must not announce an existing standard plot as new',
+                    assert.equal(
+                        await until(
+                            () =>
+                                notifications.find((item) => item.method === 'plot_updated')?.params
+                                    .restoring,
+                        ),
+                        true,
+                        'reattachment refreshes existing standard viewers without opening closed ones',
                     );
                     const plot = await evaluate(
                         'sess:::handle_plot_latest(list(format="svglite"))',
                     );
                     assert.ok(
-                        Buffer.from(plot.data, 'base64').toString().includes('before reload'),
+                        Buffer.from(plot.data, 'base64').toString().includes('while disconnected'),
                     );
                 }
             } finally {

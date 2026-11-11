@@ -10,7 +10,7 @@
 
 <body>
     <div id="session-info"><%- sessionHtml %></div>
-    <div id="largePlot" plotId=<%- largePlot?.id || '' %>>
+    <div id="largePlot" style="height: <%= plotHeight %>px" plotId=<%- largePlot?.id || '' %>>
         <%- largePlot?.data %>
     </div>
     <div id="handler"> </div>

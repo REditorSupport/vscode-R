@@ -413,6 +413,16 @@ suite('Session Connection Lifecycle API', () => {
             'standard-a',
         );
         assert.strictEqual(session.activeSession?.sessionId, 'standard-b');
+        assert.strictEqual(showStandardPlot.firstCall.args[1], false);
+        first.emit(
+            'data',
+            Buffer.from(
+                JSON.stringify({ method: 'plot_updated', params: { restoring: true } }) + '\n',
+            ),
+        );
+        await waitForValue(() => (showStandardPlot.calledTwice ? true : undefined));
+        assert.strictEqual(showStandardPlot.secondCall.args[0], showStandardPlot.firstCall.args[0]);
+        assert.strictEqual(showStandardPlot.secondCall.args[1], true);
         const owner = showStandardPlot.firstCall.args[0] as session.Session;
         assert.strictEqual(session.resolvePlotSession(owner), owner);
         assert.strictEqual(
