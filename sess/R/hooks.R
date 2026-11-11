@@ -295,7 +295,8 @@ runtime_start <- function(use_rstudioapi = TRUE,
       grDevices::dev.set(id)
       info <- tryCatch(jgd::jgd_server_info(), error = function(e) NULL)
       previous_device_id <- unname(info$server_info["deviceId"])
-      if (length(previous_device_id) != 1L || is.na(previous_device_id) || !nzchar(previous_device_id)) {
+      if (length(previous_device_id) != 1L || is.na(previous_device_id) ||
+            !nzchar(previous_device_id)) {
         previous_device_id <- NULL
       }
       # An explicit jgd() can reuse a managed device's number without calling

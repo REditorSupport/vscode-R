@@ -1,5 +1,5 @@
 if (requireNamespace("httpgd", quietly = TRUE) &&
-    packageVersion("httpgd") >= "2.0.1") local({
+      packageVersion("httpgd") >= "2.0.1") local({
   original_device <- grDevices::dev.cur()
   original_devices <- grDevices::dev.list()
   original_hgd <- httpgd::hgd
@@ -63,7 +63,7 @@ if (requireNamespace("httpgd", quietly = TRUE) &&
 })
 
 if (requireNamespace("httpgd", quietly = TRUE) &&
-    packageVersion("httpgd") >= "2.0.1") local({
+      packageVersion("httpgd") >= "2.0.1") local({
   # A restored-device notification can fail after attach succeeds. No runtime
   # hooks or bindings may be installed after that failure cleans up the runtime.
   has_rstudioapi <- requireNamespace("rstudioapi", quietly = TRUE)

@@ -283,7 +283,9 @@
   }
   state$fields <- if (preserve_plots) {
     Filter(function(entry) identical(entry$name, "latest_plot_record"), state$fields)
-  } else list()
+  } else {
+    list()
+  }
 
   for (name in names(state$options)) {
     if (preserve_plots && identical(name, "sess.null_dev")) next
@@ -294,7 +296,9 @@
   }
   state$options <- if (preserve_plots && "sess.null_dev" %in% names(state$options)) {
     state$options["sess.null_dev"]
-  } else list()
+  } else {
+    list()
+  }
   state$preserved_plots <- preserve_plots
   .runtime_clear_viewer_state()
   state$active <- FALSE
