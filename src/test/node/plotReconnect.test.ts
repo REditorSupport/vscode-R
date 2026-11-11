@@ -34,9 +34,14 @@ suite('Live R plot reconnect', function () {
                 'cat(all(vapply(c("processx", "later", "jsonlite", "jgd", "httpgd", "svglite"), requireNamespace, logical(1), quietly=TRUE)))',
             ]);
             if (probe.stdout.trim() !== 'TRUE') {
-                this.skip();
+                throw new Error(
+                    'Live plot tests require processx, later, jsonlite, jgd, httpgd and svglite',
+                );
             }
-        } catch {
+        } catch (error) {
+            if (process.env.VSCR_REQUIRE_PLOT_TESTS === '1') {
+                throw error;
+            }
             this.skip();
         }
         directory = await fs.mkdtemp(path.join(os.tmpdir(), 'plot-reconnect-'));

@@ -111,6 +111,7 @@ export class JgdManager {
     private historyChangeDisposable: { dispose(): void } | null = null;
     private sessionConnectionDisposable: vscode.Disposable | undefined;
     private started = false;
+    private receivedPlots = new WeakSet<PlotFrame>();
 
     constructor(lifecycle?: PlotLifecycle) {
         const maxPlots = config().get<number>('plot.jgd.historyLimit', 50);
@@ -182,9 +183,14 @@ export class JgdManager {
                     'restoring' in metadata &&
                     metadata.restoring === true,
                 );
+                const latest = this.history.latestPlot(sessionId)!;
+                const newPlot = !this.receivedPlots.has(latest);
+                this.receivedPlots.add(latest);
+                // Receiving more drawing for an existing plot updates retained
+                // content without reopening a panel the user closed.
                 this.getOrCreateViewer(sessionId).showPlot(
                     current,
-                    !restoring && !message.resizeReplay,
+                    newPlot && !restoring && !message.resizeReplay,
                 );
             }
         });

@@ -38,7 +38,6 @@ export class HttpgdDevices {
     private order = new Map<string, { plot: HttpgdPlotReference; position: number }>();
     private nextPosition = 0;
     private connected = false;
-    private unavailableListeners = new Set<() => void>();
     private listeners = new Set<
         (
             plots: HttpgdIdResponse[],
@@ -107,9 +106,6 @@ export class HttpgdDevices {
             }
             device.available = false;
             device.active = false;
-            for (const listener of this.unavailableListeners) {
-                listener();
-            }
         });
         if (this.connected) {
             await device.client.connect();
@@ -139,8 +135,8 @@ export class HttpgdDevices {
             return;
         }
         device.active = snapshot.state.active;
+        const contentChanged = !device.available || device.upid !== snapshot.state.upid;
         device.available = true;
-        const contentChanged = device.upid !== snapshot.state.upid;
         device.upid = snapshot.state.upid;
         if (device.active) {
             for (const other of this.devices.values()) {
@@ -152,7 +148,9 @@ export class HttpgdDevices {
                 }
             }
         }
+        const previousLatest = [...device.plots.keys()].at(-1);
         const incoming = new Set(snapshot.plots.map((plot) => plot.id));
+        let added = false;
         let orderChanged = false;
         // Reconcile only this device: other restored devices may not have
         // delivered their first snapshot yet.
@@ -180,6 +178,7 @@ export class HttpgdDevices {
                 id = `httpgd-${++this.nextId}`;
             }
             this.usedIds.add(id);
+            added = true;
             device.plots.set(rawId, id);
             const saved = this.order.has(JSON.stringify([device.origin, rawId]));
             restoreOrder ||= saved;
@@ -193,16 +192,48 @@ export class HttpgdDevices {
         if (restoreOrder) {
             this.targets = new Map([...this.targets].sort((a, b) => a[1].position - b[1].position));
         }
-        const restoring = device.restoring;
+        // The WebSocket repeats the initial HTTP snapshot. An unchanged snapshot
+        // or an annotation must not turn a restoration into a new-plot reveal.
+        const restoring = device.restoring || !added;
         device.restoring = false;
-        // Drawing updates the newest plot on this device. Historical plots are
-        // immutable unless explicitly rendered at a new size by the viewer.
+        // The previous latest plot can receive its final annotations before a
+        // new page appears in the same snapshot. Invalidate both boundaries.
         const latest = snapshot.plots.at(-1)?.id;
         this.notify(
             restoring,
-            new Set(!contentChanged || latest === undefined ? [] : [device.plots.get(latest)!]),
+            new Set(
+                contentChanged
+                    ? [previousLatest, latest]
+                          .flatMap((id) => (id === undefined ? [] : [device.plots.get(id)]))
+                          .filter((id): id is string => id !== undefined)
+                    : [],
+            ),
             orderChanged,
         );
+    }
+
+    /** Restore routing before connecting; retained images remain usable when a
+     * device no longer has a server. Aliases stay stable across reloads. */
+    restorePlots(plots: Array<{ id: string; reference: HttpgdPlotReference }>): void {
+        for (const { id, reference } of plots) {
+            const device = this.devices.get(reference.origin);
+            if (!device || device.plots.has(reference.id) || this.usedIds.has(id)) {
+                continue;
+            }
+            this.usedIds.add(id);
+            device.plots.set(reference.id, id);
+            this.targets.set(id, {
+                device,
+                id: reference.id,
+                position: this.rememberPlot(reference),
+            });
+        }
+        this.targets = new Map([...this.targets].sort((a, b) => a[1].position - b[1].position));
+    }
+
+    plotReference(id: string): HttpgdPlotReference | undefined {
+        const target = this.targets.get(id);
+        return target && { origin: target.device.origin, id: target.id };
     }
 
     private notify(
@@ -277,40 +308,8 @@ export class HttpgdDevices {
         return this.targets.get(id)?.device.active !== false;
     }
 
-    onDeviceUnavailable(listener: () => void): void {
-        this.unavailableListeners.add(listener);
-    }
-
-    async nextAvailablePlot(
-        id?: string,
-        visible?: ReadonlySet<string>,
-    ): Promise<string | undefined> {
-        const current = id === undefined ? undefined : this.targets.get(id);
-        if (!current || current.device.available) {
-            return undefined;
-        }
-        const latest = new Map<Device, string>();
-        for (const [plotId, target] of this.targets) {
-            if (!visible || visible.has(plotId)) {
-                latest.set(target.device, plotId);
-            }
-        }
-        const devices = [...this.devices.values()];
-        const start = devices.indexOf(current.device);
-        for (let offset = 1; offset < devices.length; offset++) {
-            const device = devices[(start + offset) % devices.length];
-            if (device.available && latest.has(device)) {
-                // An inactive device may have been closed without a socket
-                // notification. Verify the successor before selecting it.
-                try {
-                    await device.client.refreshState();
-                    return latest.get(device);
-                } catch {
-                    continue;
-                }
-            }
-        }
-        return undefined;
+    isAvailable(id: string): boolean {
+        return this.targets.get(id)?.device.available !== false;
     }
 
     getRenderers(id?: string): HttpgdRendererResponse[] {
@@ -336,5 +335,16 @@ export class HttpgdDevices {
     async removePlot(request: { id: string }): Promise<void> {
         const target = this.target(request.id);
         await target.device.client.removePlot({ id: target.id });
+    }
+
+    forgetPlot(id: string): void {
+        const target = this.targets.get(id);
+        if (!target) {
+            return;
+        }
+        this.targets.delete(id);
+        target.device.plots.delete(target.id);
+        this.order.delete(JSON.stringify([target.device.origin, target.id]));
+        this.notify(true, new Set(), true);
     }
 }

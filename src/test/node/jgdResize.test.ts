@@ -25,9 +25,12 @@ suite('Live JGD resize', () => {
                 'cat(requireNamespace("jgd", quietly=TRUE))',
             ]);
             if (probe.stdout.trim() !== 'TRUE') {
-                this.skip();
+                throw new Error('Live JGD tests require the jgd R package');
             }
-        } catch {
+        } catch (error) {
+            if (process.env.VSCR_REQUIRE_PLOT_TESTS === '1') {
+                throw error;
+            }
             this.skip();
         }
         const history = new PlotHistory();
@@ -91,6 +94,97 @@ suite('Live JGD resize', () => {
             assert.ok(history.currentPlot()!.ops.length >= 10000);
         } catch (error) {
             throw new Error(`${String(error)}\n${errors}`);
+        } finally {
+            r.kill();
+            server.stop();
+            await exited;
+        }
+    });
+    test('closed devices retain interleaved history and selection across reload', async function () {
+        try {
+            const probe = await run('Rscript', [
+                '--vanilla',
+                '-e',
+                'cat(requireNamespace("jgd", quietly=TRUE))',
+            ]);
+            if (probe.stdout.trim() !== 'TRUE') {
+                throw new Error('The jgd R package is required for live plot lifecycle tests');
+            }
+        } catch (error) {
+            if (process.env.VSCR_REQUIRE_PLOT_TESTS === '1') {
+                throw error;
+            }
+            this.skip();
+        }
+        const history = new PlotHistory();
+        const server = new JgdSocketServer(history);
+        server.setMeasureText((request) =>
+            Promise.resolve({
+                type: 'metrics_response',
+                id: request.id,
+                width: 8,
+                ascent: 8,
+                descent: 2,
+            }),
+        );
+        await new Promise<void>((resolve) => {
+            server.onReady(resolve);
+            server.start();
+        });
+        const r = spawn('R', ['--vanilla', '--slave', '--interactive'], {
+            env: { ...process.env, JGD_SOCKET: server.getSocketPath() },
+        });
+        let output = '';
+        r.stdout.on('data', (data: Buffer) => {
+            output += data.toString();
+        });
+        r.stderr.resume();
+        const exited = new Promise<void>((resolve) => r.once('exit', () => resolve()));
+        const source = {
+            sessionId: 'retained-jgd',
+            host: 'localhost',
+            pid: String(r.pid),
+            rVer: '4',
+            processExited: false,
+        };
+        server.setOnFrame((id) => history.setSessionSource(id, source));
+        try {
+            r.stdin.write('jgd::jgd(); plot(1:3, main="FIRST"); a<-dev.cur()\n');
+            await until(
+                () =>
+                    history.count() === 1 &&
+                    JSON.stringify(history.currentPlot()?.ops).includes('FIRST'),
+            );
+            r.stdin.write(
+                'text(2,2,"ANNOTATION"); plot(4:6, main="SECOND"); jgd::jgd(); plot(7:9, main="OTHER DEVICE")\n',
+            );
+            await until(
+                () =>
+                    history.count() === 3 &&
+                    JSON.stringify(history.currentPlot()?.ops).includes('OTHER DEVICE'),
+            );
+            const id = history.getActiveSessionId();
+            history.navigateFirst(id);
+            assert.ok(JSON.stringify(history.currentPlot(id)?.ops).includes('ANNOTATION'));
+            r.stdin.write('graphics.off(); cat("DEVICES_CLOSED\\n")\n');
+            await until(
+                () =>
+                    output.includes('DEVICES_CLOSED') &&
+                    history.sessionIds().every((device) => !server.isConnected(device)),
+            );
+            assert.equal(history.count(id), 3);
+            const state = history.snapshot();
+            server.stop();
+            const restored = new PlotHistory();
+            restored.restore(state);
+            assert.equal(restored.count(id), 3);
+            assert.equal(restored.currentIndex(id), 1);
+            assert.ok(JSON.stringify(restored.currentPlot(id)?.ops).includes('ANNOTATION'));
+            assert.ok(JSON.stringify(restored.navigateNext(id)?.ops).includes('SECOND'));
+            assert.ok(JSON.stringify(restored.navigateNext(id)?.ops).includes('OTHER DEVICE'));
+            assert.ok(JSON.stringify(restored.navigateFirst(id)?.ops).includes('FIRST'));
+            restored.removeSession(source);
+            assert.deepEqual(restored.sessionIds(), []);
         } finally {
             r.kill();
             server.stop();

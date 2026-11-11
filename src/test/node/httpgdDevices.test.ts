@@ -183,42 +183,68 @@ suite('httpgd session history', () => {
         assert.deepEqual(changes, [true, false, false, true]);
     });
 
-    test('unavailable devices yield to the next visible live plot and recover on a fresh snapshot', async () => {
+    test('unavailable devices retain routing and history until explicit removal', async () => {
         publish(0, ['1']);
         await session.addDevice('http://localhost:1235', 'second');
         publish(1, ['1']);
         publish(0, ['1', '2']);
         const ids = session.getPlots().map(({ id }) => id);
-        const changed = sandbox.spy();
-        session.onDeviceUnavailable(changed);
         unavailable.get(clients[0])!();
         assert.equal(session.isActive(ids[2]), false);
-        assert.equal(await session.nextAvailablePlot(ids[2]), ids[1]);
-        assert.equal(await session.nextAvailablePlot(ids[0], new Set([ids[0], ids[2]])), undefined);
-        unavailable.get(clients[0])!();
-        sinon.assert.calledOnce(changed);
+        assert.equal(session.isAvailable(ids[2]), false);
+        assert.deepEqual(
+            session.getPlots().map(({ id }) => id),
+            ids,
+        );
         publish(0, ['1', '2']);
-        assert.equal(session.isActive(ids[2]), true);
-        assert.equal(await session.nextAvailablePlot(ids[2]), undefined);
-        unavailable.get(clients[0])!();
-        unavailable.get(clients[1])!();
-        assert.equal(await session.nextAvailablePlot(ids[2]), undefined);
-        assert.equal(session.getPlots().length, 3, 'retain rendered history');
+        assert.equal(session.isAvailable(ids[2]), true);
+        session.forgetPlot(ids[0]);
+        assert.deepEqual(
+            session.getPlots().map(({ id }) => id),
+            ids.slice(1),
+        );
     });
 
-    test('chooses the next server in device order despite interleaved plots', async () => {
-        publish(0, ['1']);
-        await session.addDevice('http://localhost:1235', 'second');
-        publish(1, ['1']);
-        publish(0, ['1', '2']);
-        await session.addDevice('http://localhost:1236', 'third');
-        publish(2, ['1']);
-        publish(1, ['1', '2']);
-        const ids = session.getPlots().map(({ id }) => id);
-        unavailable.get(clients[0])!();
-        assert.equal(await session.nextAvailablePlot(ids[2]), ids[4]);
-        assert.equal(await session.nextAvailablePlot(ids[2], new Set(ids.slice(0, 4))), ids[1]);
+    test('restores aliases for unavailable devices without confusing colliding raw IDs', async () => {
+        session.disconnect();
+        session = new HttpgdDevices('http://localhost:1234', 'first', true);
+        await session.addDevice('http://localhost:1235', 'second', true);
+        const saved = [
+            { id: 'first-plot', reference: { origin: 'http://localhost:1234', id: '1' } },
+            { id: 'second-plot', reference: { origin: 'http://localhost:1235', id: '1' } },
+        ];
+        session.restorePlots(saved);
+        await session.connect();
         unavailable.get(clients[1])!();
-        assert.equal(await session.nextAvailablePlot(ids[2]), ids[3]);
+        publish(2, ['1']);
+        assert.deepEqual(
+            session.getPlots(),
+            saved.map(({ id }) => ({ id })),
+        );
+        assert.deepEqual(session.plotReference('first-plot'), saved[0].reference);
+        assert.equal(session.isAvailable('first-plot'), false);
+    });
+
+    test('invalidates the previously latest plot when drawing and a new page share a snapshot', () => {
+        const changes: ReadonlySet<string>[] = [];
+        session.onPlotsChanged((_plots, _restoring, changed) => changes.push(changed));
+        publish(0, ['1']);
+        updates.get(clients[0])!({
+            state: { upid: 2, hsize: 2, active: true },
+            plots: [{ id: '1' }, { id: '2' }],
+        });
+        assert.deepEqual([...changes.at(-1)!], ['1', '2']);
+    });
+
+    test('duplicate startup snapshots and annotations do not request a new-plot reveal', async () => {
+        session.disconnect();
+        session = new HttpgdDevices('http://localhost:1234', 'first', true);
+        const restoring: boolean[] = [];
+        session.onPlotsChanged((_plots, value) => restoring.push(value));
+        await session.connect();
+        publish(1, ['1']);
+        publish(1, ['1']);
+        publish(1, ['1', '2']);
+        assert.deepEqual(restoring, [true, true, false]);
     });
 });

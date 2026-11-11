@@ -11,6 +11,11 @@ const common = {
 	}
 };
 
+const plotSuites = [
+	'jgdPlotHistory', 'jgdSocketServer', 'standardPlotViewer', 'plotCommands',
+	'plotBackend', 'plotRestoration', 'httpgdViewer', 'viewerSession', 'sessionConnectionLifecycle'
+];
+
 // Keep mock/provider tests independent of R language-server startup. Editor
 // command tests also need a fresh window after fixtures create terminals and
 // webviews. The real Interactive suite has its own window with the LSP enabled.
@@ -32,9 +37,16 @@ export default defineConfig([
 	{
 		...common,
 		label: 'provider-tests',
-		files: 'out/test/suite/**/!(interactiveEditor|interactiveInputFeatures|completionMiddleware).test.js',
+		files: `out/test/suite/**/!(${['interactiveEditor', 'interactiveInputFeatures', 'completionMiddleware', ...plotSuites].join('|')}).test.js`,
 		mocha: { ...common.mocha, require: './out/test/common/extensionSetup.js' },
 		launchArgs: testProfile('provider-tests', false)
+	},
+	{
+		...common,
+		label: 'plot-lifecycle',
+		files: plotSuites.map(name => `out/test/suite/${name}.test.js`),
+		mocha: { ...common.mocha, require: './out/test/common/extensionSetup.js' },
+		launchArgs: testProfile('plots', false)
 	},
 	{
 		...common,

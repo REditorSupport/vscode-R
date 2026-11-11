@@ -18,8 +18,23 @@ export interface HttpgdPlot<T> {
     zoom: number;
 }
 
+/** Received images persist independently of device servers; credentials remain in SecretStorage. */
+export interface HttpgdHistoryState {
+    source?: ViewerSessionSource;
+    plots: Array<HttpgdPlot<string> & { reference: HttpgdPlotReference }>;
+}
+
+export interface HttpgdSelectionState {
+    activePlot?: string;
+    hiddenPlots: string[];
+}
+
 // Example for possible viewer creation options:
 export interface HttpgdViewerOptions {
+    historyId?: string;
+    history?: HttpgdHistoryState;
+    selection?: HttpgdSelectionState;
+    connections?: Array<{ origin: string; token?: string }>;
     plotOrder?: HttpgdPlotReference[];
     restoring?: boolean;
     parent: HttpgdManager;
@@ -45,7 +60,7 @@ export class IHttpgdViewer {
     api: HttpgdDevices;
 
     // active plots
-    plots: HttpgdPlot<string>[];
+    readonly plots: readonly HttpgdPlot<string>[];
 
     // Id of the currently viewed plot
     activePlot?: HttpgdPlotId;

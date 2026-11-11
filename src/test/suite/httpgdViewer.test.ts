@@ -4,6 +4,7 @@ import * as sinon from 'sinon';
 import * as vscode from 'vscode';
 import { HttpgdClient } from '../../plotViewer/httpgdClient';
 import { HttpgdManager, HttpgdViewer } from '../../plotViewer/httpgdViewer';
+import type { HttpgdPlot } from '../../plotViewer/httpgdTypes';
 import { mockExtensionContext } from '../common/mockvscode';
 import * as util from '../../util';
 import * as session from '../../session';
@@ -26,6 +27,10 @@ class LifecycleViewer extends HttpgdViewer {
 }
 
 class TestViewer extends HttpgdViewer {
+    seedPlots(plots: HttpgdPlot<string>[]): void {
+        this.setPlots(plots);
+    }
+
     renderCount = 0;
     resize(height: number, width: number): void {
         this.handleResize(height, width);
@@ -67,7 +72,7 @@ suite('httpgd viewer requests', () => {
     test('focusing a correctly sized non-square plot does not request another render', async () => {
         const viewer = new TestViewer('localhost:1234', manager.viewerOptions);
         manager.registerViewer(viewer);
-        viewer.plots = [{ id: '1', data: '<svg/>', width: 800, height: 600, zoom: 1 }];
+        viewer.seedPlots([{ id: '1', data: '<svg/>', width: 800, height: 600, zoom: 1 }]);
         await viewer.focusPlot('1');
         assert.strictEqual(viewer.renderCount, 0);
         viewer.viewWidth = 900;

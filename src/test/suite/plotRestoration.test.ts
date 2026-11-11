@@ -14,6 +14,7 @@ import type { JgdMessage } from '../../plotViewer/jgdSocketServer';
 import type { PlotFrame, PlotHistoryState } from '../../plotViewer/jgdPlotHistory';
 import { HttpgdClient } from '../../plotViewer/httpgdClient';
 import { HttpgdViewer } from '../../plotViewer/httpgdViewer';
+import type { HttpgdPlot } from '../../plotViewer/httpgdTypes';
 import { extensionContext } from '../../extension';
 import * as session from '../../session';
 import * as util from '../../util';
@@ -26,6 +27,10 @@ const createRealWebviewPanel = vscode.window.createWebviewPanel;
 const executeRealCommand = vscode.commands.executeCommand;
 
 class RefreshViewer extends HttpgdViewer {
+    seedPlots(plots: HttpgdPlot<string>[]): void {
+        this.setPlots(plots);
+    }
+
     receivePlots(ids: string[], changed?: ReadonlySet<string>, force = false): Promise<void> {
         return this.refreshPlots(
             ids.map((id) => ({ id })),
@@ -316,7 +321,9 @@ suite('Standalone plot restoration', () => {
         await value.showStandardPlot(source);
         await value.showHttpgdPlot('http://localhost:1234', source);
         const httpgd = value.httpgdManager.viewers[0];
-        httpgd.plots = [{ id: '1', data: '<svg/>', width: 800, height: 600, zoom: 1 }];
+        RefreshViewer.prototype.seedPlots.call(httpgd, [
+            { id: '1', data: '<svg/>', width: 800, height: 600, zoom: 1 },
+        ]);
         httpgd.activePlot = '1';
         value.jgdManager.history.addPlot('device', frame('device'));
         value.jgdManager.history.setSessionSource('device', source);
@@ -1398,9 +1405,12 @@ suite('Standalone plot restoration', () => {
                 'cat(requireNamespace("httpgd", quietly=TRUE) && requireNamespace("jsonlite", quietly=TRUE))',
             ]);
             if (probe.stdout.trim() !== 'TRUE') {
-                context.skip();
+                throw new Error('Live httpgd tests require httpgd and jsonlite');
             }
-        } catch {
+        } catch (error) {
+            if (process.env.VSCR_REQUIRE_PLOT_TESTS === '1') {
+                throw error;
+            }
             context.skip();
         }
         const r = spawn('R', ['--vanilla', '--slave', '--interactive']);
@@ -1558,7 +1568,7 @@ suite('Standalone plot restoration', () => {
         }
     });
 
-    test('live httpgd switches to the next available device and resizes quietly after the last dev.off()', async function () {
+    test('live httpgd retains selection and navigation after every device closes', async function () {
         this.timeout(30000);
         connect.callThrough();
         (vscode.window.createWebviewPanel as sinon.SinonStub).callsFake(
@@ -1605,7 +1615,11 @@ suite('Standalone plot restoration', () => {
             await process.evaluate('dev.off(first_device); "OK"');
             assert.strictEqual(viewer.activePlot, thirdId);
             await process.evaluate('dev.off(); "OK"');
-            await waitForValue(() => (viewer!.activePlot === secondId ? true : undefined));
+            assert.strictEqual(
+                viewer.activePlot,
+                thirdId,
+                'closing a device preserves its rendered plot',
+            );
             await process.evaluate('dev.off(); "OK"');
             const render = sandbox.spy(viewer.api, 'getPlotText');
             for (const width of [0.3, 0.5]) {
@@ -1619,10 +1633,16 @@ suite('Standalone plot restoration', () => {
                 'Only the first resize may discover the closed server',
             );
             sinon.assert.notCalled(errors);
-            assert.strictEqual(viewer.activePlot, secondId);
+            assert.strictEqual(viewer.activePlot, thirdId);
+            await viewer.focusPlot(firstId);
+            assert.ok(
+                viewer.plots.find((plot) => plot.id === firstId)!.data.includes('FIRST DEVICE'),
+            );
+            await viewer.focusPlot(secondId);
             assert.ok(
                 viewer.plots.find((plot) => plot.id === secondId)!.data.includes('SECOND DEVICE'),
             );
+            assert.strictEqual(viewer.plots.length, 3);
         } finally {
             viewer?.webviewPanel?.dispose();
             await process.dispose();
@@ -1891,9 +1911,9 @@ suite('Standalone plot restoration', () => {
         sandbox.stub(session, 'resolvePlotSession').returns(source);
         const first = manager();
         await first.showHttpgdPlot('http://localhost:1234/live?token=secret', source);
-        first.httpgdManager.viewers[0].plots = [
+        RefreshViewer.prototype.seedPlots.call(first.httpgdManager.viewers[0], [
             { id: '1', data: '<svg>not persisted</svg>', width: 400, height: 300, zoom: 1 },
-        ];
+        ]);
         await first.dispose();
         assert.ok(!JSON.stringify([...state.values()]).includes('secret'));
         assert.ok(!JSON.stringify([...secrets.values()]).includes('<svg>'));
@@ -1906,7 +1926,9 @@ suite('Standalone plot restoration', () => {
         const viewer = restored.httpgdManager.viewers[0];
         assert.strictEqual(viewer.token, 'secret');
         assert.deepStrictEqual(viewer.plots, []);
-        viewer.plots = [{ id: 'live', data: '<svg/>', width: 1, height: 1, zoom: 1 }];
+        RefreshViewer.prototype.seedPlots.call(viewer, [
+            { id: 'live', data: '<svg/>', width: 1, height: 1, zoom: 1 },
+        ]);
         const render = sandbox.stub(viewer.api, 'getPlotText').resolves('<svg>fresh</svg>');
         sandbox.stub(viewer.api, 'getPlots').returns([{ id: 'live' }]);
         await viewer.focusPlot('live');
@@ -1957,7 +1979,9 @@ suite('Standalone plot restoration', () => {
             value.httpgdManager.registerViewer(viewer);
             const svg = (width: number, height: number) =>
                 `<svg xmlns="http://www.w3.org/2000/svg" class="httpgd" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}"><rect width="100%" height="100%" fill="blue"/></svg>`;
-            viewer.plots = [{ id: '1', data: svg(800, 400), width: 800, height: 400, zoom: 1 }];
+            RefreshViewer.prototype.seedPlots.call(viewer, [
+                { id: '1', data: svg(800, 400), width: 800, height: 400, zoom: 1 },
+            ]);
             viewer.activePlot = '1';
             const render = sandbox
                 .stub(viewer.api, 'getPlotText')
@@ -2391,5 +2415,219 @@ suite('Standalone plot restoration', () => {
         await Promise.all([showing, stopping]);
         sinon.assert.notCalled(connect);
         assert.strictEqual(panels.length, 0);
+    });
+    for (const backend of ['jgd', 'httpgd'] as const) {
+        test(`${backend} updates a closed viewer's retained plot without reopening until a new plot`, async () => {
+            const source = owner('retained', '321');
+            const value = manager();
+            if (backend === 'jgd') {
+                const deliver = startJgd(value);
+                const history = value.jgdManager.history;
+                history.addPlot('device', frame('device'));
+                history.setSessionSource('device', source);
+                deliver('device', { type: 'frame', newPage: true });
+                panels[0].panel.dispose();
+                history.appendOps('device', {
+                    ...frame('device'),
+                    ops: [{ op: 'text', str: 'annotation' }],
+                });
+                deliver('device', { type: 'frame', incremental: true });
+                assert.strictEqual(panels.length, 1);
+                assert.ok(JSON.stringify(history.latestPlot('device')?.ops).includes('annotation'));
+                history.addPlot('device', frame('device', 'new'));
+                deliver('device', { type: 'frame', newPage: true });
+            } else {
+                const viewer = new RefreshViewer('http://localhost:1234', {
+                    ...value.httpgdManager.viewerOptions,
+                    source,
+                });
+                value.httpgdManager.registerViewer(viewer);
+                const render = sandbox.stub(viewer.api, 'getPlotText').resolves('<svg>first</svg>');
+                await viewer.receivePlots(['a'], new Set(['a']));
+                panels[0].panel.dispose();
+                render.resolves('<svg>annotation</svg>');
+                await viewer.receivePlots(['a'], new Set(['a']));
+                assert.strictEqual(panels.length, 1);
+                assert.ok(viewer.plots[0].data.includes('annotation'));
+                await viewer.receivePlots(['a', 'b'], new Set(['a', 'b']));
+            }
+            assert.strictEqual(panels.length, 2, 'a new plot opens exactly one panel');
+        });
+    }
+
+    test('live httpgd retains closed-device content, selection and hidden plots across reload', async function () {
+        this.timeout(30000);
+        connect.callThrough();
+        const process = await startHttpgdR(this);
+        const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'retained-httpgd-'));
+        const errors = sandbox.stub(vscode.window, 'showErrorMessage').resolves();
+        try {
+            const source = owner('retained-httpgd', String(process.r.pid));
+            source.host = os.hostname();
+            focus(source);
+            sandbox.stub(session, 'resolvePlotSession').returns(source);
+            const first = manager();
+            const url = await process.evaluate(
+                'httpgd::hgd(silent=TRUE); plot(1:3, main="FIRST"); httpgd::hgd_url()',
+            );
+            await first.showHttpgdPlot(url, source);
+            const viewer = first.httpgdManager.viewers[0];
+            await waitForValue(() => (viewer.plots.length === 1 ? true : undefined));
+            await process.evaluate(
+                'text(2, 2, "FINAL ANNOTATION"); plot(4:6, main="SECOND"); "OK"',
+            );
+            await waitForValue(() => (viewer.plots.length === 2 ? true : undefined));
+            assert.ok(viewer.plots[0].data.includes('FINAL ANNOTATION'));
+            const other = await process.evaluate(
+                'httpgd::hgd(silent=TRUE); plot(7:9, main="OTHER DEVICE"); httpgd::hgd_url()',
+            );
+            await first.showHttpgdPlot(other, source);
+            await waitForValue(() => (viewer.plots.length === 3 ? true : undefined));
+            const [firstId, secondId, otherId] = viewer.plots.map((plot) => plot.id);
+            await viewer.focusPlot(firstId);
+            viewer.hidePlot(secondId);
+            await process.evaluate('graphics.off(); "OK"');
+            assert.strictEqual(viewer.activePlot, firstId);
+            await first.dispose();
+            assert.ok(!JSON.stringify([...secrets.values()]).includes('<svg'));
+            assert.ok(
+                JSON.stringify(state.get('r.plot.httpgdHistory')).includes('FINAL ANNOTATION'),
+            );
+            const restored = manager();
+            await callbacks.get('r.plot.showViewers')!();
+            const live = restored.httpgdManager.viewers[0];
+            assert.strictEqual(live.activePlot, firstId);
+            assert.deepStrictEqual(live.hiddenPlots, [secondId]);
+            assert.deepStrictEqual(
+                live.plots.map((plot) => plot.id),
+                [firstId, otherId],
+            );
+            const fetch = sandbox.spy(live.api, 'getPlotText');
+            live.viewWidth = 900;
+            await live.focusPlot(otherId);
+            await live.focusPlot(firstId);
+            const output = path.join(directory, 'retained.svg');
+            await live.exportPlot(firstId, 'svgp', output);
+            assert.ok((await fs.readFile(output, 'utf8')).includes('FINAL ANNOTATION'));
+            live.resetPlots();
+            await waitForValue(() => (live.plots.length === 3 ? true : undefined));
+            assert.deepStrictEqual(
+                live.plots.map((plot) => plot.id),
+                [firstId, secondId, otherId],
+            );
+            sinon.assert.notCalled(fetch);
+            sinon.assert.notCalled(errors);
+            // Confirmed R exit still removes all persisted content and credentials.
+            await process.dispose();
+            await waitForValue(() => (live.isDisposed ? true : undefined));
+            await restored.httpgdManager.saveConnections();
+            assert.deepStrictEqual(state.get('r.plot.httpgdHistory'), {});
+            assert.deepStrictEqual(state.get('r.plot.httpgdSelection'), {});
+            assert.strictEqual(secrets.size, 0);
+        } finally {
+            await process.dispose();
+            await fs.rm(directory, { recursive: true, force: true });
+        }
+    });
+
+    test('httpgd navigation checkpoints cursors without rewriting retained SVGs', async () => {
+        const clock = sandbox.useFakeTimers();
+        const source = owner('retained', '321');
+        const value = manager();
+        await value.showHttpgdPlot('http://localhost:1234', source);
+        const viewer = value.httpgdManager.viewers[0];
+        viewer.api.restorePlots(
+            ['a', 'b'].map((id) => ({ id, reference: { origin: viewer.origin, id } })),
+        );
+        sandbox.stub(viewer.api, 'getPlotText').resolves('<svg>retained</svg>');
+        await RefreshViewer.prototype.receivePlots.call(viewer, ['a', 'b'], new Set(['a', 'b']));
+        await value.httpgdManager.saveConnections();
+        const update = (
+            extensionContext.workspaceState as unknown as {
+                update: sinon.SinonStub<[string, unknown], Promise<void>>;
+            }
+        ).update;
+        update.resetHistory();
+        await viewer.prevPlot();
+        await clock.tickAsync(250);
+        const keys = update.getCalls().map((call) => call.args[0]);
+        assert.ok(keys.includes('r.plot.httpgdSelection'));
+        assert.ok(!keys.includes('r.plot.httpgdHistory'));
+    });
+
+    test('httpgd exit during a retained-content write removes its images and selection', async () => {
+        const exits = processExits();
+        const source = owner('writing-history', '321');
+        const value = manager();
+        await value.showHttpgdPlot('http://localhost:1234', source);
+        const viewer = value.httpgdManager.viewers[0];
+        viewer.api.restorePlots([{ id: 'a', reference: { origin: viewer.origin, id: 'a' } }]);
+        sandbox.stub(viewer.api, 'getPlotText').resolves('<svg>retained</svg>');
+        await RefreshViewer.prototype.receivePlots.call(viewer, ['a'], new Set(['a']));
+        const started = deferred<void>();
+        const finish = deferred<void>();
+        let writes = 0;
+        (extensionContext.workspaceState.update as sinon.SinonStub).callsFake(
+            async (key: string, data: unknown) => {
+                if (key === 'r.plot.httpgdHistory' && ++writes === 1) {
+                    started.resolve();
+                    await finish.promise;
+                }
+                state.set(key, structuredClone(data));
+            },
+        );
+        const saving = value.httpgdManager.saveConnections();
+        await started.promise;
+        exits.exit(source);
+        finish.resolve();
+        await saving;
+        await value.httpgdManager.saveConnections();
+        assert.deepStrictEqual(state.get('r.plot.httpgdHistory'), {});
+        assert.deepStrictEqual(state.get('r.plot.httpgdSelection'), {});
+        assert.strictEqual(secrets.size, 0);
+    });
+
+    test('httpgd redraws thumbnails in timeline order when restored devices arrive out of order', async () => {
+        const value = manager();
+        const viewer = new RefreshViewer(
+            'http://localhost:1234',
+            value.httpgdManager.viewerOptions,
+        );
+        value.httpgdManager.registerViewer(viewer);
+        sandbox
+            .stub(viewer.api, 'getPlotText')
+            .callsFake(({ id }) => Promise.resolve(`<svg>${id}</svg>`));
+        await viewer.receivePlots(['a', 'c']);
+        await viewer.receivePlots(['a', 'b', 'c']);
+        assert.deepStrictEqual(
+            viewer.plots.map(({ id }) => id),
+            ['a', 'b', 'c'],
+        );
+        const html = viewer.webviewPanel!.webview.html;
+        assert.ok(html.indexOf('<svg>a</svg>') < html.indexOf('<svg>b</svg>'));
+        assert.ok(html.indexOf('<svg>b</svg>') < html.lastIndexOf('<svg>c</svg>'));
+    });
+
+    test('httpgd retains annotations received while a plot is hidden before its device closes', async () => {
+        const value = manager();
+        const viewer = new RefreshViewer(
+            'http://localhost:1234',
+            value.httpgdManager.viewerOptions,
+        );
+        value.httpgdManager.registerViewer(viewer);
+        viewer.api.restorePlots([{ id: 'a', reference: { origin: viewer.origin, id: 'a' } }]);
+        const render = sandbox.stub(viewer.api, 'getPlotText').resolves('<svg>first</svg>');
+        await viewer.receivePlots(['a'], new Set(['a']));
+        viewer.hidePlot('a');
+        render.resolves('<svg>annotation</svg>');
+        await viewer.receivePlots(['a'], new Set(['a']));
+        assert.strictEqual(viewer.plots.length, 0);
+        assert.strictEqual(viewer.snapshotHistory().plots[0].data, '<svg>annotation</svg>');
+        sandbox.stub(viewer.api, 'isAvailable').returns(false);
+        render.resetHistory();
+        viewer.resetPlots();
+        await waitForValue(() => (viewer.plots.length === 1 ? true : undefined));
+        assert.strictEqual(viewer.plots[0].data, '<svg>annotation</svg>');
+        sinon.assert.notCalled(render);
     });
 });
