@@ -11,7 +11,11 @@ import {
     ViewerSessionContext,
     ViewerSessionSource,
 } from '../viewerSession';
-import { getViewerSessionContext } from '../session';
+import {
+    getViewerSessionContext,
+    onDidChangeSessionConnection,
+    resolvePlotSession,
+} from '../session';
 import { sessionProcessIdentity } from '../sessionIdentity';
 
 import { asViewColumn, config, setContext, UriIcon, makeWebviewCommandUriString } from '../util';
@@ -274,6 +278,9 @@ export class HttpgdViewer implements IHttpgdViewer, PlotViewer {
     private disposed = false;
     private source?: ViewerSessionSource;
     private sessionContext?: ViewerSessionContext;
+    private sessionExitSubscription?: { dispose(): void };
+    private sessionConnectionSubscription?: vscode.Disposable;
+    private sessionDisconnected = false;
     private restoring: boolean;
 
     get connection(): HttpgdConnection {
@@ -333,7 +340,6 @@ export class HttpgdViewer implements IHttpgdViewer, PlotViewer {
         this.id = this.host;
         this.token = options.token;
         this.restoring = options.restoring ?? false;
-        this.bindSession(options.source);
         this.parent = options.parent;
 
         this.api = new HttpgdClient(this.origin, this.token);
@@ -376,8 +382,20 @@ export class HttpgdViewer implements IHttpgdViewer, PlotViewer {
         this.fullWindow = options.fullWindow ?? this.defaultFullWindow;
         this.resizeTimeoutLength = options.resizeTimeoutLength ?? this.resizeTimeoutLength;
         this.refreshTimeoutLength = options.refreshTimeoutLength ?? this.refreshTimeoutLength;
+        this.bindSession(options.source);
+        this.connect();
+    }
+
+    private get canRefresh(): boolean {
+        return !this.disposed && !this.sessionDisconnected && !this.sessionContext?.hasExited;
+    }
+
+    private connect(): void {
+        if (!this.canRefresh) {
+            return;
+        }
         void this.api.connect().catch((err) => {
-            if (!this.disposed) {
+            if (this.canRefresh && !(err instanceof Error && err.name === 'AbortError')) {
                 void vscode.window.showErrorMessage(`httpgd connection failed: ${String(err)}`);
             }
         });
@@ -427,6 +445,25 @@ export class HttpgdViewer implements IHttpgdViewer, PlotViewer {
         }
         this.source = { ...source };
         this.sessionContext = getViewerSessionContext(source.sessionId, source);
+        this.sessionExitSubscription = this.sessionContext?.observeExit(() => this.dispose());
+        this.sessionConnectionSubscription = onDidChangeSessionConnection((event) => {
+            if (event.session.sessionId !== source.sessionId || this.disposed) {
+                return;
+            }
+            const connected = Boolean(resolvePlotSession(source));
+            if (!connected && !this.sessionDisconnected) {
+                this.sessionDisconnected = true;
+                this.stopRequests();
+            } else if (connected && this.sessionDisconnected) {
+                this.sessionDisconnected = false;
+                // The first snapshot after reconnect is not a new plot.
+                this.restoring = true;
+                this.connect();
+            }
+        });
+        if (this.sessionContext?.hasExited) {
+            this.dispose();
+        }
         if (this.webviewPanel) {
             this.sessionContext?.attach(this.webviewPanel);
             this.refreshHtml();
@@ -610,6 +647,9 @@ export class HttpgdViewer implements IHttpgdViewer, PlotViewer {
     }
 
     protected handleResize(height: number, width: number, userTriggered: boolean = false): void {
+        if (!this.canRefresh) {
+            return;
+        }
         this.viewHeight = height;
         this.viewWidth = width;
         if (userTriggered || this.resizeTimeoutLength === 0) {
@@ -628,18 +668,21 @@ export class HttpgdViewer implements IHttpgdViewer, PlotViewer {
     }
 
     private reportRefreshError(err: unknown): void {
-        if (!this.disposed) {
+        if (this.canRefresh && !(err instanceof Error && err.name === 'AbortError')) {
             void vscode.window.showErrorMessage(`Plot refresh failed: ${String(err)}`);
         }
     }
 
     protected async resizePlot(id?: HttpgdPlotId): Promise<void> {
+        if (!this.canRefresh) {
+            return;
+        }
         id ??= this.activePlot;
         if (!id) {
             return;
         }
         const plt = await this.getPlotContent(id, this.viewWidth, this.viewHeight, this.zoom);
-        if (this.disposed) {
+        if (!this.canRefresh) {
             return;
         }
         this.plotWidth = plt.width;
@@ -652,6 +695,9 @@ export class HttpgdViewer implements IHttpgdViewer, PlotViewer {
         redraw: boolean = false,
         force: boolean = false,
     ): Promise<void> {
+        if (!this.canRefresh) {
+            return;
+        }
         if (this.refreshTimeoutLength === 0) {
             await this.refreshPlots(plotsIdResponse, redraw, force);
         } else {
@@ -671,7 +717,7 @@ export class HttpgdViewer implements IHttpgdViewer, PlotViewer {
         redraw: boolean = false,
         force: boolean = false,
     ): Promise<void> {
-        if (this.disposed) {
+        if (!this.canRefresh) {
             return;
         }
         const restoring = this.restoring;
@@ -688,7 +734,7 @@ export class HttpgdViewer implements IHttpgdViewer, PlotViewer {
             }
         });
         const newPlots = await Promise.all(newPlotPromises);
-        if (this.disposed) {
+        if (!this.canRefresh) {
             return;
         }
         const oldPlotIds = new Set(this.plots.map((plt) => plt.id));
@@ -928,9 +974,20 @@ export class HttpgdViewer implements IHttpgdViewer, PlotViewer {
     }
 
     public dispose(): void {
+        if (this.disposed) {
+            return;
+        }
         this.disposed = true;
+        this.sessionExitSubscription?.dispose();
+        this.sessionConnectionSubscription?.dispose();
+        this.stopRequests();
+    }
+
+    private stopRequests(): void {
         clearTimeout(this.resizeTimeout);
         clearTimeout(this.refreshTimeout);
+        this.resizeTimeout = undefined;
+        this.refreshTimeout = undefined;
         this.api.disconnect();
     }
 }
