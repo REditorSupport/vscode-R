@@ -252,6 +252,14 @@ runtime_start <- function(use_rstudioapi = TRUE,
     package_version(getNamespaceVersion("httpgd")) >= "2.0.1"
   selected_backend <- .select_plot_backend(plot_backend, has_httpgd, has_jgd)
   if (selected_backend == "jgd") {
+    open_device <- jgd::jgd
+    .runtime_rebind("jgd", function(...) {
+      result <- open_device(...)
+      # Windows defers the renderer welcome until server_info is requested.
+      # Cache it while connected so explicit devices can be identified on reload.
+      tryCatch(jgd::jgd_server_info(), error = function(e) NULL)
+      invisible(result)
+    }, "jgd")
     open_jgd_device <- function(key = NULL, recorded = NULL, previous_device_id = NULL, ...) {
       jgd::jgd(...)
       .runtime_track_device()

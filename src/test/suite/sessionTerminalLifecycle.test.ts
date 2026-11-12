@@ -21,6 +21,7 @@ import {
 async function settleWithFakeTime<T>(
     promise: Promise<T>,
     clock: sinon.SinonFakeTimers,
+    startupFile?: string,
 ): Promise<T> {
     let settled = false;
     void promise.then(
@@ -33,6 +34,10 @@ async function settleWithFakeTime<T>(
     );
     for (let attempt = 0; attempt < 100 && !settled; attempt++) {
         await clock.tickAsync(10);
+        if (startupFile) {
+            // Advancing fake timers alone does not complete the real startup-file reads.
+            await fsp.readFile(startupFile);
+        }
     }
     assert.strictEqual(
         settled,
@@ -782,7 +787,10 @@ suite('Session Terminal Lifecycle', () => {
                 return waitForReady(current, timeout, startupPath, startupToken);
             });
         const timerSandbox = sinon.createSandbox();
-        const clock = timerSandbox.useFakeTimers();
+        // Keep IPC and filesystem completion callbacks on the real event loop.
+        const clock = timerSandbox.useFakeTimers({
+            toFake: ['setTimeout', 'clearTimeout', 'Date'],
+        });
         const timerSpy = timerSandbox.spy(globalThis, 'setTimeout');
         let commandsSettled: Promise<PromiseSettledResult<boolean>[]> | undefined;
 
@@ -831,8 +839,8 @@ suite('Session Terminal Lifecycle', () => {
 
             const target = connections.attach('startup-target', rPid);
             await settleWithFakeTime(target, clock);
-            assert.strictEqual(await firstResult, true);
-            assert.strictEqual(await second, true);
+            assert.strictEqual(await settleWithFakeTime(firstResult, clock, startupFile), true);
+            assert.strictEqual(await settleWithFakeTime(second, clock, startupFile), true);
             sinon.assert.calledTwice(sendText);
             assert.deepStrictEqual(sendText.args, [
                 ['\x1b[200~first\x1b[201~', true],

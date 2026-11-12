@@ -143,7 +143,13 @@ suite('Live R plot reconnect', function () {
             try {
                 await startServers();
                 r = spawn('R', ['--vanilla', '--slave'], {
-                    env: { ...process.env, R_LIBS_USER: library, JGD_SOCKET: jgd!.getSocketPath() },
+                    env: {
+                        ...process.env,
+                        // Prefer the fixture sess without hiding dependencies installed
+                        // in R_LIBS_USER by setup-r on CI.
+                        R_LIBS: [library, process.env.R_LIBS].filter(Boolean).join(path.delimiter),
+                        JGD_SOCKET: jgd!.getSocketPath(),
+                    },
                 });
                 let output = '';
                 let errors = '';

@@ -38,7 +38,7 @@ export function mockExtensionContext(extension_root: string, sandbox: sinon.Sino
         subscriptions: [],
         workspaceState: {
             get: sinon.stub().callsFake((key: string, defaultValue?: unknown) => defaultValue),
-            update: sinon.stub(),
+            update: sinon.stub().resolves(),
         },
         asAbsolutePath: (relativePath: string) => {
             return path.join(extension_root, relativePath);
