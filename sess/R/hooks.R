@@ -75,6 +75,7 @@ runtime_start <- function(use_rstudioapi = TRUE,
     runtime_stop()
   }
   state <- .runtime_state()
+  state$devices <- Filter(.runtime_device_is_live, state$devices)
   state$plot_backend <- plot_backend
   state$active <- TRUE
   completed <- FALSE
@@ -295,7 +296,10 @@ runtime_start <- function(use_rstudioapi = TRUE,
     # The R process survives reload, but JGD's renderer socket does not. Reopen
     # each retained device and replay its current plot with the same logical ID.
     previous <- grDevices::dev.cur()
-    retained <- .runtime_state()$devices
+    # Freeze eligibility before reopening can reuse a closed registration's number.
+    device_entries <- get(".Devices", envir = baseenv())
+    retained <- Filter(function(entry) .runtime_device_is_live(entry, device_entries),
+                       .runtime_state()$devices)
     # Explicit jgd::jgd() calls bypass our device factory. Recover live devices
     # belonging to VS Code too, leaving other renderers' devices untouched.
     devs <- grDevices::dev.list()
@@ -382,7 +386,9 @@ runtime_start <- function(use_rstudioapi = TRUE,
     check_null_dev <- function() {
       cur <- grDevices::dev.cur()
       id <- getOption("sess.null_dev")
-      !is.null(id) && cur == id
+      !is.null(id) && cur == id && any(vapply(state$devices, function(entry) {
+        entry$id == id && .runtime_device_is_live(entry)
+      }, logical(1)))
     }
 
     new_plot <- function() {

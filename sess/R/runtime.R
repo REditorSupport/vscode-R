@@ -183,16 +183,30 @@
     # registration so its logical plot identity cannot be replayed onto the
     # replacement device during reconnect.
     state$devices <- Filter(function(entry) entry$id != unname(id), state$devices)
+    # R replaces the .Devices entry when a device closes or its number is reused.
+    # A marker on that entry identifies the lifetime, including while disconnected
+    # and when callers close devices through a previously saved dev.off function.
+    token <- new.env(parent = emptyenv())
+    device_entries <- get(".Devices", envir = baseenv())
+    attr(device_entries[[id]], "vscodeR.device") <- token
+    assign(".Devices", device_entries, envir = baseenv())
     state$devices[[length(state$devices) + 1L]] <- list(
       id = unname(id),
-      name = name
+      name = name,
+      token = token
     )
   }
   invisible(id)
 }
 
+.runtime_device_is_live <- function(entry, devices = get(".Devices", envir = baseenv())) {
+  !is.null(entry$token) && entry$id <= length(devices) &&
+    identical(attr(devices[[entry$id]], "vscodeR.device", exact = TRUE), entry$token)
+}
+
 .runtime_restore <- function(preserve_plots = FALSE) {
   state <- .runtime_state()
+  state$devices <- Filter(.runtime_device_is_live, state$devices)
 
   for (name in rev(state$task_callbacks)) {
     try(removeTaskCallback(name), silent = TRUE)
@@ -262,7 +276,8 @@
   for (entry in if (preserve_plots) list() else rev(state$devices)) {
     devices <- grDevices::dev.list()
     index <- if (is.null(devices)) NA_integer_ else match(entry$id, devices)
-    if (!is.na(index) && identical(names(devices)[[index]], entry$name)) {
+    if (!is.na(index) && identical(names(devices)[[index]], entry$name) &&
+          .runtime_device_is_live(entry)) {
       try(grDevices::dev.off(which = entry$id), silent = TRUE)
     }
   }

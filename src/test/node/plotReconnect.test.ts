@@ -64,6 +64,7 @@ suite('Live R plot reconnect', function () {
     for (const [backend, deviceMode] of [
         ['jgd', 'default'],
         ['jgd', 'reused'],
+        ['jgd', 'closed-reused'],
         ['jgd', 'explicit-reused'],
         ['jgd', 'explicit'],
         ['standard', 'default'],
@@ -71,11 +72,14 @@ suite('Live R plot reconnect', function () {
     ] as const) {
         const reuseDevice = deviceMode === 'reused' || deviceMode === 'explicit-reused';
         const explicitDevice = deviceMode === 'explicit' || deviceMode === 'explicit-reused';
-        const name = reuseDevice
-            ? `jgd preserves closed-device history when ${explicitDevice ? 'an explicit device' : 'R'} reuses a device number`
-            : explicitDevice
-              ? 'explicit JGD devices resume plot delivery after reconnect'
-              : `${backend} retains its live R plot across renderer and session reconnect`;
+        const closedReusedDevice = deviceMode === 'closed-reused';
+        const name = closedReusedDevice
+            ? 'jgd ignores closed registrations when reopening a survivor reuses their number'
+            : reuseDevice
+              ? `jgd preserves closed-device history when ${explicitDevice ? 'an explicit device' : 'R'} reuses a device number`
+              : explicitDevice
+                ? 'explicit JGD devices resume plot delivery after reconnect'
+                : `${backend} retains its live R plot across renderer and session reconnect`;
         test(name, async () => {
             let history = new PlotHistory();
             let jgd: JgdSocketServer;
@@ -200,19 +204,22 @@ suite('Live R plot reconnect', function () {
                         await evaluate('jgd::jgd(width=4, height=3, dpi=144); TRUE');
                     }
                 }
+                if (closedReusedDevice) {
+                    await evaluate('first_device <- dev.cur(); getOption("device")(); TRUE');
+                }
                 await evaluate('plot(3:1, main="before reload"); TRUE');
                 if (reuseDevice) {
                     await evaluate('stopifnot(dev.cur() == old_device); TRUE');
                 }
-                const plotsBeforeReload = 2;
+                const plotsBeforeReload = closedReusedDevice ? 3 : 2;
                 let originalId: string | undefined;
                 let httpgdUrl: string | undefined;
                 if (backend === 'jgd') {
                     originalId = await until(() =>
                         history
                             .snapshot()
-                            .sessions.reduce((n, entry) => n + entry.plots.length, 0) ===
-                            plotsBeforeReload && history.getActiveSessionId() !== closedHistory?.id
+                            .sessions.reduce((n, entry) => n + entry.plots.length, 0) === 2 &&
+                        history.getActiveSessionId() !== closedHistory?.id
                             ? history.getActiveSessionId()
                             : undefined,
                     );
@@ -249,7 +256,6 @@ suite('Live R plot reconnect', function () {
                         Buffer.from(plot.data, 'base64').toString().includes('before reload'),
                     );
                 }
-                const deviceIds = history.sessionIds();
                 if (backend === 'jgd') {
                     // Preserve the live viewport size, not just the dimensions
                     // originally passed to the device factory.
@@ -263,6 +269,24 @@ suite('Live R plot reconnect', function () {
                     );
                     await evaluate('device_geometry <- c(dev.size("in"), dev.size("px")); TRUE');
                 }
+                if (closedReusedDevice) {
+                    await evaluate(
+                        'survivor <- dev.cur(); dev.off(first_device); getOption("device")(); stopifnot(dev.cur() == first_device); plot(4:6, main="closed replacement"); dev.off(); dev.set(survivor); TRUE',
+                    );
+                    await until(() =>
+                        history
+                            .snapshot()
+                            .sessions.reduce((n, entry) => n + entry.plots.length, 0) === 3
+                            ? true
+                            : undefined,
+                    );
+                }
+                const deviceIds = history.sessionIds();
+                const closedHistories = closedReusedDevice
+                    ? structuredClone(
+                          history.snapshot().sessions.filter((entry) => entry.id !== originalId),
+                      )
+                    : [];
                 if (explicitDevice) {
                     externalRenderer = net.createServer((socket) => {
                         externalSockets.add(socket);
@@ -378,11 +402,37 @@ suite('Live R plot reconnect', function () {
                             : undefined,
                     );
                     assert.deepEqual(history.sessionIds(), deviceIds);
+                    for (const closed of closedHistories) {
+                        assert.deepEqual(
+                            history.snapshot().sessions.find((entry) => entry.id === closed.id),
+                            closed,
+                            'restoration must preserve closed-device history',
+                        );
+                        assert.equal(jgd!.isConnected(closed.id), false);
+                    }
                     assert.equal(
                         history.count(originalId),
                         plotsBeforeReload,
                         'replay replaces the latest plot instead of duplicating history',
                     );
+                    if (closedReusedDevice) {
+                        await evaluate('plot(2:4, main="after reload"); TRUE');
+                        await until(() => (history.count(originalId) === 4 ? true : undefined));
+                        assert.ok(
+                            JSON.stringify(history.latestPlot(originalId!)?.ops).includes(
+                                'after reload',
+                            ),
+                        );
+                        assert.deepEqual(history.sessionIds(), deviceIds);
+                        for (const closed of closedHistories) {
+                            assert.deepEqual(
+                                history.snapshot().sessions.find((entry) => entry.id === closed.id),
+                                closed,
+                                'subsequent plots must use the surviving device identity',
+                            );
+                        }
+                        return;
+                    }
                     if (closedHistory) {
                         assert.deepEqual(
                             history
