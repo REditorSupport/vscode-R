@@ -26,6 +26,14 @@ import type { ViewerSessionSource } from '../../viewerSession';
 const createRealWebviewPanel = vscode.window.createWebviewPanel;
 const executeRealCommand = vscode.commands.executeCommand;
 
+async function prepareEditorLayout(): Promise<void> {
+    // Sidebars and the panel can leave too little space on CI desktops: VS Code
+    // clamps different requested group sizes to the same minimum dimensions.
+    await executeRealCommand('workbench.action.closeSidebar');
+    await executeRealCommand('workbench.action.closeAuxiliaryBar');
+    await executeRealCommand('workbench.action.closePanel');
+}
+
 class RefreshViewer extends HttpgdViewer {
     seedPlots(plots: HttpgdPlot<string>[]): void {
         this.setPlots(plots);
@@ -1640,6 +1648,7 @@ suite('Standalone plot restoration', () => {
         );
         const errors = sandbox.stub(vscode.window, 'showErrorMessage').resolves();
         const process = await startHttpgdR(this);
+        await prepareEditorLayout();
         const originalLayout = await executeRealCommand('vscode.getEditorLayout');
         let viewer: HttpgdViewer | undefined;
         const document = await vscode.workspace.openTextDocument({ language: 'plaintext' });
@@ -2058,6 +2067,7 @@ suite('Standalone plot restoration', () => {
                 });
                 return waitForValue(() => inspection);
             };
+            await prepareEditorLayout();
             const originalLayout = await executeRealCommand('vscode.getEditorLayout');
             const documents: vscode.TextDocument[] = [];
             try {
@@ -2087,8 +2097,14 @@ suite('Standalone plot restoration', () => {
                 viewer.show();
                 await waitForValue(() => (render.called ? true : undefined));
                 const reopened = await inspect();
-                assert.ok(reopened.windowWidth < enlarged.windowWidth);
-                assert.ok(reopened.windowHeight < enlarged.windowHeight);
+                assert.ok(
+                    reopened.windowWidth < enlarged.windowWidth,
+                    `width should shrink: ${enlarged.windowWidth} -> ${reopened.windowWidth}`,
+                );
+                assert.ok(
+                    reopened.windowHeight < enlarged.windowHeight,
+                    `height should shrink: ${enlarged.windowHeight} -> ${reopened.windowHeight}`,
+                );
                 assert.strictEqual(reopened.fullWindow, fullWindow);
                 assert.strictEqual(
                     viewer.viewWidth,
