@@ -3,11 +3,9 @@ on:
   push:
     branches:
       - main
-      - master
   pull_request:
     branches:
       - main
-      - master
   workflow_call:
     inputs:
       prerelease-date:
@@ -47,14 +45,16 @@ jobs:
       - name: Verify managed tool consent
         run: pnpm run test:tool-consent
       - name: Install R test dependencies
-        run: install.packages(c("remotes", "pkgbuild", "languageserver", "lintr", "styler", "renv"))
-        shell: Rscript {0}
-      - name: Install Linux plot system dependencies
-        if: runner.os == 'Linux'
-        # The unigd binary links libtiffxx.so.6, which the hosted image lacks.
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libtiffxx6
+        uses: r-lib/actions/setup-r-dependencies@f9a764fea8d5c63df6ef9a5c7795bf7deb5d7e05 # v2
+        with:
+          working-directory: sess
+          extra-packages: |
+            any::remotes
+            any::pkgbuild
+            any::languageserver
+            any::lintr
+            any::styler
+            any::renv
       - run: pnpm run build
       - name: Verify live plot lifecycle dependencies
         run: |
