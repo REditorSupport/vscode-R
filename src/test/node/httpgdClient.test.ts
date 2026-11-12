@@ -120,9 +120,11 @@ suite('Internal httpgd client', () => {
         for (const response of held) {
             response.destroy();
         }
-        await new Promise<void>((resolve, reject) =>
-            server.close((error) => (error ? reject(error) : resolve())),
-        );
+        if (server.listening) {
+            await new Promise<void>((resolve, reject) =>
+                server.close((error) => (error ? reject(error) : resolve())),
+            );
+        }
     });
 
     test('loads the initial snapshot, SVG, binary exports and renderers with authentication', async () => {
@@ -183,13 +185,18 @@ suite('Internal httpgd client', () => {
         await until(() => client.getPlots().length === 2);
         assert.deepStrictEqual(notifications, [['1'], ['1', '2']]);
     });
-    test('reports a refused server and refreshes unchanged history when it becomes available again', async () => {
+    test('reports an unavailable server and refreshes unchanged history when it becomes available again', async () => {
         let unavailable = 0;
         client.onUnavailable(() => unavailable++);
         await client.connect();
         const port = (server.address() as AddressInfo).port;
         await new Promise<void>((resolve) => server.close(() => resolve()));
-        await assert.rejects(client.getPlotText({ id: '1' }), { code: 'ECONNREFUSED' });
+        // A pooled connection can be reset as the server closes; a fresh one is refused.
+        await assert.rejects(
+            client.getPlotText({ id: '1' }),
+            (error: NodeJS.ErrnoException) =>
+                error.code === 'ECONNREFUSED' || error.code === 'ECONNRESET',
+        );
         assert.ok(unavailable > 0);
         await new Promise<void>((resolve) => server.listen(port, '127.0.0.1', resolve));
         await until(() => notifications.length > 1);

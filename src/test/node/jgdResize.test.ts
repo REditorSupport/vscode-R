@@ -61,9 +61,13 @@ suite('Live JGD resize', () => {
         });
         // An interactive process exercises JGD's native idle input handler.
         // No C_jgd_poll_resize call or subsequent R command drives the redraw.
-        const r = spawn('R', ['--vanilla', '--slave', '--interactive'], {
-            env: { ...process.env, JGD_SOCKET: server.getSocketPath() },
-        });
+        const r = spawn(
+            'R',
+            ['--vanilla', '--slave', process.platform === 'win32' ? '--ess' : '--interactive'],
+            {
+                env: { ...process.env, JGD_SOCKET: server.getSocketPath() },
+            },
+        );
         let errors = '';
         r.stderr.on('data', (data: Buffer) => {
             errors += data.toString();
@@ -131,9 +135,13 @@ suite('Live JGD resize', () => {
             server.onReady(resolve);
             server.start();
         });
-        const r = spawn('R', ['--vanilla', '--slave', '--interactive'], {
-            env: { ...process.env, JGD_SOCKET: server.getSocketPath() },
-        });
+        const r = spawn(
+            'R',
+            ['--vanilla', '--slave', process.platform === 'win32' ? '--ess' : '--interactive'],
+            {
+                env: { ...process.env, JGD_SOCKET: server.getSocketPath() },
+            },
+        );
         let output = '';
         r.stdout.on('data', (data: Buffer) => {
             output += data.toString();

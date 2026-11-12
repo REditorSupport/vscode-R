@@ -49,11 +49,20 @@ jobs:
       - name: Install R test dependencies
         run: install.packages(c("remotes", "pkgbuild", "languageserver", "lintr", "styler", "renv"))
         shell: Rscript {0}
+      - name: Install Linux plot system dependencies
+        if: runner.os == 'Linux'
+        # The unigd binary links libtiffxx.so.6, which the hosted image lacks.
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libtiffxx6
       - run: pnpm run build
       - name: Verify live plot lifecycle dependencies
         run: |
           packages <- c("processx", "later", "jsonlite", "jgd", "httpgd", "svglite")
-          stopifnot(all(vapply(packages, requireNamespace, logical(1), quietly = TRUE)))
+          for (package in packages) {
+            message("Loading plot test dependency: ", package)
+            loadNamespace(package)
+          }
           stopifnot(packageVersion("httpgd") >= "2.0.1")
         shell: Rscript {0}
       - name: Verify managed jgd preparation

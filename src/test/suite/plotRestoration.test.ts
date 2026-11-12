@@ -1464,7 +1464,11 @@ suite('Standalone plot restoration', () => {
             }
             context.skip();
         }
-        const r = spawn('R', ['--vanilla', '--slave', '--interactive']);
+        const r = spawn('R', [
+            '--vanilla',
+            '--slave',
+            process.platform === 'win32' ? '--ess' : '--interactive',
+        ]);
         const exited = new Promise<void>((resolve) => r.once('exit', () => resolve()));
         let output = '';
         let errors = '';
