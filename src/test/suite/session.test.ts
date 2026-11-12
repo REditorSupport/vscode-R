@@ -52,7 +52,7 @@ suite('Session Communication', () => {
     let commandMarkerPath: string | undefined;
     let plotPanelCleanup: (() => void) | undefined;
 
-    setup(() => {
+    setup(async () => {
         sandbox = sinon.createSandbox();
         sandbox.stub(processTree, 'getProcessAncestors').resolves([]);
         sandbox.stub(vscode.commands, 'registerCommand'); // prevent "command already exists" error
@@ -65,7 +65,9 @@ suite('Session Communication', () => {
             getActiveSessionId: () => session.activeSession?.sessionId,
         });
         session.deploySessionWatcher(extension_root);
-        sandbox.stub(extension, 'globalPlotManager').value(plotViewer.initializePlotManager());
+        sandbox
+            .stub(extension, 'globalPlotManager')
+            .value(await plotViewer.initializePlotManager());
     });
 
     teardown(async () => {
