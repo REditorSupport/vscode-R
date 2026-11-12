@@ -464,8 +464,12 @@ export class HttpgdManager {
         this.viewerStore.markActive(viewer);
     }
 
-    public getRecentViewer(): HttpgdViewer | undefined {
-        return this.recentlyActiveViewers.find((viewer) => !!viewer.webviewPanel);
+    public getRecentViewer(source: ViewerSessionSource): HttpgdViewer | undefined {
+        const key = sessionProcessIdentity(source);
+        return this.recentlyActiveViewers.find((viewer) => {
+            const owner = viewer.connection.source;
+            return !!viewer.webviewPanel && owner && sessionProcessIdentity(owner) === key;
+        });
     }
 
     public async openUrl(): Promise<void> {

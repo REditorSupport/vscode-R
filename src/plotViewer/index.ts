@@ -93,10 +93,19 @@ export class CommonPlotManager implements PlotManager {
         if (focused) {
             return focused;
         }
-        if (jgdEnabled()) {
-            return this.jgdManager.getViewer() || this.httpgdManager.getRecentViewer();
+        const source = activeSession;
+        if (!source || this.lifecycle.hasExited(source)) {
+            return undefined;
         }
-        return this.httpgdManager.getRecentViewer();
+        // Commands from a terminal/keybinding belong to its active R session,
+        // not whichever device last produced a plot or viewer was last used.
+        if (jgdEnabled()) {
+            return (
+                this.jgdManager.getViewerForSession(source) ??
+                this.httpgdManager.getRecentViewer(source)
+            );
+        }
+        return this.httpgdManager.getRecentViewer(source);
     }
 
     public async initialize(): Promise<void> {

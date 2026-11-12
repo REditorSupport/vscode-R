@@ -241,6 +241,15 @@ export class JgdManager {
     }
 
     showForSession(source: ViewerSessionSource): boolean {
+        const viewer = this.getViewerForSession(source);
+        if (!viewer) {
+            return false;
+        }
+        viewer.show(true);
+        return true;
+    }
+
+    getViewerForSession(source: ViewerSessionSource): JgdViewer | undefined {
         const key = sessionProcessIdentity(source);
         const ids = this.history.sessionIds().filter((id) => {
             const owner = this.sourceForDevice(id);
@@ -248,11 +257,7 @@ export class JgdManager {
         });
         const current = this.viewers.get(key)?.sessionId ?? this.history.getActiveSessionId();
         const id = ids.includes(current) ? current : ids.at(-1);
-        if (!id) {
-            return false;
-        }
-        this.getOrCreateViewer(id).show(true);
-        return true;
+        return id ? this.getOrCreateViewer(id) : undefined;
     }
 
     private sourceForDevice(id: string): ViewerSessionSource | undefined {

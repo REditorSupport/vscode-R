@@ -997,6 +997,171 @@ suite('Standalone plot restoration', () => {
         };
     }
 
+    for (const backend of ['jgd', 'httpgd'] as const) {
+        async function commandViewers() {
+            (util.config as sinon.SinonStub).returns({
+                get: (key: string, fallback: unknown) =>
+                    key === 'plot.backend' ? backend : fallback,
+            });
+            const value = await manager();
+            const a = owner('a', '123');
+            const b = owner('b', '456');
+            for (const [index, source] of [a, b].entries()) {
+                if (backend === 'jgd') {
+                    value.jgdManager.history.addPlot(source.sessionId, frame(source.sessionId));
+                    value.jgdManager.history.setSessionSource(source.sessionId, source);
+                    value.jgdManager.showForSession(source);
+                } else {
+                    await value.showHttpgdPlot(`http://localhost:${1234 + index}`, source);
+                    value.httpgdManager.viewers[0].show();
+                }
+            }
+            const viewers =
+                backend === 'jgd'
+                    ? value.jgdManager.getViewers()
+                    : [...value.httpgdManager.viewers].reverse();
+            for (const { panel } of panels) {
+                Object.assign(panel, { active: false });
+            }
+            const [viewerA, viewerB] = viewers;
+            const handleA = sandbox.stub(viewerA, 'handleCommand').resolves();
+            const handleB = sandbox.stub(viewerB, 'handleCommand').resolves();
+            return { value, a, b, viewerA, viewerB, handleA, handleB };
+        }
+
+        test(`${backend} untargeted commands use the active session instead of the latest viewer`, async () => {
+            const { value, a, b, viewerA, viewerB, handleA, handleB } = await commandViewers();
+            const active = sandbox.stub(session, 'activeSession').value(a);
+            assert.strictEqual(value.activeViewer, viewerA);
+            await callbacks.get('r.plot.prevPlot')!();
+            await callbacks.get('r.plot.closePlot')!();
+            await callbacks.get('r.plot.resetPlots')!();
+            assert.deepStrictEqual(
+                handleA.getCalls().map((call) => call.args[0]),
+                ['prevPlot', 'closePlot', 'resetPlots'],
+            );
+            sinon.assert.notCalled(handleB);
+
+            active.value(b);
+            assert.strictEqual(value.activeViewer, viewerB);
+            await callbacks.get('r.plot.nextPlot')!();
+            sinon.assert.calledOnceWithExactly(handleB, 'nextPlot');
+        });
+
+        test(`${backend} untargeted commands reject absent, unrelated, reused and exited sessions`, async () => {
+            const { value, a, handleA, handleB } = await commandViewers();
+            const active = sandbox.stub(session, 'activeSession');
+            const identity: ViewerSessionSource = {
+                sessionId: a.sessionId,
+                host: a.host,
+                pid: a.pid,
+                rVer: a.rVer,
+                processExited: false,
+            };
+            for (const source of [
+                undefined,
+                owner('no-plots', '789'),
+                { ...identity, sessionId: 'different-session' },
+                { ...identity, host: 'different-host' },
+                { ...identity, pid: '999' },
+                { ...identity, processExited: true },
+            ]) {
+                active.value(source);
+                assert.strictEqual(value.activeViewer, undefined);
+                await callbacks.get('r.plot.closePlot')!();
+                await callbacks.get('r.plot.resetPlots')!();
+            }
+            sinon.assert.notCalled(handleA);
+            sinon.assert.notCalled(handleB);
+            // Host identity is case-insensitive, as elsewhere in session routing.
+            active.value({ ...identity, host: a.host.toUpperCase() });
+            await callbacks.get('r.plot.prevPlot')!();
+            sinon.assert.calledOnceWithExactly(handleA, 'prevPlot');
+        });
+
+        test(`${backend} focused and explicit commands retain their target when another session is active`, async () => {
+            const { a, viewerB, handleA, handleB } = await commandViewers();
+            sandbox.stub(session, 'activeSession').value(a);
+            Object.assign(panels[1].panel, { active: true });
+            await callbacks.get('r.plot.closePlot')!();
+            sinon.assert.calledOnceWithExactly(handleB, 'closePlot');
+            await callbacks.get('r.plot.prevPlot')!(vscode.Uri.parse('webview-panel:focused'));
+            sinon.assert.calledWithExactly(handleB, 'prevPlot');
+            for (const { panel } of panels) {
+                Object.assign(panel, { active: false });
+            }
+            handleB.resetHistory();
+            await callbacks.get('r.plot.closePlot')!(vscode.Uri.parse('webview-panel:ended'));
+            sinon.assert.notCalled(handleB);
+            if (backend === 'httpgd') {
+                await callbacks.get('r.plot.hidePlot')!(viewerB.id, 'plot-id');
+                sinon.assert.calledOnceWithExactly(handleB, 'hidePlot', 'plot-id');
+            }
+            sinon.assert.notCalled(handleA);
+        });
+    }
+
+    test('auto falls back to the active session httpgd viewer when JGD belongs to another session', async () => {
+        const value = await manager();
+        const source = owner('active', '123');
+        focus(source);
+        value.jgdManager.history.addPlot('other-device', frame('other-device'));
+        value.jgdManager.history.setSessionSource('other-device', owner('other', '456'));
+        const jgd = value.jgdManager.getViewer('other-device')!;
+        jgd.show();
+        await value.showHttpgdPlot('http://localhost:1234', source);
+        const httpgd = value.httpgdManager.viewers[0];
+        httpgd.show();
+        for (const { panel } of panels) {
+            Object.assign(panel, { active: false });
+        }
+        const handleJgd = sandbox.stub(jgd, 'handleCommand').resolves();
+        const handleHttpgd = sandbox.stub(httpgd, 'handleCommand').resolves();
+        await callbacks.get('r.plot.closePlot')!();
+        sinon.assert.calledOnceWithExactly(handleHttpgd, 'closePlot');
+        sinon.assert.notCalled(handleJgd);
+    });
+
+    test('untargeted commands do not claim ownerless JGD or httpgd viewers', async () => {
+        const value = await manager();
+        focus(owner('active', '123'));
+        value.jgdManager.history.addPlot('unknown-device', frame('unknown-device'));
+        const jgd = value.jgdManager.getViewer('unknown-device')!;
+        jgd.show();
+        await value.showHttpgdPlot('http://localhost:1234');
+        const httpgd = value.httpgdManager.viewers[0];
+        httpgd.show();
+        for (const { panel } of panels) {
+            Object.assign(panel, { active: false });
+        }
+        const handleJgd = sandbox.stub(jgd, 'handleCommand').resolves();
+        const handleHttpgd = sandbox.stub(httpgd, 'handleCommand').resolves();
+        assert.strictEqual(value.activeViewer, undefined);
+        await callbacks.get('r.plot.resetPlots')!();
+        sinon.assert.notCalled(handleJgd);
+        sinon.assert.notCalled(handleHttpgd);
+    });
+
+    test('JGD untargeted commands can navigate the active session history without reopening a closed panel', async () => {
+        const value = await manager();
+        const source = owner('active', '123');
+        focus(source);
+        const history = value.jgdManager.history;
+        history.addPlot('owned-device', frame('owned-device', 'first'));
+        history.addPlot('owned-device', frame('owned-device', 'second'));
+        history.setSessionSource('owned-device', source);
+        history.addPlot('other-device', frame('other-device'));
+        history.setSessionSource('other-device', owner('other', '456'));
+        await callbacks.get('r.plot.prevPlot')!();
+        assert.strictEqual(history.currentPlot('owned-device')?.device.bg, 'first');
+        assert.strictEqual(history.count('other-device'), 1);
+        assert.strictEqual(panels.length, 0);
+        await callbacks.get('r.plot.resetPlots')!();
+        assert.strictEqual(history.count('owned-device'), 0);
+        assert.strictEqual(history.count('other-device'), 1);
+        assert.strictEqual(panels.length, 0);
+    });
+
     test('Show Viewer opens only the focused session and never ownerless or empty JGD viewers', async () => {
         const a = owner('a', '123');
         const b = owner('b', '456');
