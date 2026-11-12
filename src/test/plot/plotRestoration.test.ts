@@ -468,6 +468,41 @@ suite('Standalone plot restoration', () => {
         assert.deepStrictEqual((state.get('r.plot.jgdState') as PlotHistoryState).sessions, []);
     });
 
+    test('JGD exit during httpgd initialization removes its saved checkpoint and payload', async () => {
+        const exits = processExits();
+        const source = owner('initializing-exit', '123');
+        const first = await manager();
+        first.jgdManager.history.addPlot('device', frame('device'));
+        first.jgdManager.history.setSessionSource('device', source);
+        await first.dispose();
+        const cacheDirectory = path.join(storageDirectory, 'plot-cache');
+        assert.strictEqual((await fs.readdir(cacheDirectory)).length, 1);
+
+        const restored = new CommonPlotManager();
+        managers.push(restored);
+        const started = deferred<void>();
+        const gate = deferred<void>();
+        const initialize = restored.httpgdManager.initialize.bind(restored.httpgdManager);
+        sandbox.stub(restored.httpgdManager, 'initialize').callsFake(async () => {
+            started.resolve();
+            await gate.promise;
+            await initialize();
+        });
+        const initializing = restored.initialize();
+        try {
+            await started.promise;
+            assert.strictEqual(restored.jgdManager.history.count('device'), 1);
+            exits.exit(source);
+            assert.deepStrictEqual(restored.jgdManager.history.sessionIds(), []);
+        } finally {
+            gate.resolve();
+            await initializing;
+        }
+        await restored.dispose();
+        assert.deepStrictEqual((state.get('r.plot.jgdState') as PlotHistoryState).sessions, []);
+        assert.deepStrictEqual(await fs.readdir(cacheDirectory), []);
+    });
+
     test('httpgd process exit clears history, connections and saved credentials without affecting other owners', async () => {
         const exits = processExits();
         const source = owner('httpgd-owner', '14001');

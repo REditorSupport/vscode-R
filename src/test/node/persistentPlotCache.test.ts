@@ -90,6 +90,43 @@ suite('Persistent workspace plot cache', () => {
         assert.equal(plot.data.length, 50);
     });
 
+    test('an equal-sized replacement at full quota preserves unchanged history across reload', async () => {
+        const a = { id: '1', data: '<svg>A</svg>', width: 800, height: 600, zoom: 1 };
+        const b = { ...a, id: '2', data: '<svg>B</svg>' };
+        const replacement = { ...b, data: '<svg>C</svg>' };
+        const bytes = Buffer.byteLength(JSON.stringify(a));
+        const cache = new PersistentPlotCache(directory, bytes * 2);
+        const original = await put(cache, 'httpgd', [a, b]);
+        const updated = await put(cache, 'httpgd', [a, replacement]);
+
+        assert.equal(await size(), bytes * 2);
+        assert.deepEqual(await cache.read(updated[0]), a);
+        assert.deepEqual(await cache.read(updated[1]), replacement);
+        assert.equal(await cache.read(original[1]), undefined);
+        const reload = new PersistentPlotCache(directory, bytes * 2);
+        reload.register(
+            'httpgd',
+            updated.map((ref) => ref.cacheKey),
+        );
+        assert.deepEqual(await reload.read(updated[0]), a);
+        assert.deepEqual(await reload.read(updated[1]), replacement);
+    });
+
+    test('replacement preserves payloads still referenced by another backend', async () => {
+        const a = { data: 'a' },
+            b = { data: 'b' },
+            replacement = { data: 'c' };
+        const bytes = Buffer.byteLength(JSON.stringify(a));
+        const cache = new PersistentPlotCache(directory, bytes * 3);
+        const shared = await put(cache, 'jgd', [b]);
+        await put(cache, 'httpgd', [a, b]);
+        const updated = await put(cache, 'httpgd', [a, replacement]);
+        assert.equal(await size(), bytes * 3);
+        assert.deepEqual(await cache.read(shared[0]), b);
+        assert.deepEqual(await cache.read(updated[0]), a);
+        assert.deepEqual(await cache.read(updated[1]), replacement);
+    });
+
     test('large histories share the byte budget without rewriting unchanged files', async () => {
         const cache = new PersistentPlotCache(directory, 20 * 1024 * 1024);
         const a = { data: 'a'.repeat(8 * 1024 * 1024) };

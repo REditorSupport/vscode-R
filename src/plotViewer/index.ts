@@ -130,14 +130,8 @@ export class CommonPlotManager implements PlotManager {
             !this.historyCheckpointId ||
             trimmed ||
             saved?.sessions.length !== this.jgdManager.history.sessionIds().length;
-        const sources = extensionContext.workspaceState.get<unknown>('r.plot.standardSessions');
-        this.restoredStandardSessions = Array.isArray(sources)
-            ? sources.filter(isViewerSessionSource)
-            : [];
-        for (const source of this.restoredStandardSessions) {
-            this.lifecycle.observe(source);
-        }
-        await this.httpgdManager.initialize();
+        // Restored owners are already observed. Track exits before another
+        // backend's asynchronous initialization can yield to those callbacks.
         this.historySubscription = this.jgdManager.history.onDidChange((_id, selectionOnly) => {
             this.historyContentDirty ||= !selectionOnly;
             this.historySelectionDirty = true;
@@ -150,6 +144,14 @@ export class CommonPlotManager implements PlotManager {
                 }, 250);
             }
         });
+        const sources = extensionContext.workspaceState.get<unknown>('r.plot.standardSessions');
+        this.restoredStandardSessions = Array.isArray(sources)
+            ? sources.filter(isViewerSessionSource)
+            : [];
+        for (const source of this.restoredStandardSessions) {
+            this.lifecycle.observe(source);
+        }
+        await this.httpgdManager.initialize();
 
         for (const cmd of commands) {
             const fullCommand = `r.plot.${cmd}`;

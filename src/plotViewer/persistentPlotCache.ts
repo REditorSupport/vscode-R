@@ -90,7 +90,22 @@ export class PersistentPlotCache {
         }
     }
 
-    private async makeRoom(bytes: number): Promise<void> {
+    private async makeRoom(bytes: number, retained?: ReadonlySet<string>): Promise<void> {
+        // Replacements must release superseded payloads before evicting plots
+        // still referenced by the next checkpoint or the other backend.
+        if (retained) {
+            for (const key of this.files.keys()) {
+                if (this.bytes + bytes <= this.maxBytes) {
+                    break;
+                }
+                if (!retained.has(key)) {
+                    await this.remove(key);
+                }
+            }
+        }
+        if (this.bytes + bytes <= this.maxBytes) {
+            return;
+        }
         const oldest = [...this.files].sort((a, b) => a[1].created - b[1].created);
         for (const [key] of oldest) {
             if (this.bytes + bytes <= this.maxBytes) {
@@ -138,7 +153,10 @@ export class PersistentPlotCache {
         const operation = this.writes.then(async () => {
             await this.initialize();
             const references = new Set<string>();
-            const metadata = await build(async (plot) => {
+            // Keep snapshot objects, not a second serialized copy of the entire
+            // history. Only missing payloads need serialization again for writing.
+            const pending = new Map<string, { plot: object; bytes: number }>();
+            const metadata = await build((plot) => {
                 const content = JSON.stringify(plot);
                 const key = createHash('sha256').update(content).digest('hex');
                 references.add(key);
@@ -149,7 +167,22 @@ export class PersistentPlotCache {
                     !this.files.has(key) &&
                     !this.discarded.has(key)
                 ) {
-                    await this.makeRoom(bytes);
+                    pending.set(key, { plot, bytes });
+                }
+                return Promise.resolve({ cacheKey: key });
+            });
+            const retained = new Set(references);
+            for (const [other, keys] of this.references) {
+                if (other !== namespace) {
+                    for (const key of keys) {
+                        retained.add(key);
+                    }
+                }
+            }
+            for (const [key, { plot, bytes }] of pending) {
+                if (this.directory) {
+                    const content = JSON.stringify(plot);
+                    await this.makeRoom(bytes, retained);
                     const filename = path.join(this.directory, `${key}.json`);
                     try {
                         await fs.writeFile(filename, content);
@@ -160,8 +193,7 @@ export class PersistentPlotCache {
                     this.files.set(key, { bytes, created: Date.now() });
                     this.bytes += bytes;
                 }
-                return { cacheKey: key };
-            });
+            }
             await publish(metadata);
             this.register(namespace, references);
             await this.collect();
