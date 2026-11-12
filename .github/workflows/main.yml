@@ -48,14 +48,17 @@ jobs:
         uses: r-lib/actions/setup-r-dependencies@f9a764fea8d5c63df6ef9a5c7795bf7deb5d7e05 # v2
         with:
           working-directory: sess
+          # Keep Suggests for live plot tests. languageserver brings lintr/styler;
+          # renv is exercised by the Interactive library-isolation tests.
           extra-packages: |
             any::remotes
             any::pkgbuild
             any::languageserver
-            any::lintr
-            any::styler
             any::renv
-      - run: pnpm run build
+      - run: pnpm run compile
+      - name: Install bundled sess with prepared dependencies
+        run: remotes::install_local('dist/resources/sess', dependencies = FALSE, upgrade = 'never', force = TRUE)
+        shell: Rscript {0}
       - name: Verify live plot lifecycle dependencies
         run: |
           packages <- c("processx", "later", "jsonlite", "jgd", "httpgd", "svglite")
