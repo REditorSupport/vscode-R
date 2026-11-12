@@ -1,7 +1,7 @@
 import * as assert from 'assert';
 import * as os from 'os';
 import * as path from 'path';
-import fsp from 'node:fs/promises';
+import * as fsp from 'node:fs/promises';
 import * as sinon from 'sinon';
 import * as vscode from 'vscode';
 import * as extension from '../../extension';
@@ -230,16 +230,26 @@ suite('External Terminal Integration', () => {
             creationOptions: { env: { SESS_DISCOVERY_FILE: discoveryFile } },
         } as vscode.Terminal;
         setTerminals([external, native], native);
-        const publish = sandbox.spy(fsp, 'rename');
+        const previous = await fsp.stat(discoveryFile);
         const refresh = session.refreshTerminalDiscoveryFiles('new-sess', [external, native]);
         try {
-            // Wait for the native terminal's publication while the unrelated PID
-            // stays unresolved. Reading during replacement can lock the file on Windows.
-            await waitForValue(
-                () =>
-                    publish.getCalls().find((call) => call.args[1] === discoveryFile)?.returnValue,
-            );
-            const { endpoint } = (await readJson(discoveryFile)) as { endpoint?: string };
+            // Poll metadata before opening the updated file: holding the old file
+            // open across async reads can block its replacement on Windows.
+            let endpoint: string | undefined;
+            for (let attempt = 0; attempt < 100; attempt++) {
+                const current = await fsp.stat(discoveryFile);
+                if (
+                    current.ino !== previous.ino ||
+                    current.mtimeMs !== previous.mtimeMs ||
+                    current.size !== previous.size
+                ) {
+                    endpoint = ((await readJson(discoveryFile)) as { endpoint?: string }).endpoint;
+                    if (endpoint === 'new-sess') {
+                        break;
+                    }
+                }
+                await new Promise<void>((resolve) => setTimeout(resolve, 10));
+            }
             assert.strictEqual(endpoint, 'new-sess');
         } finally {
             pendingPid.resolve(undefined);
