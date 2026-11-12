@@ -75,7 +75,7 @@ suite('Plot backend setting migration', () => {
         assert.strictEqual(manager.activeViewer, jgd);
     });
 
-    test('backend changes replace or remove only the JGD socket mutation', () => {
+    test('backend changes replace or remove only the JGD socket mutation', async () => {
         const canonical = { workspaceValue: 'jgd' };
         settings(canonical);
         mockExtensionContext(path.resolve(__dirname, '../../..'), sandbox);
@@ -93,7 +93,7 @@ suite('Plot backend setting migration', () => {
         const replace = collection.replace;
         const remove = collection.delete;
 
-        manager.initialize();
+        await manager.initialize();
         sinon.assert.calledOnceWithExactly(replace, 'JGD_SOCKET', 'test-jgd-socket');
         sinon.assert.notCalled(remove);
         sinon.assert.calledOnce(start);

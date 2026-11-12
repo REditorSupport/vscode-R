@@ -274,7 +274,7 @@ export async function activate(
     );
 
     // initialize plot manager
-    globalPlotManager = plotViewer.initializePlotManager();
+    globalPlotManager = await plotViewer.initializePlotManager();
 
     // initialize the package/help related functions
     globalRHelp = await rHelp.initializeHelp(context, rExtension);

@@ -557,7 +557,7 @@ export class PlotHistory {
     }
 }
 
-function isPlotFrame(value: unknown): value is PlotFrame {
+export function isPlotFrame(value: unknown): value is PlotFrame {
     if (!value || typeof value !== 'object') {
         return false;
     }

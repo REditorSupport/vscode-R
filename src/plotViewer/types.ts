@@ -10,7 +10,7 @@ export interface PlotViewer {
 export interface PlotManager {
     viewers: PlotViewer[];
     activeViewer: PlotViewer | undefined;
-    initialize(): void;
+    initialize(): Promise<void>;
     showStandardPlot(target: Session, restoring?: boolean): Promise<void>;
     showHttpgdPlot(url: string, target?: Session, restoring?: boolean): Promise<void>;
 }

@@ -106,7 +106,7 @@ suite('Contextual plot commands', () => {
             manager.httpgdManager.registerViewer(viewer);
             sandbox.stub(manager, 'activeViewer').get(() => jgdViewer);
             const openUrl = sandbox.stub(manager.httpgdManager, 'openUrl').resolves();
-            manager.initialize();
+            await manager.initialize();
 
             const invoke = (command: string, ...args: unknown[]) => {
                 const registration = register.getCalls().find((call) => call.args[0] === command);

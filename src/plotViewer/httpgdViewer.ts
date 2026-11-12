@@ -3,6 +3,7 @@ import { HttpgdIdResponse, HttpgdPlotId, HttpgdRendererId } from './httpgdClient
 import { HttpgdDevices, HttpgdPlotReference } from './httpgdDevices';
 import { PlotLifecycle } from './plotLifecycle';
 import { PlotViewerRegistry } from './plotViewerRegistry';
+import { PlotHistoryPersistence } from './plotHistoryPersistence';
 import {
     HttpgdPlot,
     IHttpgdViewer,
@@ -141,8 +142,10 @@ export class HttpgdManager {
         this.viewerStore.dispose();
     }
 
-    initialize(): void {
-        const histories = extensionContext.workspaceState.get<unknown>('r.plot.httpgdHistory');
+    async initialize(): Promise<void> {
+        const histories = await this.historyPersistence.readHttpgd(
+            extensionContext.workspaceState.get<unknown>('r.plot.httpgdHistory'),
+        );
         const selections = extensionContext.workspaceState.get<unknown>('r.plot.httpgdSelection');
         if (histories && typeof histories === 'object') {
             for (const [id, value] of Object.entries(histories)) {
@@ -189,6 +192,11 @@ export class HttpgdManager {
             void this.savedConnections.catch((error: Error) => {
                 void vscode.window.showErrorMessage(error.message);
             });
+        }
+        // Move legacy SVG payloads out of workspaceState without waiting for
+        // the user to reopen a viewer. Connection loading remains asynchronous.
+        if (this.histories.size) {
+            this.scheduleSaveConnections();
         }
     }
 
@@ -279,10 +287,7 @@ export class HttpgdManager {
         }
         if (this.historyDirty) {
             this.historyDirty = false;
-            await extensionContext.workspaceState.update(
-                'r.plot.httpgdHistory',
-                Object.fromEntries(this.histories),
-            );
+            await this.historyPersistence.writeHttpgd(new Map(this.histories));
         }
         if (this.selectionDirty) {
             this.selectionDirty = false;
@@ -310,7 +315,10 @@ export class HttpgdManager {
         await extensionContext.workspaceState.update('r.plot.httpgdConnectionsKey', this.secretKey);
     }
 
-    constructor(lifecycle?: PlotLifecycle) {
+    constructor(
+        lifecycle?: PlotLifecycle,
+        private readonly historyPersistence = new PlotHistoryPersistence(extensionContext),
+    ) {
         this.viewerStore = new PlotViewerRegistry(() => {
             void this.saveConnections();
         }, lifecycle);

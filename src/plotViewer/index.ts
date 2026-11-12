@@ -14,6 +14,7 @@ import { randomUUID } from 'crypto';
 import type { PlotHistoryState } from './jgdPlotHistory';
 import { PlotLifecycle } from './plotLifecycle';
 import { PlotViewerRegistry } from './plotViewerRegistry';
+import { PlotHistoryPersistence } from './plotHistoryPersistence';
 
 export type PlotBackend = 'auto' | 'standard' | 'httpgd' | 'jgd' | 'native';
 
@@ -73,9 +74,10 @@ export class CommonPlotManager implements PlotManager {
     private historyContentDirty = false;
     private historySelectionDirty = false;
     private historyCheckpointId: string | undefined;
+    private readonly historyPersistence = new PlotHistoryPersistence(extensionContext);
 
     constructor() {
-        this.httpgdManager = new HttpgdManager(this.lifecycle);
+        this.httpgdManager = new HttpgdManager(this.lifecycle, this.historyPersistence);
         this.jgdManager = new JgdManager(this.lifecycle);
     }
 
@@ -97,7 +99,7 @@ export class CommonPlotManager implements PlotManager {
         return this.httpgdManager.getRecentViewer();
     }
 
-    public initialize(): void {
+    public async initialize(): Promise<void> {
         this.jgdManager.initialize(extensionContext.extensionUri);
         const saved = extensionContext.workspaceState.get<
             PlotHistoryState & { checkpointId?: string }
@@ -107,13 +109,15 @@ export class CommonPlotManager implements PlotManager {
             positions?: unknown;
         }>('r.plot.jgdSelection');
         this.historyCheckpointId = saved?.checkpointId;
-        const trimmed = this.jgdManager.history.restore(
+        const restored = await this.historyPersistence.readJgd(
             saved,
             this.historyCheckpointId && selection?.checkpointId === this.historyCheckpointId
                 ? selection.positions
                 : undefined,
         );
+        const trimmed = this.jgdManager.history.restore(restored.state, restored.positions);
         this.historyContentDirty =
+            restored.changed ||
             !this.historyCheckpointId ||
             trimmed ||
             saved?.sessions.length !== this.jgdManager.history.sessionIds().length;
@@ -124,7 +128,7 @@ export class CommonPlotManager implements PlotManager {
         for (const source of this.restoredStandardSessions) {
             this.lifecycle.observe(source);
         }
-        this.httpgdManager.initialize();
+        await this.httpgdManager.initialize();
         this.historySubscription = this.jgdManager.history.onDidChange((_id, selectionOnly) => {
             this.historyContentDirty ||= !selectionOnly;
             this.historySelectionDirty = true;
@@ -161,6 +165,11 @@ export class CommonPlotManager implements PlotManager {
                 }
             }),
         );
+        // Migrate legacy payloads (and repair evicted-frame indices) even if R
+        // produces no further plots during this extension-host lifetime.
+        if (saved && restored.changed) {
+            await this.saveJgdHistory();
+        }
     }
 
     // Start the JGD server when the backend allows it, so switching to jgd
@@ -259,7 +268,7 @@ export class CommonPlotManager implements PlotManager {
                     this.historySelectionDirty = false;
                     if (contentDirty) {
                         const checkpointId = randomUUID();
-                        await extensionContext.workspaceState.update('r.plot.jgdState', {
+                        await this.historyPersistence.writeJgd({
                             ...this.jgdManager.history.snapshot(),
                             checkpointId,
                         });
@@ -385,8 +394,8 @@ export class CommonPlotManager implements PlotManager {
     }
 }
 
-export function initializePlotManager(): PlotManager {
+export async function initializePlotManager(): Promise<PlotManager> {
     const manager = new CommonPlotManager();
-    manager.initialize();
+    await manager.initialize();
     return manager;
 }
