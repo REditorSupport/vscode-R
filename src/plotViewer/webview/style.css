@@ -17,6 +17,17 @@ body.fullWindow {
     overflow-y: hidden;
 }
 
+#session-info {
+    display: flex;
+    justify-content: flex-end;
+    padding: 6px 8px;
+    height: 28px;
+}
+#session-info:empty { display: none; }
+body:has(#session-info:not(:empty)).fullWindow #largePlot {
+    height: calc(100vh - 28px) !important;
+}
+
 svg {
     user-select: none;
 }

@@ -1381,6 +1381,7 @@ function startGlobalSessionServer(generation: number): Promise<string> {
 
             const rpc = new NativeRpcConnection(socket);
             nativeRpcConnections.set(socket, rpc);
+            let attachment: Promise<void> | undefined;
 
             const handleLine = (buf: Buffer) => {
                 let lineEnd = buf.length;
@@ -1395,6 +1396,22 @@ function startGlobalSessionServer(generation: number): Promise<string> {
                 void (async () => {
                     try {
                         const message = JSON.parse(line) as Record<string, unknown>;
+                        if (
+                            message.method === 'attach' &&
+                            (message.id === undefined || message.id === null)
+                        ) {
+                            attachment = handleNotification(message, socket);
+                            await attachment;
+                            return;
+                        }
+                        // R announces retained devices immediately after attach.
+                        // Native terminal discovery is asynchronous: wait for it
+                        // instead of dropping those first notifications. Once the
+                        // socket is bound, RPC responses must remain independent
+                        // of any UI work still completing in the attach handler.
+                        if (!socket._sessionId && attachment) {
+                            await attachment;
+                        }
                         if (message.method !== 'attach' && !isCurrentSocket(socket)) {
                             return;
                         }
@@ -2382,13 +2399,6 @@ export function removeSessionFiles(): void {
     console.info('[removeSessionFiles] Done');
 }
 
-async function updatePlot() {
-    if (!globalPipePath) {
-        return;
-    }
-    await globalPlotManager?.showStandardPlot();
-}
-
 export function deferWorkspaceRefresh(terminal?: vscode.Terminal): void {
     const target = terminal ? terminalRegistry.ownerOf(terminal) : activeSession;
     if (target) {
@@ -2704,6 +2714,34 @@ export function getViewerSessionContext(
             ? saved
             : attached;
     return owner ? createViewerSessionContext(owner, sessionProcessMonitor) : undefined;
+}
+
+export function resolvePlotSession(source: ViewerSessionSource): Session | undefined {
+    const target = sessions.get(source.sessionId);
+    return target &&
+        !target.processExited &&
+        isConnectedSession(target) &&
+        sessionProcessIdentity(target) === sessionProcessIdentity(source)
+        ? target
+        : undefined;
+}
+
+// JGD connects over a local socket and labels devices as r-<pid>-<device>.
+// Never infer ownership from whichever terminal happens to be active.
+export function resolveJgdSessionSource(deviceLabel: string): ViewerSessionSource | undefined {
+    const match = /^r-(\d+)-\d+$/.exec(deviceLabel);
+    if (!match) {
+        return undefined;
+    }
+    const owners = [...sessions.values()].filter(
+        (owner) =>
+            owner.pid === match[1] &&
+            owner.rVer &&
+            isLocalHost(owner.host) &&
+            !owner.processExited &&
+            isConnectedSession(owner),
+    );
+    return owners.length === 1 ? getViewerSessionContext(owners[0].sessionId)?.source : undefined;
 }
 
 export async function getTableHtml(
@@ -3952,7 +3990,7 @@ async function handleNotification(message: Record<string, unknown>, socket: IpcS
                 return;
             }
             if (typeof params.plot_url === 'string' && params.plot_url) {
-                await globalPlotManager?.showHttpgdPlot(params.plot_url);
+                await globalPlotManager?.showHttpgdPlot(params.plot_url, session);
             }
             if (isLiveSessionSocket(socket) && isCurrentSocket(socket) && mayApplyUiEffects()) {
                 scheduleWorkspaceRefresh(0);
@@ -3978,7 +4016,12 @@ async function handleNotification(message: Record<string, unknown>, socket: IpcS
         }
         case 'httpgd': {
             if (typeof params.url === 'string' && params.url) {
-                await globalPlotManager?.showHttpgdPlot(params.url);
+                const target = socket._sessionId ? sessions.get(socket._sessionId) : undefined;
+                await globalPlotManager?.showHttpgdPlot(
+                    params.url,
+                    target,
+                    params.restoring === true,
+                );
             }
             break;
         }
@@ -4077,7 +4120,10 @@ async function handleNotification(message: Record<string, unknown>, socket: IpcS
             break;
         }
         case 'plot_updated': {
-            void updatePlot();
+            const target = socket._sessionId && sessions.get(socket._sessionId);
+            if (target && target.socket === socket) {
+                void globalPlotManager?.showStandardPlot(target, params.restoring === true);
+            }
             break;
         }
         case 'restart_r': {

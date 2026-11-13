@@ -1,9 +1,9 @@
-import { HttpgdClient, HttpgdPlotId } from './httpgdClient';
+import { HttpgdPlotId } from './httpgdClient';
+import { HttpgdDevices, HttpgdPlotReference } from './httpgdDevices';
 import * as vscode from 'vscode';
-import { HttpgdManager } from '.';
+import { HttpgdManager } from './httpgdViewer';
+import type { ViewerSessionSource } from '../viewerSession';
 import { PreviewPlotLayout } from './webviewMessages';
-
-export type MaybePromise<T> = T | Promise<T>;
 
 export interface HttpgdPlot<T> {
     // unique ID for this plot (w.r.t. this connection/device)
@@ -16,10 +16,30 @@ export interface HttpgdPlot<T> {
     height: number;
     width: number;
     zoom: number;
+
+    // The viewport size above was applied by scaling; replay it when the device is active.
+    resizeDeferred?: boolean;
+}
+
+/** Received images persist independently of device servers; credentials remain in SecretStorage. */
+export interface HttpgdHistoryState {
+    source?: ViewerSessionSource;
+    plots: Array<HttpgdPlot<string> & { reference: HttpgdPlotReference }>;
+}
+
+export interface HttpgdSelectionState {
+    activePlot?: string;
+    hiddenPlots: string[];
 }
 
 // Example for possible viewer creation options:
 export interface HttpgdViewerOptions {
+    historyId?: string;
+    history?: HttpgdHistoryState;
+    selection?: HttpgdSelectionState;
+    connections?: Array<{ origin: string; token?: string }>;
+    plotOrder?: HttpgdPlotReference[];
+    restoring?: boolean;
     parent: HttpgdManager;
     token?: string;
     preserveFocus?: boolean;
@@ -30,6 +50,7 @@ export interface HttpgdViewerOptions {
     previewPlotLayout?: PreviewPlotLayout;
     resizeTimeoutLength?: number;
     refreshTimeoutLength?: number;
+    source?: ViewerSessionSource;
 }
 
 // Roughly combines the functionality of HttpgdNavigator and HttpgdViewer
@@ -39,10 +60,10 @@ export class IHttpgdViewer {
     webviewPanel?: vscode.WebviewPanel;
 
     // Api that provides plot contents etc.
-    api: HttpgdClient;
+    api: HttpgdDevices;
 
     // active plots
-    plots: HttpgdPlot<string>[];
+    readonly plots: readonly HttpgdPlot<string>[];
 
     // Id of the currently viewed plot
     activePlot?: HttpgdPlotId;

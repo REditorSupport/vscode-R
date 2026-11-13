@@ -4,6 +4,7 @@ import * as sinon from 'sinon';
 import * as vscode from 'vscode';
 import * as extension from '../../extension';
 import * as util from '../../util';
+import * as session from '../../session';
 import { resolveBackend, jgdEnabled, CommonPlotManager } from '../../plotViewer';
 import { HttpgdViewer } from '../../plotViewer/httpgdViewer';
 import { JgdViewer } from '../../plotViewer/jgdViewer';
@@ -64,18 +65,26 @@ suite('Plot backend setting migration', () => {
         assert.strictEqual(jgdEnabled(resolveBackend()), false);
     });
 
-    test('auto prefers an available JGD viewer over httpgd', () => {
+    test('auto prefers an available JGD viewer for the active session over httpgd', () => {
         settings({ workspaceValue: 'auto' });
         mockExtensionContext(path.resolve(__dirname, '../../..'), sandbox);
         const manager = new CommonPlotManager();
         const httpgd = { id: 'httpgd' } as HttpgdViewer;
         const jgd = { id: 'jgd' } as JgdViewer;
+        const source = {
+            sessionId: 'active',
+            host: 'host',
+            pid: '123',
+            processExited: false,
+        } as session.Session;
+        sandbox.stub(session, 'activeSession').value(source);
         sandbox.stub(manager.httpgdManager, 'getRecentViewer').returns(httpgd);
-        sandbox.stub(manager.jgdManager, 'getViewer').returns(jgd);
+        const getJgd = sandbox.stub(manager.jgdManager, 'getViewerForSession').returns(jgd);
         assert.strictEqual(manager.activeViewer, jgd);
+        sinon.assert.calledOnceWithExactly(getJgd, source);
     });
 
-    test('backend changes replace or remove only the JGD socket mutation', () => {
+    test('backend changes replace or remove only the JGD socket mutation', async () => {
         const canonical = { workspaceValue: 'jgd' };
         settings(canonical);
         mockExtensionContext(path.resolve(__dirname, '../../..'), sandbox);
@@ -93,7 +102,7 @@ suite('Plot backend setting migration', () => {
         const replace = collection.replace;
         const remove = collection.delete;
 
-        manager.initialize();
+        await manager.initialize();
         sinon.assert.calledOnceWithExactly(replace, 'JGD_SOCKET', 'test-jgd-socket');
         sinon.assert.notCalled(remove);
         sinon.assert.calledOnce(start);

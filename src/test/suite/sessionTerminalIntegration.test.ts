@@ -230,13 +230,23 @@ suite('External Terminal Integration', () => {
             creationOptions: { env: { SESS_DISCOVERY_FILE: discoveryFile } },
         } as vscode.Terminal;
         setTerminals([external, native], native);
+        const previous = await fsp.stat(discoveryFile);
         const refresh = session.refreshTerminalDiscoveryFiles('new-sess', [external, native]);
         try {
+            // Poll metadata before opening the updated file: holding the old file
+            // open across async reads can block its replacement on Windows.
             let endpoint: string | undefined;
             for (let attempt = 0; attempt < 100; attempt++) {
-                endpoint = ((await readJson(discoveryFile)) as { endpoint?: string }).endpoint;
-                if (endpoint === 'new-sess') {
-                    break;
+                const current = await fsp.stat(discoveryFile);
+                if (
+                    current.ino !== previous.ino ||
+                    current.mtimeMs !== previous.mtimeMs ||
+                    current.size !== previous.size
+                ) {
+                    endpoint = ((await readJson(discoveryFile)) as { endpoint?: string }).endpoint;
+                    if (endpoint === 'new-sess') {
+                        break;
+                    }
                 }
                 await new Promise<void>((resolve) => setTimeout(resolve, 10));
             }

@@ -274,7 +274,7 @@ export async function activate(
     );
 
     // initialize plot manager
-    globalPlotManager = plotViewer.initializePlotManager();
+    globalPlotManager = await plotViewer.initializePlotManager();
 
     // initialize the package/help related functions
     globalRHelp = await rHelp.initializeHelp(context, rExtension);
@@ -380,7 +380,9 @@ export function ensureWorkspaceViewer(): void {
 }
 
 export async function deactivate(): Promise<void> {
-    await shutdownHtmlWidgetViewers(true);
-    (globalPlotManager as plotViewer.CommonPlotManager)?.dispose();
+    await Promise.all([
+        shutdownHtmlWidgetViewers(true),
+        (globalPlotManager as plotViewer.CommonPlotManager)?.dispose(),
+    ]);
     await session.shutdownSessionWatcher();
 }

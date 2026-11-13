@@ -10,7 +10,9 @@ interface Plot {
 }
 
 import { acquireVsCodeApi, ResizeMessage, InMessage, PreviewPlotLayout } from '../webviewMessages';
+import { initializeViewerSession } from '../../viewerSession';
 const vscode = acquireVsCodeApi() as { postMessage: (msg: any) => void };
+initializeViewerSession(vscode);
 
 // globals
 let oldHeight = -1;
@@ -18,7 +20,6 @@ let oldWidth = -1;
 
 const handler = document.querySelector('#handler') as HTMLDivElement;
 const largePlotDiv = document.querySelector('#largePlot') as HTMLDivElement;
-const largeSvg = largePlotDiv.querySelector('svg') as SVGElement;
 const cssLink = document.querySelector('link.overwrites') as HTMLLinkElement;
 const smallPlotDiv = document.querySelector('#smallPlots') as HTMLDivElement;
 
@@ -31,6 +32,8 @@ function getSmallPlots(): HTMLAnchorElement[] {
 }
 
 let isHandlerDragging = false;
+let dragStartY = 0;
+let dragStartHeight = 0;
 
 let isFullWindow = false;
 
@@ -38,7 +41,7 @@ function postResizeMessage(userTriggered: boolean = false) {
     let newHeight = largePlotDiv.clientHeight;
     let newWidth = largePlotDiv.clientWidth;
     if (isFullWindow) {
-        newHeight = window.innerHeight;
+        newHeight = largePlotDiv.clientHeight;
         newWidth = window.innerWidth;
     }
     if (userTriggered || newHeight !== oldHeight || newWidth !== oldWidth) {
@@ -166,7 +169,6 @@ function toggleFullWindowMode(useFullWindow: boolean): void {
 ////
 
 window.onload = () => {
-    largePlotDiv.style.height = `${largeSvg.clientHeight}px`;
     postResizeMessage(true);
 };
 
@@ -178,6 +180,8 @@ document.addEventListener('mousedown', (e) => {
     // If mousedown event is fired from .handler, toggle flag to true
     if (!isFullWindow && e.target === handler) {
         isHandlerDragging = true;
+        dragStartY = e.clientY;
+        dragStartHeight = largePlotDiv.clientHeight;
         handler.classList.add('dragging');
         document.body.style.cursor = 'ns-resize';
     }
@@ -189,19 +193,11 @@ document.addEventListener('mousemove', (e) => {
         return false;
     }
 
-    // postLogMessage('mousemove');
-
-    // Get offset
-    const containerOffsetTop = document.body.offsetTop;
-
-    // Get x-coordinate of pointer relative to container
-    const pointerRelativeYpos = e.clientY - containerOffsetTop + window.scrollY;
-
     // Arbitrary minimum width set on box A, otherwise its inner content will collapse to width of 0
     const largePlotMinHeight = 60;
 
     // Resize large plot
-    const newHeight = Math.max(largePlotMinHeight, pointerRelativeYpos - 5); // <- why 5?
+    const newHeight = Math.max(largePlotMinHeight, dragStartHeight + e.clientY - dragStartY);
     const newHeightString = `${newHeight}px`;
 
     if (largePlotDiv.style.height !== newHeightString) {

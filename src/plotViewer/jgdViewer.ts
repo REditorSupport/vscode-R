@@ -3,6 +3,20 @@ import { PlotViewer } from './types';
 import { PlotHistory, PlotFrame } from './jgdPlotHistory';
 import { JgdSocketServer, JgdMessage } from './jgdSocketServer';
 import { config, UriIcon } from '../util';
+import {
+    getViewerSessionContext,
+    onDidChangeSessionConnection,
+    resolveJgdSessionSource,
+} from '../session';
+import {
+    getViewerSessionScript,
+    viewerSessionStyle,
+    ViewerSessionContext,
+    ViewerSessionSource,
+} from '../viewerSession';
+import { sessionProcessIdentity } from '../sessionIdentity';
+import { PlotLifecycle } from './plotLifecycle';
+import { PlotViewerRegistry } from './plotViewerRegistry';
 
 interface MetricsRequest {
     id: number;
@@ -80,6 +94,7 @@ interface WebviewDeleteCurrent {
 }
 
 type WebviewMessage =
+    | { type: 'ready' }
     | WebviewMetricsResponse
     | WebviewMetricsWarmup
     | WebviewExportData
@@ -91,19 +106,63 @@ type WebviewMessage =
 export class JgdManager {
     public server: JgdSocketServer;
     public history: PlotHistory;
-    private viewer: JgdViewer | null = null;
+    private viewers: PlotViewerRegistry<JgdViewer>;
     private extensionUri: vscode.Uri | null = null;
     private historyChangeDisposable: { dispose(): void } | null = null;
+    private sessionConnectionDisposable: vscode.Disposable | undefined;
     private started = false;
+    private receivedPlots = new WeakSet<PlotFrame>();
 
-    constructor() {
+    constructor(lifecycle?: PlotLifecycle) {
         const maxPlots = config().get<number>('plot.jgd.historyLimit', 50);
         this.history = new PlotHistory(maxPlots);
         this.server = new JgdSocketServer(this.history);
+        this.viewers = new PlotViewerRegistry((source) => {
+            const key = sessionProcessIdentity(source);
+            for (const id of this.history.sessionIds()) {
+                const owner = this.history.sessionSource(id);
+                if (owner && sessionProcessIdentity(owner) === key) {
+                    this.server.disconnect(id);
+                }
+            }
+            this.history.removeSession(source);
+        }, lifecycle);
     }
 
     initialize(extensionUri: vscode.Uri) {
         this.extensionUri = extensionUri;
+        // Observe history owners even when their viewer is closed or only restored
+        // from storage. A transport disconnect alone never proves process exit.
+        this.historyChangeDisposable = this.history.onDidChange((id, selectionOnly) => {
+            if (!selectionOnly) {
+                for (const device of id ? [id] : this.history.sessionIds()) {
+                    const source = this.history.sessionSource(device);
+                    if (source) {
+                        this.viewers.lifecycle.observe(source);
+                    }
+                }
+            }
+            if (id) {
+                this.findViewer(id)?.updateToolbar();
+            } else {
+                for (const viewer of this.viewers.values()) {
+                    viewer.updateToolbar();
+                }
+            }
+        });
+        this.sessionConnectionDisposable = onDidChangeSessionConnection((event) => {
+            if (event.kind === 'connected') {
+                // Binding an owner can rekey or merge viewers during this pass.
+                const viewers = Array.from(this.viewers.values());
+                for (const viewer of viewers) {
+                    const id = viewer.sessionId;
+                    if (this.server.isConnected(id) && !this.history.sessionSource(id)) {
+                        viewer.updateToolbar();
+                        this.getOrCreateViewer(id);
+                    }
+                }
+            }
+        });
     }
 
     start() {
@@ -111,80 +170,156 @@ export class JgdManager {
             return;
         }
         this.started = true;
-        this.server.setOnFrame((_sessionId, msg: JgdMessage) => {
-            const current = this.history.currentPlot();
+        this.server.setOnFrame((sessionId, message) => {
+            // Resolve the owner before reading the session cursor: the first frame
+            // from an explicit jgd() device may join an existing timeline here.
+            this.sourceForDevice(sessionId);
+            const current = this.history.currentPlot(sessionId);
             if (current) {
-                this.getOrCreateViewer().showPlot(current);
-            } else if (msg.plot) {
-                this.getOrCreateViewer().showPlot(msg.plot as PlotFrame);
+                const metadata = message.ext?.vscodeR;
+                const restoring = Boolean(
+                    metadata &&
+                    typeof metadata === 'object' &&
+                    'restoring' in metadata &&
+                    metadata.restoring === true,
+                );
+                const latest = this.history.latestPlot(sessionId)!;
+                const newPlot = !this.receivedPlots.has(latest);
+                this.receivedPlots.add(latest);
+                // Receiving more drawing for an existing plot updates retained
+                // content without reopening a panel the user closed.
+                this.getOrCreateViewer(sessionId).showPlot(
+                    current,
+                    newPlot && !restoring && !message.resizeReplay,
+                );
             }
         });
 
-        this.server.setOnDeviceClosed((_sessionId) => {
-            this.viewer?.updateToolbar();
+        this.server.setOnDeviceClosed((sessionId) => {
+            this.findViewer(sessionId)?.updateToolbar();
+        });
+        this.server.onConnectionChange((_count, sessionId) =>
+            this.findViewer(sessionId)?.updateToolbar(),
+        );
+
+        this.server.setMeasureText((request: JgdMessage, _dpi, sessionId) => {
+            // Metrics can arrive before the first frame identifies the device.
+            // They must not create an ownerless viewer for the temporary socket ID.
+            // Known devices share their owner's renderer even when that viewer
+            // is displaying another device. Measuring must not switch the plot.
+            const viewer =
+                this.findViewer(sessionId) ?? this.viewers.get(this.viewerKey(sessionId));
+            return (
+                viewer?.measureText(request as unknown as MetricsRequest) ??
+                Promise.resolve({
+                    type: 'metrics_response',
+                    id: request.id,
+                    width: 0,
+                    ascent: 0,
+                    descent: 0,
+                })
+            );
         });
 
-        this.server.setMeasureText((request: JgdMessage) => {
-            return this.getOrCreateViewer().measureText(request as unknown as MetricsRequest);
-        });
-
-        this.server.setGetDimensions(() => {
-            return this.viewer?.getPanelDimensions() ?? null;
+        this.server.setGetDimensions((sessionId) => {
+            return this.findViewer(sessionId)?.getPanelDimensions() ?? null;
         });
 
         this.server.start();
-
-        this.historyChangeDisposable = this.history.onDidChange(() => {
-            void vscode.commands.executeCommand(
-                'setContext',
-                'r.plot.canGoBack',
-                this.history.currentIndex() > 1,
-            );
-            void vscode.commands.executeCommand(
-                'setContext',
-                'r.plot.canGoForward',
-                this.history.currentIndex() < this.history.count(),
-            );
-        });
     }
 
     stop() {
         this.started = false;
         this.server.stop();
         this.historyChangeDisposable?.dispose();
-        this.viewer?.dispose();
-        this.viewer = null;
+        this.sessionConnectionDisposable?.dispose();
+        this.viewers.dispose();
     }
 
-    getViewer(): JgdViewer | null {
-        return this.viewer;
+    getViewers(): JgdViewer[] {
+        return [...this.viewers.values()];
+    }
+
+    showForSession(source: ViewerSessionSource): boolean {
+        const viewer = this.getViewerForSession(source);
+        if (!viewer) {
+            return false;
+        }
+        viewer.show(true);
+        return true;
+    }
+
+    getViewerForSession(source: ViewerSessionSource): JgdViewer | undefined {
+        const key = sessionProcessIdentity(source);
+        const ids = this.history.sessionIds().filter((id) => {
+            const owner = this.sourceForDevice(id);
+            return owner && sessionProcessIdentity(owner) === key && this.history.count(id) > 0;
+        });
+        const current = this.viewers.get(key)?.sessionId ?? this.history.getActiveSessionId();
+        const id = ids.includes(current) ? current : ids.at(-1);
+        return id ? this.getOrCreateViewer(id) : undefined;
+    }
+
+    private sourceForDevice(id: string): ViewerSessionSource | undefined {
+        const source =
+            this.history.sessionSource(id) ??
+            (this.server.isConnected(id)
+                ? resolveJgdSessionSource(this.history.sessionLabel(id) ?? '')
+                : undefined);
+        if (source) {
+            this.history.setSessionSource(id, source);
+        }
+        return source;
+    }
+
+    private viewerKey(id: string): string {
+        const source = this.sourceForDevice(id);
+        return source ? sessionProcessIdentity(source) : id;
+    }
+
+    private findViewer(id: string): JgdViewer | undefined {
+        const source = this.history.sessionSource(id);
+        return this.viewers.get(id) ?? this.viewers.forSession(source);
+    }
+
+    getViewer(sessionId = this.history.getActiveSessionId()): JgdViewer | null {
+        return sessionId && this.extensionUri ? this.getOrCreateViewer(sessionId) : null;
     }
 
     getEnvVars(): Record<string, string> {
         return this.server.getEnvVars();
     }
 
-    private getOrCreateViewer(): JgdViewer {
-        if (!this.viewer) {
-            this.viewer = new JgdViewer(this.extensionUri!, this.history, this.server);
-        }
-        return this.viewer;
+    private getOrCreateViewer(sessionId: string): JgdViewer {
+        const viewer = this.viewers.getOrCreate(
+            this.sourceForDevice(sessionId),
+            sessionId,
+            () => new JgdViewer(this.extensionUri!, this.history, this.server, sessionId),
+        );
+        viewer.sessionId = sessionId;
+        return viewer;
     }
 }
 
 export class JgdViewer implements PlotViewer {
-    readonly id = 'jgd';
+    get id(): string {
+        return `jgd:${this.sessionId}`;
+    }
     private panel: vscode.WebviewPanel | null = null;
     private pendingMetrics: Map<number, (response: MetricsResponse) => void> = new Map();
     private metricsIdCounter = 0;
     private metricsCache: Map<string, MetricsCacheEntry> = new Map();
     private panelWidth = 800;
     private panelHeight = 600;
+    private lastToolbarState: string | undefined;
+    private lastPanelVisibility: boolean | undefined;
+    private sessionContext: ViewerSessionContext | undefined;
 
     constructor(
         private extensionUri: vscode.Uri,
         private history: PlotHistory,
         private server: JgdSocketServer,
+        public sessionId: string,
     ) {}
 
     show(preserveFocus?: boolean): void {
@@ -193,21 +328,29 @@ export class JgdViewer implements PlotViewer {
         } else {
             this.createPanel(preserveFocus);
         }
-        const plot = this.history.currentPlot();
+        const plot = this.history.currentPlot(this.sessionId);
         if (plot) {
             this.sendPlotToWebview(plot);
         }
+        this.updateToolbar();
     }
 
-    dispose(): void {
-        this.panel?.dispose();
+    get isActive(): boolean {
+        return this.panel?.active ?? false;
+    }
+
+    dispose(keepPanel = false): void {
+        if (!keepPanel) {
+            this.panel?.dispose();
+        }
         this.panel = null;
+        this.metricsCache.clear();
     }
 
     async handleCommand(command: string, ...args: unknown[]): Promise<void> {
         switch (command) {
             case 'nextPlot': {
-                const plot = this.history.navigateNext();
+                const plot = this.history.navigateNext(this.sessionId);
                 if (plot) {
                     this.sendPlotToWebview(plot);
                     this.updateToolbar();
@@ -215,13 +358,13 @@ export class JgdViewer implements PlotViewer {
                         plot.device.width !== this.panelWidth ||
                         plot.device.height !== this.panelHeight
                     ) {
-                        this.server.handleResize(this.panelWidth, this.panelHeight);
+                        this.server.handleResize(this.panelWidth, this.panelHeight, this.sessionId);
                     }
                 }
                 break;
             }
             case 'prevPlot': {
-                const plot = this.history.navigatePrevious();
+                const plot = this.history.navigatePrevious(this.sessionId);
                 if (plot) {
                     this.sendPlotToWebview(plot);
                     this.updateToolbar();
@@ -229,40 +372,26 @@ export class JgdViewer implements PlotViewer {
                         plot.device.width !== this.panelWidth ||
                         plot.device.height !== this.panelHeight
                     ) {
-                        this.server.handleResize(this.panelWidth, this.panelHeight);
+                        this.server.handleResize(this.panelWidth, this.panelHeight, this.sessionId);
                     }
                 }
                 break;
             }
             case 'firstPlot': {
-                let plot = this.history.navigatePrevious();
-                while (plot) {
-                    const prev = this.history.navigatePrevious();
-                    if (!prev) {
-                        break;
-                    }
-                    plot = prev;
-                }
+                const plot = this.history.navigateFirst(this.sessionId);
                 if (plot) {
                     this.sendPlotToWebview(plot);
                     this.updateToolbar();
-                    this.server.handleResize(this.panelWidth, this.panelHeight);
+                    this.server.handleResize(this.panelWidth, this.panelHeight, this.sessionId);
                 }
                 break;
             }
             case 'lastPlot': {
-                let plot = this.history.navigateNext();
-                while (plot) {
-                    const next = this.history.navigateNext();
-                    if (!next) {
-                        break;
-                    }
-                    plot = next;
-                }
+                const plot = this.history.navigateLast(this.sessionId);
                 if (plot) {
                     this.sendPlotToWebview(plot);
                     this.updateToolbar();
-                    this.server.handleResize(this.panelWidth, this.panelHeight);
+                    this.server.handleResize(this.panelWidth, this.panelHeight, this.sessionId);
                 }
                 break;
             }
@@ -276,7 +405,7 @@ export class JgdViewer implements PlotViewer {
             }
             case 'closePlot':
             case 'hidePlot': {
-                const plot = this.history.removeCurrent();
+                const plot = this.history.removeCurrent(this.sessionId);
                 if (plot) {
                     this.sendPlotToWebview(plot);
                 } else {
@@ -286,7 +415,7 @@ export class JgdViewer implements PlotViewer {
                 break;
             }
             case 'resetPlots':
-                this.history.clear();
+                this.history.clear(this.sessionId);
                 void this.panel?.webview.postMessage({ type: 'clear' });
                 this.updateToolbar();
                 break;
@@ -303,24 +432,77 @@ export class JgdViewer implements PlotViewer {
         }
     }
 
-    showPlot(plot: PlotFrame) {
+    showPlot(plot: PlotFrame, reveal = true) {
         if (!this.panel) {
+            if (!reveal) {
+                return;
+            }
             this.createPanel(true);
         }
         this.sendPlotToWebview(plot);
         this.updateToolbar();
+        // A device can join an already-sized panel without a ResizeObserver event.
+        // The server deduplicates requests per device while R is still drawing.
+        if (plot.device.width !== this.panelWidth || plot.device.height !== this.panelHeight) {
+            this.server.handleResize(this.panelWidth, this.panelHeight, this.sessionId);
+        }
     }
 
-    updateToolbar() {
-        void this.panel?.webview.postMessage({
+    updateToolbar(force = false) {
+        if (this.resolveSessionContext() && this.panel) {
+            this.sessionContext?.attach(this.panel);
+            this.panel.webview.html = this.getWebviewHtml();
+            this.lastToolbarState = undefined;
+        }
+        if (!this.panel) {
+            return;
+        }
+        const message = {
             type: 'toolbar',
-            current: this.history.currentIndex(),
-            total: this.history.count(),
-        });
+            current: this.history.currentIndex(this.sessionId),
+            total: this.history.count(this.sessionId),
+        };
+        const state = JSON.stringify(message);
+        if (!force && state === this.lastToolbarState) {
+            return;
+        }
+        this.lastToolbarState = state;
+        void this.panel.webview.postMessage(message);
+        if (this.panel.active) {
+            void vscode.commands.executeCommand(
+                'setContext',
+                'r.plot.canGoBack',
+                message.current > 1,
+            );
+            void vscode.commands.executeCommand(
+                'setContext',
+                'r.plot.canGoForward',
+                message.current < message.total,
+            );
+        }
     }
 
     getPanelDimensions(): { width: number; height: number } {
         return { width: this.panelWidth, height: this.panelHeight };
+    }
+
+    private resolveSessionContext(): boolean {
+        if (this.sessionContext) {
+            return false;
+        }
+        const saved = this.history.sessionSource(this.sessionId);
+        // Restored, disconnected devices must never bind to a reused PID.
+        const source =
+            saved ??
+            (this.server.isConnected(this.sessionId)
+                ? resolveJgdSessionSource(this.history.sessionLabel(this.sessionId) ?? '')
+                : undefined);
+        if (!source) {
+            return false;
+        }
+        this.sessionContext = getViewerSessionContext(source.sessionId, source);
+        this.history.setSessionSource(this.sessionId, source);
+        return Boolean(this.sessionContext);
     }
 
     private canonicalizeFamily(family: string | undefined): string {
@@ -438,6 +620,7 @@ export class JgdViewer implements PlotViewer {
     }
 
     private createPanel(preserveFocus = false) {
+        this.resolveSessionContext();
         const viewColumnConfig =
             config().get<Record<string, string>>('session.viewers.viewColumn') ?? {};
         const plotColumn = viewColumnConfig['plot'] ?? 'Two';
@@ -459,10 +642,20 @@ export class JgdViewer implements PlotViewer {
         );
 
         this.panel.iconPath = new UriIcon('graph');
-        this.panel.webview.html = this.getWebviewHtml();
-
         this.panel.webview.onDidReceiveMessage((raw: WebviewMessage) => {
+            if (!this.panel) {
+                return;
+            }
             switch (raw.type) {
+                case 'ready': {
+                    this.updateVisibility(true);
+                    const plot = this.history.currentPlot(this.sessionId);
+                    if (plot) {
+                        this.sendPlotToWebview(plot);
+                    }
+                    this.updateToolbar(true);
+                    break;
+                }
                 case 'metrics_response': {
                     const resolver = this.pendingMetrics.get(raw.id);
                     if (resolver) {
@@ -496,7 +689,7 @@ export class JgdViewer implements PlotViewer {
                 case 'resize': {
                     this.panelWidth = raw.width;
                     this.panelHeight = raw.height;
-                    this.server.handleResize(raw.width, raw.height);
+                    this.server.handleResize(raw.width, raw.height, this.sessionId);
                     break;
                 }
                 case 'navigate': {
@@ -521,7 +714,15 @@ export class JgdViewer implements PlotViewer {
         this.panel.onDidDispose(() => {
             this.panel = null;
             this.metricsCache.clear();
+            this.lastToolbarState = undefined;
+            this.lastPanelVisibility = undefined;
         });
+        this.panel.onDidChangeViewState(() => {
+            this.updateVisibility();
+            this.updateToolbar(true);
+        });
+        this.sessionContext?.attach(this.panel);
+        this.panel.webview.html = this.getWebviewHtml();
     }
 
     private async handleExportRequest(format: 'png' | 'svg') {
@@ -560,7 +761,15 @@ export class JgdViewer implements PlotViewer {
     }
 
     private sendPlotToWebview(plot: PlotFrame) {
-        void this.panel?.webview.postMessage({ type: 'render', plot });
+        void this.panel?.webview.postMessage({ type: 'render', plot, visible: this.panel.visible });
+    }
+
+    private updateVisibility(force = false) {
+        if (!this.panel || (!force && this.panel.visible === this.lastPanelVisibility)) {
+            return;
+        }
+        this.lastPanelVisibility = this.panel.visible;
+        void this.panel.webview.postMessage({ type: 'visibility', visible: this.panel.visible });
     }
 
     private async handleExportData(msg: WebviewExportData) {
@@ -585,12 +794,17 @@ export class JgdViewer implements PlotViewer {
     }
 
     private getWebviewHtml(): string {
+        const webview = this.panel!.webview;
+        const codicons = webview.asWebviewUri(
+            vscode.Uri.joinPath(this.extensionUri, 'dist', 'resources', 'codicon.css'),
+        );
         return `<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src data: blob:;">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource} 'unsafe-inline'; font-src ${webview.cspSource}; script-src 'unsafe-inline'; img-src data: blob:;">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="stylesheet" href="${codicons.toString()}">
 <style>
 * { margin: 0; padding: 0; box-sizing: border-box; }
 body { background: var(--vscode-editor-background); overflow: hidden; display: flex; flex-direction: column; height: 100vh; }
@@ -607,7 +821,12 @@ body { background: var(--vscode-editor-background); overflow: hidden; display: f
 }
 #toolbar button:hover { background: var(--vscode-button-secondaryHoverBackground); }
 #toolbar button:disabled { opacity: 0.4; cursor: default; }
+#toolbar select {
+    color: var(--vscode-dropdown-foreground); background: var(--vscode-dropdown-background);
+    border: 1px solid var(--vscode-dropdown-border); padding: 2px; min-width: 0;
+}
 #plot-info { flex: 1; text-align: center; }
+${viewerSessionStyle}
 #canvas-container { flex: 1; display: flex; align-items: center; justify-content: center; overflow: hidden; }
 canvas { display: block; }
 </style>
@@ -623,6 +842,7 @@ canvas { display: block; }
         <option value="png">PNG</option>
         <option value="svg">SVG</option>
     </select>
+    ${this.sessionContext?.getHtml() ?? ''}
 </div>
 <div id="canvas-container">
     <canvas id="plot-canvas"></canvas>
@@ -639,13 +859,16 @@ ${getRendererScript()}
 function getRendererScript(): string {
     return `
 const vscode = acquireVsCodeApi();
+${getViewerSessionScript()}
 const canvas = document.getElementById('plot-canvas');
 const ctx = canvas.getContext('2d');
 const metricsCanvas = document.getElementById('metrics-canvas');
 const metricsCtx = metricsCanvas.getContext('2d');
 
 let currentPlot = null;
-
+// A retained tab can be hidden without changing document.hidden.
+// VS Code's panel state is authoritative for whether this layout is usable.
+let panelVisible = false;
 document.getElementById('btn-prev').addEventListener('click', () => {
     vscode.postMessage({ type: 'navigate', direction: 'previous' });
 });
@@ -667,20 +890,40 @@ const container = document.getElementById('canvas-container');
 let resizeTimer = null;
 let lastSentW = 0;
 let lastSentH = 0;
+function reportViewportSize() {
+    if (!panelVisible || document.hidden) return;
+    const w = container.clientWidth;
+    const h = container.clientHeight;
+    if (w <= 0 || h <= 0) return;
+    if (w !== lastSentW || h !== lastSentH) {
+        lastSentW = w;
+        lastSentH = h;
+        vscode.postMessage({ type: 'resize', width: w, height: h });
+    }
+}
 const resizeObserver = new ResizeObserver(() => {
+    if (!panelVisible || document.hidden) return;
     if (currentPlot) replay(currentPlot);
     clearTimeout(resizeTimer);
-    resizeTimer = setTimeout(() => {
-        const w = container.clientWidth;
-        const h = container.clientHeight;
-        if (w !== lastSentW || h !== lastSentH) {
-            lastSentW = w;
-            lastSentH = h;
-            vscode.postMessage({ type: 'resize', width: w, height: h });
-        }
-    }, 300);
+    resizeTimer = setTimeout(reportViewportSize, 300);
 });
 resizeObserver.observe(container);
+
+function refreshVisibility() {
+    if (!panelVisible || document.hidden) {
+        clearTimeout(resizeTimer);
+        ++replayGeneration;
+        return;
+    }
+    // A retained, hidden webview has a temporary layout. Its visible size
+    // may be unchanged, so ResizeObserver alone cannot restore the canvas.
+    requestAnimationFrame(() => {
+        if (!panelVisible || document.hidden) return;
+        if (currentPlot) replay(currentPlot);
+        reportViewportSize();
+    });
+}
+document.addEventListener('visibilitychange', refreshVisibility);
 
 (function warmupMetrics() {
     const fonts = [
@@ -717,7 +960,12 @@ window.addEventListener('message', (event) => {
     switch (msg.type) {
         case 'render':
             currentPlot = msg.plot;
+            panelVisible = msg.visible;
             replay(msg.plot);
+            break;
+        case 'visibility':
+            panelVisible = msg.visible;
+            refreshVisibility();
             break;
         case 'clear':
             currentPlot = null;
@@ -738,6 +986,8 @@ window.addEventListener('message', (event) => {
             break;
     }
 });
+
+vscode.postMessage({ type: 'ready' });
 
 function applyGc(ctx, gc) {
     ctx.globalCompositeOperation = 'source-over';
@@ -862,7 +1112,7 @@ async function replay(plot) {
 }
 
 async function doReplay(plot, gen) {
-    if (replayGeneration !== gen) return;
+    if (replayGeneration !== gen || !panelVisible || document.hidden) return;
 
     const dpr = window.devicePixelRatio || 1;
     const containerW = container.clientWidth;

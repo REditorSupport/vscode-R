@@ -10,6 +10,27 @@
   "standard"
 }
 
+.install_httpgd_device_hook <- function() {
+  open_device <- httpgd::hgd
+  open <- function(owned, ...) {
+    result <- open_device(...)
+    if (owned) {
+      .runtime_track_device()
+    } else {
+      # Explicit devices belong to the caller. Retire any factory registration
+      # whose device number was reused, without taking ownership of the new one.
+      id <- unname(grDevices::dev.cur())
+      state <- .runtime_state()
+      state$devices <- Filter(function(entry) entry$id != id, state$devices)
+    }
+    # Register before notifying: a failed write may stop the runtime immediately.
+    notify_client("httpgd", list(url = httpgd::hgd_url()))
+    invisible(result)
+  }
+  .runtime_rebind("hgd", function(...) open(FALSE, ...), ns = "httpgd")
+  function(...) open(TRUE, silent = TRUE)
+}
+
 # Send runtime notifications after task callbacks return, so transport failure
 # cannot remove the currently executing task callback during runtime cleanup.
 .defer_runtime_notification <- function(method, schedule = later::later) {
@@ -50,7 +71,12 @@ runtime_start <- function(use_rstudioapi = TRUE,
     .sess_env$runtime_start_phase <- "previous-runtime-stop"
     runtime_stop()
   }
+  if (isTRUE(state$preserved_plots) && !identical(state$plot_backend, plot_backend)) {
+    runtime_stop()
+  }
   state <- .runtime_state()
+  state$devices <- Filter(.runtime_device_is_live, state$devices)
+  state$plot_backend <- plot_backend
   state$active <- TRUE
   completed <- FALSE
   on.exit({
@@ -227,43 +253,104 @@ runtime_start <- function(use_rstudioapi = TRUE,
     package_version(getNamespaceVersion("httpgd")) >= "2.0.1"
   selected_backend <- .select_plot_backend(plot_backend, has_httpgd, has_jgd)
   if (selected_backend == "jgd") {
-    .runtime_set_option("device", function(...) {
-      jgd::jgd()
+    open_device <- jgd::jgd
+    .runtime_rebind("jgd", function(...) {
+      result <- open_device(...)
+      # Windows defers the renderer welcome until server_info is requested.
+      # Cache it while connected so explicit devices can be identified on reload.
+      tryCatch(jgd::jgd_server_info(), error = function(e) NULL)
+      invisible(result)
+    }, "jgd")
+    open_jgd_device <- function(key = NULL, recorded = NULL, previous_device_id = NULL, ...) {
+      jgd::jgd(...)
       .runtime_track_device()
-    })
-
-    # On reattach (e.g. after a VS Code window reload) the renderer starts a new
-    # socket, but any jgd device opened before the reload is still bound to the
-    # old, now-dead socket. jgd::jgd() only reads JGD_SOCKET at device-creation
-    # time, so the stale device never reconnects and plots silently go nowhere.
-    # Reopen it against the new socket, replaying the current plot if possible.
-    reconnect_jgd_device <- function() {
-      devs <- grDevices::dev.list()
-      if (is.null(devs) || !"jgd" %in% names(devs)) {
-        return(invisible(FALSE))
+      if (is.null(key)) {
+        .sess_env$plot_device_sequence <- (.sess_env$plot_device_sequence %||% 0L) + 1L
+        key <- as.character(.sess_env$plot_device_sequence)
       }
-      grDevices::dev.set(devs[names(devs) == "jgd"][[1]])
-      recorded <- tryCatch(grDevices::recordPlot(), error = function(e) NULL)
-      tryCatch(grDevices::dev.off(), error = function(e) NULL)
-      before_reopen <- grDevices::dev.list()
-      tryCatch(jgd::jgd(), error = function(e) NULL)
-      after_reopen <- grDevices::dev.list()
-      if (!is.null(after_reopen)) {
-        opened <- if (is.null(before_reopen)) after_reopen else setdiff(after_reopen, before_reopen)
-        if (length(opened)) .runtime_track_device(opened[[1L]])
+      devices <- .runtime_state()$devices
+      devices[[length(devices)]]$key <- key
+      devices[[length(devices)]]$renderer_device_id <- unname(
+        jgd::jgd_server_info()$server_info["deviceId"]
+      )
+      state$devices <- devices
+      # Carry the logical device identity across a new renderer socket. Device
+      # numbers and JGD's native counter can change when the device is reopened.
+      set_identity <- function(restoring = FALSE) {
+        jgd::jgd_frame_ext(jsonlite::toJSON(list(vscodeR = list(
+          sessionId = .session_id(), host = unname(Sys.info()[["nodename"]]),
+          pid = as.character(Sys.getpid()),
+          rVer = sprintf("%s.%s", R.version$major, R.version$minor),
+          processExited = FALSE, deviceId = key, restoring = restoring,
+          previousDeviceId = previous_device_id
+        )), auto_unbox = TRUE))
       }
+      set_identity(!is.null(recorded))
       if (!is.null(recorded)) {
         tryCatch(grDevices::replayPlot(recorded), error = function(e) NULL)
+        set_identity()
       }
-      invisible(TRUE)
     }
-    reconnect_jgd_device()
+    .runtime_set_option("device", function(...) open_jgd_device())
+
+    # The R process survives reload, but JGD's renderer socket does not. Reopen
+    # each retained device and replay its current plot with the same logical ID.
+    previous <- grDevices::dev.cur()
+    # Freeze eligibility before reopening can reuse a closed registration's number.
+    device_entries <- get(".Devices", envir = baseenv())
+    retained <- Filter(function(entry) .runtime_device_is_live(entry, device_entries),
+                       .runtime_state()$devices)
+    # Explicit jgd::jgd() calls bypass our device factory. Recover live devices
+    # belonging to VS Code too, leaving other renderers' devices untouched.
+    devs <- grDevices::dev.list()
+    for (id in devs[names(devs) == "jgd"]) {
+      grDevices::dev.set(id)
+      info <- tryCatch(jgd::jgd_server_info(), error = function(e) NULL)
+      previous_device_id <- unname(info$server_info["deviceId"])
+      if (length(previous_device_id) != 1L || is.na(previous_device_id) ||
+            !nzchar(previous_device_id)) {
+        previous_device_id <- NULL
+      }
+      # An explicit jgd() can reuse a managed device's number without calling
+      # our factory. Only the renderer's per-connection ID proves continuity.
+      same_device <- vapply(retained, function(entry) {
+        entry$id == id && !is.null(previous_device_id) &&
+          identical(entry$renderer_device_id, previous_device_id)
+      }, logical(1))
+      if (any(same_device)) next
+      retained <- Filter(function(entry) entry$id != id, retained)
+      if (identical(info$server_name, "jgd-vscode")) {
+        # JGD retains the renderer welcome even after its socket disconnects.
+        # Carry its original identity so reconnect preserves the saved history.
+        retained[[length(retained) + 1L]] <- list(
+          id = unname(id), name = "jgd", previous_device_id = previous_device_id
+        )
+      }
+    }
+    state$devices <- list()
+    for (entry in retained) {
+      devs <- grDevices::dev.list()
+      index <- match(entry$id, devs)
+      if (is.na(index) || !identical(names(devs)[[index]], entry$name)) next
+      if (!identical(entry$name, "jgd")) {
+        .runtime_track_device(entry$id)
+        next
+      }
+      grDevices::dev.set(entry$id)
+      # Capture the live size and resolution before closing this device. Explicit
+      # jgd() calls may use a different DPI, and the renderer may have resized it.
+      size <- grDevices::dev.size("in")
+      dpi <- grDevices::dev.size("px")[[1L]] / size[[1L]]
+      recorded <- tryCatch(grDevices::recordPlot(), error = function(e) NULL)
+      tryCatch(grDevices::dev.off(entry$id), error = function(e) NULL)
+      open_jgd_device(entry$key, recorded, entry$previous_device_id,
+                      width = size[[1L]], height = size[[2L]], dpi = dpi)
+      if (identical(unname(previous), entry$id)) previous <- grDevices::dev.cur()
+    }
+    if (previous %in% grDevices::dev.list()) grDevices::dev.set(previous)
   } else if (selected_backend == "httpgd") {
-    .runtime_set_option("device", function(...) {
-      httpgd::hgd(silent = TRUE)
-      .runtime_track_device()
-      notify_client("httpgd", list(url = httpgd::hgd_url()))
-    })
+    # Notify for both explicit and default devices; own only factory devices.
+    .runtime_set_option("device", .install_httpgd_device_hook())
   } else if (selected_backend == "standard") {
     # If a specific interactive backend was explicitly requested but is
     # unavailable, warn before silently degrading to the standard viewer.
@@ -299,7 +386,9 @@ runtime_start <- function(use_rstudioapi = TRUE,
     check_null_dev <- function() {
       cur <- grDevices::dev.cur()
       id <- getOption("sess.null_dev")
-      !is.null(id) && cur == id
+      !is.null(id) && cur == id && any(vapply(state$devices, function(entry) {
+        entry$id == id && .runtime_device_is_live(entry)
+      }, logical(1)))
     }
 
     new_plot <- function() {
@@ -315,7 +404,7 @@ runtime_start <- function(use_rstudioapi = TRUE,
       grDevices::dev.control(displaylist = "enable")
     })
 
-    update_plot <- function(...) {
+    update_plot <- function(..., notify = TRUE) {
       tryCatch(
         {
           if (check_null_dev()) {
@@ -328,7 +417,7 @@ runtime_start <- function(use_rstudioapi = TRUE,
                 plot_updated <<- FALSE
                 last_plot_record_length <<- curr_length
                 .runtime_set_field("latest_plot_record", record)
-                .defer_runtime_notification("plot_updated")
+                if (notify) .defer_runtime_notification("plot_updated")
               }
             }
           }
@@ -343,7 +432,8 @@ runtime_start <- function(use_rstudioapi = TRUE,
     .runtime_set_hook("plot.new", new_plot, "replace")
     .runtime_set_hook("grid.newpage", new_plot, "replace")
 
-    update_plot()
+    # Reattach refreshes the record without reopening a viewer the user closed.
+    update_plot(notify = FALSE)
     .runtime_add_task_callback(function(...) {
       update_plot(...)
     }, name = "sess.plot")
@@ -370,5 +460,19 @@ runtime_start <- function(use_rstudioapi = TRUE,
   .runtime_add_task_callback(.workspace_update_task_callback, name = "sess.workspace")
 
   completed <- TRUE
+  # Announce retained plots only after setup is complete: a failed write
+  # can stop the runtime, so no callbacks should be installed after this point.
+  if (selected_backend == "standard" && !is.null(.sess_env$latest_plot_record)) {
+    notify_client("plot_updated", list(restoring = TRUE))
+  } else if (selected_backend == "httpgd") {
+    # Discover live servers without adopting their devices. A plain unigd
+    # device has no HTTP server and must not prevent the others restoring.
+    devs <- grDevices::dev.list()
+    for (id in devs[names(devs) %in% c("httpgd", "unigd")]) {
+      url <- tryCatch(httpgd::hgd_url(which = id), error = function(e) NULL)
+      if (!is.null(url)) notify_client("httpgd", list(url = url, restoring = TRUE))
+      if (!isTRUE(state$active)) break
+    }
+  }
   invisible(NULL)
 }

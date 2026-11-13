@@ -12,6 +12,7 @@ import { pathExists } from '../../fileSystem';
 import { SessConsentService } from '../../sessConsent';
 import { mockExtensionContext } from '../common/mockvscode';
 import { deferred, SessionConnections, waitForValue } from '../common/sessionConnections';
+import { StandardPlotViewer } from '../../plotViewer/standardViewer';
 
 async function waitForFileRemoval(filePath: string): Promise<void> {
     for (let attempt = 0; attempt < 100; attempt++) {
@@ -55,6 +56,80 @@ suite('Session Connection Lifecycle API', () => {
         session.deferWorkspaceRefresh();
         await session.shutdownSessionWatcher();
         sandbox.restore();
+    });
+
+    test('standard plot resize follows a reattachment but never a replacement R process', async () => {
+        const messages = new vscode.EventEmitter<{
+            type: string;
+            width?: number;
+            height?: number;
+        }>();
+        const disposed = new vscode.EventEmitter<void>();
+        sandbox.stub(vscode.window, 'createWebviewPanel').returns({
+            webview: {
+                html: '',
+                asWebviewUri: (uri: vscode.Uri) => uri,
+                postMessage: () => Promise.resolve(true),
+                onDidReceiveMessage: messages.event,
+            },
+            onDidDispose: disposed.event,
+            dispose: () => disposed.fire(),
+        } as unknown as vscode.WebviewPanel);
+        const request = sandbox
+            .stub(session, 'sessionRequest')
+            .resolves({ data: 'plot', format: 'svg' });
+        const attach = async (pid: number) => {
+            await connections.attach('standard-reconnect', pid, 'external-host');
+            await session.activateSessionById('standard-reconnect');
+            return session.activeSession!;
+        };
+        const original = await attach(55150);
+        const viewer = new StandardPlotViewer(original);
+        try {
+            await viewer.update();
+            messages.fire({ type: 'ready' });
+            await waitForValue(() => (request.calledOnce ? true : undefined));
+            assert.strictEqual(request.lastCall.args[1], original);
+            const reattached = await attach(55150);
+            assert.notStrictEqual(reattached, original);
+            assert.ok(original.socket.destroyed);
+            messages.fire({ type: 'resize', width: 700, height: 500 });
+            await waitForValue(() => (request.calledTwice ? true : undefined));
+            assert.strictEqual(request.lastCall.args[1], reattached);
+            await attach(55151);
+            messages.fire({ type: 'resize', width: 800, height: 600 });
+            await new Promise((resolve) => setImmediate(resolve));
+            sinon.assert.calledTwice(request);
+        } finally {
+            viewer.dispose();
+            messages.dispose();
+            disposed.dispose();
+        }
+    });
+
+    test('JGD device labels resolve only to a unique connected local R process', async () => {
+        const first = await connections.attach('jgd-local', 55101, os.hostname(), {
+            attachmentId: 'jgd-test',
+            autoActivate: false,
+        });
+        await connections.attach('jgd-remote', 55101, 'external-host', {
+            attachmentId: 'jgd-test',
+            autoActivate: false,
+        });
+        const source = session.resolveJgdSessionSource('r-55101-1');
+        assert.strictEqual(source?.sessionId, 'jgd-local');
+        assert.strictEqual(source?.pid, '55101');
+        assert.strictEqual(source?.rVer, '4.4.0');
+        assert.strictEqual(session.resolveJgdSessionSource('unknown-device'), undefined);
+        const duplicate = await connections.attach('jgd-ambiguous', 55101, os.hostname(), {
+            attachmentId: 'jgd-test',
+            autoActivate: false,
+        });
+        assert.strictEqual(session.resolveJgdSessionSource('r-55101-1'), undefined);
+        await session.cleanupSession('jgd-ambiguous', duplicate);
+        assert.strictEqual(session.resolveJgdSessionSource('r-55101-1')?.sessionId, 'jgd-local');
+        await session.cleanupSession('jgd-local', first);
+        assert.strictEqual(session.resolveJgdSessionSource('r-55101-1'), undefined);
     });
 
     test('background external attach remains unselected and exposes its current reference', async () => {
@@ -208,6 +283,160 @@ suite('Session Connection Lifecycle API', () => {
         assert.notStrictEqual(newReference.connectionId, oldReference.connectionId);
     });
 
+    test('plot notifications arriving during native terminal discovery wait for attachment', async () => {
+        const processId = deferred<number>();
+        const discovering = deferred<void>();
+        const terminal = {
+            get processId() {
+                discovering.resolve();
+                return processId.promise;
+            },
+            sendText: sandbox.stub(),
+            show: sandbox.stub(),
+        } as unknown as vscode.Terminal;
+        terminals.value([terminal]);
+        activeTerminal.value(terminal);
+        const showHttpgdPlot = sandbox.stub().resolves();
+        const showStandardPlot = sandbox.stub().resolves();
+        sandbox.stub(extension, 'globalPlotManager').value({ showHttpgdPlot, showStandardPlot });
+        const socket = await connections.startAttach('early-plot', 55160, os.hostname());
+        await discovering.promise;
+        socket.emit(
+            'data',
+            Buffer.from(
+                [
+                    JSON.stringify({
+                        method: 'httpgd',
+                        params: { url: 'http://127.0.0.1:55160', restoring: true },
+                    }),
+                    JSON.stringify({ method: 'plot_updated', params: {} }),
+                    '',
+                ].join('\n'),
+            ),
+        );
+        sinon.assert.notCalled(showHttpgdPlot);
+        sinon.assert.notCalled(showStandardPlot);
+        processId.resolve(55160);
+        await waitForValue(() => session.getSessionReference('early-plot'));
+        await new Promise((resolve) => setImmediate(resolve));
+        sinon.assert.calledOnce(showHttpgdPlot);
+        sinon.assert.calledOnce(showStandardPlot);
+        assert.strictEqual(
+            (showHttpgdPlot.firstCall.args[1] as session.Session).sessionId,
+            'early-plot',
+        );
+        assert.strictEqual(
+            (showStandardPlot.firstCall.args[0] as session.Session).sessionId,
+            'early-plot',
+        );
+    });
+
+    for (const ending of ['disconnected', 'replaced'] as const) {
+        test(`queued plots are discarded when the pending attachment is ${ending}`, async () => {
+            const processId = deferred<number>();
+            const discovering = deferred<void>();
+            const terminal = {
+                get processId() {
+                    discovering.resolve();
+                    return processId.promise;
+                },
+            } as unknown as vscode.Terminal;
+            terminals.value([terminal]);
+            const showHttpgdPlot = sandbox.stub().resolves();
+            const showStandardPlot = sandbox.stub().resolves();
+            sandbox
+                .stub(extension, 'globalPlotManager')
+                .value({ showHttpgdPlot, showStandardPlot });
+            const socket = await connections.startAttach('queued-plot', 55161, os.hostname());
+            await discovering.promise;
+            socket.emit(
+                'data',
+                Buffer.from(
+                    [
+                        JSON.stringify({
+                            method: 'httpgd',
+                            params: { url: 'http://127.0.0.1:55161' },
+                        }),
+                        JSON.stringify({ method: 'plot_updated', params: {} }),
+                        '',
+                    ].join('\n'),
+                ),
+            );
+            if (ending === 'disconnected') {
+                socket.destroy();
+            } else {
+                await connections.attach('queued-plot', 55162, 'external-host');
+            }
+            processId.resolve(55161);
+            await waitForValue(() => (!session.activeConnections.has(socket) ? true : undefined));
+            await new Promise((resolve) => setImmediate(resolve));
+            sinon.assert.notCalled(showHttpgdPlot);
+            sinon.assert.notCalled(showStandardPlot);
+            assert.strictEqual(
+                Boolean(session.getSessionReference('queued-plot')),
+                ending === 'replaced',
+            );
+        });
+    }
+
+    test('RPC responses do not wait for attachment UI work once the socket is bound', async () => {
+        const activationGate = deferred<unknown>();
+        executeCommand.withArgs('setContext').returns(activationGate.promise);
+        try {
+            const socket = await connections.attach('rpc-during-attach', 55163, 'external-host');
+            const write = sandbox.spy(socket, 'write');
+            const reply = session.sessionRequest({ method: 'plot_latest' }, 'rpc-during-attach');
+            const request = JSON.parse(String(write.lastCall.args[0])) as { id: number };
+            socket.emit(
+                'data',
+                Buffer.from(JSON.stringify({ id: request.id, result: 'plot' }) + '\n'),
+            );
+            assert.strictEqual(await reply, 'plot');
+        } finally {
+            activationGate.resolve(undefined);
+        }
+    });
+
+    test('standard plot notifications target their originating session, not the active terminal', async () => {
+        const showStandardPlot = sandbox.stub().resolves();
+        sandbox.stub(extension, 'globalPlotManager').value({ showStandardPlot });
+        const first = await connections.attach('standard-a', 55040, 'external-host');
+        await connections.attach('standard-b', 55041, 'external-host');
+        await session.activateSessionById('standard-b');
+        first.emit(
+            'data',
+            Buffer.from(JSON.stringify({ method: 'plot_updated', params: {} }) + '\n'),
+        );
+        await waitForValue(() => (showStandardPlot.calledOnce ? true : undefined));
+        assert.strictEqual(
+            (showStandardPlot.firstCall.args[0] as session.Session).sessionId,
+            'standard-a',
+        );
+        assert.strictEqual(session.activeSession?.sessionId, 'standard-b');
+        assert.strictEqual(showStandardPlot.firstCall.args[1], false);
+        first.emit(
+            'data',
+            Buffer.from(
+                JSON.stringify({ method: 'plot_updated', params: { restoring: true } }) + '\n',
+            ),
+        );
+        await waitForValue(() => (showStandardPlot.calledTwice ? true : undefined));
+        assert.strictEqual(showStandardPlot.secondCall.args[0], showStandardPlot.firstCall.args[0]);
+        assert.strictEqual(showStandardPlot.secondCall.args[1], true);
+        const owner = showStandardPlot.firstCall.args[0] as session.Session;
+        assert.strictEqual(session.resolvePlotSession(owner), owner);
+        assert.strictEqual(
+            session.resolvePlotSession({
+                sessionId: owner.sessionId,
+                host: owner.host,
+                pid: 'different-process',
+                rVer: owner.rVer,
+                processExited: false,
+            }),
+            undefined,
+        );
+    });
+
     test('attach UI effects preserve native behavior but ignore background and superseded choices', async () => {
         const showHttpgdPlot = sandbox.stub().resolves();
         sandbox
@@ -239,7 +468,12 @@ suite('Session Connection Lifecycle API', () => {
             plotUrl: 'http://127.0.0.1:55031',
         });
         await waitForValue(() => (showHttpgdPlot.calledOnce ? true : undefined));
-        assert.deepStrictEqual(showHttpgdPlot.firstCall.args, ['http://127.0.0.1:55031']);
+        assert.strictEqual(showHttpgdPlot.firstCall.args[0], 'http://127.0.0.1:55031');
+        assert.strictEqual(
+            (showHttpgdPlot.firstCall.args[1] as session.Session).sessionId,
+            'plot-native-background',
+            'plots belong to their notifying session even when a different session is active',
+        );
         assert.strictEqual(
             session.activeSession,
             selected,

@@ -2,6 +2,13 @@ import * as vscode from 'vscode';
 import { asViewColumn, config, UriIcon } from '../util';
 import * as session from '../session';
 import { PlotViewer } from './types';
+import {
+    getViewerSessionScript,
+    viewerSessionStyle,
+    ViewerSessionContext,
+    ViewerSessionSource,
+} from '../viewerSession';
+import { extensionContext } from '../extension';
 
 interface PlotResponse {
     data: string;
@@ -11,7 +18,7 @@ interface PlotResponse {
 interface PendingPlotRequest {
     panel: vscode.WebviewPanel;
     panelGeneration: number;
-    targetSession: session.Session | undefined;
+    targetSession: session.Session;
     width: number;
     height: number;
     format: string;
@@ -23,13 +30,41 @@ export class StandardPlotViewer implements PlotViewer {
     private panel: vscode.WebviewPanel | undefined;
     private viewWidth: number = 800;
     private viewHeight: number = 600;
-    private plotData: string | undefined;
-    private plotFormat: string | undefined;
     private panelGeneration = 0;
     private pendingPlotRequest: PendingPlotRequest | undefined;
     private plotRequest: Promise<void> | undefined;
 
-    public async update(): Promise<void> {
+    private source!: ViewerSessionSource;
+    private sessionContext: ViewerSessionContext | undefined;
+
+    get sessionSource(): ViewerSessionSource {
+        return this.source;
+    }
+
+    constructor(owner: session.Session) {
+        this.bindSession(owner);
+    }
+
+    bindSession(owner: session.Session): void {
+        this.source = {
+            sessionId: owner.sessionId,
+            host: owner.host,
+            pid: owner.pid,
+            rVer: owner.rVer,
+            processExited: owner.processExited,
+        };
+    }
+
+    get isActive(): boolean {
+        return this.panel?.active ?? false;
+    }
+
+    public async update(restoring = false): Promise<void> {
+        if (restoring) {
+            // Refresh retained panels without creating or revealing a viewer.
+            await this.requestPlot();
+            return;
+        }
         const viewColumn = asViewColumn(
             config().get<string>('session.viewers.viewColumn.plot'),
             vscode.ViewColumn.Two,
@@ -43,6 +78,16 @@ export class StandardPlotViewer implements PlotViewer {
     }
 
     public show(preserveFocus?: boolean): void {
+        if (!this.panel && !this.source.processExited && !this.sessionContext?.hasExited) {
+            this.createPanel(
+                asViewColumn(
+                    config().get<string>('session.viewers.viewColumn.plot'),
+                    vscode.ViewColumn.Two,
+                ),
+            );
+        } else if (this.panel) {
+            void this.requestPlot();
+        }
         if (this.panel) {
             this.panel.reveal(undefined, preserveFocus);
         }
@@ -52,12 +97,15 @@ export class StandardPlotViewer implements PlotViewer {
         // Contextual plot commands are not supported by the standard viewer.
     }
 
-    public dispose(): void {
+    public dispose(keepPanel = false): void {
         const panel = this.panel;
         if (panel) {
             this.panel = undefined;
             this.panelGeneration++;
-            panel.dispose();
+            this.pendingPlotRequest = undefined;
+            if (!keepPanel) {
+                panel.dispose();
+            }
         }
     }
 
@@ -105,23 +153,27 @@ export class StandardPlotViewer implements PlotViewer {
         });
         // Install the receiver before starting the document so its first ready
         // message cannot be missed, even without a visible layout/resize event.
+        this.sessionContext = session.getViewerSessionContext(this.source.sessionId, this.source);
+        this.sessionContext?.attach(panel);
         panel.webview.html = this.getHtml();
     }
 
     private requestPlot(): Promise<void> {
         const panel = this.panel;
-        if (!session.globalPipePath || !panel) {
+        const targetSession = session.resolvePlotSession(this.source);
+        if (!panel || !targetSession) {
             return Promise.resolve();
         }
 
+        const conf = config();
         this.pendingPlotRequest = {
             panel,
             panelGeneration: this.panelGeneration,
-            targetSession: session.activeSession,
+            targetSession,
             width: this.viewWidth,
             height: this.viewHeight,
-            format: config().get<string>('plot.format', 'svglite'),
-            devArgs: config().get<Record<string, unknown>>('plot.devArgs'),
+            format: conf.get<string>('plot.format', 'svglite'),
+            devArgs: conf.get<Record<string, unknown>>('plot.devArgs'),
         };
         return this.startPlotDrain();
     }
@@ -204,12 +256,10 @@ export class StandardPlotViewer implements PlotViewer {
             }
 
             if (this.isCurrentRequest(request)) {
-                this.plotData = response.data;
-                this.plotFormat = response.format || request.format;
                 void request.panel.webview.postMessage({
                     type: 'update',
-                    data: this.plotData,
-                    format: this.plotFormat,
+                    data: response.data,
+                    format: response.format || request.format,
                 });
             }
         }
@@ -217,26 +267,29 @@ export class StandardPlotViewer implements PlotViewer {
 
     private isCurrentRequest(request: PendingPlotRequest): boolean {
         return (
-            Boolean(session.globalPipePath) &&
             this.panel === request.panel &&
             this.panelGeneration === request.panelGeneration &&
-            session.activeSession === request.targetSession
+            session.resolvePlotSession(this.source) === request.targetSession
         );
     }
 
-    private discardPendingForSession(targetSession: session.Session | undefined): void {
+    private discardPendingForSession(targetSession: session.Session): void {
         if (this.pendingPlotRequest?.targetSession === targetSession) {
             this.pendingPlotRequest = undefined;
         }
     }
 
     private getHtml() {
+        const codicons = this.panel!.webview.asWebviewUri(
+            vscode.Uri.joinPath(extensionContext.extensionUri, 'dist', 'resources', 'codicon.css'),
+        );
         return `
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="${codicons.toString()}">
     <style>
         body, html {
             margin: 0;
@@ -246,9 +299,12 @@ export class StandardPlotViewer implements PlotViewer {
             overflow: hidden;
             background-color: transparent;
             display: flex;
-            justify-content: center;
-            align-items: center;
+            flex-direction: column;
         }
+        #session-info { display: flex; justify-content: flex-end; padding: 6px 8px; }
+        #session-info:empty { display: none; }
+        #plot-container { flex: 1; min-height: 0; width: 100%; display: flex; justify-content: center; align-items: center; }
+        ${viewerSessionStyle}
         img {
             max-width: 100%;
             max-height: 100%;
@@ -261,9 +317,11 @@ export class StandardPlotViewer implements PlotViewer {
     </style>
 </head>
 <body>
+    <div id="session-info">${this.sessionContext?.getHtml() ?? ''}</div>
     <div id="plot-container"></div>
     <script>
         const vscode = acquireVsCodeApi();
+        ${getViewerSessionScript()}
         const container = document.getElementById('plot-container');
         
         let resizeTimeout;
@@ -282,7 +340,7 @@ export class StandardPlotViewer implements PlotViewer {
                 }
             }
         });
-        observer.observe(document.body);
+        observer.observe(container);
 
         window.addEventListener('message', event => {
             const message = event.data;

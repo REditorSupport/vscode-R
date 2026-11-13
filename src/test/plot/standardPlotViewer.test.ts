@@ -31,6 +31,8 @@ suite('Standard plot viewer request coordination', () => {
     let sandbox: sinon.SinonSandbox;
     let viewer: StandardPlotViewer;
     let activeSession: sinon.SinonStub;
+    let resolveSession: sinon.SinonStub;
+    let owner: session.Session;
     let panels: Array<{
         panel: vscode.WebviewPanel;
         resize: (width: number, height: number) => Promise<void>;
@@ -38,12 +40,23 @@ suite('Standard plot viewer request coordination', () => {
         postMessage: sinon.SinonStub;
     }>;
 
+    function connection(): session.Session {
+        return {
+            sessionId: 'owner',
+            host: 'external-host',
+            pid: '123',
+            rVer: '4.6.0',
+            processExited: false,
+        } as session.Session;
+    }
+
     setup(() => {
         sandbox = sinon.createSandbox();
         panels = [];
         const root = path.resolve(__dirname, '../../..');
         mockExtensionContext(root, sandbox);
-        sandbox.stub(session, 'globalPipePath').value('test-pipe');
+        owner = connection();
+        resolveSession = sandbox.stub(session, 'resolvePlotSession').returns(owner);
         activeSession = sandbox.stub(session, 'activeSession').value(undefined);
         sandbox.stub(util, 'config').returns({
             get: (key: string, defaultValue?: unknown) =>
@@ -51,9 +64,10 @@ suite('Standard plot viewer request coordination', () => {
         } as unknown as vscode.WorkspaceConfiguration);
         sandbox.stub(vscode.window, 'createWebviewPanel').callsFake(() => {
             const disposed = new vscode.EventEmitter<void>();
-            let receiveMessage:
-                | ((message: { type: string; width?: number; height?: number }) => Promise<void>)
-                | undefined;
+            const listeners = new Set<(message: unknown) => unknown>();
+            const receiveMessage = async (message: unknown) => {
+                await Promise.all([...listeners].map((listener) => listener(message)));
+            };
             const postMessage = sandbox.stub().resolves(true);
             const panel = {
                 title: 'R Plot',
@@ -62,8 +76,12 @@ suite('Standard plot viewer request coordination', () => {
                 webview: {
                     html: '',
                     postMessage,
-                    onDidReceiveMessage: (listener: typeof receiveMessage) => {
-                        receiveMessage = listener;
+                    asWebviewUri: (uri: vscode.Uri) => uri,
+                    onDidReceiveMessage: (listener: (message: unknown) => unknown) => {
+                        listeners.add(listener);
+                        return new vscode.Disposable(() => {
+                            listeners.delete(listener);
+                        });
                     },
                 },
                 onDidDispose: disposed.event,
@@ -81,7 +99,7 @@ suite('Standard plot viewer request coordination', () => {
             });
             return panel;
         });
-        viewer = new StandardPlotViewer();
+        viewer = new StandardPlotViewer(owner);
     });
 
     teardown(() => {
@@ -204,25 +222,90 @@ suite('Standard plot viewer request coordination', () => {
         });
     });
 
-    test('does not post a response from a session that stopped being active', async () => {
-        const firstSession = {} as session.Session;
-        const nextSession = {} as session.Session;
-        activeSession.value(firstSession);
+    test('does not post a response after its owning session disconnects', async () => {
         const requestResult = deferred<unknown>();
         sandbox.stub(session, 'sessionRequest').returns(requestResult.promise);
         await viewer.update();
         const resize = panels[0].resize(100, 100);
 
-        activeSession.value(nextSession);
+        resolveSession.returns(undefined);
         requestResult.resolve({ data: 'stale session', format: 'svg' });
         await resize;
         sinon.assert.notCalled(panels[0].postMessage);
     });
 
-    test('keeps a different active session queued when the old session returns no data', async () => {
-        const sessionA = { sessionId: 'A' } as session.Session;
-        const sessionB = { sessionId: 'B' } as session.Session;
-        activeSession.value(sessionA);
+    test('a bound viewer keeps requesting its owner after the active session changes', async () => {
+        const owner = {
+            sessionId: 'A',
+            host: 'external-host',
+            pid: '123',
+            rVer: '4.5.0',
+            processExited: false,
+        } as session.Session;
+        viewer = new StandardPlotViewer(owner);
+        resolveSession.returns(owner);
+        activeSession.value(owner);
+        const response = deferred<unknown>();
+        const request = sandbox.stub(session, 'sessionRequest').returns(response.promise);
+        await viewer.update();
+        const ready = panels[0].ready();
+        activeSession.value({ sessionId: 'B' });
+        response.resolve({ data: 'A plot', format: 'svg' });
+        await ready;
+        sinon.assert.calledWithExactly(panels[0].postMessage, {
+            type: 'update',
+            data: 'A plot',
+            format: 'svg',
+        });
+        await panels[0].resize(300, 400);
+        assert.strictEqual(request.lastCall.args[1], owner);
+        viewer.dispose();
+        viewer.show();
+        assert.strictEqual(panels.length, 2);
+        assert.ok(panels[1].panel.webview.html.includes("type: 'ready'"));
+    });
+
+    test('a bound viewer discards an old connection response and drains the reattached request', async () => {
+        const owner = {
+            sessionId: 'bound',
+            host: 'external-host',
+            pid: '123',
+            rVer: '4.6.0',
+            processExited: false,
+        } as session.Session;
+        viewer = new StandardPlotViewer(owner);
+        const resolve = resolveSession.returns(owner);
+        const old = deferred<unknown>();
+        const request = sandbox.stub(session, 'sessionRequest');
+        request.onFirstCall().returns(old.promise);
+        request.onSecondCall().resolves({ data: 'reattached', format: 'svg' });
+        await viewer.update();
+        const initial = panels[0].ready();
+        const reattached = {
+            sessionId: owner.sessionId,
+            host: owner.host,
+            pid: owner.pid,
+            rVer: owner.rVer,
+            processExited: false,
+        } as session.Session;
+        resolve.returns(reattached);
+        const resize = panels[0].resize(700, 500);
+        old.resolve({ data: 'stale', format: 'svg' });
+        await Promise.all([initial, resize]);
+        assert.strictEqual(request.lastCall.args[1], reattached);
+        sinon.assert.calledOnceWithExactly(
+            panels[0].postMessage.withArgs(sinon.match({ type: 'update' })),
+            { type: 'update', data: 'reattached', format: 'svg' },
+        );
+        resolve.returns(undefined);
+        await panels[0].resize(800, 600);
+        sinon.assert.calledTwice(request);
+    });
+
+    test('keeps the reattached connection queued when the old session returns no data', async () => {
+        const sessionA = owner;
+        const sessionB = connection();
+        resolveSession.returns(sessionA);
         const firstRequest = deferred<unknown>();
         const secondRequest = deferred<unknown>();
         const secondStarted = deferred<void>();
@@ -235,7 +318,7 @@ suite('Standard plot viewer request coordination', () => {
         });
         await viewer.update();
         const firstResize = panels[0].resize(100, 100);
-        activeSession.value(sessionB);
+        resolveSession.returns(sessionB);
         const sessionBUpdate = viewer.update();
         sinon.assert.calledOnce(request);
 
@@ -253,10 +336,10 @@ suite('Standard plot viewer request coordination', () => {
         });
     });
 
-    test('keeps a different active session queued when the old session rejects', async () => {
-        const sessionA = { sessionId: 'A' } as session.Session;
-        const sessionB = { sessionId: 'B' } as session.Session;
-        activeSession.value(sessionA);
+    test('keeps the reattached connection queued when the old session rejects', async () => {
+        const sessionA = owner;
+        const sessionB = connection();
+        resolveSession.returns(sessionA);
         const firstRequest = deferred<unknown>();
         const secondRequest = deferred<unknown>();
         const secondStarted = deferred<void>();
@@ -269,7 +352,7 @@ suite('Standard plot viewer request coordination', () => {
         });
         await viewer.update();
         const firstResize = panels[0].resize(100, 100);
-        activeSession.value(sessionB);
+        resolveSession.returns(sessionB);
         const sessionBUpdate = viewer.update();
 
         firstRequest.reject(new Error('session A failed'));
@@ -286,11 +369,11 @@ suite('Standard plot viewer request coordination', () => {
         });
     });
 
-    test('uses only the latest queued connection when sessions change repeatedly', async () => {
-        const sessionA = { sessionId: 'A' } as session.Session;
-        const sessionB = { sessionId: 'B' } as session.Session;
-        const sessionC = { sessionId: 'C' } as session.Session;
-        activeSession.value(sessionA);
+    test('uses only the latest queued connection when the connection changes repeatedly', async () => {
+        const sessionA = owner;
+        const sessionB = connection();
+        const sessionC = connection();
+        resolveSession.returns(sessionA);
         const firstRequest = deferred<unknown>();
         const secondRequest = deferred<unknown>();
         const secondStarted = deferred<void>();
@@ -303,9 +386,9 @@ suite('Standard plot viewer request coordination', () => {
         });
         await viewer.update();
         const firstResize = panels[0].resize(100, 100);
-        activeSession.value(sessionB);
+        resolveSession.returns(sessionB);
         const updateB = viewer.update();
-        activeSession.value(sessionC);
+        resolveSession.returns(sessionC);
         const updateC = viewer.update();
 
         firstRequest.resolve({ data: 'stale A', format: 'svg' });
@@ -323,18 +406,18 @@ suite('Standard plot viewer request coordination', () => {
         });
     });
 
-    test('discards a queued session that became stale without a newer plot event', async () => {
-        const sessionA = { sessionId: 'A' } as session.Session;
-        const sessionB = { sessionId: 'B' } as session.Session;
-        const sessionC = { sessionId: 'C' } as session.Session;
-        activeSession.value(sessionA);
+    test('discards a queued connection that became stale without a newer plot event', async () => {
+        const sessionA = owner;
+        const sessionB = connection();
+        const sessionC = connection();
+        resolveSession.returns(sessionA);
         const firstRequest = deferred<unknown>();
         const request = sandbox.stub(session, 'sessionRequest').returns(firstRequest.promise);
         await viewer.update();
         const firstResize = panels[0].resize(100, 100);
-        activeSession.value(sessionB);
+        resolveSession.returns(sessionB);
         const updateB = viewer.update();
-        activeSession.value(sessionC);
+        resolveSession.returns(sessionC);
 
         firstRequest.resolve({ data: 'stale A', format: 'svg' });
         await Promise.all([firstResize, updateB]);
@@ -343,8 +426,8 @@ suite('Standard plot viewer request coordination', () => {
     });
 
     test('does not retry a failed request for the same session after panel recreation', async () => {
-        const sessionA = { sessionId: 'A' } as session.Session;
-        activeSession.value(sessionA);
+        const sessionA = owner;
+        resolveSession.returns(sessionA);
         const firstRequest = deferred<unknown>();
         const request = sandbox.stub(session, 'sessionRequest').returns(firstRequest.promise);
         await viewer.update();
@@ -373,8 +456,6 @@ suite('Standard plot viewer request coordination', () => {
     });
 
     test('requests the first plot when the webview is ready without a layout resize', async () => {
-        const owner = { sessionId: 'ready-owner' } as session.Session;
-        activeSession.value(owner);
         const request = sandbox
             .stub(session, 'sessionRequest')
             .resolves({ data: 'plot', format: 'svg' });

@@ -7,7 +7,7 @@ local({
   environment(env$.schedule_reconnect) <- env
   env$.reconnect_with_startup <- sess:::.reconnect_with_startup
   environment(env$.reconnect_with_startup) <- env
-  env$.transport_disconnect <- function(silent) {
+  env$.transport_disconnect <- function(silent, ...) {
     env$.sess_env$con <- NULL
     env$.sess_env$transport_generation <- env$.sess_env$transport_generation + 1L
   }

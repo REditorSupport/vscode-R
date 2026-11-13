@@ -1,4 +1,5 @@
 import * as assert from 'assert';
+import * as session from '../../session';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as sinon from 'sinon';
@@ -66,7 +67,7 @@ suite('Contextual plot commands', () => {
         );
     });
 
-    test('plot commands remain registered and route to the appropriate viewers', () => {
+    test('plot commands remain registered and route to the appropriate viewers', async () => {
         const sandbox = sinon.createSandbox();
         try {
             mockExtensionContext(extensionRoot, sandbox);
@@ -78,29 +79,46 @@ suite('Contextual plot commands', () => {
             sandbox.stub(manager.jgdManager, 'start');
             sandbox.stub(manager.jgdManager, 'getEnvVars').returns({});
             const showJgdViewer = sandbox.stub();
+            const source = {
+                sessionId: 'focused',
+                host: 'host',
+                pid: '123',
+                processExited: false,
+            } as session.Session;
+            sandbox.stub(session, 'activeSession').value(source);
+            sandbox.stub(session, 'resolvePlotSession').returns(source);
+            const showForSession = sandbox.stub(manager.jgdManager, 'showForSession').returns(true);
+            const handleJgdCommand = sandbox.stub();
             const jgdViewer = {
                 show: showJgdViewer,
-                handleCommand: sandbox.stub(),
+                handleCommand: handleJgdCommand,
             } as unknown as JgdViewer;
-            sandbox.stub(manager.jgdManager, 'getViewer').returns(jgdViewer);
+            sandbox.stub(manager.jgdManager, 'getViewers').returns([jgdViewer]);
             const viewer = sandbox.createStubInstance(HttpgdViewer);
             Object.defineProperty(viewer, 'host', { value: 'localhost:1234' });
-            viewer.getPanelPath.returns('/plot-viewer');
-            manager.httpgdManager.viewers.push(viewer);
-            const showStandardViewer = sandbox.stub(manager.standardPlotViewer, 'show');
-            const fallback = sandbox.stub(manager.standardPlotViewer, 'handleCommand');
-            sandbox.stub(manager, 'activeViewer').get(() => manager.standardPlotViewer);
+            Object.defineProperty(viewer, 'connection', {
+                value: { url: 'http://localhost:1234' },
+            });
+            Object.defineProperty(viewer, 'connections', {
+                value: [{ url: 'http://localhost:1234' }],
+            });
+            const focused = sandbox.stub(viewer, 'isActive').get(() => true);
+            manager.httpgdManager.registerViewer(viewer);
+            sandbox.stub(manager, 'activeViewer').get(() => jgdViewer);
             const openUrl = sandbox.stub(manager.httpgdManager, 'openUrl').resolves();
-            manager.initialize();
+            await manager.initialize();
 
             const invoke = (command: string, ...args: unknown[]) => {
                 const registration = register.getCalls().find((call) => call.args[0] === command);
                 assert.ok(registration, `${command} must remain registered`);
-                (registration.args[1] as (...args: unknown[]) => void)(...args);
+                return (registration.args[1] as (...args: unknown[]) => Promise<void>)(...args);
             };
             for (const command of toolbarCommands) {
                 viewer.handleCommand.resetHistory();
-                invoke(command, vscode.Uri.parse('webview:/plot-viewer'));
+                await invoke(
+                    command,
+                    vscode.Uri.parse('webview-panel:webview-panel/webview-RPlot-live-panel'),
+                );
                 if (command === 'r.plot.openUrl') {
                     sinon.assert.calledOnce(openUrl);
                 } else {
@@ -112,16 +130,24 @@ suite('Contextual plot commands', () => {
             }
             for (const command of ['showIndex', 'hidePlot']) {
                 viewer.handleCommand.resetHistory();
-                invoke(`r.plot.${command}`, 'localhost:1234', 'plot-id');
+                await invoke(`r.plot.${command}`, 'localhost:1234', 'plot-id');
                 assert.strictEqual(viewer.handleCommand.callCount, 1);
                 assert.deepStrictEqual(viewer.handleCommand.firstCall.args, [command, 'plot-id']);
             }
-            invoke('r.plot.showViewers');
-            assert.strictEqual(viewer.show.callCount, 1);
-            assert.deepStrictEqual(viewer.show.firstCall.args, [true]);
-            sinon.assert.calledOnceWithExactly(showJgdViewer, true);
-            sinon.assert.calledOnceWithExactly(showStandardViewer, true);
-            sinon.assert.notCalled(fallback);
+            viewer.handleCommand.resetHistory();
+            await invoke('r.plot.nextPlot', 'httpgd:ended-session');
+            focused.get(() => false);
+            await invoke(
+                'r.plot.prevPlot',
+                vscode.Uri.parse('webview-panel:webview-panel/webview-RPlot-ended-panel'),
+            );
+            assert.strictEqual(viewer.handleCommand.callCount, 0);
+            sinon.assert.notCalled(handleJgdCommand);
+            await invoke('r.plot.showViewers');
+            sinon.assert.calledOnceWithExactly(showForSession, source);
+            assert.strictEqual(viewer.show.callCount, 0);
+            sinon.assert.notCalled(showJgdViewer);
+            sinon.assert.notCalled(handleJgdCommand);
         } finally {
             sandbox.restore();
         }

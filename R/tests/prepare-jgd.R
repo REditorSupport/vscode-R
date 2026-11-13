@@ -46,10 +46,20 @@ local({
             "jgd <- function() {",
             "  path <- Sys.getenv('JGD_TEST_DEVICE_LOG', '')",
             "  if (nzchar(path)) cat('jgd\\n', file=path, append=TRUE)",
+            # sess now tracks the opened device and attaches its session identity.
+            # A null PDF supplies a real device without requiring a JGD renderer.
+            "  grDevices::pdf(NULL)",
+            "  invisible(NULL)",
+            "}",
+            "jgd_server_info <- function() list(server_info=c(deviceId=as.character(grDevices::dev.cur())))",
+            "jgd_frame_ext <- function(value) {",
+            "  path <- Sys.getenv('JGD_TEST_DEVICE_LOG', '')",
+            "  if (nzchar(path)) cat(value, '\\n', file=paste0(path, '-frames'), append=TRUE)",
             "  invisible(NULL)",
             "}"
         ), file.path(package, "R", "api.R"))
-        writeLines(c("export(fixture_device)", "export(jgd)"), file.path(package, "NAMESPACE"))
+        writeLines(c("export(fixture_device)", "export(jgd)",
+                     "export(jgd_server_info)", "export(jgd_frame_ext)"), file.path(package, "NAMESPACE"))
         previous <- setwd(root)
         on.exit(setwd(previous), add = TRUE)
         output <- system2_with_child_environment(
@@ -336,6 +346,16 @@ local({
                           "fixture-jgd-socket-next", "TRUE")))
     stopifnot(identical(readLines(file.path(root, "real-approved-real-device"), warn = FALSE),
                         c("jgd", "jgd")))
+    frames <- lapply(readLines(file.path(root, "real-approved-real-device-frames"), warn = FALSE),
+                     jsonlite::fromJSON)
+    stopifnot(length(frames) == 2L)
+    stopifnot(all(vapply(frames, function(frame) {
+        identity <- frame$vscodeR
+        nzchar(identity$sessionId) && nzchar(identity$pid) &&
+            nzchar(identity$deviceId) && identical(identity$restoring, FALSE)
+    }, logical(1))))
+    stopifnot(identical(frames[[1L]]$vscodeR$sessionId, frames[[2L]]$vscodeR$sessionId))
+    stopifnot(!identical(frames[[1L]]$vscodeR$deviceId, frames[[2L]]$vscodeR$deviceId))
 
     approved_root <- file.path(root, "approved")
     dir.create(approved_root)

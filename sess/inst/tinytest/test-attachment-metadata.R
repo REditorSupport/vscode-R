@@ -35,7 +35,7 @@ local({
   env$connect <- get("connect", namespace)
   environment(env$connect) <- env
   disconnects <- 0L
-  env$.transport_disconnect <- function(silent = FALSE) {
+  env$.transport_disconnect <- function(silent = FALSE, preserve_plots = FALSE) {
     disconnects <<- disconnects + 1L
     state$con <- NULL
     state$reconnect <- NULL

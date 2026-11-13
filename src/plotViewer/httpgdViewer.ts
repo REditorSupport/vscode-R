@@ -1,9 +1,32 @@
 import * as vscode from 'vscode';
-import { HttpgdClient, HttpgdIdResponse, HttpgdPlotId, HttpgdRendererId } from './httpgdClient';
-import { HttpgdPlot, IHttpgdViewer, HttpgdViewerOptions } from './httpgdTypes';
+import { HttpgdIdResponse, HttpgdPlotId, HttpgdRendererId } from './httpgdClient';
+import { HttpgdDevices, HttpgdPlotReference } from './httpgdDevices';
+import { PlotLifecycle } from './plotLifecycle';
+import { PlotViewerRegistry } from './plotViewerRegistry';
+import { PlotHistoryPersistence } from './plotHistoryPersistence';
+import {
+    HttpgdPlot,
+    IHttpgdViewer,
+    HttpgdViewerOptions,
+    HttpgdHistoryState,
+    HttpgdSelectionState,
+} from './httpgdTypes';
 import * as path from 'path';
 import * as fs from 'fs';
 import ejs from 'ejs';
+import { randomUUID } from 'crypto';
+import {
+    isViewerSessionSource,
+    viewerSessionStyle,
+    ViewerSessionContext,
+    ViewerSessionSource,
+} from '../viewerSession';
+import {
+    getViewerSessionContext,
+    onDidChangeSessionConnection,
+    resolvePlotSession,
+} from '../session';
+import { sessionProcessIdentity } from '../sessionIdentity';
 
 import { asViewColumn, config, setContext, UriIcon, makeWebviewCommandUriString } from '../util';
 import { extensionContext } from '../extension';
@@ -21,12 +44,284 @@ import {
 } from './webviewMessages';
 import { PlotViewer } from './types';
 
-export class HttpgdManager {
-    viewers: HttpgdViewer[] = [];
-    viewerOptions: HttpgdViewerOptions;
-    recentlyActiveViewers: HttpgdViewer[] = [];
+interface HttpgdConnection {
+    url: string;
+    source?: ViewerSessionSource;
+    plotOrder?: HttpgdPlotReference[];
+    historyId?: string;
+}
 
-    constructor() {
+function isPlotReference(value: unknown): value is HttpgdPlotReference {
+    return (
+        !!value &&
+        typeof value === 'object' &&
+        typeof (value as HttpgdPlotReference).origin === 'string' &&
+        typeof (value as HttpgdPlotReference).id === 'string'
+    );
+}
+
+function isHttpgdHistoryState(value: unknown): value is HttpgdHistoryState {
+    if (!value || typeof value !== 'object') {
+        return false;
+    }
+    const state = value as Partial<HttpgdHistoryState>;
+    return (
+        (state.source === undefined || isViewerSessionSource(state.source)) &&
+        Array.isArray(state.plots) &&
+        state.plots.every(
+            (plot) =>
+                plot &&
+                typeof plot.id === 'string' &&
+                typeof plot.data === 'string' &&
+                Number.isFinite(plot.width) &&
+                plot.width > 0 &&
+                Number.isFinite(plot.height) &&
+                plot.height > 0 &&
+                Number.isFinite(plot.zoom) &&
+                plot.zoom > 0 &&
+                isPlotReference(plot.reference),
+        )
+    );
+}
+
+function isHttpgdSelectionState(value: unknown): value is HttpgdSelectionState {
+    if (!value || typeof value !== 'object') {
+        return false;
+    }
+    const state = value as Partial<HttpgdSelectionState>;
+    return (
+        (state.activePlot === undefined || typeof state.activePlot === 'string') &&
+        Array.isArray(state.hiddenPlots) &&
+        state.hiddenPlots.every((id) => typeof id === 'string')
+    );
+}
+
+function isHttpgdConnection(value: unknown): value is HttpgdConnection {
+    if (!value || typeof value !== 'object') {
+        return false;
+    }
+    const connection = value as Partial<HttpgdConnection>;
+    try {
+        return (
+            typeof connection.url === 'string' &&
+            ['http:', 'https:'].includes(new URL(connection.url).protocol) &&
+            (connection.source === undefined || isViewerSessionSource(connection.source))
+        );
+    } catch {
+        return false;
+    }
+}
+
+export class HttpgdManager {
+    private viewerStore: PlotViewerRegistry<HttpgdViewer>;
+    viewerOptions: HttpgdViewerOptions;
+    get viewers(): HttpgdViewer[] {
+        return this.viewerStore.values().reverse();
+    }
+
+    get recentlyActiveViewers(): readonly HttpgdViewer[] {
+        return this.viewerStore.recentlyActive;
+    }
+    private savedConnections: Promise<HttpgdConnection[]> = Promise.resolve([]);
+    private secretKey: string | undefined;
+    private disposed = false;
+    private connectionWrites: Promise<void> = Promise.resolve();
+    private saveTimer?: NodeJS.Timeout;
+    private histories = new Map<string, HttpgdHistoryState>();
+    private selections = new Map<string, HttpgdSelectionState>();
+    private historyDirty = true;
+    private selectionDirty = true;
+
+    getViewers(): HttpgdViewer[] {
+        return this.viewers;
+    }
+
+    dispose(): void {
+        this.disposed = true;
+        clearTimeout(this.saveTimer);
+        this.viewerStore.dispose();
+    }
+
+    async initialize(): Promise<void> {
+        const histories = await this.historyPersistence.readHttpgd(
+            extensionContext.workspaceState.get<unknown>('r.plot.httpgdHistory'),
+        );
+        const selections = extensionContext.workspaceState.get<unknown>('r.plot.httpgdSelection');
+        if (histories && typeof histories === 'object') {
+            for (const [id, value] of Object.entries(histories)) {
+                if (isHttpgdHistoryState(value)) {
+                    this.histories.set(id, value);
+                }
+            }
+        }
+        if (selections && typeof selections === 'object') {
+            for (const [id, value] of Object.entries(selections)) {
+                if (isHttpgdSelectionState(value)) {
+                    this.selections.set(id, value);
+                }
+            }
+        }
+        this.secretKey = extensionContext.workspaceState.get<string>('r.plot.httpgdConnectionsKey');
+        if (this.secretKey) {
+            // URLs contain device tokens, so keep them in SecretStorage.
+            this.savedConnections = Promise.resolve(extensionContext.secrets.get(this.secretKey))
+                .then((value) => {
+                    const connections: unknown = value === undefined ? [] : JSON.parse(value);
+                    if (!Array.isArray(connections)) {
+                        throw new Error('Invalid saved httpgd connections');
+                    }
+                    const saved = connections.filter(isHttpgdConnection).map((connection) => ({
+                        ...connection,
+                        plotOrder: Array.isArray(connection.plotOrder)
+                            ? connection.plotOrder.filter(isPlotReference)
+                            : undefined,
+                    }));
+                    if (!this.disposed) {
+                        for (const connection of saved) {
+                            this.viewerStore.lifecycle.observe(connection.source);
+                        }
+                    }
+                    return saved;
+                })
+                .catch(() => {
+                    // Parse errors can contain token-bearing JSON. Expose only
+                    // a fixed message and keep the load rejected so a later save
+                    // cannot overwrite unread credentials with an empty list.
+                    throw new Error('Could not load saved httpgd plot connections.');
+                });
+            void this.savedConnections.catch((error: Error) => {
+                void vscode.window.showErrorMessage(error.message);
+            });
+        }
+        // Move legacy SVG payloads out of workspaceState without waiting for
+        // the user to reopen a viewer. Connection loading remains asynchronous.
+        if (this.histories.size) {
+            this.scheduleSaveConnections();
+        }
+    }
+
+    private hasExited(source?: ViewerSessionSource): boolean {
+        return this.viewerStore.lifecycle.hasExited(source);
+    }
+
+    public registerViewer(viewer: HttpgdViewer): void {
+        this.viewerStore.register(viewer, viewer.connection.source);
+    }
+
+    async restoreConnection(source: ViewerSessionSource): Promise<HttpgdViewer | undefined> {
+        if (this.disposed || this.hasExited(source)) {
+            return undefined;
+        }
+        const key = sessionProcessIdentity(source);
+        const matches = (owner?: ViewerSessionSource) =>
+            owner && sessionProcessIdentity(owner) === key;
+        const existing = () =>
+            [...this.recentlyActiveViewers, ...this.viewers].find(
+                (viewer) => !viewer.isDisposed && matches(viewer.connection.source),
+            );
+        const connections = await this.savedConnections.catch((error: unknown) => {
+            if (existing()) {
+                return [];
+            }
+            throw error;
+        });
+        for (const connection of connections.filter((saved) => matches(saved.source))) {
+            await this.showViewer(connection.url, source, true, true);
+        }
+        return existing();
+    }
+
+    saveConnections(): Promise<void> {
+        clearTimeout(this.saveTimer);
+        this.saveTimer = undefined;
+        // Capture before shutdown releases the SVGs. Queued writes still filter
+        // confirmed process exits, including exits during a SecretStorage write.
+        for (const viewer of this.viewers) {
+            if (!viewer.isDisposed) {
+                this.histories.set(viewer.historyId, viewer.snapshotHistory());
+                this.selections.set(viewer.historyId, viewer.snapshotSelection());
+            }
+        }
+        this.connectionWrites = this.connectionWrites
+            .then(() => this.writeConnections())
+            .catch((error) => {
+                this.historyDirty = this.selectionDirty = true;
+                console.warn('[Plot Viewer] Could not save httpgd connections', error);
+            });
+        return this.connectionWrites;
+    }
+
+    scheduleSaveConnections(contentChanged = true): void {
+        this.historyDirty ||= contentChanged;
+        this.selectionDirty = true;
+        if (!this.disposed && !this.saveTimer) {
+            this.saveTimer = setTimeout(() => void this.saveConnections(), 250);
+        }
+    }
+
+    private async writeConnections(): Promise<void> {
+        const connections = new Map(
+            (await this.savedConnections)
+                .filter((connection) => !this.hasExited(connection.source))
+                .map((connection) => [new URL(connection.url).origin, connection]),
+        );
+        for (const viewer of this.viewers) {
+            // Extension shutdown disposes clients before its queued save runs.
+            // Only confirmed process exits invalidate restoration credentials.
+            for (const connection of viewer.connections) {
+                if (!this.hasExited(connection.source)) {
+                    connections.set(new URL(connection.url).origin, connection);
+                }
+            }
+        }
+        this.savedConnections = Promise.resolve([...connections.values()]);
+        const retained = new Set(
+            [...connections.values()].map((connection) => connection.historyId),
+        );
+        for (const id of this.histories.keys()) {
+            if (!retained.has(id)) {
+                this.histories.delete(id);
+                this.selections.delete(id);
+                this.historyDirty = this.selectionDirty = true;
+            }
+        }
+        if (this.historyDirty) {
+            this.historyDirty = false;
+            await this.historyPersistence.writeHttpgd(new Map(this.histories));
+        }
+        if (this.selectionDirty) {
+            this.selectionDirty = false;
+            await extensionContext.workspaceState.update(
+                'r.plot.httpgdSelection',
+                Object.fromEntries(this.selections),
+            );
+        }
+        if (!connections.size) {
+            if (this.secretKey) {
+                await extensionContext.secrets.delete(this.secretKey);
+                await extensionContext.workspaceState.update(
+                    'r.plot.httpgdConnectionsKey',
+                    undefined,
+                );
+                this.secretKey = undefined;
+            }
+            return;
+        }
+        this.secretKey ??= `r.plot.httpgd.${randomUUID()}`;
+        await extensionContext.secrets.store(
+            this.secretKey,
+            JSON.stringify([...connections.values()]),
+        );
+        await extensionContext.workspaceState.update('r.plot.httpgdConnectionsKey', this.secretKey);
+    }
+
+    constructor(
+        lifecycle?: PlotLifecycle,
+        private readonly historyPersistence = new PlotHistoryPersistence(extensionContext),
+    ) {
+        this.viewerStore = new PlotViewerRegistry(() => {
+            void this.saveConnections();
+        }, lifecycle);
         const htmlRoot = extensionContext.asAbsolutePath('dist/webviews/httpgd');
         this.viewerOptions = {
             parent: this,
@@ -35,25 +330,70 @@ export class HttpgdManager {
         };
     }
 
-    public async showViewer(urlString: string): Promise<void> {
-        await Promise.resolve();
+    public async showViewer(
+        urlString: string,
+        source?: ViewerSessionSource,
+        onlyIfMissing = false,
+        restoring = false,
+    ): Promise<void> {
+        const saved = await this.savedConnections.catch(() => []);
+        if (this.disposed || this.hasExited(source)) {
+            return;
+        }
         const url = new URL(urlString);
         const token = url.searchParams.get('token') || undefined;
-        const ind = this.viewers.findIndex((viewer) => viewer.origin === url.origin);
-        if (ind >= 0) {
-            const viewer = this.viewers.splice(ind, 1)[0];
-            if (viewer.token === token) {
-                this.viewers.unshift(viewer);
-                viewer.show();
+        const shared = this.viewerStore.forSession(source);
+        const existing = this.viewers.find((viewer) => viewer.api.connection(url.origin));
+        // Check after the async boundary: a new device may have attached while
+        // restoration was pending. Never replace its credentials with saved ones.
+        if (onlyIfMissing && existing) {
+            return;
+        }
+        if (existing) {
+            const viewer = existing;
+            const owner = viewer.connection.source;
+            const sameSession =
+                !source ||
+                !owner ||
+                sessionProcessIdentity(source) === sessionProcessIdentity(owner);
+            if (
+                !viewer.isDisposed &&
+                sameSession &&
+                (!shared || shared === viewer) &&
+                (viewer.api.connection(url.origin)?.token === token ||
+                    viewer.connections.length > 1)
+            ) {
+                viewer.bindSession(source);
+                this.registerViewer(viewer);
+                if (viewer.isDisposed) {
+                    return;
+                }
+                if (viewer.api.connection(url.origin)?.token !== token) {
+                    viewer.addDevice(url.origin, token, restoring);
+                }
+                if (!restoring) {
+                    viewer.show();
+                }
+                if (!onlyIfMissing) {
+                    await this.saveConnections();
+                }
                 return;
             }
-            // A restarted device can reuse its port with a new authentication
-            // token. Retire the connection rather than reusing stale credentials.
-            viewer.dispose();
-            viewer.webviewPanel?.dispose();
-            this.recentlyActiveViewers = this.recentlyActiveViewers.filter(
-                (active) => active !== viewer,
-            );
+            // A restarted process can reuse both its port and token. Retire
+            // disposed or differently owned connections as well as stale credentials.
+            if (!viewer.isDisposed && viewer.connections.length > 1) {
+                viewer.api.removeDevice(url.origin);
+            } else {
+                this.viewerStore.remove(viewer);
+                viewer.dispose();
+            }
+        }
+        if (shared && !shared.isDisposed) {
+            shared.addDevice(url.origin, token, restoring);
+            if (!onlyIfMissing) {
+                await this.saveConnections();
+            }
+            return;
         }
         const conf = config();
         const colorTheme = conf.get('plot.defaults.colorTheme', 'vscode');
@@ -66,24 +406,70 @@ export class HttpgdManager {
         this.viewerOptions.resizeTimeoutLength = conf.get('plot.timing.resizeInterval', 100);
         this.viewerOptions.fullWindow = conf.get('plot.defaults.fullWindowMode', false);
         this.viewerOptions.token = token;
+        this.viewerOptions.source = source;
+        this.viewerOptions.restoring = restoring;
+        const matching = saved.filter((connection) =>
+            source
+                ? connection.source &&
+                  sessionProcessIdentity(connection.source) === sessionProcessIdentity(source)
+                : !connection.source && new URL(connection.url).origin === url.origin,
+        );
+        const sameDevice = matching.some((connection) => {
+            const previous = new URL(connection.url);
+            return (
+                previous.origin === url.origin &&
+                (previous.searchParams.get('token') || undefined) === token
+            );
+        });
+        this.viewerOptions.plotOrder = matching
+            .flatMap((connection) => connection.plotOrder ?? [])
+            .filter((plot) => plot.origin !== url.origin || sameDevice);
+        const historyId = matching.find(
+            (connection) => typeof connection.historyId === 'string',
+        )?.historyId;
+        this.viewerOptions.historyId = historyId;
+        const history = historyId ? this.histories.get(historyId) : undefined;
+        this.viewerOptions.history = history && {
+            ...history,
+            plots: history.plots.filter(
+                (plot) => plot.reference.origin !== url.origin || sameDevice,
+            ),
+        };
+        this.viewerOptions.selection = historyId ? this.selections.get(historyId) : undefined;
+        this.viewerOptions.connections = matching
+            .map((connection) => new URL(connection.url))
+            .filter((connection) => connection.origin !== url.origin)
+            .filter(
+                (connection) =>
+                    !this.viewers.some((viewer) => viewer.api.connection(connection.origin)),
+            )
+            .map((connection) => ({
+                origin: connection.origin,
+                token: connection.searchParams.get('token') || undefined,
+            }));
         const viewer = new HttpgdViewer(url.origin, this.viewerOptions);
-        this.viewers.unshift(viewer);
+        this.registerViewer(viewer);
+        if (viewer.isDisposed) {
+            return;
+        }
+        if (!onlyIfMissing) {
+            await this.saveConnections();
+        }
     }
 
     public registerActiveViewer(viewer: HttpgdViewer): void {
-        const ind = this.recentlyActiveViewers.indexOf(viewer);
-        if (ind >= 0) {
-            this.recentlyActiveViewers.splice(ind, 1);
+        if (this.disposed || viewer.isDisposed) {
+            return;
         }
-        this.recentlyActiveViewers.unshift(viewer);
+        this.viewerStore.markActive(viewer);
     }
 
-    public getRecentViewer(): HttpgdViewer | undefined {
-        return this.recentlyActiveViewers.find((viewer) => !!viewer.webviewPanel);
-    }
-
-    public getNewestViewer(): HttpgdViewer | undefined {
-        return this.viewers[0];
+    public getRecentViewer(source: ViewerSessionSource): HttpgdViewer | undefined {
+        const key = sessionProcessIdentity(source);
+        return this.recentlyActiveViewers.find((viewer) => {
+            const owner = viewer.connection.source;
+            return !!viewer.webviewPanel && owner && sessionProcessIdentity(owner) === key;
+        });
     }
 
     public async openUrl(): Promise<void> {
@@ -101,10 +487,14 @@ export class HttpgdManager {
 }
 
 interface EjsData {
+    plotHeight: number;
+    sessionHtml: string;
+    sessionStyle: string;
+    codicons: string;
     overwriteStyles: boolean;
     previewPlotLayout: PreviewPlotLayout;
     activePlot?: HttpgdPlotId;
-    plots: HttpgdPlot<string>[];
+    plots: readonly HttpgdPlot<string>[];
     largePlot: HttpgdPlot<string>;
     host: string;
     asLocalPath: (relPath: string) => string;
@@ -119,16 +509,91 @@ interface ShowOptions {
     preserveFocus?: boolean;
 }
 
+interface PlotRefresh {
+    plots: HttpgdIdResponse[];
+    redraw: boolean;
+    force: boolean;
+    restoring: boolean;
+    changed?: ReadonlySet<string>;
+}
+
 export class HttpgdViewer implements IHttpgdViewer, PlotViewer {
     readonly id: string;
+    readonly historyId: string;
     readonly parent: HttpgdManager;
     readonly host: string;
     readonly origin: string;
     readonly token?: string;
     webviewPanel?: vscode.WebviewPanel;
-    readonly api: HttpgdClient;
+    readonly api: HttpgdDevices;
     private disposed = false;
-    plots: HttpgdPlot<string>[] = [];
+    private source?: ViewerSessionSource;
+    private sessionContext?: ViewerSessionContext;
+    private sessionConnectionSubscription?: vscode.Disposable;
+    private sessionDisconnected = false;
+    private restoring: boolean;
+    private pendingRefresh?: PlotRefresh;
+    private refreshTask?: Promise<void>;
+    private requestGeneration = 0;
+    private changedPlots = new Set<string>();
+    private stalePlots = new Set<string>();
+    private failedPlots = new Set<string>();
+    private pendingReveal = false;
+    private retainedPlotOrder?: HttpgdPlotReference[];
+    private retainedPlots: HttpgdPlot<string>[] = [];
+    private visiblePlots: HttpgdPlot<string>[] = [];
+
+    get isDisposed(): boolean {
+        return this.disposed;
+    }
+
+    get connection(): HttpgdConnection {
+        return this.connections[0];
+    }
+
+    get connections(): HttpgdConnection[] {
+        return this.api.connections.map(({ origin, token }, index) => {
+            const url = new URL(origin);
+            if (token) {
+                url.searchParams.set('token', token);
+            }
+            return {
+                url: url.toString(),
+                source: this.source,
+                historyId: this.historyId,
+                ...(index === 0 ? { plotOrder: this.retainedPlotOrder ?? this.api.plotOrder } : {}),
+            };
+        });
+    }
+
+    public addDevice(origin: string, token?: string, restoring = false): void {
+        void this.api
+            .addDevice(origin, token, restoring)
+            .catch((err) => this.reportRefreshError(err));
+    }
+
+    snapshotHistory(): HttpgdHistoryState {
+        return {
+            source: this.source && { ...this.source },
+            plots: this.retainedPlots.flatMap((plot) => {
+                const reference = this.api.plotReference(plot.id);
+                return reference ? [{ ...plot, reference }] : [];
+            }),
+        };
+    }
+
+    snapshotSelection(): HttpgdSelectionState {
+        return { activePlot: this.activePlot, hiddenPlots: [...this.hiddenPlots] };
+    }
+    get plots(): readonly HttpgdPlot<string>[] {
+        return this.visiblePlots;
+    }
+
+    protected setPlots(plots: HttpgdPlot<string>[]): void {
+        this.retainedPlots = plots;
+        const hidden = new Set(this.hiddenPlots);
+        this.visiblePlots = plots.filter((plot) => !hidden.has(plot.id));
+    }
     activePlot?: HttpgdPlotId;
     hiddenPlots: HttpgdPlotId[] = [];
     readonly defaultStripStyles: boolean = true;
@@ -140,8 +605,6 @@ export class HttpgdViewer implements IHttpgdViewer, PlotViewer {
     customOverwriteCssPath?: string;
     viewHeight: number = 600;
     viewWidth: number = 800;
-    plotHeight: number = 600;
-    plotWidth: number = 800;
     readonly zoom0: number = 1;
     zoom: number = this.zoom0;
     protected resizeTimeout?: NodeJS.Timeout;
@@ -175,13 +638,40 @@ export class HttpgdViewer implements IHttpgdViewer, PlotViewer {
         const url = new URL(host.includes('://') ? host : `http://${host}`);
         this.host = url.host;
         this.origin = url.origin;
-        this.id = this.host;
+        // A device's port can be reused while this session still owns other
+        // devices. Panel command identity must outlive any individual origin.
+        this.id = `httpgd:${randomUUID()}`;
+        this.historyId = options.historyId ?? randomUUID();
         this.token = options.token;
+        this.restoring = options.restoring ?? false;
         this.parent = options.parent;
 
-        this.api = new HttpgdClient(this.origin, this.token);
-        this.api.onPlotsChanged((newState) => {
-            void this.refreshPlotsDelayed(newState.plots).catch((err) => {
+        this.api = new HttpgdDevices(this.origin, this.token, this.restoring, options.plotOrder);
+        for (const connection of options.connections ?? []) {
+            void this.api.addDevice(connection.origin, connection.token, true);
+        }
+        if (options.history) {
+            this.api.restorePlots(options.history.plots);
+            const restored = new Set(this.api.getPlots().map(({ id }) => id));
+            this.hiddenPlots = (options.selection?.hiddenPlots ?? []).filter((id) =>
+                restored.has(id),
+            );
+            const saved = new Map(options.history.plots.map((plot) => [plot.id, plot]));
+            this.setPlots(
+                this.api.getPlots().flatMap(({ id }) => {
+                    const plot = saved.get(id);
+                    return plot ? [{ ...plot }] : [];
+                }),
+            );
+            this.activePlot =
+                this.plots.find((plot) => plot.id === options.selection?.activePlot)?.id ??
+                this.plots.at(-1)?.id;
+        }
+        this.api.onPlotsChanged((plots, restoring, changed, orderChanged) => {
+            if (orderChanged) {
+                this.parent.scheduleSaveConnections();
+            }
+            void this.refreshPlotsDelayed(plots, false, false, restoring, changed).catch((err) => {
                 this.reportRefreshError(err);
             });
         });
@@ -219,8 +709,27 @@ export class HttpgdViewer implements IHttpgdViewer, PlotViewer {
         this.fullWindow = options.fullWindow ?? this.defaultFullWindow;
         this.resizeTimeoutLength = options.resizeTimeoutLength ?? this.resizeTimeoutLength;
         this.refreshTimeoutLength = options.refreshTimeoutLength ?? this.refreshTimeoutLength;
+        this.bindSession(options.source);
+        this.connect();
+    }
+
+    private get canRefresh(): boolean {
+        return !this.disposed && !this.sessionDisconnected && !this.sessionContext?.hasExited;
+    }
+
+    private connect(): void {
+        if (!this.canRefresh) {
+            return;
+        }
         void this.api.connect().catch((err) => {
-            if (!this.disposed) {
+            const retainedUnavailable =
+                this.retainedPlots.length > 0 &&
+                ['ECONNREFUSED', 'ECONNRESET'].includes((err as NodeJS.ErrnoException)?.code ?? '');
+            if (
+                this.canRefresh &&
+                !retainedUnavailable &&
+                !(err instanceof Error && err.name === 'AbortError')
+            ) {
                 void vscode.window.showErrorMessage(`httpgd connection failed: ${String(err)}`);
             }
         });
@@ -264,7 +773,45 @@ export class HttpgdViewer implements IHttpgdViewer, PlotViewer {
         }
     }
 
+    public bindSession(source?: ViewerSessionSource): void {
+        if (!source || this.source) {
+            return;
+        }
+        this.source = {
+            sessionId: source.sessionId,
+            host: source.host,
+            pid: source.pid,
+            rVer: source.rVer,
+            processExited: source.processExited,
+        };
+        source = this.source;
+        this.sessionContext = getViewerSessionContext(source.sessionId, source);
+        this.sessionConnectionSubscription = onDidChangeSessionConnection((event) => {
+            if (event.session.sessionId !== source.sessionId || this.disposed) {
+                return;
+            }
+            const connected = Boolean(resolvePlotSession(source));
+            if (!connected && !this.sessionDisconnected) {
+                this.sessionDisconnected = true;
+                this.stopRequests();
+            } else if (connected && this.sessionDisconnected) {
+                this.sessionDisconnected = false;
+                // The first snapshot after reconnect is not a new plot.
+                this.restoring = true;
+                this.connect();
+            }
+        });
+        if (this.webviewPanel) {
+            this.sessionContext?.attach(this.webviewPanel);
+            this.refreshHtml();
+        }
+    }
+
     public show(preserveFocus?: boolean): void {
+        if (this.disposed) {
+            return;
+        }
+        this.restoring = false;
         preserveFocus ??= this.showOptions.preserveFocus;
         if (!this.webviewPanel) {
             const showOptions = {
@@ -280,9 +827,10 @@ export class HttpgdViewer implements IHttpgdViewer, PlotViewer {
     }
 
     public openExternal(): void {
-        const url = new URL('/live', this.origin);
-        if (this.token) {
-            url.searchParams.set('token', this.token);
+        const connection = this.api.plotConnection(this.activePlot);
+        const url = new URL('/live', connection.origin);
+        if (connection.token) {
+            url.searchParams.set('token', connection.token);
         }
         // Uri.parse decodes query escapes, including delimiters within a token.
         // Preserve URLSearchParams' encoding when handing the URL to VS Code.
@@ -300,14 +848,17 @@ export class HttpgdViewer implements IHttpgdViewer, PlotViewer {
         const plt = this.plots[this.activeIndex];
         if (
             plt &&
+            this.canRefresh &&
             (plt.height !== this.viewHeight ||
                 plt.width !== this.viewWidth ||
-                plt.zoom !== this.zoom)
+                plt.zoom !== this.zoom ||
+                (plt.resizeDeferred && this.api.isActive(plt.id) && this.api.isAvailable(plt.id)))
         ) {
             await this.refreshPlots(this.api.getPlots());
         } else {
             this._focusPlot();
         }
+        this.parent.scheduleSaveConnections(false);
     }
     protected _focusPlot(plotId?: HttpgdPlotId): void {
         plotId ??= this.activePlot;
@@ -346,12 +897,13 @@ export class HttpgdViewer implements IHttpgdViewer, PlotViewer {
         }
         const tmpIndex = this.activeIndex;
         this.hiddenPlots.push(id);
-        this.plots = this.plots.filter((plt) => !this.hiddenPlots.includes(plt.id));
+        this.setPlots(this.retainedPlots);
         if (id === this.activePlot) {
             this.activeIndex = tmpIndex;
             this._focusPlot();
         }
         this._hidePlot(id);
+        this.parent.scheduleSaveConnections(false);
     }
     protected _hidePlot(id: HttpgdPlotId): void {
         const msg: HidePlotMessage = {
@@ -365,7 +917,20 @@ export class HttpgdViewer implements IHttpgdViewer, PlotViewer {
         id ??= this.activePlot;
         if (id) {
             this.hidePlot(id);
-            await this.api.removePlot({ id: id });
+            if (this.canRefresh) {
+                if (!this.api.isAvailable(id)) {
+                    this.api.forgetPlot(id);
+                } else {
+                    try {
+                        await this.api.removePlot({ id });
+                    } catch (error) {
+                        if (this.api.isAvailable(id)) {
+                            throw error;
+                        }
+                        this.api.forgetPlot(id);
+                    }
+                }
+            }
         }
     }
 
@@ -427,14 +992,8 @@ export class HttpgdViewer implements IHttpgdViewer, PlotViewer {
         }
     }
 
-    public getPanelPath(): string | undefined {
-        if (!this.webviewPanel) {
-            return undefined;
-        }
-        const dummyUri = this.webviewPanel.webview.asWebviewUri(vscode.Uri.file(''));
-        const m = /^[^.]*/.exec(dummyUri.authority);
-        const webviewId = m?.[0] || '';
-        return `webview-panel/webview-${webviewId}`;
+    public get isActive(): boolean {
+        return this.webviewPanel?.active ?? false;
     }
 
     protected getIndex(id: HttpgdPlotId): number {
@@ -442,8 +1001,12 @@ export class HttpgdViewer implements IHttpgdViewer, PlotViewer {
     }
 
     protected handleResize(height: number, width: number, userTriggered: boolean = false): void {
+        // Keep viewport changes while disconnected for the reconnect snapshot.
         this.viewHeight = height;
         this.viewWidth = width;
+        if (!this.canRefresh) {
+            return;
+        }
         if (userTriggered || this.resizeTimeoutLength === 0) {
             if (this.resizeTimeout) {
                 clearTimeout(this.resizeTimeout);
@@ -460,22 +1023,26 @@ export class HttpgdViewer implements IHttpgdViewer, PlotViewer {
     }
 
     private reportRefreshError(err: unknown): void {
-        if (!this.disposed) {
+        if (this.canRefresh && !(err instanceof Error && err.name === 'AbortError')) {
             void vscode.window.showErrorMessage(`Plot refresh failed: ${String(err)}`);
         }
     }
 
     protected async resizePlot(id?: HttpgdPlotId): Promise<void> {
+        if (!this.canRefresh) {
+            return;
+        }
         id ??= this.activePlot;
         if (!id) {
             return;
         }
+        const generation = this.requestGeneration;
         const plt = await this.getPlotContent(id, this.viewWidth, this.viewHeight, this.zoom);
-        if (this.disposed) {
+        if (!this.canRefresh || generation !== this.requestGeneration) {
             return;
         }
-        this.plotWidth = plt.width;
-        this.plotHeight = plt.height;
+        this.setPlots(this.retainedPlots.map((plot) => (plot.id === id ? plt : plot)));
+        this.parent.scheduleSaveConnections();
         this.updatePlot(plt);
     }
 
@@ -483,56 +1050,208 @@ export class HttpgdViewer implements IHttpgdViewer, PlotViewer {
         plotsIdResponse: HttpgdIdResponse[],
         redraw: boolean = false,
         force: boolean = false,
+        restoring = this.restoring,
+        changed?: ReadonlySet<string>,
     ): Promise<void> {
+        if (!this.canRefresh) {
+            return;
+        }
         if (this.refreshTimeoutLength === 0) {
-            await this.refreshPlots(plotsIdResponse, redraw, force);
+            await this.refreshPlots(plotsIdResponse, redraw, force, restoring, changed);
         } else {
+            for (const id of changed ?? []) {
+                this.changedPlots.add(id);
+            }
+            this.pendingReveal ||= !restoring;
             clearTimeout(this.refreshTimeout);
             this.refreshTimeout = setTimeout(() => {
-                void this.refreshPlots(plotsIdResponse, redraw, force)
-                    .catch((err) => {
-                        this.reportRefreshError(err);
-                    })
-                    .then(() => (this.refreshTimeout = undefined));
+                const changedPlots = changed ? this.changedPlots : undefined;
+                const restoring = !this.pendingReveal;
+                this.changedPlots = new Set();
+                this.pendingReveal = false;
+                this.refreshTimeout = undefined;
+                void this.refreshPlots(
+                    plotsIdResponse,
+                    redraw,
+                    force,
+                    restoring,
+                    changedPlots,
+                ).catch((err) => {
+                    this.reportRefreshError(err);
+                });
             }, this.refreshTimeoutLength);
         }
     }
 
-    protected async refreshPlots(
+    protected refreshPlots(
         plotsIdResponse: HttpgdIdResponse[],
         redraw: boolean = false,
         force: boolean = false,
+        restoring = this.restoring,
+        changed?: ReadonlySet<string>,
     ): Promise<void> {
-        if (this.disposed) {
+        const pending = this.pendingRefresh;
+        this.pendingRefresh = {
+            plots: plotsIdResponse,
+            redraw: redraw || !!pending?.redraw,
+            force: force || !!pending?.force,
+            restoring: restoring && (pending?.restoring ?? true),
+            changed: pending
+                ? changed && pending.changed
+                    ? new Set([...pending.changed, ...changed])
+                    : undefined
+                : changed,
+        };
+        this.refreshTask ??= Promise.resolve()
+            .then(async () => {
+                while (this.pendingRefresh) {
+                    const request = this.pendingRefresh;
+                    this.pendingRefresh = undefined;
+                    try {
+                        await this.applyPlotRefresh(request);
+                    } catch (error) {
+                        // Keep newer device notifications even when an older render fails.
+                        this.reportRefreshError(error);
+                    }
+                }
+            })
+            .then(() => {
+                this.refreshTask = undefined;
+                const pending = this.pendingRefresh;
+                if (pending) {
+                    return this.refreshPlots(
+                        pending.plots,
+                        pending.redraw,
+                        pending.force,
+                        pending.restoring,
+                        pending.changed,
+                    );
+                }
+            });
+        return this.refreshTask;
+    }
+
+    private async applyPlotRefresh({
+        plots: plotsIdResponse,
+        redraw,
+        force,
+        restoring,
+        changed,
+    }: PlotRefresh): Promise<void> {
+        if (!this.canRefresh) {
             return;
         }
-        const nPlots = this.plots.length;
+        const generation = this.requestGeneration;
         const hidden = new Set(this.hiddenPlots);
-        const existing = new Map(this.plots.map((plot) => [plot.id, plot]));
-        const plotIds = plotsIdResponse.map((x) => x.id).filter((id) => !hidden.has(id));
-        const newPlotPromises = plotIds.map(async (id) => {
+        const existing = new Map(this.retainedPlots.map((plot) => [plot.id, plot]));
+        const incoming = new Set(plotsIdResponse.map(({ id }) => id));
+        this.hiddenPlots = this.hiddenPlots.filter((id) => incoming.has(id));
+        for (const tracked of [this.stalePlots, this.failedPlots]) {
+            for (const id of tracked) {
+                if (!incoming.has(id)) {
+                    tracked.delete(id);
+                }
+            }
+        }
+        for (const id of changed ?? []) {
+            if (incoming.has(id)) {
+                this.stalePlots.add(id);
+                this.failedPlots.delete(id);
+            }
+        }
+        const refreshIds = [...incoming].filter((id) => {
+            // Hiding a received plot only changes visibility. Keep its drawing
+            // current while R can still render it, even if the device later closes.
+            if (hidden.has(id) && !existing.has(id)) {
+                return false;
+            }
+            // A closed device must not be retried on every other device's update.
+            // Retry on content changes, reactivation, reconnect or explicit refresh.
+            if (this.failedPlots.has(id) && !this.api.isActive(id) && !force) {
+                return false;
+            }
             const plot = existing.get(id);
-            if (force || !plot || id === this.activePlot) {
-                return await this.getPlotContent(id, this.viewWidth, this.viewHeight, this.zoom);
+            return (
+                force ||
+                !plot ||
+                this.stalePlots.has(id) ||
+                (id === this.activePlot &&
+                    (!changed ||
+                        (plot.resizeDeferred && this.api.isActive(id) && this.api.isAvailable(id))))
+            );
+        });
+        const results = await Promise.allSettled(
+            refreshIds.map((id) =>
+                this.getPlotContent(
+                    id,
+                    this.viewWidth,
+                    this.viewHeight,
+                    this.zoom,
+                    existing.get(id) ?? null,
+                ),
+            ),
+        );
+        if (!this.canRefresh || generation !== this.requestGeneration) {
+            return;
+        }
+        const refreshed = new Map<string, HttpgdPlot<string>>();
+        results.forEach((result, index) => {
+            const id = refreshIds[index];
+            if (result.status === 'fulfilled') {
+                refreshed.set(id, result.value);
+                this.stalePlots.delete(id);
+                this.failedPlots.delete(id);
             } else {
-                return plot;
+                if (!this.failedPlots.has(id)) {
+                    this.reportRefreshError(result.reason);
+                }
+                this.failedPlots.add(id);
             }
         });
-        const newPlots = await Promise.all(newPlotPromises);
-        if (this.disposed) {
-            return;
-        }
+        // Preserve cached failures, omit unavailable uncached plots, and commit
+        // successful renders from other devices without losing their updates.
         const oldPlotIds = new Set(this.plots.map((plt) => plt.id));
-        this.plots = newPlots;
-        if (this.plots.length !== nPlots) {
+        this.setPlots(
+            [...incoming]
+                .map((id) => refreshed.get(id) ?? existing.get(id))
+                .filter((plot): plot is HttpgdPlot<string> => plot !== undefined),
+        );
+        const newPlotIds = new Set(this.plots.map((plot) => plot.id));
+        this.restoring = false;
+        const added = this.plots.filter((plot) => !oldPlotIds.has(plot.id));
+        this.parent.scheduleSaveConnections();
+        if (
+            (!restoring && added.length) ||
+            !this.plots.some((plot) => plot.id === this.activePlot)
+        ) {
             this.activePlot = this.plots[this.plots.length - 1]?.id;
         }
-        if (redraw || !this.webviewPanel) {
+        // Initial connection replays existing plots. Only a new plot or an
+        // explicit Show Viewer should reopen a closed panel.
+        if (
+            !this.webviewPanel &&
+            !redraw &&
+            (restoring || !this.plots.some((plot) => !oldPlotIds.has(plot.id)))
+        ) {
+            return;
+        }
+        const appendedOrder = [...oldPlotIds]
+            .filter((id) => newPlotIds.has(id))
+            .concat(added.map((plot) => plot.id));
+        const reordered = appendedOrder.some((id, index) => this.plots[index]?.id !== id);
+        if (redraw || !this.webviewPanel || reordered) {
             this.refreshHtml();
         } else {
+            for (const id of oldPlotIds) {
+                if (!newPlotIds.has(id)) {
+                    this._hidePlot(id);
+                }
+            }
             for (const plt of this.plots) {
                 if (oldPlotIds.has(plt.id)) {
-                    this.updatePlot(plt);
+                    if (existing.get(plt.id) !== plt) {
+                        this.updatePlot(plt);
+                    }
                 } else {
                     this.addPlot(plt);
                 }
@@ -559,8 +1278,6 @@ export class HttpgdViewer implements IHttpgdViewer, PlotViewer {
             html: html,
         };
         this.postWebviewMessage(msg);
-        void this.focusPlot(plt.id);
-        void this.setContextValues();
     }
 
     protected async getPlotContent(
@@ -568,7 +1285,25 @@ export class HttpgdViewer implements IHttpgdViewer, PlotViewer {
         width: number,
         height: number,
         zoom: number,
+        cached: HttpgdPlot<string> | null = this.plots.find((plot) => plot.id === id) ?? null,
     ): Promise<HttpgdPlot<string>> {
+        const active = this.api.isActive(id);
+        const scaled = cached && {
+            ...cached,
+            width,
+            height,
+            zoom,
+            resizeDeferred:
+                cached.resizeDeferred ||
+                cached.width !== width ||
+                cached.height !== height ||
+                cached.zoom !== zoom,
+        };
+        if (scaled && (!this.api.isAvailable(id) || (!active && !this.stalePlots.has(id)))) {
+            // Unchanged inactive plots only need scaling. Changed content must
+            // still be fetched; HttpgdDevices omits resize arguments for it.
+            return scaled;
+        }
         const args = {
             id: id,
             height: height,
@@ -576,16 +1311,29 @@ export class HttpgdViewer implements IHttpgdViewer, PlotViewer {
             zoom: zoom,
             renderer: 'svgp',
         };
-        const svg = await this.api.getPlotText(args);
+        let svg: string;
+        try {
+            svg = await this.api.getPlotText(args);
+        } catch (error) {
+            if (
+                scaled &&
+                ['ECONNREFUSED', 'ECONNRESET'].includes(
+                    (error as NodeJS.ErrnoException)?.code ?? '',
+                )
+            ) {
+                return scaled;
+            }
+            throw error;
+        }
         const plt: HttpgdPlot<string> = {
             id: id,
             data: svg,
             height: height,
             width: width,
             zoom: zoom,
+            // Inactive-device requests omit geometry even when fetching changed content.
+            resizeDeferred: !active,
         };
-        this.viewHeight = plt.height;
-        this.viewWidth = plt.width;
         return plt;
     }
 
@@ -626,12 +1374,26 @@ export class HttpgdViewer implements IHttpgdViewer, PlotViewer {
             overwriteCssPath = asWebViewPath('styleOverwrites.css');
         }
         return {
+            plotHeight: this.viewHeight,
+            sessionHtml: this.sessionContext?.getHtml() ?? '',
+            sessionStyle: viewerSessionStyle,
+            codicons:
+                this.webviewPanel?.webview
+                    .asWebviewUri(
+                        vscode.Uri.joinPath(
+                            extensionContext.extensionUri,
+                            'dist',
+                            'resources',
+                            'codicon.css',
+                        ),
+                    )
+                    .toString() ?? '',
             overwriteStyles: this.stripStyles,
             previewPlotLayout: this.previewPlotLayout,
             plots: this.plots,
             largePlot: this.plots[this.activeIndex],
             activePlot: this.activePlot,
-            host: this.host,
+            host: this.id,
             asLocalPath: asLocalPath,
             asWebViewPath: asWebViewPath,
             makeCommandUri: makeWebviewCommandUriString,
@@ -640,6 +1402,7 @@ export class HttpgdViewer implements IHttpgdViewer, PlotViewer {
     }
 
     protected makeNewWebview(showOptions?: ShowOptions): vscode.WebviewPanel {
+        this.parent.registerActiveViewer(this);
         const webviewPanel = vscode.window.createWebviewPanel(
             'RPlot',
             'R Plot',
@@ -647,13 +1410,16 @@ export class HttpgdViewer implements IHttpgdViewer, PlotViewer {
             this.webviewOptions,
         );
         webviewPanel.iconPath = new UriIcon('graph');
-        webviewPanel.onDidDispose(() => (this.webviewPanel = undefined));
+        webviewPanel.onDidDispose(() => {
+            this.webviewPanel = undefined;
+        });
         webviewPanel.onDidChangeViewState(() => {
             void this.setContextValues();
         });
         webviewPanel.webview.onDidReceiveMessage((e: OutMessage) => {
             this.handleWebviewMessage(e);
         });
+        this.sessionContext?.attach(webviewPanel);
         return webviewPanel;
     }
 
@@ -680,8 +1446,11 @@ export class HttpgdViewer implements IHttpgdViewer, PlotViewer {
             void vscode.window.showWarningMessage('No plot available for export.');
             return;
         }
+        const renderers = this.api.isAvailable(plot.id) ? [...this.api.getRenderers(id)] : [];
+        if (!renderers.some((renderer) => renderer.id === 'svgp')) {
+            renderers.push({ id: 'svgp', name: 'SVG', ext: 'svg', descr: 'Retained plot' });
+        }
         if (!rendererId) {
-            const renderers = this.api.getRenderers();
             const qpItems = renderers.map((renderer) => ({
                 label: renderer.name,
                 detail: renderer.descr,
@@ -697,7 +1466,7 @@ export class HttpgdViewer implements IHttpgdViewer, PlotViewer {
         }
         if (!outFile) {
             const options: vscode.SaveDialogOptions = {};
-            const renderer = this.api.getRenderers().find((r) => r.id === rendererId);
+            const renderer = renderers.find((r) => r.id === rendererId);
             const ext = renderer?.ext.replace(/^\./, '');
             if (this.lastExportUri) {
                 const noExtPath = this.lastExportUri.fsPath.replace(/\.[^.]*$/, '');
@@ -722,7 +1491,25 @@ export class HttpgdViewer implements IHttpgdViewer, PlotViewer {
             }
         }
         try {
-            const bytes = await this.api.getPlotBytes({ id, renderer: rendererId });
+            const svg = rendererId === 'svgp' || rendererId === 'svg';
+            let bytes: Buffer;
+            if (svg && !this.api.isAvailable(plot.id)) {
+                bytes = Buffer.from(plot.data, 'utf8');
+            } else {
+                try {
+                    bytes = await this.api.getPlotBytes({ id, renderer: rendererId });
+                } catch (error) {
+                    if (
+                        !svg ||
+                        !['ECONNREFUSED', 'ECONNRESET'].includes(
+                            (error as NodeJS.ErrnoException)?.code ?? '',
+                        )
+                    ) {
+                        throw error;
+                    }
+                    bytes = Buffer.from(plot.data, 'utf8');
+                }
+            }
             await fs.promises.writeFile(outFile, bytes);
             void vscode.window.showInformationMessage(`Export done: ${outFile}`);
         } catch (err) {
@@ -732,10 +1519,44 @@ export class HttpgdViewer implements IHttpgdViewer, PlotViewer {
         }
     }
 
-    public dispose(): void {
+    public dispose(keepPanel = false): void {
+        if (this.disposed) {
+            return;
+        }
         this.disposed = true;
+        if (!keepPanel) {
+            // The shutdown checkpoint may run after clients and SVG caches are
+            // disposed. Retain only the small ordering metadata for that write.
+            this.retainedPlotOrder = this.api.plotOrder;
+        }
+        this.sessionConnectionSubscription?.dispose();
+        this.stopRequests();
+        if (!keepPanel) {
+            this.webviewPanel?.dispose();
+        }
+        this.webviewPanel = undefined;
+        this.releasePlots();
+    }
+
+    private releasePlots(): void {
+        this.setPlots([]);
+        this.hiddenPlots = [];
+        this.activePlot = undefined;
+        this.stalePlots.clear();
+        this.failedPlots.clear();
+        this.api.releasePlots();
+    }
+
+    private stopRequests(): void {
+        this.requestGeneration++;
+        this.pendingRefresh = undefined;
+        this.changedPlots.clear();
+        this.failedPlots.clear();
+        this.pendingReveal = false;
         clearTimeout(this.resizeTimeout);
         clearTimeout(this.refreshTimeout);
+        this.resizeTimeout = undefined;
+        this.refreshTimeout = undefined;
         this.api.disconnect();
     }
 }

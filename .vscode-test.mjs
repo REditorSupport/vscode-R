@@ -38,6 +38,13 @@ export default defineConfig([
 	},
 	{
 		...common,
+		label: 'plot-lifecycle',
+		files: 'out/test/plot/**/*.test.js',
+		mocha: { ...common.mocha, require: './out/test/common/extensionSetup.js' },
+		launchArgs: testProfile('plots', false)
+	},
+	{
+		...common,
 		label: 'editor-command-tests',
 		files: [
 			'out/test/suite/interactiveInputFeatures.test.js',

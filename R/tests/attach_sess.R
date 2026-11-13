@@ -238,7 +238,7 @@ writeLines(c(
     "      sys.source(file.path(getwd(), 'sess', 'R', 'server.R'), scheduler)",
     "      scheduler$.read_discovery <- function(path) list(endpoint='endpoint-b')",
     "      scheduler$.configure_discovery_jgd <- function(discovery, enabled) NULL",
-    "      scheduler$runtime_stop <- function() invisible(NULL)",
+    "      scheduler$runtime_stop <- function(preserve_plots=FALSE) invisible(NULL)",
     "      scheduler$connect <- function(endpoint, ...) {",
     "        connect_count <<- connect_count + 1L",
     "        observed[[connect_count]] <<- readLines(reconnect_file, warn=FALSE)",
