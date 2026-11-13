@@ -40,7 +40,7 @@ updates:
   - package-ecosystem: npm
     directory: /website
     commit-message:
-      prefix: "chore: "
+      prefix: "chore(website): "
     schedule:
       interval: weekly
     cooldown:
