@@ -31,9 +31,11 @@ jobs:
       - uses: r-lib/actions/setup-r@f9a764fea8d5c63df6ef9a5c7795bf7deb5d7e05 # v2
         with:
           use-public-rspm: true
-      - name: Install lintr
-        run: install.packages("lintr")
-        shell: Rscript {0}
+      - uses: r-lib/actions/setup-r-dependencies@f9a764fea8d5c63df6ef9a5c7795bf7deb5d7e05 # v2
+        with:
+          # Only lintr is needed; skip the default deps::. lookup, since the
+          # repository root has no DESCRIPTION.
+          packages: any::lintr
       - name: Lint R directory
         run: lintr::lint_dir("./R")
         shell: Rscript {0}
