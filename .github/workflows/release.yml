@@ -158,6 +158,9 @@ jobs:
         id: previous
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Scheduled runs skip publication when only CI, test, or other
+          # development files changed since the last published SHA.
+          PRERELEASE_PATH_FILTER: 'true'
         run: |
           node .github/scripts/marketplace-pre-release-history.js
 

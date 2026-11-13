@@ -2,7 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const { readFileSync } = require('node:fs');
 const { join } = require('node:path');
-const { createGhApi, decidePublication, pagesToItems, completePagesToItems, didAttemptPublication, completedBothRegistries } = require('./marketplace-pre-release-history');
+const { createGhApi, createGitChangedFiles, decidePublication, isRelevantPath, pagesToItems, completePagesToItems, didAttemptPublication, completedBothRegistries } = require('./marketplace-pre-release-history');
 
 const marketplace = 'Publish to Visual Studio Marketplace';
 const openVsx = 'Publish to Open VSX Registry';
@@ -49,16 +49,16 @@ function harness(current, runs, jobsByRun) {
     };
 }
 
-async function evaluate(current, runs, jobsByRun) {
+async function evaluate(current, runs, jobsByRun, listChangedFiles) {
     const state = harness(current, runs, jobsByRun);
     const { api, jobsQueried } = state;
-    const result = await decidePublication({ api, repository: 'owner/repo', runId: current.id, sha: current.head_sha });
+    const result = await decidePublication({ api, repository: 'owner/repo', runId: current.id, sha: current.head_sha, listChangedFiles });
     assert.equal(state.historyQueries, 1);
     return { result, jobsQueried, historyQueries: state.historyQueries };
 }
 
-async function decide(current, runs, jobsByRun) {
-    return (await evaluate(current, runs, jobsByRun)).result;
+async function decide(current, runs, jobsByRun, listChangedFiles) {
+    return (await evaluate(current, runs, jobsByRun, listChangedFiles)).result;
 }
 
 test('manual publication consumes the date for a scheduled run, then allows the next date', async () => {
@@ -469,3 +469,131 @@ for (const [format, jobsFor] of [
         });
     });
 }
+
+test('path classification ignores development-only files but keeps packaging inputs', () => {
+    for (const path of [
+        '.github/workflows/workflow-helpers.yml',
+        '.github/scripts/marketplace-pre-release-history.js',
+        'src/test/node/plot.test.ts',
+        'sess/tests/test_sess.R',
+        'R/tests/attach_sess.R',
+        'scripts/benchmark-journal.cjs',
+        'scripts/sess-source.test.js',
+        '.vscode/settings.json',
+        '.vscode-test.mjs',
+        'CONTRIBUTING.md',
+        'cliff.toml',
+    ]) {
+        assert.equal(isRelevantPath(path), false, path);
+    }
+    for (const path of [
+        '.github/scripts/extension-version.js',
+        '.github/workflows/main.yml',
+        '.github/workflows/release.yml',
+        '.gitattributes',
+        'src/extension.ts',
+        'src/testing.ts',
+        'sess/R/session.R',
+        'R/sess_source.R',
+        'scripts/prepare-sess.js',
+        'package.json',
+        'pnpm-lock.yaml',
+        'esbuild.js',
+        'README.md',
+        'CHANGELOG.md',
+    ]) {
+        assert.equal(isRelevantPath(path), true, path);
+    }
+});
+
+function pathFilterRuns(currentEvent = 'schedule') {
+    const published = run(900, '2026-10-01', 'sha-a');
+    const skipped = run(901, '2026-10-02', 'sha-b');
+    const current = run(902, '2026-10-03', 'sha-c', currentEvent);
+    const jobs = new Map([['900', [publishJob()]], ['901', [{ name: 'prerelease-prepare', steps: [] }]], ['902', []]]);
+    return { current, runs: [published, skipped, current], jobs };
+}
+
+test('scheduled runs compare against the last published SHA and skip ignored-only changes', async () => {
+    const { current, runs, jobs } = pathFilterRuns();
+    const diffs = [];
+    const ignoredOnly = async (base, head) => {
+        diffs.push([base, head]);
+        return ['.github/workflows/main.yml.bak', 'src/test/node/a.test.ts', 'sess/tests/test_a.R'];
+    };
+    assert.deepEqual(await decide(current, runs, jobs, ignoredOnly), {
+        publish: false, date: '2026-10-03', reason: 'no-relevant-changes',
+    });
+    // The skipped run's SHA is not a baseline: changes accumulate from sha-a.
+    assert.deepEqual(diffs, [['sha-a', 'sha-c']]);
+    assert.deepEqual(await decide(current, runs, jobs, async () => []), {
+        publish: false, date: '2026-10-03', reason: 'no-relevant-changes',
+    });
+    assert.deepEqual(await decide(current, runs, jobs, async () => ['src/test/a.ts', 'src/extension.ts']), {
+        publish: true, date: '2026-10-03', reason: 'new-sha',
+    });
+    assert.deepEqual(await decide(current, runs, jobs, async () => ['.github/scripts/extension-version.js']), {
+        publish: true, date: '2026-10-03', reason: 'new-sha',
+    });
+});
+
+test('diff failures publish, while date reservation and unchanged SHA take precedence', async () => {
+    const { current, runs, jobs } = pathFilterRuns();
+    assert.deepEqual(await decide(current, runs, jobs, async () => { throw new Error('fetch failed'); }), {
+        publish: true, date: '2026-10-03', reason: 'diff-unavailable',
+    });
+
+    let diffCalls = 0;
+    const counting = async () => { diffCalls += 1; return ['src/extension.ts']; };
+    const sameDay = run(903, '2026-10-03', 'sha-b', 'workflow_dispatch');
+    const reserved = new Map([...jobs, ['903', [publishJob({ openVsxConclusion: 'failure' })]]]);
+    assert.deepEqual(await decide(current, [...runs, sameDay], reserved, counting), {
+        publish: false, date: '2026-10-03', reason: 'date-reserved',
+    });
+    const unchanged = run(904, '2026-10-04', 'sha-a');
+    assert.deepEqual(await decide(unchanged, [runs[0], unchanged], new Map([['900', [publishJob()]]]), counting), {
+        publish: false, date: '2026-10-04', reason: 'unchanged',
+    });
+    assert.equal(diffCalls, 0);
+});
+
+test('manual runs and runs without a diff source bypass the path filter', async () => {
+    const manual = pathFilterRuns('workflow_dispatch');
+    let diffCalls = 0;
+    const ignoredOnly = async () => { diffCalls += 1; return ['src/test/a.ts']; };
+    assert.deepEqual(await decide(manual.current, manual.runs, manual.jobs, ignoredOnly), {
+        publish: true, date: '2026-10-03', reason: 'new-sha',
+    });
+    assert.equal(diffCalls, 0);
+    const scheduled = pathFilterRuns();
+    assert.deepEqual(await decide(scheduled.current, scheduled.runs, scheduled.jobs), {
+        publish: true, date: '2026-10-03', reason: 'new-sha',
+    });
+});
+
+test('git adapter fetches the baseline and lists NUL-separated changes without rename detection', () => {
+    const calls = [];
+    const listChangedFiles = createGitChangedFiles((command, args, options) => {
+        calls.push({ command, args, options });
+        return args[0] === 'diff' ? 'src/test/a b.ts\0sess/R/new\nline.R\0' : '';
+    });
+    assert.deepEqual(listChangedFiles('sha-a', 'sha-c'), ['src/test/a b.ts', 'sess/R/new\nline.R']);
+    assert.deepEqual(calls.map(({ command, args }) => [command, ...args]), [
+        ['git', 'fetch', '--no-tags', '--depth=1', 'origin', 'sha-a'],
+        ['git', 'diff', '--no-renames', '--name-only', '-z', 'sha-a', 'sha-c', '--'],
+    ]);
+    assert.ok(calls.every(({ options }) => options.timeout > 0));
+
+    const failing = createGitChangedFiles(() => { throw new Error('fatal: remote error'); });
+    assert.throws(() => failing('sha-a', 'sha-c'), /remote error/);
+});
+
+test('only the preparation job enables the pre-release path filter', () => {
+    const workflow = readFileSync(join(__dirname, '../workflows/release.yml'), 'utf8');
+    const matches = workflow.match(/PRERELEASE_PATH_FILTER: 'true'/g) || [];
+    assert.equal(matches.length, 1);
+    const prepare = workflow.indexOf('\n  prerelease-prepare:');
+    const verify = workflow.indexOf('\n  prerelease-verify:');
+    const position = workflow.indexOf("PRERELEASE_PATH_FILTER: 'true'");
+    assert.ok(prepare >= 0 && prepare < position && position < verify);
+});
