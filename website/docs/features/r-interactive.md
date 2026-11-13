@@ -8,7 +8,7 @@ R Interactive was introduced in vscode-R 3.2.0 ([PR #1805](https://github.com/RE
 
 ## Requirements and setup
 
-Use **VS Code 1.110.0 or newer**. R Interactive currently supports Linux and macOS; its native console bridge does not support Windows. Existing R terminal workflows remain available.
+Use **VS Code 1.101.0 or newer**. R Interactive currently supports Linux and macOS; its native console bridge does not support Windows. Existing R terminal workflows remain available.
 
 For Remote SSH, install this extension **on the remote host**. R, its packages, optional executables, and session storage must be available on that host. For local use, the same requirements apply to your computer.
 

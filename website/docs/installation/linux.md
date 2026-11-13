@@ -6,7 +6,7 @@ Install
 [vscode-R](https://marketplace.visualstudio.com/items?itemName=REditorSupport.r) in VS
 Code by searching `reditorsupport.r` in extension marketplace.
 
-vscode-R 3.0.0 requires VS Code 1.110 or later. The first time a managed R
+vscode-R requires VS Code 1.101 or later. The first time a managed R
 terminal starts, accept the prompt to install the bundled `sess` R package.
 
 If your R installation is from [CRAN](http://cran.r-project.org/mirrors.html),

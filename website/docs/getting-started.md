@@ -26,7 +26,7 @@ unified development environment to work with multiple programming languages such
 as R, Python, C++, etc., as well as those who need to work with remote servers,
 containers, self-managed R sessions or multiple R sessions at the same time.
 
-vscode-R 3.0.0 requires VS Code 1.110 or later. To enjoy the full R development
+vscode-R requires VS Code 1.101 or later. To enjoy the full R development
 experience, install the extension and language server, then choose any optional
 tools you need:
 

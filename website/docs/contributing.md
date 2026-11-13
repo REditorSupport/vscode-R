@@ -29,7 +29,8 @@ Then test your changes:
 This site is built with [VitePress](https://vitepress.dev/) from the Markdown
 files in the
 [`website/docs`](https://github.com/REditorSupport/vscode-R/tree/main/website/docs)
-directory. Every page has an **Edit this page on GitHub** link at the bottom.
+directory. Every documentation page has an **Edit this page on GitHub** link at
+the bottom.
 
 To preview the site locally:
 
