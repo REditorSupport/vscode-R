@@ -2635,7 +2635,7 @@
     "sinon": "^22.1.0",
     "typescript": "~7.0.2",
     "oxlint": "^1.89.0",
-    "oxlint-tsgolint": "~7.0.2005"
+    "oxlint-tsgolint": "~7.0.2006"
   },
   "dependencies": {
     "@vscode/codicons": "0.0.46-24",
