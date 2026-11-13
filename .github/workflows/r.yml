@@ -1,0 +1,46 @@
+name: r
+
+on:
+  push:
+    branches:
+      - main
+    paths: &r-paths
+      - 'R/**'
+      - 'sess/**'
+      - '.github/workflows/r.yml'
+  pull_request:
+    branches:
+      - main
+    paths: *r-paths
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    env:
+      GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: r-lib/actions/setup-r@f9a764fea8d5c63df6ef9a5c7795bf7deb5d7e05 # v2
+        with:
+          use-public-rspm: true
+      - name: Install lintr
+        run: install.packages("lintr")
+        shell: Rscript {0}
+      - name: Lint R directory
+        run: lintr::lint_dir("./R")
+        shell: Rscript {0}
+        env:
+          LINTR_ERROR_ON_LINT: true
+      - name: Lint sess package
+        run: lintr::lint_package("sess")
+        shell: Rscript {0}
+        env:
+          LINTR_ERROR_ON_LINT: true
