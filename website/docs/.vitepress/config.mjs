@@ -113,6 +113,9 @@ export default defineConfig({
         outline: { level: [2, 3] },
         footer: {
             message: 'Released under the MIT License.',
+            // Attribution required by the logo's CC BY-SA 4.0 license.
+            copyright:
+                'The <a href="https://www.r-project.org/logo/">R logo</a> is © 2016 The R Foundation, used under <a href="https://creativecommons.org/licenses/by-sa/4.0/">CC BY-SA 4.0</a>.',
         },
     },
 });

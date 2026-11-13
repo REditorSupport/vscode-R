@@ -23,8 +23,9 @@ R logo
 Copyright (c) 2016 The R Foundation.
 Source: https://www.r-project.org/logo/
 
-Files: images/Rlogo.svg and images/Rlogo.png.
-The SVG reproduces the official artwork unchanged. The PNG is an 800 x 700
+Files: images/Rlogo.svg, images/Rlogo.png, and website/docs/public/logo.svg.
+The SVGs reproduce the official artwork unchanged; the copy under website is
+used by the documentation site and is not part of the extension package. The PNG is an 800 x 700
 raster variant used as the extension icon.
 
 The logo is distributed under Creative Commons Attribution-ShareAlike 4.0
