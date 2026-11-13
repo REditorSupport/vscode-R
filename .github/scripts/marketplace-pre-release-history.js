@@ -23,6 +23,10 @@ const RUN_JQ = '{total_count, workflow_runs: [.workflow_runs[] | {id, created_at
 // Changes limited to these paths do not affect the published extension, so a
 // scheduled run skips publication when nothing else changed since the last
 // published SHA. Anything not matched here is treated as relevant.
+// TODO: This list mirrors the repository layout file by file and is easy to
+// let drift. Moving the extension sources into a dedicated subdirectory (for
+// example `extensions/vscode-R/`) would let the filter shrink to that
+// directory plus a few shared build inputs.
 const IGNORED_PATH_PATTERNS = [
     /^\.github\//,
     /^src\/test\//,
