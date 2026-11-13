@@ -2639,7 +2639,7 @@
   },
   "dependencies": {
     "@vscode/codicons": "0.0.46-24",
-    "ag-grid-community": "^36.2.0",
+    "ag-grid-community": "^36.3.0",
     "cheerio": "1.2.0",
     "ejs": "^7.0.2",
     "highlight.js": "^11.12.0",
