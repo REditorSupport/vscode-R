@@ -64,13 +64,17 @@
 
 .runtime_assign_binding <- function(sym, value, env) {
   locked <- bindingIsLocked(sym, env)
-  if (locked) unlockBinding(sym, env)
-  on.exit({
-    if (locked && exists(sym, envir = env, inherits = FALSE) &&
-          !bindingIsLocked(sym, env)) {
-      lockBinding(sym, env)
-    }
-  }, add = TRUE)
+  if (locked) {
+    unlockBinding(sym, env)
+  }
+  on.exit(
+    {
+      if (locked && exists(sym, envir = env, inherits = FALSE) && !bindingIsLocked(sym, env)) {
+        lockBinding(sym, env)
+      }
+    },
+    add = TRUE
+  )
   assign(sym, value, envir = env)
   invisible(value)
 }
@@ -92,10 +96,14 @@
 
   state <- .runtime_state()
   for (env in envs) {
-    if (!exists(sym, envir = env, inherits = FALSE)) next
-    index <- which(vapply(state$bindings, function(entry) {
-      identical(entry$env, env) && identical(entry$name, sym)
-    }, logical(1)))
+    if (!exists(sym, envir = env, inherits = FALSE)) {
+      next
+    }
+    index <- which(vapply(
+      state$bindings,
+      function(entry) identical(entry$env, env) && identical(entry$name, sym),
+      logical(1)
+    ))
     if (!length(index)) {
       state$bindings[[length(state$bindings) + 1L]] <- list(
         env = env,
@@ -140,8 +148,7 @@
   state <- .runtime_state()
   registration_envir <- new.env(parent = envir)
   dispatch_envir <- .runtime_s3_dispatch_env(generic, envir)
-  original <- utils::getS3method(generic, class, envir = dispatch_envir,
-                                 optional = TRUE)
+  original <- utils::getS3method(generic, class, envir = dispatch_envir, optional = TRUE)
   original_namespace_methods <- if (isNamespace(envir)) {
     getNamespaceInfo(envir, "S3methods")
   } else {
@@ -176,7 +183,9 @@
 .runtime_track_device <- function(id = grDevices::dev.cur()) {
   state <- .runtime_state()
   devices <- grDevices::dev.list()
-  if (is.null(devices)) return(invisible(NULL))
+  if (is.null(devices)) {
+    return(invisible(NULL))
+  }
   name <- names(devices)[match(id, devices)]
   if (length(name) && !is.na(name)) {
     # A newly opened device can reuse a number from dev.off(). Retire that
@@ -190,17 +199,14 @@
     device_entries <- get(".Devices", envir = baseenv())
     attr(device_entries[[id]], "vscodeR.device") <- token
     assign(".Devices", device_entries, envir = baseenv())
-    state$devices[[length(state$devices) + 1L]] <- list(
-      id = unname(id),
-      name = name,
-      token = token
-    )
+    state$devices[[length(state$devices) + 1L]] <- list(id = unname(id), name = name, token = token)
   }
   invisible(id)
 }
 
 .runtime_device_is_live <- function(entry, devices = get(".Devices", envir = baseenv())) {
-  !is.null(entry$token) && entry$id <= length(devices) &&
+  !is.null(entry$token) &&
+    entry$id <= length(devices) &&
     identical(attr(devices[[entry$id]], "vscodeR.device", exact = TRUE), entry$token)
 }
 
@@ -221,28 +227,33 @@
       optional = TRUE
     )
     restore_namespace_methods <- isNamespace(entry$namespace_envir) &&
-      identical(getNamespaceInfo(entry$namespace_envir, "S3methods"),
-                entry$installed_namespace_methods)
+      identical(
+        getNamespaceInfo(entry$namespace_envir, "S3methods"),
+        entry$installed_namespace_methods
+      )
 
     if (identical(current, entry$installed)) {
       if (!is.null(entry$original)) {
-        try(registerS3method(entry$generic, entry$class, entry$original,
-                             envir = entry$envir), silent = TRUE)
+        try(
+          registerS3method(entry$generic, entry$class, entry$original, envir = entry$envir),
+          silent = TRUE
+        )
       } else {
         dispatch_env <- entry$dispatch_envir
         table <- get0(".__S3MethodsTable__.", envir = dispatch_env, inherits = FALSE)
         method_name <- paste(entry$generic, entry$class, sep = ".")
-        if (is.environment(table) &&
-              exists(method_name, envir = table, inherits = FALSE) &&
-              identical(get(method_name, envir = table, inherits = FALSE), entry$installed)) {
+        if (
+          is.environment(table) &&
+            exists(method_name, envir = table, inherits = FALSE) &&
+            identical(get(method_name, envir = table, inherits = FALSE), entry$installed)
+        ) {
           rm(list = method_name, envir = table)
         }
       }
     }
     if (restore_namespace_methods) {
       try(
-        setNamespaceInfo(entry$namespace_envir, "S3methods",
-                         entry$original_namespace_methods),
+        setNamespaceInfo(entry$namespace_envir, "S3methods", entry$original_namespace_methods),
         silent = TRUE
       )
     }
@@ -264,8 +275,10 @@
   for (entry in rev(state$bindings)) {
     env <- entry$env
     name <- entry$name
-    if (exists(name, envir = env, inherits = FALSE) &&
-          identical(get(name, envir = env, inherits = FALSE), entry$installed)) {
+    if (
+      exists(name, envir = env, inherits = FALSE) &&
+        identical(get(name, envir = env, inherits = FALSE), entry$installed)
+    ) {
       try(.runtime_assign_binding(name, entry$original, env), silent = TRUE)
     }
   }
@@ -276,19 +289,28 @@
   for (entry in if (preserve_plots) list() else rev(state$devices)) {
     devices <- grDevices::dev.list()
     index <- if (is.null(devices)) NA_integer_ else match(entry$id, devices)
-    if (!is.na(index) && identical(names(devices)[[index]], entry$name) &&
-          .runtime_device_is_live(entry)) {
+    if (
+      !is.na(index) &&
+        identical(names(devices)[[index]], entry$name) &&
+        .runtime_device_is_live(entry)
+    ) {
       try(grDevices::dev.off(which = entry$id), silent = TRUE)
     }
   }
-  if (!preserve_plots) state$devices <- list()
+  if (!preserve_plots) {
+    state$devices <- list()
+  }
 
   for (entry in rev(state$fields)) {
-    if (preserve_plots && identical(entry$name, "latest_plot_record")) next
+    if (preserve_plots && identical(entry$name, "latest_plot_record")) {
+      next
+    }
     exists_current <- exists(entry$name, envir = .sess_env, inherits = FALSE)
     current <- if (exists_current) get(entry$name, envir = .sess_env, inherits = FALSE) else NULL
-    if (identical(exists_current, entry$installed_exists) &&
-          (!exists_current || identical(current, entry$installed))) {
+    if (
+      identical(exists_current, entry$installed_exists) &&
+        (!exists_current || identical(current, entry$installed))
+    ) {
       if (entry$original_exists) {
         assign(entry$name, entry$original, envir = .sess_env)
       } else if (exists_current) {
@@ -303,7 +325,9 @@
   }
 
   for (name in names(state$options)) {
-    if (preserve_plots && identical(name, "sess.null_dev")) next
+    if (preserve_plots && identical(name, "sess.null_dev")) {
+      next
+    }
     entry <- state$options[[name]]
     if (identical(getOption(name), entry$installed)) {
       try(do.call(options, .runtime_named_value(name, entry$original)), silent = TRUE)
@@ -323,15 +347,21 @@
 #' Stop the VS Code runtime integration (internal)
 #'
 #' Removes runtime callbacks and restores R state installed by runtime_start().
-#' @param preserve_plots Keep live graphics devices and the latest plot while
-#'   reconnecting the same R process after an editor reload.
+#' @param preserve_plots Keep live graphics devices and the latest plot while reconnecting the same
+#'   R process after an editor reload.
 #' @keywords internal
 runtime_stop <- function(preserve_plots = FALSE) {
   state <- .runtime_state()
-  if (!isTRUE(state$active) && !length(state$options) &&
-        !length(state$bindings) && !length(state$hooks) &&
-        !length(state$s3_methods) && !length(state$task_callbacks) &&
-        !length(state$devices) && !length(state$fields)) {
+  if (
+    !isTRUE(state$active) &&
+      !length(state$options) &&
+      !length(state$bindings) &&
+      !length(state$hooks) &&
+      !length(state$s3_methods) &&
+      !length(state$task_callbacks) &&
+      !length(state$devices) &&
+      !length(state$fields)
+  ) {
     .runtime_clear_viewer_state()
     return(invisible(NULL))
   }

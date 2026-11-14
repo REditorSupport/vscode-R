@@ -4,11 +4,14 @@ local({
   orig_dataviews <- .sess_env$dataviews
   orig_con <- .sess_env$con
   pipe <- processx::conn_create_pipepair()
-  on.exit({
-    .sess_env$dataviews <- orig_dataviews
-    .sess_env$con <- orig_con
-    lapply(pipe, close)
-  }, add = TRUE)
+  on.exit(
+    {
+      .sess_env$dataviews <- orig_dataviews
+      .sess_env$con <- orig_con
+      lapply(pipe, close)
+    },
+    add = TRUE
+  )
   .sess_env$con <- pipe[[2L]]
 
   request <- function(method, params) {
@@ -39,9 +42,22 @@ local({
   df$list <- list(list(number = 1L, value = 3 - 4i), NULL)
   df$complex_matrix <- I(matrix(c(1 + 2i, NA_complex_), ncol = 1))
   expected <- list(
-    42L, 1.54e-100, 1.23456789012345e14, TRUE, '中文 😀 "quoted" <html>',
-    "apple", "low", "2000-01-01", "2020-01-01T00:00:00", "60 secs",
-    "1+2i", "0", "001", FALSE, list(number = 1L, value = "3-4i"), list("1+2i")
+    42L,
+    1.54e-100,
+    1.23456789012345e14,
+    TRUE,
+    '中文 😀 "quoted" <html>',
+    "apple",
+    "low",
+    "2000-01-01",
+    "2020-01-01T00:00:00",
+    "60 secs",
+    "1+2i",
+    "0",
+    "001",
+    FALSE,
+    list(number = 1L, value = "3-4i"),
+    list("1+2i")
   )
   if (requireNamespace("bit64", quietly = TRUE)) {
     df$integer64 <- bit64::as.integer64(c("9007199254740993", NA))
@@ -69,8 +85,18 @@ local({
   missing <- request("dataview_page", list(view_id = view_id, startRow = 1L, endRow = 2L))
   expect_null(missing$error)
   expect_length(missing$result$rows, 1L)
-  for (name in c("integer", "double", "logical", "character", "factor", "ordered",
-                 "date", "datetime", "difftime", "complex")) {
+  for (name in c(
+    "integer",
+    "double",
+    "logical",
+    "character",
+    "factor",
+    "ordered",
+    "date",
+    "datetime",
+    "difftime",
+    "complex"
+  )) {
     expect_null(missing$result$rows[[1L]][[as.character(match(name, names(df)))]], info = name)
   }
 
@@ -79,8 +105,14 @@ local({
   expect_length(empty$result$rows, 0L)
   expect_identical(serialize(df, NULL), original)
 
-  for (values in list(c(1L, NA_integer_), c(1.54e-100, NA_real_), c(TRUE, NA),
-                      c("中文", NA_character_), c(1 + 2i, NA_complex_), as.raw(c(0, 255)))) {
+  for (values in list(
+    c(1L, NA_integer_),
+    c(1.54e-100, NA_real_),
+    c(TRUE, NA),
+    c("中文", NA_character_),
+    c(1 + 2i, NA_complex_),
+    as.raw(c(0, 255))
+  )) {
     matrix <- matrix(values, ncol = 1L)
     view_id <- sess:::dataview_register(matrix)$view_id
     page <- request("dataview_page", list(view_id = view_id, startRow = 0L, endRow = 2L))
@@ -99,8 +131,11 @@ local({
   expect_equal(page$result$rows[[1L]][["2"]], "2020-01-01T00:00:00")
   expect_null(page$result$rows[[2L]][["2"]])
 
-  df <- data.frame(value = c(-Inf, Inf, NaN, NA_real_, 0, 1),
-                   all_na_numeric = NA_real_, all_na_character = NA_character_)
+  df <- data.frame(
+    value = c(-Inf, Inf, NaN, NA_real_, 0, 1),
+    all_na_numeric = NA_real_,
+    all_na_character = NA_character_
+  )
   view_id <- sess:::dataview_register(df)$view_id
   page <- request("dataview_page", list(view_id = view_id))
   expect_null(page$error)
@@ -112,8 +147,11 @@ local({
     expect_null(row[["3"]])
   }
 
-  nested <- list(date = as.Date("2000-01-01"),
-                 table = data.frame(value = 1:2), value = list(1 + 2i))
+  nested <- list(
+    date = as.Date("2000-01-01"),
+    table = data.frame(value = 1:2),
+    value = list(1 + 2i)
+  )
   formatted <- sess:::dataview_format_column(list(nested))[[1L]]
   expect_identical(formatted$date, nested$date)
   expect_identical(formatted$table, nested$table)
@@ -126,11 +164,14 @@ local({
   orig_dataviews <- .sess_env$dataviews
   orig_con <- .sess_env$con
   pipe <- processx::conn_create_pipepair()
-  on.exit({
-    .sess_env$dataviews <- orig_dataviews
-    .sess_env$con <- orig_con
-    lapply(pipe, close)
-  }, add = TRUE)
+  on.exit(
+    {
+      .sess_env$dataviews <- orig_dataviews
+      .sess_env$con <- orig_con
+      lapply(pipe, close)
+    },
+    add = TRUE
+  )
   .sess_env$con <- pipe[[2L]]
 
   values <- c(1.54e-05, 3.54e-05, -6.65e-13, 1.54e-100, 0, 1.23456789)
@@ -158,29 +199,39 @@ local({
   orig_con <- .sess_env$con
   orig_options <- options(digits = 7, scipen = 0, OutDec = ".")
   pipe <- processx::conn_create_pipepair()
-  on.exit({
-    .sess_env$dataviews <- orig_dataviews
-    .sess_env$con <- orig_con
-    options(orig_options)
-    lapply(pipe, close)
-  }, add = TRUE)
+  on.exit(
+    {
+      .sess_env$dataviews <- orig_dataviews
+      .sess_env$con <- orig_con
+      options(orig_options)
+      lapply(pipe, close)
+    },
+    add = TRUE
+  )
   .sess_env$con <- pipe[[2L]]
 
   request <- function(view_id, ...) {
     sess:::dispatch_message(as.character(jsonlite::toJSON(
-      list(jsonrpc = "2.0", id = "formatted", method = "dataview_page",
-           params = c(list(view_id = view_id, formatNumbers = TRUE), list(...))),
-      auto_unbox = TRUE, digits = NA
+      list(
+        jsonrpc = "2.0",
+        id = "formatted",
+        method = "dataview_page",
+        params = c(list(view_id = view_id, formatNumbers = TRUE), list(...))
+      ),
+      auto_unbox = TRUE,
+      digits = NA
     )))
-    response <- jsonlite::fromJSON(processx::conn_read_chars(pipe[[1L]]),
-                                   simplifyVector = FALSE)
+    response <- jsonlite::fromJSON(processx::conn_read_chars(pipe[[1L]]), simplifyVector = FALSE)
     expect_null(response$error)
     response$result
   }
 
   values <- c(326 / 0.23, 326 / 0.21, 1400)
-  df <- data.frame(value = values, tiny = c(1.54e-100, 2.54e-100, 0),
-                   text = c("001.234567890123", "<script>", "9007199254740993"))
+  df <- data.frame(
+    value = values,
+    tiny = c(1.54e-100, 2.54e-100, 0),
+    text = c("001.234567890123", "<script>", "9007199254740993")
+  )
   cases <- list(frame = df, matrix = as.matrix(df[1:2]))
   if (requireNamespace("data.table", quietly = TRUE)) {
     cases$table <- data.table::as.data.table(df)
@@ -211,8 +262,12 @@ local({
   }
 
   view_id <- sess:::dataview_register(df)$view_id
-  for (settings in list(list(digits = 4), list(digits = 12),
-                        list(scipen = 999), list(scipen = -9, OutDec = ","))) {
+  for (settings in list(
+    list(digits = 4),
+    list(digits = 12),
+    list(scipen = 999),
+    list(scipen = -9, OutDec = ",")
+  )) {
     options(settings)
     page <- request(view_id)
     expect_equal(unlist(page$formattedColumns[["1"]]), format(values, trim = TRUE))
@@ -239,26 +294,28 @@ local({
 
 # S3 and S4 numeric subclasses supply their own display and text-filter values.
 local({
-  registerS3method("[", "dataview_test", function(x, ...) {
-    structure(NextMethod(), class = class(x))
-  })
+  registerS3method("[", "dataview_test", function(x, ...) structure(NextMethod(), class = class(x)))
   class_env <- environment()
   methods::setClass("dataview_s4_test", contains = "numeric", where = class_env)
-  on.exit({
-    methods::removeMethod("[", "dataview_s4_test", where = class_env)
-    methods::removeClass("dataview_s4_test", where = class_env)
-    rm(
-      list = c("[.dataview_test", "format.dataview_test", "format.dataview_s4_test"),
-      envir = get(".__S3MethodsTable__.", envir = asNamespace("base"))
-    )
-  }, add = TRUE)
-  methods::setMethod("[", "dataview_s4_test", function(x, i, j, ..., drop = TRUE) {
-    methods::new("dataview_s4_test", as.numeric(x)[i])
-  }, where = class_env)
+  on.exit(
+    {
+      methods::removeMethod("[", "dataview_s4_test", where = class_env)
+      methods::removeClass("dataview_s4_test", where = class_env)
+      rm(
+        list = c("[.dataview_test", "format.dataview_test", "format.dataview_s4_test"),
+        envir = get(".__S3MethodsTable__.", envir = asNamespace("base"))
+      )
+    },
+    add = TRUE
+  )
+  methods::setMethod(
+    "[",
+    "dataview_s4_test",
+    function(x, i, j, ..., drop = TRUE) methods::new("dataview_s4_test", as.numeric(x)[i]),
+    where = class_env
+  )
   for (class_name in c("dataview_test", "dataview_s4_test")) {
-    registerS3method("format", class_name, function(x, ...) {
-      paste0("value:", as.numeric(x))
-    })
+    registerS3method("format", class_name, function(x, ...) paste0("value:", as.numeric(x)))
   }
 
   values <- c(20, 2, 10, NA_real_)
@@ -275,16 +332,21 @@ local({
 
     state <- sess:::dataview_to_state(df)
     expect_equal(as.character(state$columns[[3L]]$type), "textColumn", info = case_name)
-    expect_equal(
-      as.character(state$columns[[3L]]$filter), "agTextColumnFilter", info = case_name
-    )
+    expect_equal(as.character(state$columns[[3L]]$filter), "agTextColumnFilter", info = case_name)
     expect_equal(
       sess:::dataview_rows(state, 1:4)[["2"]],
-      c("value:20", "value:2", "value:10", NA_character_), info = case_name
+      c("value:20", "value:2", "value:10", NA_character_),
+      info = case_name
     )
-    expect_equal(sess:::dataview_query_indices(
-      state, NULL, list("2" = list(type = "equals", filter = "value:2"))
-    ), 2L, info = case_name)
+    expect_equal(
+      sess:::dataview_query_indices(
+        state,
+        NULL,
+        list("2" = list(type = "equals", filter = "value:2"))
+      ),
+      2L,
+      info = case_name
+    )
   }
 })
 
@@ -295,8 +357,7 @@ local({
   on.exit({
     .sess_env$dataviews <- original_views
   })
-  df <- aggregate(cbind(Ozone, Temp) ~ Month, airquality, quantile,
-                  probs = c(.25, .5, .75))
+  df <- aggregate(cbind(Ozone, Temp) ~ Month, airquality, quantile, probs = c(.25, .5, .75))
   original <- serialize(df, NULL)
   view_id <- sess:::dataview_register(df)$view_id
   state <- sess:::dataview_get_state(view_id)
@@ -307,7 +368,8 @@ local({
   }
   # Ignore stale or externally supplied scalar queries on composite columns.
   page <- sess:::handle_dataview_page(list(
-    view_id = view_id, formatNumbers = TRUE,
+    view_id = view_id,
+    formatNumbers = TRUE,
     sortModel = list(list(colId = "2", sort = "desc")),
     filterModel = list("3" = list(type = "greaterThan", filter = 70))
   ))
@@ -316,7 +378,9 @@ local({
   expect_null(page$formattedColumns[["2"]])
   # Scalar columns still query and page the complete matrix rows together.
   page <- sess:::handle_dataview_page(list(
-    view_id = view_id, startRow = 1L, endRow = 3L,
+    view_id = view_id,
+    startRow = 1L,
+    endRow = 3L,
     sortModel = list(list(colId = "1", sort = "desc"))
   ))
   expect_identical(page$rows[["2"]], df$Ozone[c(4L, 3L), , drop = FALSE])
@@ -345,10 +409,16 @@ local({
   on.exit(runtime$dataviews <- previous, add = TRUE)
   object <- new.env(parent = emptyenv())
   child_names <- paste0("item", seq_len(501L))
-  for (name in child_names[1:500]) assign(name, 1L, envir = object)
+  for (name in child_names[1:500]) {
+    assign(name, 1L, envir = object)
+  }
   delayedAssign("item501", stop("unrequested binding was evaluated"), assign.env = object)
   runtime$dataviews$paging_test <- list(
-    type = "list", data = object, kind = "name", names = child_names, title = "object"
+    type = "list",
+    data = object,
+    kind = "name",
+    names = child_names,
+    title = "object"
   )
 
   first <- sess:::get_workspace_children(view_id = "paging_test", start = 1L)
@@ -368,7 +438,6 @@ local({
   expect_false(last$children[[1L]]$viewable)
   expect_length(sess:::get_workspace_children(view_id = "paging_test", start = 502L)$children, 0L)
 })
-
 
 # A delayed panel close cannot dispose state recreated under the same viewer id.
 local({
@@ -390,24 +459,34 @@ local({
   for (name in names(cases)) {
     runtime$dataviews <- list()
     first <- sess:::dataview_set_state("replacement_test", cases[[name]]$first)
-    replacement <- sess:::dataview_set_state(
-      "replacement_test", cases[[name]]$replacement
-    )
+    replacement <- sess:::dataview_set_state("replacement_test", cases[[name]]$replacement)
     expect_true(replacement$state_generation > first$state_generation, info = name)
 
-    expect_true(sess:::handle_dataview_dispose(list(
-      view_id = "replacement_test", state_generation = first$state_generation
-    )), info = name)
-    expect_identical(
-      runtime$dataviews$replacement_test$state_generation, replacement$state_generation, info = name
+    expect_true(
+      sess:::handle_dataview_dispose(list(
+        view_id = "replacement_test",
+        state_generation = first$state_generation
+      )),
+      info = name
     )
     expect_identical(
-      runtime$dataviews$replacement_test$data, cases[[name]]$replacement$data, info = name
+      runtime$dataviews$replacement_test$state_generation,
+      replacement$state_generation,
+      info = name
+    )
+    expect_identical(
+      runtime$dataviews$replacement_test$data,
+      cases[[name]]$replacement$data,
+      info = name
     )
 
-    expect_true(sess:::handle_dataview_dispose(list(
-      view_id = "replacement_test", state_generation = replacement$state_generation
-    )), info = name)
+    expect_true(
+      sess:::handle_dataview_dispose(list(
+        view_id = "replacement_test",
+        state_generation = replacement$state_generation
+      )),
+      info = name
+    )
     expect_null(runtime$dataviews$replacement_test, info = name)
   }
 })

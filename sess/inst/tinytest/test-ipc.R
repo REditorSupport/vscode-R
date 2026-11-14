@@ -26,8 +26,11 @@ local({
   .sess_env$pending_responses <- list()
 
   error_line <- as.character(jsonlite::toJSON(
-    list(jsonrpc = "2.0", id = "req_002",
-         error = list(code = -32601L, message = "Method not found")),
+    list(
+      jsonrpc = "2.0",
+      id = "req_002",
+      error = list(code = -32601L, message = "Method not found")
+    ),
     auto_unbox = TRUE
   ))
 
@@ -45,22 +48,22 @@ local({
   orig_con <- .sess_env$con
   orig_dataviews <- .sess_env$dataviews
   pipe <- processx::conn_create_pipepair()
-  on.exit({
-    .sess_env$con <- orig_con
-    .sess_env$dataviews <- orig_dataviews
-    lapply(pipe, close)
-  }, add = TRUE)
+  on.exit(
+    {
+      .sess_env$con <- orig_con
+      .sess_env$dataviews <- orig_dataviews
+      lapply(pipe, close)
+    },
+    add = TRUE
+  )
   .sess_env$con <- pipe[[2L]]
   request <- function(method, view_id) {
     sess:::dispatch_message(as.character(jsonlite::toJSON(
-      list(jsonrpc = "2.0", id = "failure", method = method,
-           params = list(view_id = view_id)),
+      list(jsonrpc = "2.0", id = "failure", method = method, params = list(view_id = view_id)),
       auto_unbox = TRUE
     )))
   }
-  response <- function() {
-    jsonlite::fromJSON(processx::conn_read_chars(pipe[[1L]]))
-  }
+  response <- function() jsonlite::fromJSON(processx::conn_read_chars(pipe[[1L]]))
 
   expect_warning(request("dataview_page", "missing"), "Unknown dataview id")
   failed <- response()
@@ -118,18 +121,31 @@ local({
   orig_dataviews <- .sess_env$dataviews
   orig_con <- .sess_env$con
   pipe <- processx::conn_create_pipepair()
-  on.exit({
-    .sess_env$dataviews <- orig_dataviews
-    .sess_env$con <- orig_con
-    lapply(pipe, close)
-  }, add = TRUE)
+  on.exit(
+    {
+      .sess_env$dataviews <- orig_dataviews
+      .sess_env$con <- orig_con
+      lapply(pipe, close)
+    },
+    add = TRUE
+  )
   .sess_env$con <- pipe[[2L]]
 
   .sess_env$dataviews <- list()
 
   df <- data.frame(
-    a = c(1.54e-03, 1.54e-04, 1.54e-05, 1.54e-06, 6.65e-13, 1.54e-100,
-          -1.54e-05, 0, 1.23456789, 42),
+    a = c(
+      1.54e-03,
+      1.54e-04,
+      1.54e-05,
+      1.54e-06,
+      6.65e-13,
+      1.54e-100,
+      -1.54e-05,
+      0,
+      1.23456789,
+      42
+    ),
     b = letters[1:10]
   )
   registration <- sess:::dataview_register(df)
@@ -185,9 +201,7 @@ local({
     startRow = 0L,
     endRow = 10L,
     sortModel = list(),
-    filterModel = list(
-      "2" = list(filterType = "text", type = "contains", filter = "b")
-    )
+    filterModel = list("2" = list(filterType = "text", type = "contains", filter = "b"))
   ))
 
   expect_equal(filtered$totalRows, 2)
@@ -198,9 +212,7 @@ local({
     view_id = registration$view_id,
     startRow = 0L,
     endRow = 10L,
-    sortModel = list(
-      list(colId = "1", sort = "desc")
-    ),
+    sortModel = list(list(colId = "1", sort = "desc")),
     filterModel = list()
   ))
 
@@ -210,9 +222,7 @@ local({
   for (value in df$a[1:2]) {
     filtered <- sess:::handle_dataview_page(list(
       view_id = registration$view_id,
-      filterModel = list(
-        "1" = list(filterType = "number", type = "equals", filter = value)
-      )
+      filterModel = list("1" = list(filterType = "number", type = "equals", filter = value))
     ))
     expect_equal(filtered$rows[["1"]], value, tolerance = 1e-14)
   }
@@ -225,13 +235,16 @@ local({
   old_dataviews <- .sess_env$dataviews
   old_dataview_registry <- .sess_env$dataview_registry
   .sess_env$latest_plot_path <- tempfile(fileext = ".png")
-  on.exit({
-    sess:::runtime_stop()
-    unlink(.sess_env$latest_plot_path)
-    .sess_env$latest_plot_path <- old_plot_path
-    .sess_env$dataviews <- old_dataviews
-    .sess_env$dataview_registry <- old_dataview_registry
-  }, add = TRUE)
+  on.exit(
+    {
+      sess:::runtime_stop()
+      unlink(.sess_env$latest_plot_path)
+      .sess_env$latest_plot_path <- old_plot_path
+      .sess_env$dataviews <- old_dataviews
+      .sess_env$dataview_registry <- old_dataview_registry
+    },
+    add = TRUE
+  )
 
   utils_ns <- asNamespace("utils")
   old_view <- get("View", utils_ns, inherits = FALSE)
@@ -239,8 +252,7 @@ local({
   names(old_options) <- c("browser", "viewer", "page_viewer", "help_type", "device")
   old_plot_hook <- getHook("plot.new")
   old_grid_hook <- getHook("grid.newpage")
-  old_help_method <- utils::getS3method("print", "help_files_with_topic",
-                                        envir = baseenv())
+  old_help_method <- utils::getS3method("print", "help_files_with_topic", envir = baseenv())
   old_s3_registry <- getNamespaceInfo(utils_ns, "S3methods")
 
   stale_registry <- new.env(parent = emptyenv())
@@ -267,8 +279,11 @@ local({
   expect_false(identical(getHook("grid.newpage"), old_grid_hook))
 
   dataview_data <- data.frame(value = 1:2)
-  assign("table:lifecycle dataview", "runtime_view_before_restart",
-         envir = .sess_env$dataview_registry)
+  assign(
+    "table:lifecycle dataview",
+    "runtime_view_before_restart",
+    envir = .sess_env$dataview_registry
+  )
   utils::View(dataview_data, title = "lifecycle dataview")
   first_view_id <- get("table:lifecycle dataview", envir = .sess_env$dataview_registry)
   expect_identical(first_view_id, "runtime_view_before_restart")
@@ -283,8 +298,10 @@ local({
   expect_equal(.sess_env$dataviews, list())
   expect_length(ls(.sess_env$dataview_registry, all.names = TRUE), 0L)
   expect_equal(length(grep("^sess.workspace$", getTaskCallbackNames())), 1L)
-  expect_equal(length(grep("^sess.plot$", getTaskCallbackNames())),
-               length(grep("^sess.plot$", callbacks_after_first_start)))
+  expect_equal(
+    length(grep("^sess.plot$", getTaskCallbackNames())),
+    length(grep("^sess.plot$", callbacks_after_first_start))
+  )
 
   utils::View(dataview_data, title = "lifecycle dataview")
   second_view_id <- get("table:lifecycle dataview", envir = .sess_env$dataview_registry)
@@ -294,10 +311,7 @@ local({
   sess:::runtime_stop()
   expect_equal(.sess_env$dataviews, list())
   expect_length(ls(.sess_env$dataview_registry, all.names = TRUE), 0L)
-  expect_error(
-    sess:::handle_dataview_init(list(view_id = second_view_id)),
-    "Unknown dataview id"
-  )
+  expect_error(sess:::handle_dataview_init(list(view_id = second_view_id)), "Unknown dataview id")
   expect_false(isTRUE(sess:::.runtime_state()$active))
   expect_identical(get("View", utils_ns, inherits = FALSE), old_view)
   expect_identical(getOption("browser"), old_options$browser)
@@ -328,21 +342,32 @@ local({
   original_viewer <- getOption("viewer")
   user_view <- function(...) "user view"
   user_viewer <- function(...) "user viewer"
-  on.exit({
-    sess:::runtime_stop()
-    if (binding_was_locked) unlockBinding("View", utils_ns)
-    assign("View", original_view, envir = utils_ns)
-    if (binding_was_locked) lockBinding("View", utils_ns)
-    options(viewer = original_viewer)
-    unlink(.sess_env$latest_plot_path)
-    .sess_env$latest_plot_path <- old_plot_path
-  }, add = TRUE)
+  on.exit(
+    {
+      sess:::runtime_stop()
+      if (binding_was_locked) {
+        unlockBinding("View", utils_ns)
+      }
+      assign("View", original_view, envir = utils_ns)
+      if (binding_was_locked) {
+        lockBinding("View", utils_ns)
+      }
+      options(viewer = original_viewer)
+      unlink(.sess_env$latest_plot_path)
+      .sess_env$latest_plot_path <- old_plot_path
+    },
+    add = TRUE
+  )
 
   sess:::runtime_start(use_rstudioapi = FALSE, plot_backend = "standard")
   options(viewer = user_viewer)
-  if (binding_was_locked) unlockBinding("View", utils_ns)
+  if (binding_was_locked) {
+    unlockBinding("View", utils_ns)
+  }
   assign("View", user_view, envir = utils_ns)
-  if (binding_was_locked) lockBinding("View", utils_ns)
+  if (binding_was_locked) {
+    lockBinding("View", utils_ns)
+  }
   sess:::runtime_stop()
 
   expect_identical(getOption("viewer"), user_viewer)
@@ -351,7 +376,9 @@ local({
 
 # rstudioapi overrides and its package-load hook are restored at runtime stop.
 local({
-  if (!requireNamespace("rstudioapi", quietly = TRUE)) return(invisible(NULL))
+  if (!requireNamespace("rstudioapi", quietly = TRUE)) {
+    return(invisible(NULL))
+  }
   rstudioapi_ns <- asNamespace("rstudioapi")
   if (!exists("isAvailable", envir = rstudioapi_ns, inherits = FALSE)) {
     return(invisible(NULL))
@@ -363,33 +390,44 @@ local({
   original_is_available <- get("isAvailable", rstudioapi_ns, inherits = FALSE)
   rstudioapi_hook_name <- packageEvent("rstudioapi", "onLoad")
   original_load_hook <- getHook(rstudioapi_hook_name)
-  on.exit({
-    sess:::runtime_stop()
-    unlink(.sess_env$latest_plot_path)
-    .sess_env$latest_plot_path <- old_plot_path
-  }, add = TRUE)
+  on.exit(
+    {
+      sess:::runtime_stop()
+      unlink(.sess_env$latest_plot_path)
+      .sess_env$latest_plot_path <- old_plot_path
+    },
+    add = TRUE
+  )
 
   sess:::runtime_start(use_rstudioapi = TRUE, plot_backend = "standard")
-  expect_false(identical(get("isAvailable", rstudioapi_ns, inherits = FALSE),
-                         original_is_available))
+  expect_false(identical(
+    get("isAvailable", rstudioapi_ns, inherits = FALSE),
+    original_is_available
+  ))
   expect_false(identical(getHook(rstudioapi_hook_name), original_load_hook))
 
   sess:::runtime_stop()
-  expect_identical(get("isAvailable", rstudioapi_ns, inherits = FALSE),
-                   original_is_available)
+  expect_identical(get("isAvailable", rstudioapi_ns, inherits = FALSE), original_is_available)
   expect_identical(getHook(rstudioapi_hook_name), original_load_hook)
 })
 
 # An empty ready-read is EOF only after processx confirms no more data can
 # arrive. Errors from the EOF check are treated conservatively as still open.
 local({
-  if (!requireNamespace("processx", quietly = TRUE)) return(invisible(NULL))
+  if (!requireNamespace("processx", quietly = TRUE)) {
+    return(invisible(NULL))
+  }
   cons <- tryCatch(processx::conn_create_pipepair(), error = function(e) NULL)
-  if (is.null(cons)) return(invisible(NULL))
-  on.exit({
-    try(close(cons[[1L]]), silent = TRUE)
-    try(close(cons[[2L]]), silent = TRUE)
-  }, add = TRUE)
+  if (is.null(cons)) {
+    return(invisible(NULL))
+  }
+  on.exit(
+    {
+      try(close(cons[[1L]]), silent = TRUE)
+      try(close(cons[[2L]]), silent = TRUE)
+    },
+    add = TRUE
+  )
 
   expect_false(sess:::.transport_empty_read_is_eof(cons[[2L]]))
   expect_false(sess:::.transport_empty_read_is_eof(NULL))
@@ -406,20 +444,27 @@ local({
 # EOF observed by the polling loop stops the runtime and releases the transport
 # on every platform without depending on a Unix-domain socket.
 local({
-  if (!requireNamespace("processx", quietly = TRUE)) return(invisible(NULL))
+  if (!requireNamespace("processx", quietly = TRUE)) {
+    return(invisible(NULL))
+  }
   cons <- tryCatch(processx::conn_create_pipepair(), error = function(e) NULL)
-  if (is.null(cons)) return(invisible(NULL))
+  if (is.null(cons)) {
+    return(invisible(NULL))
+  }
 
   .sess_env <- sess:::.sess_env
   old_plot_path <- .sess_env$latest_plot_path
   .sess_env$latest_plot_path <- tempfile(fileext = ".png")
-  on.exit({
-    sess:::.transport_disconnect(silent = TRUE)
-    try(close(cons[[1L]]), silent = TRUE)
-    try(close(cons[[2L]]), silent = TRUE)
-    unlink(.sess_env$latest_plot_path)
-    .sess_env$latest_plot_path <- old_plot_path
-  }, add = TRUE)
+  on.exit(
+    {
+      sess:::.transport_disconnect(silent = TRUE)
+      try(close(cons[[1L]]), silent = TRUE)
+      try(close(cons[[2L]]), silent = TRUE)
+      unlink(.sess_env$latest_plot_path)
+      .sess_env$latest_plot_path <- old_plot_path
+    },
+    add = TRUE
+  )
 
   .sess_env$con <- cons[[2L]]
   .sess_env$transport_generation <- if (is.null(.sess_env$transport_generation)) {
@@ -435,7 +480,9 @@ local({
   # A processx poll may return NULL once immediately after peer closure before
   # reporting readable EOF. Let the recurring poll callback observe that EOF.
   for (i in seq_len(50L)) {
-    if (is.null(.sess_env$con)) break
+    if (is.null(.sess_env$con)) {
+      break
+    }
     Sys.sleep(0.02)
     later::run_now()
   }
@@ -447,22 +494,29 @@ local({
 # Workspace task callbacks defer the notification, then check runtime and
 # transport state before sending it.
 local({
-  if (!requireNamespace("processx", quietly = TRUE)) return(invisible(NULL))
+  if (!requireNamespace("processx", quietly = TRUE)) {
+    return(invisible(NULL))
+  }
   cons <- tryCatch(processx::conn_create_pipepair(), error = function(e) NULL)
-  if (is.null(cons)) return(invisible(NULL))
+  if (is.null(cons)) {
+    return(invisible(NULL))
+  }
 
   .sess_env <- sess:::.sess_env
   state <- sess:::.runtime_state()
   old_con <- .sess_env$con
   old_generation <- .sess_env$transport_generation
   old_active <- state$active
-  on.exit({
-    .sess_env$con <- old_con
-    .sess_env$transport_generation <- old_generation
-    state$active <- old_active
-    try(close(cons[[1L]]), silent = TRUE)
-    try(close(cons[[2L]]), silent = TRUE)
-  }, add = TRUE)
+  on.exit(
+    {
+      .sess_env$con <- old_con
+      .sess_env$transport_generation <- old_generation
+      state$active <- old_active
+      try(close(cons[[1L]]), silent = TRUE)
+      try(close(cons[[2L]]), silent = TRUE)
+    },
+    add = TRUE
+  )
 
   .sess_env$con <- cons[[2L]]
   .sess_env$transport_generation <- if (is.null(old_generation)) 1L else old_generation + 1L
@@ -499,18 +553,22 @@ local({
 # NDJSON framing round-trips through a Unix-domain socket. Windows uses named
 # pipes and is covered by the extension's IPC tests instead.
 local({
-  if (!requireNamespace("processx", quietly = TRUE) ||
-        .Platform$OS.type == "windows") {
+  if (!requireNamespace("processx", quietly = TRUE) || .Platform$OS.type == "windows") {
     # This check specifically exercises Unix-domain socket framing.
     return(invisible(NULL))
   }
 
   pipe_path <- tempfile(fileext = ".sock")
   cons <- new.env()
-  on.exit({
-    for (nm in ls(cons)) try(close(cons[[nm]]), silent = TRUE)
-    unlink(pipe_path)
-  }, add = TRUE)
+  on.exit(
+    {
+      for (nm in ls(cons)) {
+        try(close(cons[[nm]]), silent = TRUE)
+      }
+      unlink(pipe_path)
+    },
+    add = TRUE
+  )
 
   res <- {
     cons$server <- processx::conn_create_unix_socket(pipe_path, encoding = "")
@@ -530,8 +588,12 @@ local({
     ready <- processx::poll(list(cons$conn), 1000L)
     received <- processx::conn_read_chars(cons$conn)
     parsed <- jsonlite::fromJSON(trimws(received), simplifyVector = FALSE)
-    list(ready = ready[[1]], received = received,
-         method = parsed$method, value = parsed$params$value)
+    list(
+      ready = ready[[1]],
+      received = received,
+      method = parsed$method,
+      value = parsed$params$value
+    )
   }
 
   expect_equal(res$ready, "ready")
@@ -550,66 +612,94 @@ local({
 
   listener <- function() {
     path <- tempfile(fileext = ".sock")
-    server <- tryCatch(processx::conn_create_unix_socket(path, encoding = ""),
-                       error = function(e) NULL)
-    if (is.null(server)) return(NULL)
+    server <- tryCatch(
+      processx::conn_create_unix_socket(path, encoding = ""),
+      error = function(e) NULL
+    )
+    if (is.null(server)) {
+      return(NULL)
+    }
     list(path = path, server = server)
   }
   accept_peer <- function(server) {
     ready <- tryCatch(processx::poll(list(server), 1000L), error = function(e) NULL)
-    if (is.null(ready) || !ready[[1]] %in% c("connect", "ready")) return(NULL)
-    tryCatch({
-      processx::conn_accept_unix_socket(server)
-      server
-    }, error = function(e) NULL)
+    if (is.null(ready) || !ready[[1]] %in% c("connect", "ready")) {
+      return(NULL)
+    }
+    tryCatch(
+      {
+        processx::conn_accept_unix_socket(server)
+        server
+      },
+      error = function(e) NULL
+    )
   }
 
   first <- listener()
-  if (is.null(first)) return(invisible(NULL))
+  if (is.null(first)) {
+    return(invisible(NULL))
+  }
   discovery <- tempfile(fileext = ".json")
   old_discovery <- Sys.getenv("SESS_DISCOVERY_FILE", unset = NA_character_)
   Sys.setenv(SESS_DISCOVERY_FILE = discovery)
   publish <- function(endpoint) {
-    writeLines(jsonlite::toJSON(list(version = 1L, endpoint = endpoint),
-                                auto_unbox = TRUE), discovery)
+    writeLines(
+      jsonlite::toJSON(list(version = 1L, endpoint = endpoint), auto_unbox = TRUE),
+      discovery
+    )
   }
   publish(first$path)
-  on.exit({
-    if (is.na(old_discovery)) Sys.unsetenv("SESS_DISCOVERY_FILE") else
-      Sys.setenv(SESS_DISCOVERY_FILE = old_discovery)
-    unlink(discovery)
-  }, add = TRUE)
+  on.exit(
+    {
+      if (is.na(old_discovery)) {
+        Sys.unsetenv("SESS_DISCOVERY_FILE")
+      } else {
+        Sys.setenv(SESS_DISCOVERY_FILE = old_discovery)
+      }
+      unlink(discovery)
+    },
+    add = TRUE
+  )
   identity <- sess:::.session_id()
   utils_ns <- asNamespace("utils")
   original_view <- get("View", utils_ns, inherits = FALSE)
   option_names <- c("browser", "viewer", "page_viewer", "help_type", "device")
   original_options <- lapply(option_names, getOption)
   names(original_options) <- option_names
-  original_help_method <- utils::getS3method(
-    "print", "help_files_with_topic", envir = baseenv()
-  )
+  original_help_method <- utils::getS3method("print", "help_files_with_topic", envir = baseenv())
   original_plot_hook <- getHook("plot.new")
   original_grid_hook <- getHook("grid.newpage")
   second <- NULL
   first_peer <- NULL
   second_peer <- NULL
-  on.exit({
-    sess:::.transport_disconnect()
-    for (con in list(first_peer, second_peer, first$server,
-                     if (!is.null(second)) second$server else NULL)) {
-      if (!is.null(con)) try(close(con), silent = TRUE)
-    }
-    unlink(c(first$path, if (!is.null(second)) second$path else character()))
-  }, add = TRUE)
+  on.exit(
+    {
+      sess:::.transport_disconnect()
+      for (con in list(
+        first_peer,
+        second_peer,
+        first$server,
+        if (!is.null(second)) second$server else NULL
+      )) {
+        if (!is.null(con)) try(close(con), silent = TRUE)
+      }
+      unlink(c(first$path, if (!is.null(second)) second$path else character()))
+    },
+    add = TRUE
+  )
 
-  connected <- tryCatch({
-    sess::connect(endpoint = first$path, use_rstudioapi = FALSE,
-                  plot_backend = "standard")
-    first_peer <- accept_peer(first$server)
-    !is.null(first_peer) && !is.null(.sess_env$con)
-  }, error = function(e) FALSE)
+  connected <- tryCatch(
+    {
+      sess::connect(endpoint = first$path, use_rstudioapi = FALSE, plot_backend = "standard")
+      first_peer <- accept_peer(first$server)
+      !is.null(first_peer) && !is.null(.sess_env$con)
+    },
+    error = function(e) FALSE
+  )
   expect_true(isTRUE(connected))
-  if (!isTRUE(connected)) return(invisible(NULL))
+  if (!isTRUE(connected)) {
+    return(invisible(NULL))
+  }
 
   close(first_peer)
   result <- suppressWarnings(sess::request_client("test/disconnect_wait"))
@@ -633,10 +723,14 @@ local({
 
   second <- listener()
   expect_false(is.null(second))
-  if (is.null(second)) return(invisible(NULL))
+  if (is.null(second)) {
+    return(invisible(NULL))
+  }
   publish(second$path)
   deadline <- Sys.time() + 5
-  while (is.null(.sess_env$con) && Sys.time() < deadline) later::run_now(0.1)
+  while (is.null(.sess_env$con) && Sys.time() < deadline) {
+    later::run_now(0.1)
+  }
   expect_false(is.null(.sess_env$con))
   second_peer <- accept_peer(second$server)
   expect_false(is.null(second_peer))
@@ -667,27 +761,41 @@ local({
   }
 
   path <- tempfile(fileext = ".sock")
-  server <- tryCatch(processx::conn_create_unix_socket(path, encoding = ""),
-                     error = function(e) NULL)
-  if (is.null(server)) return(invisible(NULL))
+  server <- tryCatch(
+    processx::conn_create_unix_socket(path, encoding = ""),
+    error = function(e) NULL
+  )
+  if (is.null(server)) {
+    return(invisible(NULL))
+  }
   peer <- NULL
-  on.exit({
-    sess:::.transport_disconnect()
-    if (!is.null(peer)) try(close(peer), silent = TRUE)
-    try(close(server), silent = TRUE)
-    unlink(path)
-  }, add = TRUE)
+  on.exit(
+    {
+      sess:::.transport_disconnect()
+      if (!is.null(peer)) {
+        try(close(peer), silent = TRUE)
+      }
+      try(close(server), silent = TRUE)
+      unlink(path)
+    },
+    add = TRUE
+  )
 
-  connected <- tryCatch({
-    sess::connect(endpoint = path, use_rstudioapi = FALSE, plot_backend = "standard")
-    ready <- processx::poll(list(server), 1000L)
-    if (ready[[1]] %in% c("connect", "ready")) {
-      processx::conn_accept_unix_socket(server)
-      peer <- server
-    }
-    !is.null(peer) && !is.null(.sess_env$con)
-  }, error = function(e) FALSE)
-  if (!isTRUE(connected)) return(invisible(NULL))
+  connected <- tryCatch(
+    {
+      sess::connect(endpoint = path, use_rstudioapi = FALSE, plot_backend = "standard")
+      ready <- processx::poll(list(server), 1000L)
+      if (ready[[1]] %in% c("connect", "ready")) {
+        processx::conn_accept_unix_socket(server)
+        peer <- server
+      }
+      !is.null(peer) && !is.null(.sess_env$con)
+    },
+    error = function(e) FALSE
+  )
+  if (!isTRUE(connected)) {
+    return(invisible(NULL))
+  }
 
   close(.sess_env$con)
   sent <- suppressWarnings(sess:::ipc_write(list(method = "test/write_failure")))

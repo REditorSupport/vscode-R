@@ -8,15 +8,18 @@ local({
   old_plot_path <- sess_env$latest_plot_path
   plot_path <- tempfile(fileext = ".png")
   original_device <- grDevices::dev.cur()
-  on.exit({
-    sess:::runtime_stop()
-    sess_env$con <- old_con
-    sess_env$transport_generation <- old_generation
-    sess_env$latest_plot_path <- old_plot_path
-    try(close(cons[[1L]]), silent = TRUE)
-    try(close(cons[[2L]]), silent = TRUE)
-    unlink(plot_path)
-  }, add = TRUE)
+  on.exit(
+    {
+      sess:::runtime_stop()
+      sess_env$con <- old_con
+      sess_env$transport_generation <- old_generation
+      sess_env$latest_plot_path <- old_plot_path
+      try(close(cons[[1L]]), silent = TRUE)
+      try(close(cons[[2L]]), silent = TRUE)
+      unlink(plot_path)
+    },
+    add = TRUE
+  )
   sess_env$con <- cons[[2L]]
   sess_env$transport_generation <- if (is.null(old_generation)) 1L else old_generation + 1L
   sess_env$latest_plot_path <- plot_path
@@ -32,9 +35,7 @@ local({
   env <- new.env(parent = asNamespace("sess"))
   env$runtime_start <- sess:::runtime_start
   environment(env$runtime_start) <- env
-  env$.runtime_add_task_callback <- function(fun, name) {
-    task_callbacks[[name]] <<- fun
-  }
+  env$.runtime_add_task_callback <- function(fun, name) task_callbacks[[name]] <<- fun
   env$.defer_runtime_notification <- function(method) {
     sess:::.defer_runtime_notification(method, schedule = scheduler)
   }

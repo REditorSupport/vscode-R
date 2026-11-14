@@ -22,10 +22,12 @@ local({
     callback()
   }
   original_jgd <- Sys.getenv("JGD_SOCKET", unset = NA_character_)
-  on.exit({
-    if (is.na(original_jgd)) Sys.unsetenv("JGD_SOCKET") else
-      Sys.setenv(JGD_SOCKET = original_jgd)
-  }, add = TRUE)
+  on.exit(
+    {
+      if (is.na(original_jgd)) Sys.unsetenv("JGD_SOCKET") else Sys.setenv(JGD_SOCKET = original_jgd)
+    },
+    add = TRUE
+  )
   seen_jgd <- character()
   attempts <- list()
   succeed <- FALSE
@@ -42,10 +44,16 @@ local({
   }
   path <- tempfile()
   on.exit(unlink(path), add = TRUE)
-  settings <- list(path = path, endpoint = "old", options = list(
-    use_rstudioapi = FALSE, plot_backend = "httpgd",
-    attachment_id = "console_retry_1", auto_activate = FALSE
-  ))
+  settings <- list(
+    path = path,
+    endpoint = "old",
+    options = list(
+      use_rstudioapi = FALSE,
+      plot_backend = "httpgd",
+      attachment_id = "console_retry_1",
+      auto_activate = FALSE
+    )
+  )
   env$.schedule_reconnect(settings, schedule = schedule)
   tick() # Missing discovery file.
   writeLines("{", path)
@@ -85,8 +93,10 @@ local({
   for (socket in c("replacement-jgd", "")) {
     env$.sess_env$con <- NULL
     Sys.setenv(JGD_SOCKET = "dead-jgd")
-    writeLines(jsonlite::toJSON(list(version = 1L, endpoint = "new", jgdSocket = socket),
-                                auto_unbox = TRUE), path)
+    writeLines(
+      jsonlite::toJSON(list(version = 1L, endpoint = "new", jgdSocket = socket), auto_unbox = TRUE),
+      path
+    )
     env$.schedule_reconnect(settings, schedule = schedule)
     tick()
     expect_equal(tail(seen_jgd, 1L), if (nzchar(socket)) socket else "<unset>")
@@ -127,20 +137,28 @@ local({
   writeLines('{"version":1,"endpoint":"new","jgdSocket":"unused"}', path)
   env$.schedule_reconnect(native_settings, schedule = schedule)
   tick()
-  expect_equal(tail(attempts, 1L)[[1L]],
-               c(list(endpoint = "new"), native_options))
+  expect_equal(tail(attempts, 1L)[[1L]], c(list(endpoint = "new"), native_options))
   expect_equal(Sys.getenv("JGD_SOCKET"), "external-jgd")
   expect_equal(length(callbacks), 0L)
 
   # A failed optional jgd preparation remains disabled for discovery retries.
-  denied_options <- list(use_rstudioapi = FALSE, plot_backend = "jgd",
-                         attachment_id = "console_no_jgd", auto_activate = FALSE,
-                         allow_jgd = FALSE)
+  denied_options <- list(
+    use_rstudioapi = FALSE,
+    plot_backend = "jgd",
+    attachment_id = "console_no_jgd",
+    auto_activate = FALSE,
+    allow_jgd = FALSE
+  )
   denied_settings <- list(path = path, endpoint = "old", options = denied_options)
   env$.sess_env$con <- NULL
   Sys.setenv(JGD_SOCKET = "keep-this-socket")
-  writeLines(jsonlite::toJSON(list(version = 1L, endpoint = "new",
-                                   jgdSocket = "replacement-jgd"), auto_unbox = TRUE), path)
+  writeLines(
+    jsonlite::toJSON(
+      list(version = 1L, endpoint = "new", jgdSocket = "replacement-jgd"),
+      auto_unbox = TRUE
+    ),
+    path
+  )
   env$.schedule_reconnect(denied_settings, schedule = schedule)
   tick()
   expect_equal(tail(attempts, 1L)[[1L]], c(list(endpoint = "new"), denied_options))
@@ -180,5 +198,4 @@ local({
   env$.sess_env$transport_generation <- env$.sess_env$transport_generation + 1L
   tick() # Invalidate the retry without invoking setup.
   expect_equal(length(callbacks), 0L)
-
 })

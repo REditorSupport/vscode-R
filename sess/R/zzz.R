@@ -7,14 +7,11 @@
 # process reaches the attach handshake with its parent's cached state.
 .session_id <- function() {
   pid <- Sys.getpid()
-  if (is.null(.sess_env$session_id) ||
-        !identical(.sess_env$session_pid, pid)) {
+  if (is.null(.sess_env$session_id) || !identical(.sess_env$session_pid, pid)) {
     .sess_env$session_pid <- pid
     .sess_env$session_id <- basename(tempfile("sess-session-"))
   }
   .sess_env$session_id
 }
 
-.onUnload <- function(libpath) {
-  .transport_disconnect(silent = TRUE)
-}
+.onUnload <- function(libpath) .transport_disconnect(silent = TRUE)

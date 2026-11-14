@@ -13,8 +13,12 @@ local({
 
   # Match the reported dimensions without allocating a dense 153 GB dataset.
   n <- 832976871L
-  large <- structure(rep(list(seq_len(n)), 23L), names = paste0("x", 1:23),
-                     class = "data.frame", row.names = c(NA_integer_, -n))
+  large <- structure(
+    rep(list(seq_len(n)), 23L),
+    names = paste0("x", 1:23),
+    class = "data.frame",
+    row.names = c(NA_integer_, -n)
+  )
   small <- snapshot(large)
   expect_identical(small$source_rows, n)
   expect_true(small$truncated)
@@ -45,8 +49,10 @@ local({
   nested <- data.frame(id = 1L)
   nested$payload <- list(large)
   expect_identical(snapshot(nested)$value$payload[[1L]], "<data.frame [832976871 x 23]>")
-  expect_identical(page(register(nested)$view_id)$rows[["2"]][[1L]],
-                   "<data.frame [832976871 x 23]>")
+  expect_identical(
+    page(register(nested)$view_id)$rows[["2"]][[1L]],
+    "<data.frame [832976871 x 23]>"
+  )
   nested$payload <- list(seq_len(n))
   expect_identical(snapshot(nested)$value$payload[[1L]], "<integer [832976871]>")
   nested$payload <- I(list(large))
@@ -61,8 +67,10 @@ local({
   expect_true(nchar(text[[3L]]) < 1020L)
   expect_true(endsWith(text[[3L]], "… [truncated]"))
   long_frame <- data.frame(text = paste0(strrep("a", 2000L), "needle"))
-  filtered <- page(register(long_frame)$view_id,
-                   filterModel = list("1" = list(type = "contains", filter = "needle")))
+  filtered <- page(
+    register(long_frame)$view_id,
+    filterModel = list("1" = list(type = "contains", filter = "needle"))
+  )
   expect_identical(filtered$totalRows, 1L)
   expect_true(endsWith(filtered$rows[["1"]], "… [truncated]"))
 
@@ -77,8 +85,12 @@ local({
     saved <- register(snapshot(dt)$value)$view_id
     live <- register(dt, live = TRUE)$view_id
     expect_identical(data.table::address(env$dataviews[[live]]$data), data.table::address(dt))
-    query <- list(view_id = live, startRow = 0L, endRow = 2L,
-                  sortModel = list(list(colId = "2", sort = "desc")))
+    query <- list(
+      view_id = live,
+      startRow = 0L,
+      endRow = 2L,
+      sortModel = list(list(colId = "2", sort = "desc"))
+    )
     expect_identical(sess:::handle_dataview_page(query)$rows[["2"]], 2000:1999)
     data.table::set(dt, j = "value", value = -seq_len(2000L))
     sess:::.workspace_update_task_callback(schedule = function(...) NULL)
@@ -99,7 +111,9 @@ local({
     factor <- structure(1:3, levels = as.character(1:1000000), class = "factor")
     factored <- data.table::data.table(value = factor)
     kept <- snapshot(factored)$value
-    expect_identical(data.table::address(levels(kept$value)),
-                     data.table::address(levels(factored$value)))
+    expect_identical(
+      data.table::address(levels(kept$value)),
+      data.table::address(levels(factored$value))
+    )
   }
 })

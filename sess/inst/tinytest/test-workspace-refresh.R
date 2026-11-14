@@ -3,12 +3,20 @@ local({
   env <- sess:::.sess_env
   previous_snapshot <- env$workspace_snapshot
   previous_revision <- env$workspace_revision
-  symbols <- c("workspace_refresh_custom", "workspace_refresh_frame", "workspace_refresh_env",
-               "workspace_refresh_active", ".DollarNames.workspace_refresh_expensive",
-               "length.workspace_refresh_expensive", "dim.workspace_refresh_expensive",
-               "workspace_refresh_unknown", "workspace_refresh_large",
-               "workspace_refresh_active_method", "length.workspace_refresh_active_method",
-               "length.workspace_refresh_delayed_method")
+  symbols <- c(
+    "workspace_refresh_custom",
+    "workspace_refresh_frame",
+    "workspace_refresh_env",
+    "workspace_refresh_active",
+    ".DollarNames.workspace_refresh_expensive",
+    "length.workspace_refresh_expensive",
+    "dim.workspace_refresh_expensive",
+    "workspace_refresh_unknown",
+    "workspace_refresh_large",
+    "workspace_refresh_active_method",
+    "length.workspace_refresh_active_method",
+    "length.workspace_refresh_delayed_method"
+  )
   previous <- mget(intersect(symbols, ls(.GlobalEnv, all.names = TRUE)), .GlobalEnv)
   on.exit({
     if (exists("workspace_refresh_active", .GlobalEnv, inherits = FALSE)) {
@@ -24,9 +32,14 @@ local({
     inspected <<- inspected + 1L
     stop("automatic metadata invoked a user method")
   }
-  for (method in symbols[5:7]) assign(method, expensive, .GlobalEnv)
-  assign(symbols[[1L]], structure(list(a = 1L, b = 2L),
-                                  class = "workspace_refresh_expensive"), .GlobalEnv)
+  for (method in symbols[5:7]) {
+    assign(method, expensive, .GlobalEnv)
+  }
+  assign(
+    symbols[[1L]],
+    structure(list(a = 1L, b = 2L), class = "workspace_refresh_expensive"),
+    .GlobalEnv
+  )
   assign(symbols[[2L]], data.frame(a = 1:3, b = letters[1:3]), .GlobalEnv)
   reference <- new.env(parent = emptyenv())
   reference$a <- 1L
@@ -40,8 +53,10 @@ local({
   expect_equal(snapshot$globalenv[[symbols[[2L]]]]$dim, c(3L, 2L))
   expect_identical(snapshot$globalenv[[symbols[[2L]]]]$names, c("a", "b"))
   expect_identical(snapshot$globalenv[[symbols[[4L]]]]$type, "active_binding")
-  expect_identical(sess:::get_workspace_data(snapshot$revision),
-                   list(revision = snapshot$revision, unchanged = TRUE))
+  expect_identical(
+    sess:::get_workspace_data(snapshot$revision),
+    list(revision = snapshot$revision, unchanged = TRUE)
+  )
 
   # Metadata is recomputed, rather than caching by address or task callback count.
   reference$b <- 2L
@@ -64,14 +79,21 @@ local({
 
   # Method detection must not force active bindings or promised methods either.
   makeActiveBinding("length.workspace_refresh_active_method", expensive, .GlobalEnv)
-  assign("workspace_refresh_active_method",
-         structure(1:3, class = "workspace_refresh_active_method"), .GlobalEnv)
+  assign(
+    "workspace_refresh_active_method",
+    structure(1:3, class = "workspace_refresh_active_method"),
+    .GlobalEnv
+  )
   active_method <- sess:::get_workspace_data()$globalenv$workspace_refresh_active_method
   expect_null(active_method$length)
   expect_identical(inspected, 0L)
-  delayedAssign("length.workspace_refresh_delayed_method", {
-    expensive()
-  }, assign.env = .GlobalEnv)
+  delayedAssign(
+    "length.workspace_refresh_delayed_method",
+    {
+      expensive()
+    },
+    assign.env = .GlobalEnv
+  )
   expect_null(sess:::workspace_length(structure(1:3, class = "workspace_refresh_delayed_method")))
   expect_identical(inspected, 0L)
   rm(list = "length.workspace_refresh_delayed_method", envir = .GlobalEnv)
@@ -79,15 +101,22 @@ local({
   registry <- get(".__S3MethodsTable__.", envir = .BaseNamespaceEnv, inherits = FALSE)
   registered_name <- "length.workspace_refresh_registered_method"
   previous_method <- get0(registered_name, envir = registry, inherits = FALSE)
-  on.exit({
-    if (is.null(previous_method)) {
-      rm(list = registered_name, envir = registry)
-    } else {
-      assign(registered_name, previous_method, envir = registry)
-    }
-  }, add = TRUE)
-  registerS3method("length", "workspace_refresh_registered_method", expensive,
-                   envir = .BaseNamespaceEnv)
+  on.exit(
+    {
+      if (is.null(previous_method)) {
+        rm(list = registered_name, envir = registry)
+      } else {
+        assign(registered_name, previous_method, envir = registry)
+      }
+    },
+    add = TRUE
+  )
+  registerS3method(
+    "length",
+    "workspace_refresh_registered_method",
+    expensive,
+    envir = .BaseNamespaceEnv
+  )
   registered <- structure(1:3, class = "workspace_refresh_registered_method")
   expect_null(sess:::workspace_length(registered))
   rm(list = registered_name, envir = registry)

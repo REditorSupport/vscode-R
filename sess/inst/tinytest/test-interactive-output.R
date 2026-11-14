@@ -36,6 +36,8 @@ local({
   print.snapshot_empty <- function(x, ...) invisible(x)
   assign("print.snapshot_empty", print.snapshot_empty, envir = .GlobalEnv)
   on.exit(rm("print.snapshot_empty", envir = .GlobalEnv))
-  expect_identical(printed(structure(value, class = c("snapshot_empty", "data.frame")))$printedText,
-                   "")
+  expect_identical(
+    printed(structure(value, class = c("snapshot_empty", "data.frame")))$printedText,
+    ""
+  )
 })

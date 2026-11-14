@@ -17,8 +17,10 @@ local({
     tempfile(fileext = ".sock")
   }
   discovery <- tempfile(fileext = ".json")
-  writeLines(jsonlite::toJSON(list(version = 1L, endpoint = endpoint),
-                              auto_unbox = TRUE), discovery)
+  writeLines(
+    jsonlite::toJSON(list(version = 1L, endpoint = endpoint), auto_unbox = TRUE),
+    discovery
+  )
   original_discovery <- Sys.getenv("SESS_DISCOVERY_FILE", unset = NA_character_)
   Sys.setenv(SESS_DISCOVERY_FILE = discovery)
   original_view <- utils::View
@@ -26,17 +28,23 @@ local({
   original_callbacks <- getTaskCallbackNames()
   original_plot_hook <- getHook("plot.new")
   server <- NULL
-  on.exit({
-    sess:::.transport_disconnect(silent = TRUE)
-    if (!is.null(server)) try(close(server), silent = TRUE)
-    unlink(c(discovery, if (.Platform$OS.type != "windows") endpoint))
-    if (is.na(original_discovery)) Sys.unsetenv("SESS_DISCOVERY_FILE") else
-      Sys.setenv(SESS_DISCOVERY_FILE = original_discovery)
-  }, add = TRUE)
+  on.exit(
+    {
+      sess:::.transport_disconnect(silent = TRUE)
+      if (!is.null(server)) {
+        try(close(server), silent = TRUE)
+      }
+      unlink(c(discovery, if (.Platform$OS.type != "windows") endpoint))
+      if (is.na(original_discovery)) {
+        Sys.unsetenv("SESS_DISCOVERY_FILE")
+      } else {
+        Sys.setenv(SESS_DISCOVERY_FILE = original_discovery)
+      }
+    },
+    add = TRUE
+  )
 
-  listen <- function() {
-    server <<- processx::conn_create_unix_socket(endpoint, encoding = "")
-  }
+  listen <- function() server <<- processx::conn_create_unix_socket(endpoint, encoding = "")
   # Accept while the client is open, including on Windows named pipes. Drive
   # subsequent retries explicitly instead of starting background poll timers.
   env$poll_connection <- function(...) {
@@ -65,15 +73,12 @@ local({
   }
   opts <- list(use_rstudioapi = FALSE, plot_backend = "standard")
   listen()
-  expect_error(do.call(env$connect, c(list(endpoint = endpoint), opts)),
-               "injected runtime failure")
+  expect_error(do.call(env$connect, c(list(endpoint = endpoint), opts)), "injected runtime failure")
   close_peer() # Transport connected and sent attach before runtime failed.
   expect_clean()
 
   callbacks <- list()
-  schedule <- function(callback, delay) {
-    callbacks[[length(callbacks) + 1L]] <<- callback
-  }
+  schedule <- function(callback, delay) callbacks[[length(callbacks) + 1L]] <<- callback
   tick <- function() {
     callback <- callbacks[[1L]]
     callbacks <<- callbacks[-1L]
