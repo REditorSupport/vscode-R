@@ -19,6 +19,7 @@ on:
       - '!.oxfmtrc.jsonc'
       - '!.oxlintrc.jsonc'
       - '!**/.lintr'
+      - '!arity.toml'
       - '!.vscode/**'
       - '!.agents/**'
       - '!.claude/**'
