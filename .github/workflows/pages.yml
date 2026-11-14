@@ -52,19 +52,19 @@ jobs:
         with:
           path: website/docs/.vitepress/dist
 
-  # TODO: Enable once a repository admin sets "Settings > Pages > Build and
-  # deployment > Source" to "GitHub Actions". Until then the deployment would
-  # fail, so only the build above runs.
-  # deploy:
-  #   if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
-  #   needs: build
-  #   runs-on: ubuntu-latest
-  #   permissions:
-  #     pages: write
-  #     id-token: write
-  #   environment:
-  #     name: github-pages
-  #     url: ${{ steps.deployment.outputs.page_url }}
-  #   steps:
-  #     - id: deployment
-  #       uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1
+  # Requires "Settings > Pages > Build and deployment > Source" to be set to
+  # "GitHub Actions". After enabling it, run this workflow manually to publish
+  # the site without waiting for a change under `website/`.
+  deploy:
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1
