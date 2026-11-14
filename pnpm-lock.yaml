@@ -40,8 +40,8 @@ importers:
         specifier: ^3.1.5
         version: 3.1.5
       '@types/mocha':
-        specifier: ^8.2.3
-        version: 8.2.3
+        specifier: ^10.0.10
+        version: 10.0.10
       '@types/node':
         specifier: ^22.20.5
         version: 22.20.5
@@ -949,9 +949,6 @@ packages:
 
   '@types/mocha@10.0.10':
     resolution: {integrity: sha512-xPyYSz1cMPnJQhl0CLMH68j3gprKZaTjG3s5Vi+fDgx+uhG9NOXwbVt52eFS8ECyXhyKcjDLCBEqBExKuiZb7Q==}
-
-  '@types/mocha@8.2.3':
-    resolution: {integrity: sha512-ekGvFhFgrc2zYQoX4JeZPmVzZxw6Dtllga7iGHzfbYIYkAMUx/sAFP2GdFpLff+vdHXu5fl7WX9AT+TtqYcsyw==}
 
   '@types/node@22.20.5':
     resolution: {integrity: sha512-U2+DNr+wSjpsTS/wZGYHq7GcwfuSmKiKvoPvK22zwTlRhU91yOniN4qRR5KhIjvif7ysw/dz/hKmfDH0Ris4aA==}
@@ -2948,8 +2945,6 @@ snapshots:
   '@types/istanbul-lib-coverage@2.0.6': {}
 
   '@types/mocha@10.0.10': {}
-
-  '@types/mocha@8.2.3': {}
 
   '@types/node@22.20.5':
     dependencies:
