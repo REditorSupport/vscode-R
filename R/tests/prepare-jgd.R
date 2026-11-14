@@ -482,6 +482,11 @@ local({
     ), stub_attach)
     startup_file <- file.path(profile_root, "startup.status")
     startup_profile <- file.path(profile_root, "run-profile.R")
+    # Publish completion only after profile.R returns, so the status file is final.
+    # Polling the status while the child replaces it fails on Windows: an open
+    # reader blocks the rename and a reader racing the rename gets Permission denied.
+    profile_done <- file.path(profile_root, "profile-done")
+    profile_done_temporary <- paste0(profile_done, ".tmp")
     writeLines(c(
         paste0("Sys.setenv(VSCODE_R_SESS_PKG_PATH=", r_literal(package), ","),
         paste0("  VSCODE_R_SESS_SOURCE_HELPER=", r_literal(source_helper), ","),
@@ -503,7 +508,10 @@ local({
         paste0("  R_PROFILE_USER_OLD=", r_literal(empty_user_profile), ","),
         "  SESS_PLOT_BACKEND='jgd', SESS_RSTUDIOAPI='FALSE', JGD_SOCKET='fixture-socket')",
         paste0("options(repos=c(CRAN=", r_literal(repo), "), pkgType='source')"),
-        "source(file.path(getwd(), 'R', 'profile.R'))"
+        paste0("tryCatch(source(file.path(getwd(), 'R', 'profile.R')), finally = {",
+               "writeLines('done', ", r_literal(profile_done_temporary), "); ",
+               "stopifnot(file.rename(", r_literal(profile_done_temporary), ", ",
+               r_literal(profile_done), ")) })")
     ), startup_profile)
     profile_result <- file.path(profile_root, "result")
     profile_process <- system2_with_child_environment(
@@ -514,22 +522,34 @@ local({
     )
     request <- wait_requests(profile_consent, 1L)
     answer_requests(request, "decline")
-    deadline <- Sys.time() + 30
-    while (!file.exists(profile_log) && Sys.time() < deadline) Sys.sleep(0.01)
-    if (!file.exists(profile_log)) stop("Declined startup profile did not connect sess.")
+    profile_logs <- function() {
+        # Redirected output can stay open briefly after the done marker on Windows.
+        unlist(lapply(c("stdout", "stderr"), function(name) {
+            path <- file.path(profile_root, name)
+            deadline <- Sys.time() + 10
+            repeat {
+                lines <- suppressWarnings(tryCatch(
+                    if (file.exists(path)) readLines(path, warn = FALSE) else character(),
+                    error = function(error) NULL
+                ))
+                if (!is.null(lines)) return(lines)
+                if (Sys.time() >= deadline) return(paste("could not read", path))
+                Sys.sleep(0.1)
+            }
+        }))
+    }
+    deadline <- Sys.time() + 60
+    while (!file.exists(profile_done) && Sys.time() < deadline) Sys.sleep(0.05)
+    if (!file.exists(profile_done)) {
+        stop("Declined startup profile did not finish: ", paste(profile_logs(), collapse = "\n"))
+    }
+    if (!file.exists(profile_log)) {
+        stop("Declined startup profile did not connect sess: ", paste(profile_logs(), collapse = "\n"))
+    }
     stopifnot(identical(readLines(profile_log), c("fixture-socket", "FALSE", "FALSE")))
     startup_status <- readLines(startup_file, warn = FALSE)
-    deadline <- Sys.time() + 10
-    while (length(startup_status) == 6L && startup_status[[6L]] == "pending" &&
-               Sys.time() < deadline) {
-        Sys.sleep(0.01)
-        startup_status <- readLines(startup_file, warn = FALSE)
-    }
     if (length(startup_status) != 6L || startup_status[[6L]] != "ready") {
-        logs <- unlist(lapply(c("stdout", "stderr"), function(name) {
-            path <- file.path(profile_root, name)
-            if (file.exists(path)) readLines(path, warn = FALSE) else character()
-        }))
+        logs <- profile_logs()
         stop("Unexpected profile startup status: ", paste(startup_status, collapse = " | "),
              " logs: ", paste(logs, collapse = "\n"))
     }
