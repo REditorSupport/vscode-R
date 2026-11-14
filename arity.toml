@@ -1,0 +1,27 @@
+# Arity formats and lints the R sources (R/, sess/, and R scripts elsewhere).
+# See https://arity.cc/reference/configuration.html
+
+[format]
+# Same width as the TypeScript sources (see .oxfmtrc.jsonc).
+line-width = 100
+# Build scripts rewrite sess/DESCRIPTION, so keep its layout as is.
+description = false
+
+[lint]
+ignore = [
+  # Test files rely on names attached by tinytest, and helper scripts are
+  # combined with source(), so cross-file names cannot be resolved statically.
+  # lintr's object_usage_linter is disabled for the same reason.
+  "undefined-symbol",
+  "unused-binding",
+  # `%||%` is only in base R since 4.4; the scripts run on the user's R.
+  "coalesce",
+  # Calls to unexported functions with `:::` are deliberate here.
+  "internal-function",
+  # Existing findings that are not addressed yet.
+  "roxygen-param",
+  "roxygen-return",
+  "shadowed-builtin",
+  "string-boundary",
+  "unnecessary-nesting",
+]
