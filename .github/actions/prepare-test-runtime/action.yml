@@ -1,0 +1,63 @@
+name: Prepare test runtime
+description: >-
+  Install R test dependencies, build the extension and bundled sess, install
+  sess, compile the tests and put arf on PATH (except on Windows). Run after
+  setup-test-tools.
+runs:
+  using: composite
+  steps:
+    - name: Install R test dependencies
+      uses: r-lib/actions/setup-r-dependencies@f9a764fea8d5c63df6ef9a5c7795bf7deb5d7e05 # v2
+      with:
+        working-directory: sess
+        # Keep Suggests for live plot tests. Install lintr/styler explicitly
+        # for Interactive tests; they are optional languageserver dependencies.
+        # renv is exercised by the Interactive library-isolation tests.
+        extra-packages: |
+          any::remotes
+          any::pkgbuild
+          any::languageserver
+          any::lintr
+          any::styler
+          any::renv
+    - run: pnpm run compile
+      shell: bash
+    - name: Install bundled sess with prepared dependencies
+      run: remotes::install_local('dist/resources/sess', dependencies = FALSE, upgrade = 'never', force = TRUE)
+      shell: Rscript {0}
+    - name: Verify live plot lifecycle dependencies
+      run: |
+        packages <- c("processx", "later", "jsonlite", "jgd", "httpgd", "svglite")
+        for (package in packages) {
+          message("Loading plot test dependency: ", package)
+          loadNamespace(package)
+        }
+        stopifnot(packageVersion("httpgd") >= "2.0.1")
+      shell: Rscript {0}
+    - name: Compile test files
+      run: pnpm run clean && pnpm exec tsc
+      shell: bash
+    - name: Install arf binary for Interactive tests
+      if: runner.os != 'Windows'
+      shell: bash
+      env:
+        RUNNER_OS_NAME: ${{ runner.os }}
+      run: |
+        ARF_ARCH="$(uname -m)"
+        if [ "${ARF_ARCH}" = "arm64" ]; then ARF_ARCH="aarch64"; fi
+        if [ "${RUNNER_OS_NAME}" = "macOS" ]; then
+          ARF_TARGET="${ARF_ARCH}-apple-darwin"
+        else
+          ARF_TARGET="${ARF_ARCH}-unknown-linux-gnu"
+        fi
+        ARF_ARCHIVE="arf-console-${ARF_TARGET}.tar.xz"
+        ARF_RELEASE="https://github.com/eitsupi/arf/releases/download/v0.5.3"
+        curl -fsSL "${ARF_RELEASE}/${ARF_ARCHIVE}" -o "${RUNNER_TEMP}/${ARF_ARCHIVE}"
+        curl -fsSL "${ARF_RELEASE}/sha256.sum" -o "${RUNNER_TEMP}/arf.sha256"
+        (cd "${RUNNER_TEMP}" && awk -v name="${ARF_ARCHIVE}" '$2 == name || $2 == "*" name' arf.sha256 > arf-selected.sha256 && test -s arf-selected.sha256 && shasum -a 256 -c arf-selected.sha256)
+        mkdir -p "${RUNNER_TEMP}/arf"
+        tar -xJf "${RUNNER_TEMP}/${ARF_ARCHIVE}" -C "${RUNNER_TEMP}/arf"
+        ARF_EXECUTABLE=$(find "${RUNNER_TEMP}/arf" -type f -name arf | head -n 1)
+        test -n "${ARF_EXECUTABLE}"
+        echo "$(dirname "${ARF_EXECUTABLE}")" >> "$GITHUB_PATH"
+        echo "ARF_PATH=${ARF_EXECUTABLE}" >> "$GITHUB_ENV"

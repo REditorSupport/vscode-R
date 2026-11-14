@@ -26,6 +26,7 @@ on:
       - '!.roborev/**'
       - '!scripts/benchmark-*'
       - '!.github/**'
+      - '.github/actions/**'
       - '.github/workflows/main.yml'
       - '.github/scripts/extension-version.js'
       - '.github/scripts/extension-version.test.js'
@@ -47,128 +48,75 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  test:
+  # Node and extension-host tests run as parallel jobs per OS. Both need the
+  # same R, sess and arf runtime, which the local composite actions set up.
+  test-node:
+    name: Node (${{ matrix.os }})
     env:
       VSCR_REQUIRE_PLOT_TESTS: '1'
-    # Split each OS into two parallel jobs so the slowest suites do not run
-    # back to back: R integration checks with Node tests, and extension-host
-    # tests. Both need the same R, sess, and arf setup.
     strategy:
       fail-fast: false
       matrix:
         os: [macos-latest, ubuntu-latest, windows-latest]
-        suite: [node, extension]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: r-lib/actions/setup-r@f9a764fea8d5c63df6ef9a5c7795bf7deb5d7e05 # v2
-        with:
-          use-public-rspm: true
-      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
-        with:
-          node-version: 24
-          cache: 'pnpm'
-      - run: pnpm install --frozen-lockfile
+      - uses: ./.github/actions/setup-test-tools
+      # Bootstrap checks run before R test dependencies are installed.
       - name: Verify sess source identity and bootstrap
-        if: matrix.suite == 'node'
         run: pnpm run test:sess-source
       - name: Verify managed tool library
-        if: matrix.suite == 'node'
         run: pnpm run test:tool-library
       - name: Verify managed tool consent
-        if: matrix.suite == 'node'
         run: pnpm run test:tool-consent
-      - name: Install R test dependencies
-        uses: r-lib/actions/setup-r-dependencies@f9a764fea8d5c63df6ef9a5c7795bf7deb5d7e05 # v2
-        with:
-          working-directory: sess
-          # Keep Suggests for live plot tests. Install lintr/styler explicitly
-          # for Interactive tests; they are optional languageserver dependencies.
-          # renv is exercised by the Interactive library-isolation tests.
-          extra-packages: |
-            any::remotes
-            any::pkgbuild
-            any::languageserver
-            any::lintr
-            any::styler
-            any::renv
-      - run: pnpm run compile
-      - name: Install bundled sess with prepared dependencies
-        run: remotes::install_local('dist/resources/sess', dependencies = FALSE, upgrade = 'never', force = TRUE)
-        shell: Rscript {0}
-      - name: Verify live plot lifecycle dependencies
-        run: |
-          packages <- c("processx", "later", "jsonlite", "jgd", "httpgd", "svglite")
-          for (package in packages) {
-            message("Loading plot test dependency: ", package)
-            loadNamespace(package)
-          }
-          stopifnot(packageVersion("httpgd") >= "2.0.1")
-        shell: Rscript {0}
+      - uses: ./.github/actions/prepare-test-runtime
       - name: Verify managed jgd preparation
-        if: matrix.suite == 'node'
         run: pnpm run test:prepare-jgd
       - name: Verify managed rstudioapi preparation
-        if: matrix.suite == 'node'
         run: pnpm run test:prepare-rstudioapi
       - name: Verify installed sess identity
-        if: matrix.suite == 'node'
         run: |
           source("R/sess_source.R")
           stopifnot(!sess_install_required("dist/resources/sess"))
         shell: Rscript {0}
       - name: Run sess tests
-        if: matrix.suite == 'node'
         run: tinytest::test_package("sess")
         shell: Rscript {0}
-      - name: Compile test files
-        run: pnpm run clean && pnpm exec tsc
-      - name: Install arf binary for Interactive tests
-        if: runner.os != 'Windows'
-        shell: bash
-        run: |
-          ARF_ARCH="$(uname -m)"
-          if [ "${ARF_ARCH}" = "arm64" ]; then ARF_ARCH="aarch64"; fi
-          if [ "${{ runner.os }}" = "macOS" ]; then
-            ARF_TARGET="${ARF_ARCH}-apple-darwin"
-          else
-            ARF_TARGET="${ARF_ARCH}-unknown-linux-gnu"
-          fi
-          ARF_ARCHIVE="arf-console-${ARF_TARGET}.tar.xz"
-          ARF_RELEASE="https://github.com/eitsupi/arf/releases/download/v0.5.3"
-          curl -fsSL "${ARF_RELEASE}/${ARF_ARCHIVE}" -o "${RUNNER_TEMP}/${ARF_ARCHIVE}"
-          curl -fsSL "${ARF_RELEASE}/sha256.sum" -o "${RUNNER_TEMP}/arf.sha256"
-          (cd "${RUNNER_TEMP}" && awk -v name="${ARF_ARCHIVE}" '$2 == name || $2 == "*" name' arf.sha256 > arf-selected.sha256 && test -s arf-selected.sha256 && shasum -a 256 -c arf-selected.sha256)
-          mkdir -p "${RUNNER_TEMP}/arf"
-          tar -xJf "${RUNNER_TEMP}/${ARF_ARCHIVE}" -C "${RUNNER_TEMP}/arf"
-          ARF_EXECUTABLE=$(find "${RUNNER_TEMP}/arf" -type f -name arf | head -n 1)
-          test -n "${ARF_EXECUTABLE}"
-          echo "$(dirname "${ARF_EXECUTABLE}")" >> "$GITHUB_PATH"
-          echo "ARF_PATH=${ARF_EXECUTABLE}" >> "$GITHUB_ENV"
       - name: Test persistent tmux sessions (Linux)
-        if: matrix.suite == 'node' && runner.os == 'Linux'
+        if: runner.os == 'Linux'
         run: |
           sudo apt-get update
           sudo apt-get install -y tmux
           VSCR_TEST_TMUX=1 pnpm exec mocha out/test/node/interactiveRuntime.test.js --ui tdd --timeout 60000 --grep "^Interactive real R runtime standalone agent survives its launcher process exiting$"
       - name: Run Node tests including live plot lifecycle tests
-        if: matrix.suite == 'node'
         run: pnpm run test:node
+  test-extension:
+    name: Extension (${{ matrix.os }})
+    env:
+      VSCR_REQUIRE_PLOT_TESTS: '1'
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/setup-test-tools
+      - uses: ./.github/actions/prepare-test-runtime
       - name: Run plot lifecycle extension tests (Linux)
-        if: matrix.suite == 'extension' && runner.os == 'Linux'
+        if: runner.os == 'Linux'
         run: xvfb-run -a pnpm run test:extension --label plot-lifecycle
       - name: Run plot lifecycle extension tests
-        if: matrix.suite == 'extension' && runner.os != 'Linux'
+        if: runner.os != 'Linux'
         run: pnpm run test:extension --label plot-lifecycle
       - name: Run extension tests (Linux)
-        if: matrix.suite == 'extension' && runner.os == 'Linux'
+        if: runner.os == 'Linux'
         run: xvfb-run -a pnpm run test:extension --label provider-tests --label editor-command-tests --label interactive-integration
       - name: Run extension tests
-        if: matrix.suite == 'extension' && runner.os != 'Linux'
+        if: runner.os != 'Linux'
         run: pnpm run test:extension --label provider-tests --label editor-command-tests --label interactive-integration
       - name: Preserve extension test failure logs
-        if: failure() && matrix.suite == 'extension'
+        if: failure()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: extension-test-logs-${{ runner.os }}
