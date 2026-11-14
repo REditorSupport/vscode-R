@@ -20,6 +20,40 @@ const REGISTRY_STEPS = [
     'Publish to Open VSX Registry',
 ];
 const RUN_JQ = '{total_count, workflow_runs: [.workflow_runs[] | {id, created_at, head_sha, head_branch, event}]}';
+// Changes limited to these paths do not affect the published extension, so a
+// scheduled run skips publication when nothing else changed since the last
+// published SHA. Anything not matched here is treated as relevant.
+// TODO: This list mirrors the repository layout file by file and is easy to
+// let drift. Moving the extension sources into a dedicated subdirectory (for
+// example `extensions/vscode-R/`) would let the filter shrink to that
+// directory plus a few shared build inputs.
+const IGNORED_PATH_PATTERNS = [
+    /^\.github\//,
+    /^src\/test\//,
+    /^sess\/tests\//,
+    /^R\/tests\//,
+    /^scripts\/benchmark-[^/]*$/,
+    /^scripts\/[^/]*\.test\.js$/,
+    /^\.vscode\//,
+    /^\.vscode-test\.mjs$/,
+    /^\.mocharc\.interactive\.cjs$/,
+    /^\.oxfmtrc\.jsonc$/,
+    /^\.oxlintrc\.jsonc$/,
+    /^\.markdownlint\.json$/,
+    /^\.gitignore$/,
+    /^cliff\.toml$/,
+    /^CONTRIBUTING\.md$/,
+    /^CHANGELOG\.old\.md$/,
+    /^AGENTS\.md$/,
+    /^\.(?:agents|claude|codex|roborev)\//,
+];
+// Files under ignored directories that still determine the packaged VSIX.
+const RELEVANT_PATH_EXCEPTIONS = new Set([
+    '.github/scripts/extension-version.js',
+    '.github/workflows/main.yml',
+    '.github/workflows/release.yml',
+]);
+const GIT_TIMEOUT_MS = 120000;
 const JOBS_JQ = '{total_count, jobs: [.jobs[] | {name, run_attempt, steps: [(.steps // [])[] | select(.name == "Publish to Visual Studio Marketplace" or .name == "Publish to Open VSX Registry") | {name, status, conclusion}]}]}';
 
 function pagesToItems(pages, property) {
@@ -154,6 +188,28 @@ function completedBothRegistries(jobs) {
         step.name === name && step.status === 'completed' && step.conclusion === 'success'));
 }
 
+function isRelevantPath(path) {
+    return RELEVANT_PATH_EXCEPTIONS.has(path) || !IGNORED_PATH_PATTERNS.some((pattern) => pattern.test(path));
+}
+
+function createGitChangedFiles(execFile = execFileSync) {
+    const git = (args) => execFile('git', args, {
+        encoding: 'utf8',
+        stdio: ['ignore', 'pipe', 'pipe'],
+        timeout: GIT_TIMEOUT_MS,
+        maxBuffer: 64 * 1024 * 1024,
+    });
+    return function listChangedFiles(base, head) {
+        // A two-endpoint tree diff needs both commits but not the history
+        // between them, so fetching the base into a shallow clone is enough.
+        git(['fetch', '--no-tags', '--depth=1', 'origin', base]);
+        // Without rename detection, moving a file across the ignore boundary
+        // still reports the relevant side.
+        const output = git(['diff', '--no-renames', '--name-only', '-z', base, head, '--']);
+        return output.split('\0').filter((path) => path !== '');
+    };
+}
+
 function utcDate(run) {
     if (typeof run.created_at !== 'string' || !/^\d{4}-\d{2}-\d{2}T/.test(run.created_at)) {
         throw new Error(`Workflow run ${run.id} has an invalid created_at`);
@@ -161,7 +217,7 @@ function utcDate(run) {
     return run.created_at.slice(0, 10);
 }
 
-async function decidePublication({ api, repository, runId, sha }) {
+async function decidePublication({ api, repository, runId, sha, listChangedFiles }) {
     const currentRun = await api.getRun(repository, runId);
     if (String(currentRun.id) !== String(runId) || currentRun.head_sha !== sha || currentRun.head_branch !== 'main') {
         throw new Error('Current run identity does not match the requested main branch run');
@@ -219,9 +275,31 @@ async function decidePublication({ api, repository, runId, sha }) {
         for (let index = end - 1; index >= start; index -= 1) {
             const jobs = await jobsFor(runs[index]);
             if (completedBothRegistries(jobs)) {
-                return runs[start].head_sha === sha
-                    ? { publish: false, date: runDate, reason: 'unchanged' }
-                    : { publish: true, date: runDate, reason: 'new-sha' };
+                const publishedSha = runs[start].head_sha;
+                if (publishedSha === sha) {
+                    return { publish: false, date: runDate, reason: 'unchanged' };
+                }
+                // Manual runs are explicit requests and bypass the path filter.
+                if (!listChangedFiles || currentRun.event !== 'schedule') {
+                    return { publish: true, date: runDate, reason: 'new-sha' };
+                }
+                // A full rerun repeats this preparation. Once an earlier attempt
+                // of this run started publishing, keep it eligible so the retry
+                // can complete the other registry, even if the diff now succeeds
+                // with a different result than the attempt that published.
+                if (didAttemptPublication(await jobsFor(currentRun))) {
+                    return { publish: true, date: runDate, reason: 'retry-after-attempt' };
+                }
+                let changedFiles;
+                try {
+                    changedFiles = await listChangedFiles(publishedSha, sha);
+                } catch (error) {
+                    console.warn(`Could not list changes since ${publishedSha}; publishing anyway.`, error);
+                    return { publish: true, date: runDate, reason: 'diff-unavailable' };
+                }
+                return changedFiles.some(isRelevantPath)
+                    ? { publish: true, date: runDate, reason: 'new-sha' }
+                    : { publish: false, date: runDate, reason: 'no-relevant-changes' };
             }
         }
         start = end;
@@ -234,7 +312,11 @@ async function main() {
     if (!repository || !runId || !sha || !outputPath) {
         throw new Error('Required GitHub Actions environment variables are missing');
     }
-    const decision = await decidePublication({ api: createGhApi(), repository, runId, sha });
+    // Only the preparation job filters by path. Publication rechecks must not
+    // repeat it: a fetch that fails in one registry job and succeeds in the
+    // other would publish to only one registry.
+    const listChangedFiles = process.env.PRERELEASE_PATH_FILTER === 'true' ? createGitChangedFiles() : undefined;
+    const decision = await decidePublication({ api: createGhApi(), repository, runId, sha, listChangedFiles });
     appendFileSync(outputPath, `date=${decision.date}\npublish=${decision.publish}\n`);
     console.log(decision.publish ? `Publish pre-release for ${decision.date} (${decision.reason}).` : `Skip pre-release (${decision.reason}).`);
 }
@@ -246,4 +328,4 @@ if (require.main === module) {
     });
 }
 
-module.exports = { decidePublication, didAttemptPublication, completedBothRegistries, pagesToItems, completePagesToItems, createGhApi };
+module.exports = { decidePublication, isRelevantPath, createGitChangedFiles, didAttemptPublication, completedBothRegistries, pagesToItems, completePagesToItems, createGhApi };
