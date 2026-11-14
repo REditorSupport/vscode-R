@@ -1,9 +1,11 @@
 # Bootstrap and dispatch entry points are private; explicit user APIs stay public.
 ns <- asNamespace("sess")
 internal <- c("interactive_start", "interactive_execute")
-expect_true(all(vapply(internal, function(n) {
-  exists(n, ns, mode = "function", inherits = FALSE)
-}, FALSE)))
+expect_true(all(vapply(
+  internal,
+  function(n) exists(n, ns, mode = "function", inherits = FALSE),
+  FALSE
+)))
 expect_false(any(internal %in% getNamespaceExports(ns)))
 expect_true(all(c("display", "interactive_stop") %in% getNamespaceExports(ns)))
 expect_false("sess" %in% names(getLoadedDLLs()))
@@ -49,10 +51,7 @@ local({
     sess:::.resolve_endpoint("explicit", env_endpoint = "env", env_discovery_file = ""),
     "explicit"
   )
-  expect_equal(
-    sess:::.resolve_endpoint(NULL, env_endpoint = "env", env_discovery_file = ""),
-    "env"
-  )
+  expect_equal(sess:::.resolve_endpoint(NULL, env_endpoint = "env", env_discovery_file = ""), "env")
 })
 
 # Canonical discovery uses SESS_DISCOVERY_FILE and versioned `endpoint`.
@@ -63,14 +62,14 @@ local({
   writeLines('{"version":1,"endpoint":"canonical-endpoint","terminalPid":321}', path)
   expect_equal(
     sess:::.resolve_endpoint(
-      NULL, env_endpoint = "environment-endpoint", env_discovery_file = path
+      NULL,
+      env_endpoint = "environment-endpoint",
+      env_discovery_file = path
     ),
     "environment-endpoint"
   )
   expect_equal(
-    sess:::.resolve_endpoint(
-      NULL, env_endpoint = "", env_discovery_file = path
-    ),
+    sess:::.resolve_endpoint(NULL, env_endpoint = "", env_discovery_file = path),
     "canonical-endpoint"
   )
 
@@ -78,7 +77,9 @@ local({
   expect_warning(
     expect_equal(
       sess:::.resolve_endpoint(
-        NULL, env_endpoint = "", env_discovery_file = paste0(path, ".missing")
+        NULL,
+        env_endpoint = "",
+        env_discovery_file = paste0(path, ".missing")
       ),
       ""
     ),
@@ -87,10 +88,7 @@ local({
 
   writeLines('{"version":2,"endpoint":"future-endpoint"}', path)
   expect_warning(
-    expect_equal(
-      sess:::.resolve_endpoint(NULL, env_endpoint = "", env_discovery_file = path),
-      ""
-    ),
+    expect_equal(sess:::.resolve_endpoint(NULL, env_endpoint = "", env_discovery_file = path), ""),
     "Unsupported session discovery version"
   )
 
@@ -114,10 +112,7 @@ local({
 
   writeLines('{"version":1,"pipe":"obsolete-field"}', path)
   expect_warning(
-    expect_equal(
-      sess:::.resolve_endpoint(NULL, env_endpoint = "", env_discovery_file = path),
-      ""
-    ),
+    expect_equal(sess:::.resolve_endpoint(NULL, env_endpoint = "", env_discovery_file = path), ""),
     "has no endpoint"
   )
 })
@@ -126,17 +121,22 @@ local({
 local({
   path <- tempfile(fileext = ".json")
   on.exit(unlink(path), add = TRUE)
-  writeLines(paste0(
-    '{"version":1,"endpoint":"sess-endpoint",',
-    '"futureRenderer":{"endpoint":"future-socket","version":99},',
-    '"env":{"JGD_SOCKET":"must-not-be-applied"}}'
-  ), path)
+  writeLines(
+    paste0(
+      '{"version":1,"endpoint":"sess-endpoint",',
+      '"futureRenderer":{"endpoint":"future-socket","version":99},',
+      '"env":{"JGD_SOCKET":"must-not-be-applied"}}'
+    ),
+    path
+  )
   expect_equal(sess:::.read_discovery_endpoint(path), "sess-endpoint")
   original_jgd <- Sys.getenv("JGD_SOCKET", unset = NA_character_)
-  on.exit({
-    if (is.na(original_jgd)) Sys.unsetenv("JGD_SOCKET") else
-      Sys.setenv(JGD_SOCKET = original_jgd)
-  }, add = TRUE)
+  on.exit(
+    {
+      if (is.na(original_jgd)) Sys.unsetenv("JGD_SOCKET") else Sys.setenv(JGD_SOCKET = original_jgd)
+    },
+    add = TRUE
+  )
   Sys.setenv(JGD_SOCKET = "external-socket")
   sess:::.configure_discovery_jgd(sess:::.read_discovery(path), TRUE)
   expect_equal(Sys.getenv("JGD_SOCKET"), "external-socket")

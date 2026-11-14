@@ -1,32 +1,49 @@
 # Rich events use pure R IPC; small stdout markers preserve console ordering.
 .interactive_event <- function(type, data = list()) {
-  if (!identical(.sess_env$interactive_pid, Sys.getpid())) return(invisible(NULL))
+  if (!identical(.sess_env$interactive_pid, Sys.getpid())) {
+    return(invisible(NULL))
+  }
   id <- .sess_env$interactive_id
   event <- c(list(type = type, executionId = if (is.null(id)) "" else id), data)
   json <- as.character(jsonlite::toJSON(
-    event, auto_unbox = TRUE, null = "null", na = "null", digits = NA
+    event,
+    auto_unbox = TRUE,
+    null = "null",
+    na = "null",
+    digits = NA
   ))
   # Bound encoded events before writing to the agent transport.
   # Agent-side display limits run only after parsing and cannot protect it from
   # oversized HTML, wide tables, or strings enlarged by JSON escaping.
   if (nchar(json, type = "bytes") > 2 * 1024 * 1024) {
-    json <- as.character(jsonlite::toJSON(list(
-      type = "truncated", executionId = if (is.null(id)) "" else id,
-      message = "Rich output exceeds 2 MiB; display a smaller preview or save it to a file."
-    ), auto_unbox = TRUE))
+    json <- as.character(jsonlite::toJSON(
+      list(
+        type = "truncated",
+        executionId = if (is.null(id)) "" else id,
+        message = "Rich output exceeds 2 MiB; display a smaller preview or save it to a file."
+      ),
+      auto_unbox = TRUE
+    ))
   }
   if (isTRUE(.sess_env$interactive_managed)) {
     .sess_env$interactive_event_counter <- .sess_env$interactive_event_counter + 1L
     event_id <- .sess_env$interactive_event_counter
-    rpc_send("interactive_event", list(eventId = event_id,
-                                       event = jsonlite::fromJSON(json, simplifyVector = FALSE)))
+    rpc_send(
+      "interactive_event",
+      list(eventId = event_id, event = jsonlite::fromJSON(json, simplifyVector = FALSE))
+    )
     reference <- jsonlite::toJSON(list(type = "event", eventId = event_id), auto_unbox = TRUE)
     encoded <- jsonlite::base64_enc(charToRaw(reference))
     marker <- paste0("\036", .sess_env$interactive_token, ":", encoded, "\037")
     # A stderr fence ensures the agent drains both pipes before finishing a cell.
     if (type == "finished") {
-      fence <- paste0("\036", .sess_env$interactive_token, ":",
-                      jsonlite::base64_enc(charToRaw('{"type":"flush"}')), "\037")
+      fence <- paste0(
+        "\036",
+        .sess_env$interactive_token,
+        ":",
+        jsonlite::base64_enc(charToRaw('{"type":"flush"}')),
+        "\037"
+      )
       .interactive_write(.sess_env$interactive_stderr, fence)
     }
     .interactive_write(.sess_env$interactive_stdout, marker)
@@ -45,15 +62,19 @@
 }
 
 .interactive_plot_context <- function(open_group = TRUE) {
-  if (requireNamespace("jgd", quietly = TRUE) &&
-        "jgd" %in% names(grDevices::dev.list())) {
+  if (requireNamespace("jgd", quietly = TRUE) && "jgd" %in% names(grDevices::dev.list())) {
     id <- .sess_env$interactive_id
     context <- as.character(jsonlite::toJSON(
-      list(executionId = if (is.null(id)) "" else id,
-           vscodeRExecutionId = if (is.null(id)) "" else id), auto_unbox = TRUE
+      list(
+        executionId = if (is.null(id)) "" else id,
+        vscodeRExecutionId = if (is.null(id)) "" else id
+      ),
+      auto_unbox = TRUE
     ))
     if (!is.null(id)) {
-      if (!identical(names(grDevices::dev.cur()), "jgd")) return(invisible(NULL))
+      if (!identical(names(grDevices::dev.cur()), "jgd")) {
+        return(invisible(NULL))
+      }
       try(jgd::jgd_frame_ext(context), silent = TRUE)
       device <- as.integer(grDevices::dev.cur())
       if (open_group && !device %in% .sess_env$interactive_plot_groups) {
@@ -62,15 +83,21 @@
       }
     } else {
       selected <- grDevices::dev.cur()
-      if (identical(names(selected), "jgd")) try(jgd::jgd_frame_ext(context), silent = TRUE)
+      if (identical(names(selected), "jgd")) {
+        try(jgd::jgd_frame_ext(context), silent = TRUE)
+      }
       devices <- grDevices::dev.list()
-      for (device in intersect(.sess_env$interactive_plot_groups,
-                               devices[names(devices) == "jgd"])) {
+      for (device in intersect(
+        .sess_env$interactive_plot_groups,
+        devices[names(devices) == "jgd"]
+      )) {
         grDevices::dev.set(device)
         try(jgd::jgd_end_group(), silent = TRUE)
         try(jgd::jgd_frame_ext(context), silent = TRUE)
       }
-      if (selected %in% grDevices::dev.list()) grDevices::dev.set(selected)
+      if (selected %in% grDevices::dev.list()) {
+        grDevices::dev.set(selected)
+      }
       .sess_env$interactive_plot_groups <- integer()
     }
   }
@@ -78,8 +105,9 @@
 
 .interactive_plot_new_page <- function() {
   device <- as.integer(grDevices::dev.cur())
-  if (identical(names(grDevices::dev.cur()), "jgd") &&
-        device %in% .sess_env$interactive_plot_groups) {
+  if (
+    identical(names(grDevices::dev.cur()), "jgd") && device %in% .sess_env$interactive_plot_groups
+  ) {
     # Close our execution marker before JGD resets its groups at a page boundary.
     try(jgd::jgd_end_group(), silent = TRUE)
     .sess_env$interactive_plot_groups <- setdiff(.sess_env$interactive_plot_groups, device)
@@ -96,12 +124,16 @@ interactive_start <- function(config, managed = FALSE) {
     stop("This R process already belongs to an Interactive agent")
   }
   cfg <- jsonlite::read_json(config, simplifyVector = TRUE)
-  if (!interactive()) stop("The Interactive worker requires an interactive R frontend")
+  if (!interactive()) {
+    stop("The Interactive worker requires an interactive R frontend")
+  }
   options(sess.quiet = TRUE)
   .sess_env$interactive_token <- cfg$token
   Sys.setenv(JGD_SOCKET = cfg$jgd, SESS_ENDPOINT = cfg$sess)
   connect(endpoint = cfg$sess, plot_backend = if (isTRUE(cfg$useJgd)) "jgd" else "standard")
-  if (is.null(.sess_env$con)) stop("Could not connect to the session agent")
+  if (is.null(.sess_env$con)) {
+    stop("Could not connect to the session agent")
+  }
   .sess_env$interactive_pid <- Sys.getpid()
   .sess_env$interactive_managed <- managed
   .sess_env$interactive_event_counter <- 0L
@@ -123,11 +155,17 @@ interactive_start <- function(config, managed = FALSE) {
   .sess_env$interactive_last_plot_data <- NULL
   if (isTRUE(cfg$useJgd)) {
     select_device <- grDevices::dev.set
-    .runtime_rebind("dev.set", function(which = grDevices::dev.next()) {
-      result <- select_device(which)
-      if (!is.null(.sess_env$interactive_id)) .interactive_plot_context()
-      invisible(result)
-    }, ns = "grDevices")
+    .runtime_rebind(
+      "dev.set",
+      function(which = grDevices::dev.next()) {
+        result <- select_device(which)
+        if (!is.null(.sess_env$interactive_id)) {
+          .interactive_plot_context()
+        }
+        invisible(result)
+      },
+      ns = "grDevices"
+    )
   }
   # Hooks also run through references already imported by stats/lattice.
   # Rebinding plot.new/grid.newpage misses those references and loses pages.
@@ -139,7 +177,8 @@ interactive_start <- function(config, managed = FALSE) {
           current <- grDevices::dev.cur()
           owned <- current == 1L || current == getOption("sess.null_dev", -1L)
           # plot.new is also called for each panel of mfrow/mfcol/layout.
-          new_page <- !isTRUE(.sess_env$interactive_capturing) && owned &&
+          new_page <- !isTRUE(.sess_env$interactive_capturing) &&
+            owned &&
             (grid_page || current == 1L || isTRUE(graphics::par("page")))
           if (new_page) {
             .interactive_capture_plot()
@@ -158,13 +197,15 @@ interactive_start <- function(config, managed = FALSE) {
   }
   device <- getOption("device")
   if (is.function(device)) {
-    options(device = local({
-      original <- device
-      function(...) {
-        original(...)
-        .interactive_plot_context(open_group = FALSE)
-      }
-    }))
+    options(
+      device = local({
+        original <- device
+        function(...) {
+          original(...)
+          .interactive_plot_context(open_group = FALSE)
+        }
+      })
+    )
   }
   if (!managed) {
     .sess_env$interactive_skip_task <- TRUE
@@ -174,16 +215,25 @@ interactive_start <- function(config, managed = FALSE) {
         return(TRUE)
       }
       if (is.null(.sess_env$interactive_id)) {
-        .interactive_event("external", list(code = paste(deparse(expr), collapse = "\n"),
-                                            success = ok))
+        .interactive_event(
+          "external",
+          list(code = paste(deparse(expr), collapse = "\n"), success = ok)
+        )
       }
       TRUE
     })
   }
-  .interactive_event("ready", list(pid = Sys.getpid(), version = R.version.string,
-                                   rPath = file.path(R.home("bin"), "R"),
-                                   libraryPaths = as.list(.libPaths()),
-                                   sessionId = .session_id(), nativeConsole = FALSE))
+  .interactive_event(
+    "ready",
+    list(
+      pid = Sys.getpid(),
+      version = R.version.string,
+      rPath = file.path(R.home("bin"), "R"),
+      libraryPaths = as.list(.libPaths()),
+      sessionId = .session_id(),
+      nativeConsole = FALSE
+    )
+  )
   invisible(NULL)
 }
 
@@ -195,8 +245,12 @@ interactive_start <- function(config, managed = FALSE) {
 #' @keywords internal
 interactive_execute <- function(id, code, source = NULL) {
   .sess_env$interactive_skip_task <- TRUE
-  if (!isTRUE(.sess_env$interactive_connected)) stop("No Interactive agent connected")
-  if (!is.null(.sess_env$interactive_id)) stop("R is already executing an Interactive request")
+  if (!isTRUE(.sess_env$interactive_connected)) {
+    stop("No Interactive agent connected")
+  }
+  if (!is.null(.sess_env$interactive_id)) {
+    stop("R is already executing an Interactive request")
+  }
   if (!is.character(id) || length(id) != 1L || !grepl("^[a-zA-Z0-9_-]{1,100}$", id)) {
     stop("Invalid execution identifier")
   }
@@ -206,13 +260,16 @@ interactive_execute <- function(id, code, source = NULL) {
   assign(id, TRUE, envir = .sess_env$interactive_seen)
   .sess_env$interactive_id <- id
   .sess_env$interactive_plot_groups <- integer()
-  on.exit({
-    # Live full-table viewers must discard cached filter/sort indices after code
-    # may have edited their data by reference (including failed executions).
-    .sess_env$dataview_revision <- (.sess_env$dataview_revision %||% 0) + 1
-    .sess_env$interactive_id <- NULL
-    .interactive_plot_context()
-  }, add = TRUE)
+  on.exit(
+    {
+      # Live full-table viewers must discard cached filter/sort indices after code
+      # may have edited their data by reference (including failed executions).
+      .sess_env$dataview_revision <- (.sess_env$dataview_revision %||% 0) + 1
+      .sess_env$interactive_id <- NULL
+      .interactive_plot_context()
+    },
+    add = TRUE
+  )
   state <- "success"
   trace_state <- new.env(parent = emptyenv())
   trace_state$depth <- 0L
@@ -228,21 +285,43 @@ interactive_execute <- function(id, code, source = NULL) {
     if (length(frames) >= 3L && identical(calls[[frames[[1L]]]], wrapper)) {
       frames <- frames[-seq_len(3L)]
     }
-    handlers <- list(on_error, on_warning, on_message, diagnostic,
-                     base::.handleSimpleError, base::.signalSimpleWarning,
-                     base::signalCondition)
-    internal <- vapply(frames, function(frame) {
-      any(vapply(handlers, function(fun) identical(sys.function(frame), fun), FALSE))
-    }, FALSE)
-    if (any(internal)) frames <- frames[seq_len(which(internal)[[1L]] - 1L)]
+    handlers <- list(
+      on_error,
+      on_warning,
+      on_message,
+      diagnostic,
+      base::.handleSimpleError,
+      base::.signalSimpleWarning,
+      base::signalCondition
+    )
+    internal <- vapply(
+      frames,
+      function(frame) {
+        any(vapply(handlers, function(fun) identical(sys.function(frame), fun), FALSE))
+      },
+      FALSE
+    )
+    if (any(internal)) {
+      frames <- frames[seq_len(which(internal)[[1L]] - 1L)]
+    }
     trace <- as.list(vapply(calls[frames], function(x) paste(deparse(x), collapse = " "), ""))
-    .interactive_event("condition", list(kind = kind, message = conditionMessage(cnd),
-                                         call = paste(deparse(conditionCall(cnd)), collapse = "\n"),
-                                         trace = trace))
+    .interactive_event(
+      "condition",
+      list(
+        kind = kind,
+        message = conditionMessage(cnd),
+        call = paste(deparse(conditionCall(cnd)), collapse = "\n"),
+        trace = trace
+      )
+    )
   }
   on_warning <- function(cnd) {
-    if (getOption("warn") >= 2) return()
-    if (getOption("warn") >= 0) diagnostic(cnd, "warning")
+    if (getOption("warn") >= 2) {
+      return()
+    }
+    if (getOption("warn") >= 0) {
+      diagnostic(cnd, "warning")
+    }
     invokeRestart("muffleWarning")
   }
   on_message <- function(cnd) {
@@ -273,14 +352,9 @@ interactive_execute <- function(id, code, source = NULL) {
     }
   }
   tryCatch(
-    withCallingHandlers(evaluate(),
-                        warning = on_warning, message = on_message, error = on_error),
-    error = function(cnd) {
-      state <<- "error"
-    },
-    interrupt = function(cnd) {
-      state <<- "interrupted"
-    }
+    withCallingHandlers(evaluate(), warning = on_warning, message = on_message, error = on_error),
+    error = function(cnd) state <<- "error",
+    interrupt = function(cnd) state <<- "interrupted"
   )
   .interactive_capture_plot()
   .interactive_event("finished", list(state = state))
@@ -288,61 +362,87 @@ interactive_execute <- function(id, code, source = NULL) {
 }
 
 .interactive_capture_plot <- function() {
-  if (!isTRUE(.sess_env$interactive_static) ||
-        isTRUE(.sess_env$interactive_capturing) ||
-        grDevices::dev.cur() != getOption("sess.null_dev", -1L)) return()
+  if (
+    !isTRUE(.sess_env$interactive_static) ||
+      isTRUE(.sess_env$interactive_capturing) ||
+      grDevices::dev.cur() != getOption("sess.null_dev", -1L)
+  ) {
+    return()
+  }
   .sess_env$interactive_capturing <- TRUE
-  on.exit({
-    .sess_env$interactive_capturing <- FALSE
-  }, add = TRUE)
+  on.exit(
+    {
+      .sess_env$interactive_capturing <- FALSE
+    },
+    add = TRUE
+  )
   record <- tryCatch(grDevices::recordPlot(), error = function(e) NULL)
-  if (is.null(record)) return()
+  if (is.null(record)) {
+    return()
+  }
   commands <- as.list(record[[1L]])
   # Trailing par()/layout() calls configure future drawing; they do not paint this page.
   # Comparing the whole record also compares graphics state changed by par().
   while (length(commands)) {
     routine <- commands[[length(commands)]][[2L]][[1L]]
-    if (!is.list(routine) || !routine$name %in% c("C_par", "C_layout")) break
+    if (!is.list(routine) || !routine$name %in% c("C_par", "C_layout")) {
+      break
+    }
     commands <- head(commands, -1L)
   }
-  if (!length(commands) || identical(commands, .sess_env$interactive_last_plot)) return()
+  if (!length(commands) || identical(commands, .sess_env$interactive_last_plot)) {
+    return()
+  }
   .sess_env$interactive_last_plot <- commands
   .sess_env$latest_plot_record <- record
   plot <- handle_plot_latest(list(width = 800L, height = 600L, format = "svglite"))
   if (!is.null(plot$data)) {
     page <- .sess_env$interactive_plot_page
     # par() can change the display list without changing the rendered picture.
-    if (identical(page, .sess_env$interactive_last_plot_page) &&
-          identical(plot$data, .sess_env$interactive_last_plot_data)) return()
+    if (
+      identical(page, .sess_env$interactive_last_plot_page) &&
+        identical(plot$data, .sess_env$interactive_last_plot_data)
+    ) {
+      return()
+    }
     .sess_env$interactive_last_plot_page <- page
     .sess_env$interactive_last_plot_data <- plot$data
     mime <- if (identical(plot$format, "png")) "image/png" else "image/svg+xml"
-    .interactive_event("display", list(kind = "image", data = plot$data,
-                                       mime = mime,
-                                       displayId = paste("static", .sess_env$interactive_id,
-                                                         page, sep = "-")))
+    .interactive_event(
+      "display",
+      list(
+        kind = "image",
+        data = plot$data,
+        mime = mime,
+        displayId = paste("static", .sess_env$interactive_id, page, sep = "-")
+      )
+    )
   }
 }
 
 .interactive_table_text <- function(value) {
   file <- tempfile("table-print-")
   on.exit(unlink(file))
-  tryCatch({
-    # Use the class printer and current R options. A file bounds the amount we
-    # retain in memory even when a custom printer produces a very large table.
-    # Binary output keeps notebook newlines portable on Windows too.
-    connection <- file(file, open = "wb")
-    tryCatch(utils::capture.output(print(value), file = connection),
-             finally = close(connection))
-    limit <- 256L * 1024L
-    text <- readChar(file, nchars = limit, useBytes = TRUE)
-    if (!length(text)) text <- ""
-    text <- iconv(text, to = "UTF-8", sub = "")
-    if (file.info(file)$size > limit) {
-      text <- paste0(text, "\n[Printed preview truncated at 256 KiB]\n")
-    }
-    list(printedText = text)
-  }, error = function(e) list(printError = conditionMessage(e)))
+  tryCatch(
+    {
+      # Use the class printer and current R options. A file bounds the amount we
+      # retain in memory even when a custom printer produces a very large table.
+      # Binary output keeps notebook newlines portable on Windows too.
+      connection <- file(file, open = "wb")
+      tryCatch(utils::capture.output(print(value), file = connection), finally = close(connection))
+      limit <- 256L * 1024L
+      text <- readChar(file, nchars = limit, useBytes = TRUE)
+      if (!length(text)) {
+        text <- ""
+      }
+      text <- iconv(text, to = "UTF-8", sub = "")
+      if (file.info(file)$size > limit) {
+        text <- paste0(text, "\n[Printed preview truncated at 256 KiB]\n")
+      }
+      list(printedText = text)
+    },
+    error = function(e) list(printError = conditionMessage(e))
+  )
 }
 
 .interactive_table_snapshot <- function(value) {
@@ -374,10 +474,14 @@ interactive_execute <- function(id, code, source = NULL) {
     snapshot <- .interactive_table_snapshot(value)
     registration <- dataview_register(snapshot$value)
     metadata <- handle_dataview_init(list(view_id = registration$view_id))
-    preview <- handle_dataview_page(list(view_id = registration$view_id,
-                                         startRow = 0L, endRow = 20L,
-                                         formatNumbers = TRUE,
-                                         sortModel = list(), filterModel = list()))
+    preview <- handle_dataview_page(list(
+      view_id = registration$view_id,
+      startRow = 0L,
+      endRow = 20L,
+      formatNumbers = TRUE,
+      sortModel = list(),
+      filterModel = list()
+    ))
     printed <- .interactive_table_text(snapshot$value)
     full_view <- NULL
     if (snapshot$truncated) {
@@ -385,20 +489,30 @@ interactive_execute <- function(id, code, source = NULL) {
       # the expanded viewer can reflect later reference edits to this object.
       full_view <- dataview_register(value, live = TRUE)$view_id
       if (!is.null(printed$printedText)) {
-        note <-
-          sprintf("\n[Snapshot: first %s of %s rows. Open Data viewer for the full table.]\n",
-                  format(metadata$totalRows, big.mark = ",", scientific = FALSE, trim = TRUE),
-                  format(snapshot$source_rows, big.mark = ",", scientific = FALSE, trim = TRUE))
+        note <- sprintf(
+          "\n[Snapshot: first %s of %s rows. Open Data viewer for the full table.]\n",
+          format(metadata$totalRows, big.mark = ",", scientific = FALSE, trim = TRUE),
+          format(snapshot$source_rows, big.mark = ",", scientific = FALSE, trim = TRUE)
+        )
         printed$printedText <- paste0(printed$printedText, note)
       }
     }
-    .interactive_event("display", c(list(kind = "table", viewId = registration$view_id,
-                                         fullViewId = full_view,
-                                         sourceRows = snapshot$source_rows,
-                                         columns = metadata$columns, rows = preview$rows,
-                                         formattedColumns = preview$formattedColumns,
-                                         totalRows = metadata$totalRows),
-                                    printed))
+    .interactive_event(
+      "display",
+      c(
+        list(
+          kind = "table",
+          viewId = registration$view_id,
+          fullViewId = full_view,
+          sourceRows = snapshot$source_rows,
+          columns = metadata$columns,
+          rows = preview$rows,
+          formattedColumns = preview$formattedColumns,
+          totalRows = metadata$totalRows
+        ),
+        printed
+      )
+    )
     return(TRUE)
   }
   if (is.list(value) && !is.object(value)) {
@@ -407,9 +521,18 @@ interactive_execute <- function(id, code, source = NULL) {
     root <- listview_state(value, "List", paste0("interactive:", view_id))
     dataview_set_state(view_id, root)
     preview <- get_workspace_children(view_id = view_id)
-    .interactive_event("display", c(list(kind = "list", viewId = view_id,
-                                         navigation = listview_navigation(listview_location(root))),
-                                    preview, .interactive_table_text(value)))
+    .interactive_event(
+      "display",
+      c(
+        list(
+          kind = "list",
+          viewId = view_id,
+          navigation = listview_navigation(listview_location(root))
+        ),
+        preview,
+        .interactive_table_text(value)
+      )
+    )
     return(TRUE)
   }
   if (inherits(value, "htmlwidget") && requireNamespace("htmlwidgets", quietly = TRUE)) {
@@ -420,8 +543,10 @@ interactive_execute <- function(id, code, source = NULL) {
     .interactive_event("display", list(kind = "html", file = file))
     return(TRUE)
   }
-  if (inherits(value, c("shiny.tag", "shiny.tag.list", "html")) &&
-        requireNamespace("htmltools", quietly = TRUE)) {
+  if (
+    inherits(value, c("shiny.tag", "shiny.tag.list", "html")) &&
+      requireNamespace("htmltools", quietly = TRUE)
+  ) {
     directory <- tempfile("html-")
     dir.create(directory)
     file <- file.path(directory, "index.html")
@@ -441,8 +566,10 @@ display <- function(x, mime = NULL) {
   if (!isTRUE(.sess_env$interactive_connected)) {
     print(x)
   } else if (!is.null(mime)) {
-    .interactive_event("display", list(kind = "mime", mime = mime,
-                                       text = paste(as.character(x), collapse = "\n")))
+    .interactive_event(
+      "display",
+      list(kind = "mime", mime = mime, text = paste(as.character(x), collapse = "\n"))
+    )
   } else if (!.interactive_rich_value(x)) {
     print(x)
   }

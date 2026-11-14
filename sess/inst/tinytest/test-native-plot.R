@@ -29,18 +29,23 @@ local({
   original_plot_path <- state$latest_plot_path
   fallback_plot_path <- tempfile("sess-jgd-fallback-")
   state$latest_plot_path <- fallback_plot_path
-  on.exit({
-    sess:::runtime_stop()
-    options(device = original_device)
-    unlink(fallback_plot_path)
-    state$latest_plot_path <- original_plot_path
-  }, add = TRUE)
+  on.exit(
+    {
+      sess:::runtime_stop()
+      options(device = original_device)
+      unlink(fallback_plot_path)
+      state$latest_plot_path <- original_plot_path
+    },
+    add = TRUE
+  )
   env <- new.env(parent = asNamespace("sess"))
   env$.sess_env <- state
   env$runtime_start <- sess:::runtime_start
   environment(env$runtime_start) <- env
   env$requireNamespace <- function(package, ...) {
-    if (identical(package, "jgd")) stop("jgd lookup should be short-circuited")
+    if (identical(package, "jgd")) {
+      stop("jgd lookup should be short-circuited")
+    }
     base::requireNamespace(package, ...)
   }
   expect_warning(
@@ -59,10 +64,13 @@ local({
   original_grid_hook <- getHook("grid.newpage")
   original_devices <- grDevices::dev.list()
   options(device = sentinel_device)
-  on.exit({
-    sess:::runtime_stop()
-    options(device = original_device)
-  }, add = TRUE)
+  on.exit(
+    {
+      sess:::runtime_stop()
+      options(device = original_device)
+    },
+    add = TRUE
+  )
 
   sess:::runtime_start(use_rstudioapi = FALSE, plot_backend = "native")
   state <- sess:::.runtime_state()
@@ -109,26 +117,38 @@ local({
   } else {
     tempfile(fileext = ".sock")
   }
-  server <- tryCatch(processx::conn_create_unix_socket(endpoint, encoding = ""),
-                     error = function(e) NULL)
-  if (is.null(server)) return(invisible(NULL))
+  server <- tryCatch(
+    processx::conn_create_unix_socket(endpoint, encoding = ""),
+    error = function(e) NULL
+  )
+  if (is.null(server)) {
+    return(invisible(NULL))
+  }
   discovery <- tempfile(fileext = ".json")
-  writeLines(jsonlite::toJSON(list(version = 1L, endpoint = endpoint),
-                              auto_unbox = TRUE), discovery)
+  writeLines(
+    jsonlite::toJSON(list(version = 1L, endpoint = endpoint), auto_unbox = TRUE),
+    discovery
+  )
   old_discovery <- Sys.getenv("SESS_DISCOVERY_FILE", unset = NA_character_)
   Sys.setenv(SESS_DISCOVERY_FILE = discovery)
   sentinel_device <- function(...) stop("R's device option was used")
   original_device <- getOption("device")
   original_devices <- grDevices::dev.list()
   options(device = sentinel_device)
-  on.exit({
-    sess:::.transport_disconnect(silent = TRUE)
-    try(close(server), silent = TRUE)
-    unlink(c(discovery, if (.Platform$OS.type != "windows") endpoint))
-    if (is.na(old_discovery)) Sys.unsetenv("SESS_DISCOVERY_FILE") else
-      Sys.setenv(SESS_DISCOVERY_FILE = old_discovery)
-    options(device = original_device)
-  }, add = TRUE)
+  on.exit(
+    {
+      sess:::.transport_disconnect(silent = TRUE)
+      try(close(server), silent = TRUE)
+      unlink(c(discovery, if (.Platform$OS.type != "windows") endpoint))
+      if (is.na(old_discovery)) {
+        Sys.unsetenv("SESS_DISCOVERY_FILE")
+      } else {
+        Sys.setenv(SESS_DISCOVERY_FILE = old_discovery)
+      }
+      options(device = original_device)
+    },
+    add = TRUE
+  )
 
   env <- new.env(parent = asNamespace("sess"))
   env$connect <- sess::connect
@@ -137,11 +157,9 @@ local({
     processx::poll(list(server), 1000L)
     processx::conn_accept_unix_socket(server)
     processx::poll(list(server), 1000L)
-    expect_equal(jsonlite::fromJSON(processx::conn_read_chars(server))$method,
-                 "attach")
+    expect_equal(jsonlite::fromJSON(processx::conn_read_chars(server))$method, "attach")
   }
-  env$connect(endpoint = endpoint, use_rstudioapi = FALSE,
-              plot_backend = "native")
+  env$connect(endpoint = endpoint, use_rstudioapi = FALSE, plot_backend = "native")
   expect_true(isTRUE(sess:::.runtime_state()$active))
   expect_true(identical(getOption("device"), sentinel_device))
   expect_equal(grDevices::dev.list(), original_devices)

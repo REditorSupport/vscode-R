@@ -5,30 +5,51 @@ local({
   namespace <- asNamespace("sess")
   state <- get(".sess_env", namespace)
   fields <- c(
-    "con", "reconnect", "attachment_id", "auto_activate", "tempdir",
-    "latest_plot_path", "pending_responses", "read_buffer", "dataviews",
+    "con",
+    "reconnect",
+    "attachment_id",
+    "auto_activate",
+    "tempdir",
+    "latest_plot_path",
+    "pending_responses",
+    "read_buffer",
+    "dataviews",
     "dataview_registry"
   )
-  saved <- lapply(fields, function(name) {
-    list(exists = exists(name, envir = state, inherits = FALSE),
-         value = if (exists(name, envir = state, inherits = FALSE)) get(name, state) else NULL)
-  })
+  saved <- lapply(
+    fields,
+    function(name) {
+      list(
+        exists = exists(name, envir = state, inherits = FALSE),
+        value = if (exists(name, envir = state, inherits = FALSE)) get(name, state) else NULL
+      )
+    }
+  )
   names(saved) <- fields
   original_discovery <- Sys.getenv("SESS_DISCOVERY_FILE", unset = NA_character_)
   original_endpoint <- Sys.getenv("SESS_ENDPOINT", unset = NA_character_)
-  on.exit({
-    for (name in fields) {
-      if (saved[[name]]$exists) {
-        assign(name, saved[[name]]$value, envir = state)
-      } else if (exists(name, envir = state, inherits = FALSE)) {
-        rm(list = name, envir = state)
+  on.exit(
+    {
+      for (name in fields) {
+        if (saved[[name]]$exists) {
+          assign(name, saved[[name]]$value, envir = state)
+        } else if (exists(name, envir = state, inherits = FALSE)) {
+          rm(list = name, envir = state)
+        }
       }
-    }
-    if (is.na(original_discovery)) Sys.unsetenv("SESS_DISCOVERY_FILE") else
-      Sys.setenv(SESS_DISCOVERY_FILE = original_discovery)
-    if (is.na(original_endpoint)) Sys.unsetenv("SESS_ENDPOINT") else
-      Sys.setenv(SESS_ENDPOINT = original_endpoint)
-  }, add = TRUE)
+      if (is.na(original_discovery)) {
+        Sys.unsetenv("SESS_DISCOVERY_FILE")
+      } else {
+        Sys.setenv(SESS_DISCOVERY_FILE = original_discovery)
+      }
+      if (is.na(original_endpoint)) {
+        Sys.unsetenv("SESS_ENDPOINT")
+      } else {
+        Sys.setenv(SESS_ENDPOINT = original_endpoint)
+      }
+    },
+    add = TRUE
+  )
 
   env <- new.env(parent = namespace)
   env$.sess_env <- state
@@ -41,9 +62,7 @@ local({
     state$reconnect <- NULL
   }
   env$.resolve_plot_backend <- function(plot_backend) "standard"
-  env$.resolve_endpoint <- function(endpoint = NULL, ...) {
-    if (is.null(endpoint)) "" else endpoint
-  }
+  env$.resolve_endpoint <- function(endpoint = NULL, ...) if (is.null(endpoint)) "" else endpoint
 
   # Invalid new options must be rejected before the old transport is touched.
   sentinel <- new.env(parent = emptyenv())
@@ -68,9 +87,10 @@ local({
 
   # The returned attach metadata reflects an external connection, then resets
   # to the historical native shape on the next untagged connect call.
-  expect_warning(result <- env$connect(
-    endpoint = "", attachment_id = "console_7", auto_activate = FALSE
-  ), "Connection info not available")
+  expect_warning(
+    result <- env$connect(endpoint = "", attachment_id = "console_7", auto_activate = FALSE),
+    "Connection info not available"
+  )
   expect_false(result)
   metadata <- sess:::.session_attach_metadata()
   expect_equal(metadata$attachment_id, "console_7")

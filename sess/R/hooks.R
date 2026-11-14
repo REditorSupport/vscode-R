@@ -1,11 +1,17 @@
 .resolve_plot_backend <- function(plot_backend) {
-  if (is.null(plot_backend)) return("auto")
+  if (is.null(plot_backend)) {
+    return("auto")
+  }
   match.arg(plot_backend, c("auto", "jgd", "httpgd", "standard", "native"))
 }
 
 .select_plot_backend <- function(plot_backend, has_httpgd, has_jgd) {
-  if (plot_backend == "native") return("native")
-  if (plot_backend %in% c("auto", "jgd") && has_jgd) return("jgd")
+  if (plot_backend == "native") {
+    return("native")
+  }
+  if (plot_backend %in% c("auto", "jgd") && has_jgd) {
+    return("jgd")
+  }
   if (plot_backend %in% c("auto", "httpgd") && has_httpgd) return("httpgd")
   "standard"
 }
@@ -34,16 +40,22 @@
 # Send runtime notifications after task callbacks return, so transport failure
 # cannot remove the currently executing task callback during runtime cleanup.
 .defer_runtime_notification <- function(method, schedule = later::later) {
-  if (!isTRUE(.runtime_state()$active)) return(FALSE)
+  if (!isTRUE(.runtime_state()$active)) {
+    return(FALSE)
+  }
   force(method)
   generation <- .sess_env$transport_generation
-  schedule(function() {
-    if (!isTRUE(.runtime_state()$active) ||
-          !identical(generation, .sess_env$transport_generation)) {
-      return(invisible(NULL))
-    }
-    notify_client(method)
-  }, 0)
+  schedule(
+    function() {
+      if (
+        !isTRUE(.runtime_state()$active) || !identical(generation, .sess_env$transport_generation)
+      ) {
+        return(invisible(NULL))
+      }
+      notify_client(method)
+    },
+    0
+  )
   TRUE
 }
 
@@ -58,9 +70,11 @@
 #' @param allow_jgd Logical. Whether the jgd renderer may be selected.
 #'
 #' @keywords internal
-runtime_start <- function(use_rstudioapi = TRUE,
-                          plot_backend = c("auto", "jgd", "httpgd", "standard", "native"),
-                          allow_jgd = TRUE) {
+runtime_start <- function(
+  use_rstudioapi = TRUE,
+  plot_backend = c("auto", "jgd", "httpgd", "standard", "native"),
+  allow_jgd = TRUE
+) {
   plot_backend <- match.arg(plot_backend)
   if (!(is.logical(allow_jgd) && length(allow_jgd) == 1L && !is.na(allow_jgd))) {
     stop("allow_jgd must be a single non-NA logical value.", call. = FALSE)
@@ -79,13 +93,16 @@ runtime_start <- function(use_rstudioapi = TRUE,
   state$plot_backend <- plot_backend
   state$active <- TRUE
   completed <- FALSE
-  on.exit({
-    if (!completed) {
-      try(runtime_stop(), silent = TRUE)
-    } else {
-      .sess_env$runtime_start_phase <- NULL
-    }
-  }, add = TRUE)
+  on.exit(
+    {
+      if (!completed) {
+        try(runtime_stop(), silent = TRUE)
+      } else {
+        .sess_env$runtime_start_phase <- NULL
+      }
+    },
+    add = TRUE
+  )
 
   # 1. Override View() to serve table data via paged RPC.
   .sess_env$runtime_start_phase <- "view"
@@ -97,8 +114,11 @@ runtime_start <- function(use_rstudioapi = TRUE,
     # Capture the root before forcing x so View(x$a) shares the viewer for x.
     original_expression <- substitute(x)
     expression <- original_expression
-    while (is.call(expression) && is.symbol(expression[[1L]]) &&
-             as.character(expression[[1L]]) %in% c("$", "[[", "@")) {
+    while (
+      is.call(expression) &&
+        is.symbol(expression[[1L]]) &&
+        as.character(expression[[1L]]) %in% c("$", "[[", "@")
+    ) {
       expression <- expression[[2L]]
     }
     owner <- .sess_env$view_owner
@@ -107,8 +127,11 @@ runtime_start <- function(use_rstudioapi = TRUE,
     }
     force(title)
 
-    if (is.null(.sess_env$view_owner) && isTRUE(.sess_env$interactive_connected) &&
-          .interactive_rich_value(x)) {
+    if (
+      is.null(.sess_env$view_owner) &&
+        isTRUE(.sess_env$interactive_connected) &&
+        .interactive_rich_value(x)
+    ) {
       return(invisible(NULL))
     }
 
@@ -123,8 +146,9 @@ runtime_start <- function(use_rstudioapi = TRUE,
     owner <- owner %||% title_key
     registry_key <- paste0(view_type, ":", owner)
     dataview_registry <- .sess_env$dataview_registry
-    view_id <- if (nzchar(title_key) &&
-                     exists(registry_key, envir = dataview_registry, inherits = FALSE)) {
+    view_id <- if (
+      nzchar(title_key) && exists(registry_key, envir = dataview_registry, inherits = FALSE)
+    ) {
       get(registry_key, envir = dataview_registry, inherits = FALSE)
     } else {
       id <- dataview_new_id()
@@ -137,13 +161,16 @@ runtime_start <- function(use_rstudioapi = TRUE,
     if (view_type == "table") {
       registration <- dataview_register(x, view_id = view_id)
 
-      notify_client("dataview", list(
-        title = title,
-        source = "table",
-        type = "json",
-        view_id = registration$view_id,
-        state_generation = registration$state_generation
-      ))
+      notify_client(
+        "dataview",
+        list(
+          title = title,
+          source = "table",
+          type = "json",
+          view_id = registration$view_id,
+          state_generation = registration$state_generation
+        )
+      )
     } else if (view_type == "list") {
       context <- .sess_env$listview_context
       if (is.null(context) && missing(title)) {
@@ -156,26 +183,27 @@ runtime_start <- function(use_rstudioapi = TRUE,
         context$navigation
       }
       root <- dataview_set_state(view_id, root)
-      notify_client("dataview", list(
-        title = title,
-        source = view_type,
-        type = "json",
-        view_id = view_id,
-        state_generation = root$state_generation,
-        navigation = navigation
-      ))
+      notify_client(
+        "dataview",
+        list(
+          title = title,
+          source = view_type,
+          type = "json",
+          view_id = view_id,
+          state_generation = root$state_generation,
+          navigation = navigation
+        )
+      )
     } else {
       code <- if (is.primitive(x)) utils::capture.output(print(x)) else deparse(x)
       file_path <- .sess_env$dataviews[[view_id]]$file %||%
         tempfile(tmpdir = .sess_env$tempdir, fileext = ".R")
       writeLines(code, file_path)
       .sess_env$dataviews[[view_id]] <- list(type = "object", file = file_path)
-      notify_client("dataview", list(
-        title = title,
-        file = file_path,
-        source = "object",
-        type = "R"
-      ))
+      notify_client(
+        "dataview",
+        list(title = title, file = file_path, source = "object", type = "R")
+      )
     }
   }
   .runtime_rebind("View", show_dataview, ns = "utils")
@@ -186,9 +214,7 @@ runtime_start <- function(use_rstudioapi = TRUE,
     function(url, ...) {
       if (!is.character(url)) {
         real_url <- NULL
-        temp_viewer <- function(url, ...) {
-          real_url <<- url
-        }
+        temp_viewer <- function(url, ...) real_url <<- url
         op <- options(viewer = temp_viewer, page_viewer = temp_viewer, browser = temp_viewer)
         on.exit(options(op))
         print(url)
@@ -219,25 +245,23 @@ runtime_start <- function(use_rstudioapi = TRUE,
       file <- x[1]
       pkgname <- basename(dirname(dirname(file)))
       requestPath <- paste0("/library/", pkgname, "/html/", basename(file), ".html")
-      notify_client("help", list(
-        requestPath = requestPath
-      ))
+      notify_client("help", list(requestPath = requestPath))
     } else {
       utils:::print.help_files_with_topic(x, ...)
     }
     invisible(x)
   }
   .runtime_register_s3(
-    "print", "help_files_with_topic", sess_print.help_files_with_topic,
+    "print",
+    "help_files_with_topic",
+    sess_print.help_files_with_topic,
     envir = asNamespace("utils")
   )
 
   sess_print.hsearch <- function(x, ...) {
     if (length(x) >= 1) {
       requestPath <- paste0("/doc/html/Search?pattern=", tools:::escapeAmpersand(x$pattern))
-      notify_client("help", list(
-        requestPath = requestPath
-      ))
+      notify_client("help", list(requestPath = requestPath))
     } else {
       utils:::print.hsearch(x, ...)
     }
@@ -245,8 +269,10 @@ runtime_start <- function(use_rstudioapi = TRUE,
   }
   # 4. Plot device: JGD > httpgd > Standard, or no plot integration for native
   .sess_env$runtime_start_phase <- "plot"
-  has_jgd <- allow_jgd && plot_backend %in% c("auto", "jgd") &&
-    nzchar(Sys.getenv("JGD_SOCKET")) && requireNamespace("jgd", quietly = TRUE)
+  has_jgd <- allow_jgd &&
+    plot_backend %in% c("auto", "jgd") &&
+    nzchar(Sys.getenv("JGD_SOCKET")) &&
+    requireNamespace("jgd", quietly = TRUE)
   # The built-in client requires the 2.x renderer schema, including descr.
   has_httpgd <- plot_backend %in% c("auto", "httpgd") &&
     requireNamespace("httpgd", quietly = TRUE) &&
@@ -254,13 +280,17 @@ runtime_start <- function(use_rstudioapi = TRUE,
   selected_backend <- .select_plot_backend(plot_backend, has_httpgd, has_jgd)
   if (selected_backend == "jgd") {
     open_device <- jgd::jgd
-    .runtime_rebind("jgd", function(...) {
-      result <- open_device(...)
-      # Windows defers the renderer welcome until server_info is requested.
-      # Cache it while connected so explicit devices can be identified on reload.
-      tryCatch(jgd::jgd_server_info(), error = function(e) NULL)
-      invisible(result)
-    }, "jgd")
+    .runtime_rebind(
+      "jgd",
+      function(...) {
+        result <- open_device(...)
+        # Windows defers the renderer welcome until server_info is requested.
+        # Cache it while connected so explicit devices can be identified on reload.
+        tryCatch(jgd::jgd_server_info(), error = function(e) NULL)
+        invisible(result)
+      },
+      "jgd"
+    )
     open_jgd_device <- function(key = NULL, recorded = NULL, previous_device_id = NULL, ...) {
       jgd::jgd(...)
       .runtime_track_device()
@@ -270,20 +300,28 @@ runtime_start <- function(use_rstudioapi = TRUE,
       }
       devices <- .runtime_state()$devices
       devices[[length(devices)]]$key <- key
-      devices[[length(devices)]]$renderer_device_id <- unname(
-        jgd::jgd_server_info()$server_info["deviceId"]
-      )
+      devices[[length(devices)]]$renderer_device_id <- unname(jgd::jgd_server_info()$server_info[
+        "deviceId"
+      ])
       state$devices <- devices
       # Carry the logical device identity across a new renderer socket. Device
       # numbers and JGD's native counter can change when the device is reopened.
       set_identity <- function(restoring = FALSE) {
-        jgd::jgd_frame_ext(jsonlite::toJSON(list(vscodeR = list(
-          sessionId = .session_id(), host = unname(Sys.info()[["nodename"]]),
-          pid = as.character(Sys.getpid()),
-          rVer = sprintf("%s.%s", R.version$major, R.version$minor),
-          processExited = FALSE, deviceId = key, restoring = restoring,
-          previousDeviceId = previous_device_id
-        )), auto_unbox = TRUE))
+        jgd::jgd_frame_ext(jsonlite::toJSON(
+          list(
+            vscodeR = list(
+              sessionId = .session_id(),
+              host = unname(Sys.info()[["nodename"]]),
+              pid = as.character(Sys.getpid()),
+              rVer = sprintf("%s.%s", R.version$major, R.version$minor),
+              processExited = FALSE,
+              deviceId = key,
+              restoring = restoring,
+              previousDeviceId = previous_device_id
+            )
+          ),
+          auto_unbox = TRUE
+        ))
       }
       set_identity(!is.null(recorded))
       if (!is.null(recorded)) {
@@ -298,8 +336,10 @@ runtime_start <- function(use_rstudioapi = TRUE,
     previous <- grDevices::dev.cur()
     # Freeze eligibility before reopening can reuse a closed registration's number.
     device_entries <- get(".Devices", envir = baseenv())
-    retained <- Filter(function(entry) .runtime_device_is_live(entry, device_entries),
-                       .runtime_state()$devices)
+    retained <- Filter(
+      function(entry) .runtime_device_is_live(entry, device_entries),
+      .runtime_state()$devices
+    )
     # Explicit jgd::jgd() calls bypass our device factory. Recover live devices
     # belonging to VS Code too, leaving other renderers' devices untouched.
     devs <- grDevices::dev.list()
@@ -307,23 +347,33 @@ runtime_start <- function(use_rstudioapi = TRUE,
       grDevices::dev.set(id)
       info <- tryCatch(jgd::jgd_server_info(), error = function(e) NULL)
       previous_device_id <- unname(info$server_info["deviceId"])
-      if (length(previous_device_id) != 1L || is.na(previous_device_id) ||
-            !nzchar(previous_device_id)) {
+      if (
+        length(previous_device_id) != 1L || is.na(previous_device_id) || !nzchar(previous_device_id)
+      ) {
         previous_device_id <- NULL
       }
       # An explicit jgd() can reuse a managed device's number without calling
       # our factory. Only the renderer's per-connection ID proves continuity.
-      same_device <- vapply(retained, function(entry) {
-        entry$id == id && !is.null(previous_device_id) &&
-          identical(entry$renderer_device_id, previous_device_id)
-      }, logical(1))
-      if (any(same_device)) next
+      same_device <- vapply(
+        retained,
+        function(entry) {
+          entry$id == id &&
+            !is.null(previous_device_id) &&
+            identical(entry$renderer_device_id, previous_device_id)
+        },
+        logical(1)
+      )
+      if (any(same_device)) {
+        next
+      }
       retained <- Filter(function(entry) entry$id != id, retained)
       if (identical(info$server_name, "jgd-vscode")) {
         # JGD retains the renderer welcome even after its socket disconnects.
         # Carry its original identity so reconnect preserves the saved history.
         retained[[length(retained) + 1L]] <- list(
-          id = unname(id), name = "jgd", previous_device_id = previous_device_id
+          id = unname(id),
+          name = "jgd",
+          previous_device_id = previous_device_id
         )
       }
     }
@@ -331,7 +381,9 @@ runtime_start <- function(use_rstudioapi = TRUE,
     for (entry in retained) {
       devs <- grDevices::dev.list()
       index <- match(entry$id, devs)
-      if (is.na(index) || !identical(names(devs)[[index]], entry$name)) next
+      if (is.na(index) || !identical(names(devs)[[index]], entry$name)) {
+        next
+      }
       if (!identical(entry$name, "jgd")) {
         .runtime_track_device(entry$id)
         next
@@ -343,8 +395,14 @@ runtime_start <- function(use_rstudioapi = TRUE,
       dpi <- grDevices::dev.size("px")[[1L]] / size[[1L]]
       recorded <- tryCatch(grDevices::recordPlot(), error = function(e) NULL)
       tryCatch(grDevices::dev.off(entry$id), error = function(e) NULL)
-      open_jgd_device(entry$key, recorded, entry$previous_device_id,
-                      width = size[[1L]], height = size[[2L]], dpi = dpi)
+      open_jgd_device(
+        entry$key,
+        recorded,
+        entry$previous_device_id,
+        width = size[[1L]],
+        height = size[[2L]],
+        dpi = dpi
+      )
       if (identical(unname(previous), entry$id)) previous <- grDevices::dev.cur()
     }
     if (previous %in% grDevices::dev.list()) grDevices::dev.set(previous)
@@ -357,22 +415,33 @@ runtime_start <- function(use_rstudioapi = TRUE,
     # Auto is meant to degrade quietly.
     if (plot_backend %in% c("jgd", "httpgd")) {
       if (plot_backend == "jgd" && !allow_jgd) {
-        warning("[sess] Plot backend \"jgd\" was requested but jgd setup was not available. ",
-                "Falling back to the standard plot viewer. Check the jgd setup message, ",
-                "or change the r.plot.backend setting.", call. = FALSE)
+        warning(
+          "[sess] Plot backend \"jgd\" was requested but jgd setup was not available. ",
+          "Falling back to the standard plot viewer. Check the jgd setup message, ",
+          "or change the r.plot.backend setting.",
+          call. = FALSE
+        )
       } else if (plot_backend == "jgd" && !requireNamespace("jgd", quietly = TRUE)) {
-        warning("[sess] Plot backend \"jgd\" was requested but the jgd package ",
-                "is not installed. Falling back to the standard plot viewer. ",
-                "Install jgd, or change the r.plot.backend setting.", call. = FALSE)
+        warning(
+          "[sess] Plot backend \"jgd\" was requested but the jgd package ",
+          "is not installed. Falling back to the standard plot viewer. ",
+          "Install jgd, or change the r.plot.backend setting.",
+          call. = FALSE
+        )
       } else if (plot_backend == "jgd") {
-        warning("[sess] Plot backend \"jgd\" was requested but no renderer ",
-                "connection is available. Falling back to the standard plot ",
-                "viewer.", call. = FALSE)
+        warning(
+          "[sess] Plot backend \"jgd\" was requested but no renderer ",
+          "connection is available. Falling back to the standard plot ",
+          "viewer.",
+          call. = FALSE
+        )
       } else if (plot_backend == "httpgd") {
-        warning("[sess] Plot backend \"httpgd\" requires httpgd >= 2.0.1. ",
-                "Falling back to the standard plot viewer. ",
-                "Install or update httpgd, or change the r.plot.backend setting.",
-                call. = FALSE)
+        warning(
+          "[sess] Plot backend \"httpgd\" requires httpgd >= 2.0.1. ",
+          "Falling back to the standard plot viewer. ",
+          "Install or update httpgd, or change the r.plot.backend setting.",
+          call. = FALSE
+        )
       }
     }
 
@@ -386,9 +455,13 @@ runtime_start <- function(use_rstudioapi = TRUE,
     check_null_dev <- function() {
       cur <- grDevices::dev.cur()
       id <- getOption("sess.null_dev")
-      !is.null(id) && cur == id && any(vapply(state$devices, function(entry) {
-        entry$id == id && .runtime_device_is_live(entry)
-      }, logical(1)))
+      !is.null(id) &&
+        cur == id &&
+        any(vapply(
+          state$devices,
+          function(entry) entry$id == id && .runtime_device_is_live(entry),
+          logical(1)
+        ))
     }
 
     new_plot <- function() {
@@ -422,9 +495,7 @@ runtime_start <- function(use_rstudioapi = TRUE,
             }
           }
         },
-        error = function(e) {
-          warning("Error in sess update_plot: ", e$message)
-        }
+        error = function(e) warning("Error in sess update_plot: ", e$message)
       )
       TRUE
     }
@@ -434,19 +505,14 @@ runtime_start <- function(use_rstudioapi = TRUE,
 
     # Reattach refreshes the record without reopening a viewer the user closed.
     update_plot(notify = FALSE)
-    .runtime_add_task_callback(function(...) {
-      update_plot(...)
-    }, name = "sess.plot")
+    .runtime_add_task_callback(function(...) update_plot(...), name = "sess.plot")
   }
 
   # 5. rstudioapi hooks
   .sess_env$runtime_start_phase <- "rstudioapi"
   if (use_rstudioapi) {
-    rstudioapi_hook <- function(...) {
-      patch_rstudioapi()
-    }
-    .runtime_set_hook(packageEvent("rstudioapi", "onLoad"),
-                      rstudioapi_hook, action = "append")
+    rstudioapi_hook <- function(...) patch_rstudioapi()
+    .runtime_set_hook(packageEvent("rstudioapi", "onLoad"), rstudioapi_hook, action = "append")
 
     if ("rstudioapi" %in% loadedNamespaces()) {
       patch_rstudioapi()
@@ -470,7 +536,9 @@ runtime_start <- function(use_rstudioapi = TRUE,
     devs <- grDevices::dev.list()
     for (id in devs[names(devs) %in% c("httpgd", "unigd")]) {
       url <- tryCatch(httpgd::hgd_url(which = id), error = function(e) NULL)
-      if (!is.null(url)) notify_client("httpgd", list(url = url, restoring = TRUE))
+      if (!is.null(url)) {
+        notify_client("httpgd", list(url = url, restoring = TRUE))
+      }
       if (!isTRUE(state$active)) break
     }
   }

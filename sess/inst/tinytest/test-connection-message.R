@@ -5,10 +5,13 @@ local({
   }
 
   old_options <- options()[c("sess.quiet", "prompt")]
-  on.exit({
-    options(old_options)
-    sess:::.transport_disconnect(silent = TRUE)
-  }, add = TRUE)
+  on.exit(
+    {
+      options(old_options)
+      sess:::.transport_disconnect(silent = TRUE)
+    },
+    add = TRUE
+  )
 
   # Tests run non-interactively, so present an interactive console to connect().
   # .schedule_reconnect() is rebound too so that its retries call this copy.
@@ -24,11 +27,14 @@ local({
   connect_once <- function(quiet) {
     path <- tempfile(fileext = ".sock")
     server <- processx::conn_create_unix_socket(path, encoding = "")
-    on.exit({
-      sess:::.transport_disconnect(silent = TRUE)
-      try(close(server), silent = TRUE)
-      unlink(path)
-    }, add = TRUE)
+    on.exit(
+      {
+        sess:::.transport_disconnect(silent = TRUE)
+        try(close(server), silent = TRUE)
+        unlink(path)
+      },
+      add = TRUE
+    )
 
     options(sess.quiet = quiet)
     capture.output(do.call(env$connect, c(list(endpoint = path), opts)))
@@ -49,9 +55,7 @@ local({
 
   # Automatic reconnects print at an idle prompt, so each message redraws it.
   callbacks <- list()
-  schedule <- function(callback, delay) {
-    callbacks[[length(callbacks) + 1L]] <<- callback
-  }
+  schedule <- function(callback, delay) callbacks[[length(callbacks) + 1L]] <<- callback
   tick <- function() {
     callback <- callbacks[[1L]]
     callbacks <<- callbacks[-1L]
@@ -59,17 +63,26 @@ local({
   }
   replacement <- tempfile(fileext = ".sock")
   discovery <- tempfile(fileext = ".json")
-  writeLines(jsonlite::toJSON(list(version = 1L, endpoint = replacement),
-                              auto_unbox = TRUE), discovery)
+  writeLines(
+    jsonlite::toJSON(list(version = 1L, endpoint = replacement), auto_unbox = TRUE),
+    discovery
+  )
   server <- NULL
-  on.exit({
-    if (!is.null(server)) try(close(server), silent = TRUE)
-    unlink(c(replacement, discovery))
-  }, add = TRUE)
+  on.exit(
+    {
+      if (!is.null(server)) {
+        try(close(server), silent = TRUE)
+      }
+      unlink(c(replacement, discovery))
+    },
+    add = TRUE
+  )
 
   options(sess.quiet = FALSE)
-  env$.schedule_reconnect(list(path = discovery, endpoint = "old", options = opts),
-                          schedule = schedule)
+  env$.schedule_reconnect(
+    list(path = discovery, endpoint = "old", options = opts),
+    schedule = schedule
+  )
   not_listening <- tick()
   expect_true(any(grepl("\\[sess\\] Failed to connect", not_listening)))
   expect_equal(tail(not_listening, 1L), "custom prompt> ")

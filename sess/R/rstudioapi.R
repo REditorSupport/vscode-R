@@ -12,9 +12,7 @@ verifyAvailable <- function(version_needed = NULL) {
   getVersion() >= numeric_version(version_needed)
 }
 
-isAvailable <- function(version_needed = NULL, child_ok = FALSE) {
-  verifyAvailable(version_needed)
-}
+isAvailable <- function(version_needed = NULL, child_ok = FALSE) verifyAvailable(version_needed)
 
 insertText <- function(location, text, id = NULL) {
   if (missing(text) && is.character(location) && length(location) == 1) {
@@ -34,13 +32,18 @@ insertText <- function(location, text, id = NULL) {
   normalised_location <- normalise_pos_or_range_arg(location)
   normalised_text <- normalise_text_arg(text, length(normalised_location))
 
-  query <- mapply(function(location, text) {
-    list(
-      operation = if (rstudioapi::is.document_range(location)) "modifyRange" else "insertText",
-      location = serialize_location(location),
-      text = text
-    )
-  }, normalised_location, normalised_text, SIMPLIFY = FALSE)
+  query <- mapply(
+    function(location, text) {
+      list(
+        operation = if (rstudioapi::is.document_range(location)) "modifyRange" else "insertText",
+        location = serialize_location(location),
+        text = text
+      )
+    },
+    normalised_location,
+    normalised_text,
+    SIMPLIFY = FALSE
+  )
 
   invisible(request_client("rstudioapi/insert_or_modify_text", args = list(query = query, id = id)))
 }
@@ -81,11 +84,10 @@ showDialog <- function(title, message, url = "") {
 }
 
 navigateToFile <- function(file, line = 1L, column = 1L) {
-  invisible(request_client("rstudioapi/navigate_to_file", args = list(
-    file = normalizePath(file),
-    line = line,
-    column = column
-  )))
+  invisible(request_client(
+    "rstudioapi/navigate_to_file",
+    args = list(file = normalizePath(file), line = line, column = column)
+  ))
 }
 
 setSelectionRanges <- function(ranges, id = NULL) {
@@ -127,20 +129,22 @@ documentSaveAll <- function() {
   invisible(request_client("rstudioapi/document_save_all", args = list()))
 }
 
-documentNew <- function(text = "", type = c("r", "rmarkdown", "sql"),
-                        position = rstudioapi::document_position(1, 1),
-                        execute = FALSE) {
+documentNew <- function(
+  text = "",
+  type = c("r", "rmarkdown", "sql"),
+  position = rstudioapi::document_position(1, 1),
+  execute = FALSE
+) {
   if (!rstudioapi::is.document_position((position))) {
     stop("DocumentNew requires a document_position object")
   }
   if (length(text) != 1 || !is.character(text)) {
     stop("text for DocumentNew must be a length one character vector.")
   }
-  invisible(request_client("rstudioapi/document_new", args = list(
-    text = text,
-    type = match.arg(type),
-    position = serialize_pos(position)
-  )))
+  invisible(request_client(
+    "rstudioapi/document_new",
+    args = list(text = text, type = match.arg(type), position = serialize_pos(position))
+  ))
 }
 
 setDocumentContents <- function(text, id = NULL) {
@@ -155,9 +159,7 @@ restartSession <- function(command = "", clean = FALSE) {
   invisible(notify_client("restart_r", params = list(command = command, clean = clean)))
 }
 
-viewer <- function(url, height = NULL) {
-  notify_client("webview", list(url = url, title = "Viewer"))
-}
+viewer <- function(url, height = NULL) notify_client("webview", list(url = url, title = "Viewer"))
 
 page_viewer <- function(url, title = NULL) {
   notify_client(
@@ -170,7 +172,9 @@ getVersion <- function() numeric_version("0")
 
 versionInfo <- function() {
   list(
-    citation = "", mode = "generic-ipc", version = numeric_version("0"),
+    citation = "",
+    mode = "generic-ipc",
+    version = numeric_version("0"),
     release_name = "generic-ipc"
   )
 }
@@ -180,9 +184,10 @@ sendToConsole <- function(code, echo = TRUE, execute = TRUE, focus = TRUE, anima
     warning("rstudioapi::sendToConsole echo = FALSE is not supported in the generic IPC client.")
   }
   code_to_run <- paste0(code, collapse = "\n")
-  invisible(notify_client("rstudioapi/send_to_console", params = list(
-    code = code_to_run, execute = execute, focus = focus, animate = animate
-  )))
+  invisible(notify_client(
+    "rstudioapi/send_to_console",
+    params = list(code = code_to_run, execute = execute, focus = focus, animate = animate)
+  ))
 }
 
 documentClose <- function(id = NULL, save = TRUE) {
@@ -214,9 +219,10 @@ make_rs_range <- function(sess_selection) {
 
 extract_document_ranges <- function(sess_selections) {
   if (is.data.frame(sess_selections)) {
-    lapply(seq_len(nrow(sess_selections)), function(i) {
-      make_rs_range(as.list(sess_selections[i, , drop = FALSE]))
-    })
+    lapply(
+      seq_len(nrow(sess_selections)),
+      function(i) make_rs_range(as.list(sess_selections[i, , drop = FALSE]))
+    )
   } else {
     lapply(sess_selections, make_rs_range)
   }
@@ -253,7 +259,9 @@ extract_range_text <- function(range, content_lines) {
   # Adjust end
   if (end_row <= length(content_lines)) {
     content_rows[length(content_rows)] <- substring(
-      content_rows[length(content_rows)], 1, range$end["column"] - 1
+      content_rows[length(content_rows)],
+      1,
+      range$end["column"] - 1
     )
   }
 
@@ -264,16 +272,15 @@ extract_range_text <- function(range, content_lines) {
 }
 
 range_has_text <- function(range) {
-  (range$end["row"] - range$start["row"]) +
-    (range$end["column"] - range$start["column"]) > 0
+  (range$end["row"] - range$start["row"]) + (range$end["column"] - range$start["column"]) > 0
 }
 
 make_rs_document_selection <- function(ranges, range_texts) {
   structure(
     mapply(
-      function(range, text) {
-        list(range = range, text = text)
-      }, ranges, range_texts,
+      function(range, text) list(range = range, text = text),
+      ranges,
+      range_texts,
       SIMPLIFY = FALSE
     ),
     class = "document_selection"
@@ -285,12 +292,15 @@ make_rs_document_context <- function(editor_context) {
   content_lines <- to_content_lines(editor_context$contents, document_ranges)
   document_range_texts <- lapply(document_ranges, extract_range_text, content_lines)
   document_selection <- make_rs_document_selection(document_ranges, document_range_texts)
-  structure(list(
-    id = editor_context$id$external,
-    path = editor_context$path,
-    contents = content_lines,
-    selection = document_selection
-  ), class = "document_context")
+  structure(
+    list(
+      id = editor_context$id$external,
+      path = editor_context$path,
+      contents = content_lines,
+      selection = document_selection
+    ),
+    class = "document_context"
+  )
 }
 
 is_positionable <- function(p) is.numeric(p) && length(p) == 2
@@ -334,9 +344,7 @@ normalise_text_arg <- function(text, location_length) {
   }
 }
 
-serialize_pos <- function(pos) {
-  as.numeric(c(pos[["row"]], pos[["column"]]))
-}
+serialize_pos <- function(pos) as.numeric(c(pos[["row"]], pos[["column"]]))
 
 serialize_range <- function(range) {
   list(start = serialize_pos(range$start), end = serialize_pos(range$end))

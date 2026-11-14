@@ -28,15 +28,19 @@ local({
   prefix <- git(c("rev-parse", "--show-prefix"))
   # Bootstrap identifies committed sources. Refuse local source edits;
   # extension development builds identify their working tree separately.
-  status <- system2("git", c("diff", "--quiet", "HEAD", "--", ".",
-                           shQuote(":(exclude)DESCRIPTION")))
-  untracked <- system2("git", c("ls-files", "--others", "--exclude-standard", "."),
-                       stdout = TRUE)
+  status <- system2(
+    "git",
+    c("diff", "--quiet", "HEAD", "--", ".", shQuote(":(exclude)DESCRIPTION"))
+  )
+  untracked <- system2("git", c("ls-files", "--others", "--exclude-standard", "."), stdout = TRUE)
   if (status != 0L || length(untracked)) {
     stop("bootstrap.R requires committed sess sources")
   }
-  original <- system2("git", c("show", shQuote(paste0("HEAD:", prefix, "DESCRIPTION"))),
-                      stdout = TRUE)
+  original <- system2(
+    "git",
+    c("show", shQuote(paste0("HEAD:", prefix, "DESCRIPTION"))),
+    stdout = TRUE
+  )
   original_con <- textConnection(original)
   on.exit(close(original_con))
   original_desc <- read.dcf(original_con)

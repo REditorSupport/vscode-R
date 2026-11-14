@@ -2,10 +2,15 @@
 #' @keywords internal
 ipc_write <- function(data) {
   # Forked workers must never interleave frames on the parent Interactive socket.
-  if (isTRUE(.sess_env$interactive_connected) &&
-        !identical(.sess_env$interactive_pid, Sys.getpid())) return(invisible(FALSE))
+  if (
+    isTRUE(.sess_env$interactive_connected) && !identical(.sess_env$interactive_pid, Sys.getpid())
+  ) {
+    return(invisible(FALSE))
+  }
   con <- .sess_env$con
-  if (is.null(con)) return(invisible(FALSE))
+  if (is.null(con)) {
+    return(invisible(FALSE))
+  }
 
   json <- jsonlite::toJSON(data, auto_unbox = TRUE, null = "null", force = TRUE, digits = NA)
   line <- c(charToRaw(enc2utf8(json)), as.raw(0x0a))
@@ -41,11 +46,7 @@ rpc_send <- function(method, params = list(), request = FALSE) {
     return(invisible(FALSE))
   }
 
-  msg <- list(
-    jsonrpc = "2.0",
-    method = method,
-    params = params
-  )
+  msg <- list(jsonrpc = "2.0", method = method, params = params)
 
   req_id <- NULL
   if (request) {
@@ -54,7 +55,9 @@ rpc_send <- function(method, params = list(), request = FALSE) {
   }
 
   sent <- ipc_write(msg)
-  if (!isTRUE(sent)) return(invisible(FALSE))
+  if (!isTRUE(sent)) {
+    return(invisible(FALSE))
+  }
 
   if (!request) {
     invisible(TRUE)
@@ -66,7 +69,9 @@ rpc_send <- function(method, params = list(), request = FALSE) {
       Sys.sleep(0.01)
     }
 
-    if (is.null(.sess_env$con)) return(invisible(FALSE))
+    if (is.null(.sess_env$con)) {
+      return(invisible(FALSE))
+    }
 
     response <- .sess_env$pending_responses[[req_id]]
     .sess_env$pending_responses[[req_id]] <- NULL
@@ -96,6 +101,4 @@ notify_client <- function(method, params = list()) {
 #' @param action String of the action name
 #' @param args List of arguments
 #' @export
-request_client <- function(action, args = list()) {
-  rpc_send(action, args, request = TRUE)
-}
+request_client <- function(action, args = list()) rpc_send(action, args, request = TRUE)

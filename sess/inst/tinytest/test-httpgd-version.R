@@ -12,9 +12,7 @@ local({
   env <- new.env(parent = asNamespace("sess"))
   start <- sess:::runtime_start
   environment(start) <- env
-  env$requireNamespace <- function(package, ...) {
-    identical(package, "httpgd") && !is.null(version)
-  }
+  env$requireNamespace <- function(package, ...) identical(package, "httpgd") && !is.null(version)
   env$getNamespaceVersion <- function(package) version
   env$.install_httpgd_device_hook <- function() function(...) NULL
   versions <- list(NULL, "1.2.0", "2.0.0", "2.0.1", "2.1.4", "10.0.0")
@@ -32,7 +30,9 @@ local({
       )
       expect_equal("sess.plot" %in% getTaskCallbackNames(), !supported[i])
       expect_length(warnings, if (backend == "httpgd" && !supported[i]) 1L else 0L)
-      if (length(warnings)) expect_true(grepl("httpgd >= 2.0.1", warnings, fixed = TRUE))
+      if (length(warnings)) {
+        expect_true(grepl("httpgd >= 2.0.1", warnings, fixed = TRUE))
+      }
       sess:::runtime_stop()
     }
   }

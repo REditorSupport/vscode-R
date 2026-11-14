@@ -31,7 +31,8 @@ Run `pnpm run format` to format TypeScript files with Oxfmt, and
 `pnpm run format:check` to check formatting without changing files. CI runs the
 same check for pull requests and pushes to `main`. Formatting currently applies
 to TypeScript files only (`.ts`, `.tsx`, `.mts`, and `.cts`); other file types,
-including JavaScript, JSON, Markdown, YAML, R, C, and EJS files, are not formatted.
+including JavaScript, JSON, Markdown, YAML, C, and EJS files, are not formatted.
+R files are formatted separately, as described below.
 
 The checked-in `.oxfmtrc.jsonc` is shared by the CLI and the recommended Oxc
 VS Code extension, and its `ignorePatterns` restrict both to TypeScript files.
@@ -45,6 +46,14 @@ under `out/` or `dist/` if you open and save them.
 Workspace settings select Oxc as the formatter and enable format on save for
 TypeScript. Run `pnpm run lint` and `pnpm run typecheck` separately to check
 TypeScript code.
+
+R files are formatted and linted with [Arity](https://arity.cc), which
+`pnpm install` provides, so no R installation is needed. Run `pnpm run format:r`
+to format them, `pnpm run format:r:check` to check formatting without changing
+files, and `pnpm run lint:r` to lint them. `pnpm exec arity lint --fix .` applies
+the safe fixes. The configuration is in `arity.toml`. CI runs both checks, and
+also runs lintr with the `.lintr` files in `R/` and `sess/`; layout is left to
+the formatter, so lintr does not check line length or indentation.
 
 ## Building bundled sess
 
