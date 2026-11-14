@@ -35,3 +35,17 @@ updates:
       - dependency-name: "@types/node"
         update-types:
           - version-update:semver-major
+
+  # The documentation site is a standalone pnpm project.
+  - package-ecosystem: npm
+    directory: /website
+    commit-message:
+      prefix: "chore(website): "
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    groups:
+      website:
+        patterns:
+          - "*"

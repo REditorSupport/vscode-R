@@ -1,0 +1,7 @@
+# Makes `website` its own pnpm workspace root, so the documentation site keeps
+# a lockfile and dependencies separate from the extension at the repository
+# root.
+
+# esbuild's postinstall selects the platform-specific binary used by Vite.
+allowBuilds:
+  esbuild: true
