@@ -165,12 +165,31 @@ function treeTooltip(item: vscode.TreeItem): string {
             fs.rmSync(directory, { recursive: true, force: true }),
         );
     });
+    // Mocha does not await a test that exceeds its timeout, so a wait that
+    // outlives the test would run its cleanup while a later test is using the
+    // shared notebook and input. Every wait therefore ends early enough for
+    // the cleanup to finish before Mocha advances.
+    const cleanupReserveMs = 5000;
+    let runningTest: { test: Mocha.Runnable; started: number } | undefined;
+    setup(function () {
+        runningTest = this.currentTest && { test: this.currentTest, started: Date.now() };
+    });
+    teardown(() => {
+        runningTest = undefined;
+    });
     const until = async (
         predicate: () => boolean,
         timeoutMessage: string | (() => string) = 'Timed out waiting for notebook execution',
         timeoutMs = 20000,
     ): Promise<void> => {
-        const deadline = Date.now() + timeoutMs;
+        // Read the test timeout here because tests may raise it in their body.
+        const testTimeoutMs = runningTest?.test.timeout();
+        const deadline = Math.min(
+            Date.now() + timeoutMs,
+            runningTest && testTimeoutMs
+                ? runningTest.started + testTimeoutMs - cleanupReserveMs
+                : Infinity,
+        );
         while (!predicate()) {
             if (Date.now() > deadline) {
                 throw new Error(
@@ -180,8 +199,12 @@ function treeTooltip(item: vscode.TreeItem): string {
             await new Promise((resolve) => setTimeout(resolve, 50));
         }
     };
-    // languageserver lints after a debounce in a separate R process; on macOS
-    // runners a first lint occasionally takes longer than 20 seconds.
+    // languageserver starts and lints after a debounce in a separate R process;
+    // on macOS runners a first lint occasionally takes longer than 20 seconds.
+    // Tests that wait for it raise their timeout to cover every sequential wait.
+    const languageServerWaitMs = 45000;
+    const timeoutWithLanguageServerWaits = (waits: number): number =>
+        60000 + waits * languageServerWaitMs;
     const untilDiagnostics = (
         document: vscode.TextDocument,
         predicate: (diagnostics: readonly vscode.Diagnostic[]) => boolean,
@@ -199,7 +222,7 @@ function treeTooltip(item: vscode.TreeItem): string {
                         .getDiagnostics(document.uri)
                         .map((item) => `${item.range.start.line}: ${item.message}`),
                 )}`,
-            45000,
+            languageServerWaitMs,
         );
     function bundleContext(): vscode.ExtensionContext {
         return (
@@ -1207,7 +1230,8 @@ function treeTooltip(item: vscode.TreeItem): string {
             errors.restore();
         }
     });
-    test('lints Interactive cells and clears diagnostics after an edit', async () => {
+    test('lints Interactive cells and clears diagnostics after an edit', async function () {
+        this.timeout(timeoutWithLanguageServerWaits(2));
         const notebook = vscode.workspace.notebookDocuments.find(
             (doc) => doc.metadata.rSessionId === manifests[0].id,
         );
@@ -1240,7 +1264,8 @@ function treeTooltip(item: vscode.TreeItem): string {
         await vscode.workspace.applyEdit(fix);
         await untilDiagnostics(document, (items) => items.length === 0, 'diagnostics to clear');
     });
-    test('namespace linters work on virtual cells and diagnostics keep their cell identity', async () => {
+    test('namespace linters work on virtual cells and diagnostics keep their cell identity', async function () {
+        this.timeout(timeoutWithLanguageServerWaits(2));
         const notebook = vscode.workspace.notebookDocuments.find(
             (doc) => doc.metadata.rSessionId === manifests[0].id,
         );
@@ -1282,7 +1307,8 @@ function treeTooltip(item: vscode.TreeItem): string {
         await untilDiagnostics(bad, (items) => items.length === 0, 'diagnostics to clear');
     });
 
-    test('lints the Interactive input before execution', async () => {
+    test('lints the Interactive input before execution', async function () {
+        this.timeout(timeoutWithLanguageServerWaits(2));
         const document = vscode.workspace.textDocuments.find(
             (doc) => doc.uri.scheme === 'vscode-interactive-input' && doc.languageId === 'r',
         );
@@ -1326,7 +1352,8 @@ function treeTooltip(item: vscode.TreeItem): string {
             await vscode.workspace.applyEdit(reset);
         }
     });
-    test('formats typed Interactive input with its language server and preserves the cursor', async () => {
+    test('formats typed Interactive input with its language server and preserves the cursor', async function () {
+        this.timeout(timeoutWithLanguageServerWaits(2));
         const settings = vscode.workspace.getConfiguration('editor', { languageId: 'r' });
         const previous = settings.inspect<boolean>('formatOnType')?.globalLanguageValue;
         await settings.update('formatOnType', true, vscode.ConfigurationTarget.Global, true);
@@ -1359,7 +1386,7 @@ function treeTooltip(item: vscode.TreeItem): string {
                 () =>
                     languageService().clients.get(opened.inputUri.toString())?.isRunning() === true,
                 'Timed out waiting for the Interactive input language client to start',
-                45000,
+                languageServerWaitMs,
             );
             // Current servers register formatting dynamically after initialize;
             // the active provider also covers servers with static capabilities.
@@ -1370,7 +1397,7 @@ function treeTooltip(item: vscode.TreeItem): string {
                         ?.getFeature(DocumentOnTypeFormattingRequest.method)
                         .getProvider(document) !== undefined,
                 'languageserver must register on-type formatting for the Interactive input',
-                45000,
+                languageServerWaitMs,
             );
             try {
                 for (const [text, ch, expected] of [
@@ -1528,7 +1555,8 @@ function treeTooltip(item: vscode.TreeItem): string {
             await vscode.workspace.applyEdit(reset);
         }
     });
-    test('keeps blank Interactive prompts free of diagnostics while still linting nonempty input', async () => {
+    test('keeps blank Interactive prompts free of diagnostics while still linting nonempty input', async function () {
+        this.timeout(timeoutWithLanguageServerWaits(4));
         await vscode.commands.executeCommand('r.interactive.open', manifests[0]);
         const notebook = vscode.workspace.notebookDocuments.find(
             (doc) => doc.metadata.rSessionId === manifests[0].id,
@@ -1689,7 +1717,8 @@ function treeTooltip(item: vscode.TreeItem): string {
             await vscode.commands.executeCommand('r.interactive.open', manifests[0]);
         }
     });
-    test('keeps source-file diagnostics working with lint caching enabled', async () => {
+    test('keeps source-file diagnostics working with lint caching enabled', async function () {
+        this.timeout(timeoutWithLanguageServerWaits(2));
         // languageserver deliberately excludes files under the system temporary directory.
         const directory = fs.mkdtempSync(path.join(process.cwd(), '.r-interactive-source-'));
         try {
