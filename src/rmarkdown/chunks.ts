@@ -18,12 +18,17 @@ function isChunkStartLine(text: string, isRDoc: boolean) {
     }
 }
 
-function isChunkEndLine(text: string, isRDoc: boolean) {
+function fenceLength(text: string) {
+    return text.match(/^\s*(`{3,})/)?.[1].length ?? 0;
+}
+
+function isChunkEndLine(text: string, isRDoc: boolean, minBackticks = 3) {
     if (isRDoc) {
         const isSectionHeader = text.match(/^#+\s*.*[-#+=*]{4,}/g);
         return isRChunkLine(text) || isSectionHeader;
     } else {
-        return !!text.match(/^\s*```+\s*$/g);
+        const match = text.match(/^\s*(`{3,})\s*$/);
+        return !!match && match[1].length >= minBackticks;
     }
 }
 
@@ -97,6 +102,7 @@ export function getChunks(document: vscode.TextDocument): RMarkdownChunk[] {
     let line = 0;
     let chunkId = 0; // One-based index
     let chunkStartLine: number | undefined = undefined;
+    let chunkFenceLength = 0;
     let chunkLanguage: string | undefined = undefined;
     let chunkOptions: string | undefined = undefined;
     let chunkEval: boolean | undefined = undefined;
@@ -130,12 +136,13 @@ export function getChunks(document: vscode.TextDocument): RMarkdownChunk[] {
             if (isChunkStartLine(lines[line], isRDoc)) {
                 chunkId++;
                 chunkStartLine = line;
+                chunkFenceLength = isRDoc ? 0 : fenceLength(lines[line]);
                 chunkLanguage = getChunkLanguage(lines[line], isRDoc);
                 chunkOptions = getChunkOptions(lines[line], isRDoc);
                 chunkEval = getChunkEval(chunkOptions);
             }
         } else {
-            if (isChunkEndLine(lines[line], isRDoc)) {
+            if (isChunkEndLine(lines[line], isRDoc, chunkFenceLength)) {
                 finishChunk(isRDoc ? line - 1 : line, line - 1);
                 // An R marker ends the previous chunk and starts the next one,
                 // including when the marker is the document's final line.
