@@ -24,6 +24,44 @@ suite('R code chunk boundaries', () => {
         assert.deepStrictEqual(await chunkCode('```{r}\nx <- 1\n```', 'rmd'), ['x <- 1']);
     });
 
+    test('keeps a longer outer fence open through a shorter inner example', async () => {
+        const text = '````{verbatim}\n\n```{r}\nfoo <- 1\n```\n\n````';
+        const document = await vscode.workspace.openTextDocument({
+            language: 'rmd',
+            content: text,
+        });
+        const chunks = getChunks(document);
+        assert.strictEqual(chunks.length, 1);
+        assert.strictEqual(chunks[0].language, 'verbatim');
+        assert.strictEqual(chunks[0].startLine, 0);
+        assert.strictEqual(chunks[0].endLine, 6);
+        assert.deepStrictEqual(document.getText(chunks[0].codeRange).split('\n'), [
+            '',
+            '```{r}',
+            'foo <- 1',
+            '```',
+            '',
+        ]);
+    });
+
+    test('ends a chunk on a longer fence and resumes with the next real chunk', async () => {
+        assert.deepStrictEqual(await chunkCode('```{r}\nx <- 1\n````', 'rmd'), ['x <- 1']);
+        const nestedThenReal =
+            '````{verbatim}\n\n```{r}\nfoo <- 1\n```\n\n````\n```{r}\nx <- 1\n```';
+        assert.deepStrictEqual(await chunkCode(nestedThenReal, 'rmd'), [
+            '\n```{r}\nfoo <- 1\n```\n',
+            'x <- 1',
+        ]);
+    });
+
+    test('ignores info strings, bare fences, and unclosed R Markdown chunks', async () => {
+        assert.deepStrictEqual(await chunkCode('```{r}\nx <- 1\n``` label\n```', 'rmd'), [
+            'x <- 1\n``` label',
+        ]);
+        assert.deepStrictEqual(await chunkCode('```\ncode\n```', 'rmd'), []);
+        assert.deepStrictEqual(await chunkCode('```{r}\nx <- 1', 'rmd'), []);
+    });
+
     test('section headers end an R chunk without dropping its preceding line', async () => {
         assert.deepStrictEqual(await chunkCode('# %%\nx <- 1\n# section ----'), ['x <- 1']);
     });
