@@ -283,6 +283,13 @@ async function decidePublication({ api, repository, runId, sha, listChangedFiles
                 if (!listChangedFiles || currentRun.event !== 'schedule') {
                     return { publish: true, date: runDate, reason: 'new-sha' };
                 }
+                // A full rerun repeats this preparation. Once an earlier attempt
+                // of this run started publishing, keep it eligible so the retry
+                // can complete the other registry, even if the diff now succeeds
+                // with a different result than the attempt that published.
+                if (didAttemptPublication(await jobsFor(currentRun))) {
+                    return { publish: true, date: runDate, reason: 'retry-after-attempt' };
+                }
                 let changedFiles;
                 try {
                     changedFiles = await listChangedFiles(publishedSha, sha);

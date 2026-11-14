@@ -557,6 +557,34 @@ test('diff failures publish, while date reservation and unchanged SHA take prece
     assert.equal(diffCalls, 0);
 });
 
+test('a full rerun after a partial publication bypasses the path filter', async () => {
+    const { current, runs, jobs } = pathFilterRuns();
+    const ignoredOnly = async () => ['src/test/a.ts'];
+    // Attempt 1: the diff fails, so the run publishes, but Open VSX fails.
+    assert.deepEqual(await decide(current, runs, jobs, async () => { throw new Error('fetch failed'); }), {
+        publish: true, date: '2026-10-03', reason: 'diff-unavailable',
+    });
+    const partial = new Map([...jobs, ['902', prereleaseSplitJobs({ openVsxConclusion: 'failure' })]]);
+    // Attempt 2 (re-run all jobs): the diff now succeeds with ignored-only
+    // changes, but the run must stay eligible to complete Open VSX.
+    let diffCalls = 0;
+    const counting = async (...args) => { diffCalls += 1; return ignoredOnly(...args); };
+    assert.deepEqual(await decide(current, runs, partial, counting), {
+        publish: true, date: '2026-10-03', reason: 'retry-after-attempt',
+    });
+    assert.equal(diffCalls, 0);
+    // Another run on the same date stays blocked by the partial attempt.
+    const sameDay = run(905, '2026-10-03', 'sha-c', 'workflow_dispatch');
+    assert.deepEqual(await decide(sameDay, [...runs, sameDay], partial, ignoredOnly), {
+        publish: false, date: '2026-10-03', reason: 'date-reserved',
+    });
+    // Without a prior attempt, the same rerun still skips ignored-only changes.
+    const prepared = new Map([...jobs, ['902', [{ name: 'prerelease-prepare', steps: [] }]]]);
+    assert.deepEqual(await decide(current, runs, prepared, ignoredOnly), {
+        publish: false, date: '2026-10-03', reason: 'no-relevant-changes',
+    });
+});
+
 test('manual runs and runs without a diff source bypass the path filter', async () => {
     const manual = pathFilterRuns('workflow_dispatch');
     let diffCalls = 0;
