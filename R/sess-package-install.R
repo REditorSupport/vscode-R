@@ -60,7 +60,7 @@ sess_install <- function(pkg_path, library, repos, interactive = FALSE) {
   on.exit(
     {
       Sys.unsetenv(keys[is.na(previous)])
-      if (any(!is.na(previous))) do.call(Sys.setenv, as.list(previous[!is.na(previous)]))
+      if (!all(is.na(previous))) do.call(Sys.setenv, as.list(previous[!is.na(previous)]))
     },
     add = TRUE
   )

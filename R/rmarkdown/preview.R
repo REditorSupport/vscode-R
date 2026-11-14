@@ -21,7 +21,7 @@ attach(
         lines <- suppressWarnings(readLines(.vsc.file_path, encoding = "UTF-8"))
         out <- rmarkdown:::output_format_from_yaml_front_matter(lines)
         output_format <- rmarkdown:::create_output_format(out$name, out$options)
-        if (!output_format$pandoc$to == "html") {
+        if (output_format$pandoc$to != "html") {
           rmarkdown::html_document()
         } else {
           NULL

@@ -553,7 +553,7 @@ run_case <- function(mode) {
     on.exit(
       {
         Sys.unsetenv(profile_keys)
-        if (any(!is.na(previous_environment))) {
+        if (!all(is.na(previous_environment))) {
           do.call(Sys.setenv, as.list(previous_environment[!is.na(previous_environment)]))
         }
       },
@@ -870,7 +870,7 @@ start_parallel_child <- function(case_root, mode, role, result_file, install_hel
   )
   on.exit({
     Sys.unsetenv(environment_names)
-    if (any(!is.na(previous))) do.call(Sys.setenv, as.list(previous[!is.na(previous)]))
+    if (!all(is.na(previous))) do.call(Sys.setenv, as.list(previous[!is.na(previous)]))
   })
   stdout <- file.path(case_root, paste0(role, "-stdout"))
   stderr <- file.path(case_root, paste0(role, "-stderr"))

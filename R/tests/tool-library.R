@@ -144,7 +144,7 @@ local({
   )
   stopifnot(
     inherits(rejection, "error"),
-    grepl("non-base package dependencies", conditionMessage(rejection))
+    grepl("non-base package dependencies", conditionMessage(rejection), fixed = TRUE)
   )
   stopifnot(!dir.exists(file.path(managed, "jgd")))
 

@@ -30,7 +30,7 @@ lib_dirs <- .libPaths()
 last_mtimes <- file.info(lib_dirs)$mtime
 currentPackages <- installed.packages(fields = "Packaged")[, c("Version", "Packaged")]
 
-while (TRUE) {
+repeat {
   Sys.sleep(5)
   current_mtimes <- file.info(lib_dirs)$mtime
   if (!identical(last_mtimes, current_mtimes)) {

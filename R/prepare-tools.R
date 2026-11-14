@@ -49,7 +49,7 @@ vscode_r_prepare_tool_package <- function(
     stop("can_prompt must be a single non-NA logical value.", call. = FALSE)
   }
   helpers <- c(library_helper, consent_helper)
-  if (any(!nzchar(helpers)) || any(!file.exists(helpers)) || !nzchar(tool_root)) {
+  if (!all(nzchar(helpers)) || !all(file.exists(helpers)) || !nzchar(tool_root)) {
     message("vscode-R could not locate managed ", package, " setup resources; ", fallback, ".")
     return(FALSE)
   }

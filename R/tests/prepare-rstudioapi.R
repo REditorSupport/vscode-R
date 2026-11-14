@@ -263,7 +263,7 @@ local({
     length(declined$requests) == 1L,
     identical(declined$values[c(1L, 4L, 7L)], c("FALSE", "FALSE", "TRUE")),
     length(declined$messages) == 1L,
-    grepl("rstudioapi installation was not approved", declined$messages)
+    grepl("rstudioapi installation was not approved", declined$messages, fixed = TRUE)
   )
   stopifnot(!dir.exists(file.path(declined$values[[8L]], "rstudioapi")))
 
@@ -272,7 +272,7 @@ local({
     length(offline$requests) == 0L,
     identical(offline$values[c(1L, 4L)], c("FALSE", "FALSE")),
     length(offline$messages) == 1L,
-    grepl("could not prepare optional rstudioapi support", offline$messages)
+    grepl("could not prepare optional rstudioapi support", offline$messages, fixed = TRUE)
   )
 
   # Emulation disabled: no request, no repository query, no message.

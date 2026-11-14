@@ -21,7 +21,7 @@
     if (isTRUE(plan$source_build)) "yes" else "no"
   )
   if (
-    anyNA(package_fields) || any(!nzchar(package_fields)) || any(grepl("[\r\n]", package_fields))
+    anyNA(package_fields) || !all(nzchar(package_fields)) || any(grepl("[\r\n]", package_fields))
   ) {
     stop(
       "The managed tool installation plan cannot be represented in a consent request.",
