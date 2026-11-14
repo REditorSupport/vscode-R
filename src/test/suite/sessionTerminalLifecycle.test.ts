@@ -11,12 +11,16 @@ import * as processTree from '../../processTree';
 import * as rTerminal from '../../rTerminal';
 import * as session from '../../session';
 import * as util from '../../util';
+import { trackModuleTimers } from '../common/fakeTimers';
 import { mockExtensionContext } from '../common/mockvscode';
 import {
     deferred,
     SessionConnections,
     waitForValue as waitFor,
 } from '../common/sessionConnections';
+
+// Count only readiness timers; the extension host owns unrelated fake timers.
+const readinessModules = [require.resolve('../../session'), require.resolve('../../rTerminal')];
 
 async function settleWithFakeTime<T>(
     promise: Promise<T>,
@@ -763,6 +767,7 @@ suite('Session Terminal Lifecycle', () => {
         const clock = timerSandbox.useFakeTimers({
             toFake: ['setTimeout', 'clearTimeout', 'Date'],
         });
+        const readinessTimers = trackModuleTimers(readinessModules);
         const timerSpy = timerSandbox.spy(globalThis, 'setTimeout');
         const waiting = session.waitForTerminalReady(terminal, 30000, file, token);
         try {
@@ -771,13 +776,14 @@ suite('Session Terminal Lifecycle', () => {
             close.fire(terminal);
             assert.strictEqual(await waiting, false);
             assert.strictEqual(
-                clock.countTimers(),
+                readinessTimers.pending(),
                 0,
                 'closing the terminal removes the pending startup deadline and poll',
             );
         } finally {
             status.releaseRead.resolve();
             close.fire(terminal);
+            readinessTimers.restore();
             timerSandbox.restore();
             await waiting;
             close.dispose();
@@ -1078,6 +1084,7 @@ suite('Session Terminal Lifecycle', () => {
         const clock = timerSandbox.useFakeTimers({
             toFake: ['setTimeout', 'clearTimeout', 'Date'],
         });
+        const readinessTimers = trackModuleTimers(readinessModules);
         const timerSpy = timerSandbox.spy(globalThis, 'setTimeout');
 
         let pendingCommand: Promise<boolean> | undefined;
@@ -1101,11 +1108,12 @@ suite('Session Terminal Lifecycle', () => {
             sinon.assert.notCalled(sendText);
             sinon.assert.calledOnce(warning);
             assert.strictEqual(
-                clock.countTimers(),
+                readinessTimers.pending(),
                 0,
                 'failed startup clears its bounded wait and poll',
             );
 
+            readinessTimers.restore();
             timerSandbox.restore();
             await connections.attach('startup-late-attach', rPid);
             assert.strictEqual(
@@ -1124,6 +1132,7 @@ suite('Session Terminal Lifecycle', () => {
         } finally {
             status.releaseRead.resolve();
             fixture.cleanup();
+            readinessTimers.restore();
             timerSandbox.restore();
             if (pendingCommandSettled) {
                 await pendingCommandSettled;
@@ -1139,6 +1148,7 @@ suite('Session Terminal Lifecycle', () => {
         } as unknown as vscode.Terminal;
         const timerSandbox = sinon.createSandbox();
         const clock = timerSandbox.useFakeTimers();
+        const readinessTimers = trackModuleTimers(readinessModules);
         let settled = false;
         const waiting = session.waitForTerminalReady(terminal).then((result) => {
             settled = true;
@@ -1153,12 +1163,13 @@ suite('Session Terminal Lifecycle', () => {
             );
             await clock.tickAsync(1);
             assert.strictEqual(await waiting, false);
-            assert.strictEqual(clock.countTimers(), 0);
+            assert.strictEqual(readinessTimers.pending(), 0);
         } finally {
             try {
                 await clock.tickAsync(30000);
                 await waiting;
             } finally {
+                readinessTimers.restore();
                 timerSandbox.restore();
             }
         }
@@ -1175,6 +1186,7 @@ suite('Session Terminal Lifecycle', () => {
         const clock = timerSandbox.useFakeTimers({
             toFake: ['setTimeout', 'clearTimeout', 'Date'],
         });
+        const readinessTimers = trackModuleTimers(readinessModules);
         const timerSpy = timerSandbox.spy(globalThis, 'setTimeout');
         const close = new vscode.EventEmitter<vscode.Terminal>();
         sandbox.stub(vscode.window, 'onDidCloseTerminal').callsFake(close.event);
@@ -1184,10 +1196,11 @@ suite('Session Terminal Lifecycle', () => {
             sinon.assert.calledWith(timerSpy, sinon.match.func, 600000);
             await clock.tickAsync(600000);
             assert.strictEqual(await waiting, false);
-            assert.strictEqual(clock.countTimers(), 0);
+            assert.strictEqual(readinessTimers.pending(), 0);
         } finally {
             status.releaseRead.resolve();
             close.fire(terminal);
+            readinessTimers.restore();
             timerSandbox.restore();
             await waiting;
             close.dispose();

@@ -356,8 +356,11 @@ writeLines(c(
     "} else if (mode %in% c('parallel_approve', 'parallel_decline', 'parallel_third',",
     "                       'parallel_failure', 'parallel_retry')) {",
     "  timeout <- 10",
+    # The follower budget covers the owner's whole source install, which can
+    # take well over 20 seconds on Windows runners.
+    "  parallel_setup_timeout <- 60",
     "  if (mode == 'parallel_approve') {",
-    "    result <- attach_sess(timeout=timeout, setup_timeout=20)",
+    "    result <- attach_sess(timeout=timeout, setup_timeout=parallel_setup_timeout)",
     "    stopifnot(identical(result, TRUE), 'sess' %in% loadedNamespaces())",
     "    stopifnot(identical(sess_loaded_source_revision(), revision))",
     "    actual <- getNamespaceInfo(asNamespace('sess'), 'path')",
@@ -370,7 +373,7 @@ writeLines(c(
     "    stopifnot(!file.exists(ready_path), !dir.exists(lock_path))",
     "    stopifnot(same_paths(.libPaths(), ordinary))",
     "  } else {",
-    "    result <- attach_sess(timeout=timeout, setup_timeout=20)",
+    "    result <- attach_sess(timeout=timeout, setup_timeout=parallel_setup_timeout)",
     "    stopifnot(identical(result, FALSE), !('sess' %in% loadedNamespaces()))",
     "    if (mode == 'parallel_retry') stopifnot(file.exists(file.path(managed_library, 'sess', 'DESCRIPTION')))",
     "    else stopifnot(!file.exists(file.path(managed_library, 'sess', 'DESCRIPTION'))) ",
@@ -772,7 +775,8 @@ start_parallel_child <- function(case_root, mode, role, result_file, install_hel
 }
 
 wait_for_child <- function(paths, description) {
-    deadline <- Sys.time() + 30
+    # Must exceed the parallel follower's setup budget so its own diagnostic wins.
+    deadline <- Sys.time() + 90
     while (!file.exists(paths$result) && Sys.time() < deadline) Sys.sleep(0.01)
     child_output <- read_child_logs(paths)
     if (!file.exists(paths$result)) {
@@ -818,7 +822,7 @@ run_parallel_setup <- function(approve) {
         "  utils::install.packages(pkg_path, repos=NULL, type='source', lib=library, quiet=TRUE)",
         paste0("  if (!file.exists(file.path(library, 'sess', 'DESCRIPTION'))) stop('install failed')"),
         paste0("  file.create(", r_literal(description_visible), ")"),
-        paste0("  deadline <- Sys.time() + 20; release <- ", r_literal(install_release)),
+        paste0("  deadline <- Sys.time() + 60; release <- ", r_literal(install_release)),
         "  while (!file.exists(release) && Sys.time() < deadline) Sys.sleep(0.01)",
         "  if (!file.exists(release)) stop('installer fixture release timed out')",
         paste0("  file.create(", r_literal(install_complete), ")"),
@@ -839,11 +843,11 @@ run_parallel_setup <- function(approve) {
     wait_for_file(follower_observed, 10, "follower observation of the held setup lock")
 
     if (approve) {
-        wait_for_file(description_visible, 10, "installed package metadata while owner holds lock")
+        wait_for_file(description_visible, 60, "installed package metadata while owner holds lock")
         stopifnot(dir.exists(lock_path), file.exists(file.path(managed_library, "sess", "DESCRIPTION")))
         stopifnot(!file.exists(load_log), !file.exists(ready_path))
         file.create(install_release)
-        wait_for_file(install_complete, 10, "installer verification completion")
+        wait_for_file(install_complete, 60, "installer verification completion")
     }
     wait_for_child(owner, paste(mode, "role=owner"))
     wait_for_child(follower, paste(mode, "role=follower"))
