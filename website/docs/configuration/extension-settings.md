@@ -48,8 +48,9 @@ Likewise, use `r.consoleArgs` instead of `r.rterm.option`, and
 
 ## Plot Settings
 
-- `r.plot.backend`: select `auto`, `standard`, `httpgd`, or `jgd`. The default
-  `auto` tries JGD first, then httpgd, then the standard viewer.
+- `r.plot.backend`: select `auto`, `standard`, `httpgd`, `jgd`, or `native`.
+  The default `auto` tries JGD first, then httpgd, then the standard viewer.
+  `native` leaves R's configured graphics device untouched.
 - `r.plot.format`: select `svglite` or `png` for the standard plot backend
 - `r.plot.devArgs`: supplementary graphics-device arguments for the standard
   backend. Width and height are managed by the responsive viewer and override

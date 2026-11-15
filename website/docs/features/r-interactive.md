@@ -8,17 +8,17 @@ R Interactive was introduced in vscode-R 3.2.0 ([PR #1805](https://github.com/RE
 
 ## Requirements and setup
 
-Use **VS Code 1.101.0 or newer**. R Interactive currently supports Linux and macOS; its native console bridge does not support Windows. Existing R terminal workflows remain available.
+Use **VS Code 1.101.0 or newer**. R Interactive currently supports Linux and macOS; persistent session supervision is not available on Windows. Existing R terminal workflows remain available.
 
 For Remote SSH, install this extension **on the remote host**. R, its packages, optional executables, and session storage must be available on that host. For local use, the same requirements apply to your computer.
 
 The R host needs:
 
-- R, plus either compatible pre-built sess/dependency packages or a C compiler capable of building R packages (`r-base-dev` and `build-essential` on Debian/Ubuntu).
+- R. The bundled sess package is pure R and needs no compiler; its missing Imports are installed from the configured R repository.
 - The session agent automatically uses the extension host's bundled runtime: VS Code's Electron runtime in Node mode on desktop, or VS Code Server's Node runtime remotely. A separate Node.js installation is optional.
 - `tmux` is optional. On Linux, the default supervisor uses tmux when available and otherwise starts an independent detached process. `systemd --user` is another configurable option.
 - R packages `processx`, `later`, `jsonlite`, and `rstudioapi`. Install `languageserver` for language features, `jgd` and `systemfonts` for JGD graphics, `svglite` for the static fallback, and `htmlwidgets`/`htmltools` for HTML output.
-- `arf` is optional. Creating a headless arf session requires an executable on the R host; plain R requires no arf installation. Connecting to an already-running arf uses its socket and does not require arf on the extension host's PATH. The provider contract was exercised with arf 0.5.1.
+- `arf` is optional. Creating a headless arf session requires an executable on the R host; plain R requires no arf installation. Connecting to an already-running arf uses its socket and does not require arf on the extension host's PATH. The provider contract is tested with arf 0.5.3.
 
 For example, run in the R installation used on the server:
 
@@ -37,11 +37,7 @@ Runtime availability and version (Node.js 18+) are checked before installation o
 
 ### R packages and project libraries
 
-The extension installs its bundled `sess` into a private, content-addressed library. It does not replace your installed `sess` package. If the source build fails, including when build tools are missing, it tries a compiler-free package from [R-universe](https://reditorsupport.r-universe.dev/sess). Installation diagnostics appear in the **R Interactive** output channel.
-
-On macOS, the fallback uses R's matching binary repository. On Ubuntu, it uses a repository matching the host's codename, architecture, and R version. It never assumes that an Ubuntu binary is compatible with another Linux distribution. Dependencies for a binary fallback come from the matching R-universe repositories. No global repository settings are changed.
-
-The compiler-free fallback requires a published `sess` build compatible with the native Interactive bridge. A matching package version alone is insufficient; the extension checks the compatibility marker, required functions, and registered native console routines. Until a compatible build is published for your host, building the bundled package requires a C compiler. Missing or incompatible binaries produce an installation error with diagnostics in **R Interactive**.
+The extension installs its bundled pure R sess into a private, content-addressed library when starting an Interactive session. It does not replace your installed sess package. Missing Imports are installed from the configured R repository; no global repository settings are changed. Installation diagnostics appear in the **R Interactive** output channel.
 
 That private library is used only to load the bridge; it is not added to your session's `.libPaths()` or `R_LIBS`. Package installation follows ordinary R behavior: `install.packages()` defaults to the first library in `.libPaths()`, usually your user library. Startup files can customize that order, and an explicit `lib=` still takes precedence. The extension does not force a user-library destination over a project library.
 

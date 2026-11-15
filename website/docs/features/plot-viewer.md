@@ -1,13 +1,15 @@
 # Plot viewer
 
 Plots from an attached R session can be displayed in a VS Code editor tab. Use
-`r.plot.backend` to select one of four modes:
+`r.plot.backend` to select one of five modes:
 
 - `auto` (default): use JGD if installed, otherwise httpgd if installed,
   otherwise the standard viewer
 - `jgd`: use the [JGD](https://github.com/REditorSupport/jgd) graphics device
 - `httpgd`: use the [httpgd](https://github.com/nx10/httpgd) graphics device
 - `standard`: use the built-in responsive plot viewer
+- `native`: use R's configured graphics device without plot integration or
+  opening the VS Code plot viewer automatically
 
 Backend changes take effect without reloading VS Code. vscode-R warns and falls
 back when the requested package is unavailable.
@@ -27,9 +29,8 @@ Use `r.plot.format` to request `"svglite"` or `"png"`. The
 `r.plot.devArgs` setting supplies additional graphics-device arguments, but the
 responsive viewer manages width and height itself.
 
-To use R's native graphics window instead, disable the session watcher with
-`r.sessionWatcher`. This also disables the other features that require an
-attached R session.
+To use R's native graphics window instead, set `r.plot.backend` to `"native"`.
+The other features that require an attached R session remain available.
 
 ## JGD viewer
 

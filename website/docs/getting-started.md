@@ -68,3 +68,49 @@ needed to make each part work well together. To minimize that cost, please refer
 to the detailed installation instructions we provide for
 [Windows](./installation/windows.md), [macOS](./installation/macos.md) and
 [Linux](./installation/linux.md).
+
+## Install the extension
+
+Install the stable release from the
+[VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=REditorSupport.r)
+or the [Open VSX Registry](https://open-vsx.org/extension/REditorSupport/r), or
+from the command line:
+
+```sh
+code --install-extension REditorSupport.r
+```
+
+Then install the languageserver R package:
+
+```r
+install.packages("languageserver")
+```
+
+Create an R file and start coding. When prompted, click **Yes** to install the
+bundled sess package.
+
+### Release channels
+
+| Channel | Published | How to install |
+| --- | --- | --- |
+| Stable | When a version is tagged | VS Code Marketplace or Open VSX Registry |
+| Daily pre-release | Daily from `main`, after verification passes | **Switch to Pre-Release Version** on the extension's page in VS Code |
+| Development build | After each verified push to `main` | The `vscode-R.vsix` file attached to the [`latest`](https://github.com/REditorSupport/vscode-R/releases/tag/latest) GitHub release |
+
+Stable releases use an even minor version (for example, `3.4.0`), and daily
+pre-releases use the next odd minor version with the UTC date as the patch
+version (for example, `3.5.20261115`). A scheduled run publishes nothing when
+`main` has no changes since the last pre-release, or only changes that do not
+affect the extension, such as CI or test files. Choose **Switch to Release
+Version** on the extension's page to return to stable releases.
+
+The development build is not published to a registry. Download and install it
+manually:
+
+```sh
+curl -fsSL -o vscode-R.vsix https://github.com/REditorSupport/vscode-R/releases/download/latest/vscode-R.vsix
+code --install-extension vscode-R.vsix
+```
+
+The `latest` release is replaced on each update, so note the extension version
+and the commit it was built from when reporting a problem.
