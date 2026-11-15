@@ -86,7 +86,7 @@ Interactive session. Run the source/bootstrap checks with
 
 The [architecture and backend contract](src/interactive/README.md) live beside the implementation. User setup and behavior belong in the [R Interactive wiki page](https://github.com/REditorSupport/vscode-R/wiki/R-Interactive).
 
-Use Linux or macOS for Interactive runtime tests, with R and an installed arf 0.5.3 executable. Bundled sess is pure R and needs no compiler when its Imports are already installed; missing Imports are installed from the configured repository. Windows runs the remaining extension checks; persistent Interactive supervision remains limited to Linux/macOS. From the repository root, after installing pnpm dependencies, prepare a test library:
+Use Linux or macOS for Interactive runtime tests, with R and arf 0.7.1 or later. `mise install` installs the arf version pinned in `mise.toml`, which CI also uses. Bundled sess is pure R and needs no compiler when its Imports are already installed; missing Imports are installed from the configured repository. Windows runs the remaining extension checks; persistent Interactive supervision remains limited to Linux/macOS. From the repository root, after installing pnpm dependencies, prepare a test library:
 
 ```sh
 export R_LIBS=/path/to/test-library
