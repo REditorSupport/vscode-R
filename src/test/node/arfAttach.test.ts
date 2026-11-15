@@ -16,7 +16,11 @@ function fakeArf(
     handle: (message: Record<string, unknown>, socket: net.Socket) => void,
 ): Promise<{ endpoint: string; server: net.Server; dispose(): void }> {
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'r-arf-attach-'));
-    const endpoint = path.join(directory, 'arf.sock');
+    // arf listens on a named pipe on Windows and a Unix socket elsewhere.
+    const endpoint =
+        process.platform === 'win32'
+            ? `\\\\.\\pipe\\${path.basename(directory)}`
+            : path.join(directory, 'arf.sock');
     const sockets = new Set<net.Socket>();
     const server = net.createServer((socket) => {
         sockets.add(socket);
