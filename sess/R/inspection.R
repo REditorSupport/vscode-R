@@ -7,16 +7,17 @@
 # accessor operations.
 #
 # Why requests must not evaluate arbitrary expressions:
-# - These handlers can be exposed to other clients, for example as arf IPC
-#   handlers. arf runs exposed handlers outside its evaluation policy and
-#   outside the human approval it requires for visible evaluation, so a handler
-#   that evaluates an expression would let any client of the same user run
-#   arbitrary code without that approval.
-# - Hover and completion run without an explicit user action, so evaluating an
-#   expression would run code just because the cursor moved or `$` was typed.
-#   R's own completion (utils rcompgen) likewise does not evaluate a prefix
-#   that contains an explicit function call, and IPython limits completion to
-#   side-effect-free evaluation by default.
+# - Hover and completion run without an explicit user action, so evaluating the
+#   request runs code just because the cursor moved or `$` was typed. Clients
+#   cannot be relied on to send only names: the editor's extraction allows
+#   spaces, so hovering `x` in `repeat x <- x + 1` sends `repeat x`, which
+#   parses and would loop forever. R's own completion (utils rcompgen) likewise
+#   does not evaluate a prefix that contains an explicit function call, and
+#   IPython limits completion to side-effect-free evaluation by default.
+# - Validating requests here keeps the guarantee independent of the client.
+#   This also allows exposing these handlers to other clients later, for
+#   example as arf IPC handlers, which run outside arf's evaluation policy and
+#   approval.
 #
 # Constants are accepted because evaluating them runs no code, and the editor
 # already requests hover for them.
