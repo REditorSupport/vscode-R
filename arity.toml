@@ -18,6 +18,8 @@ ignore = [
   "coalesce",
   # Calls to unexported functions with `:::` are deliberate here.
   "internal-function",
+  # Development versions such as 3.4.9000.9000 follow the tidyverse convention.
+  "description-malformed-version",
   # Existing findings that are not addressed yet.
   "roxygen-param",
   "roxygen-return",

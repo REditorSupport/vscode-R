@@ -1,7 +1,7 @@
 Package: sess
 Type: Package
 Title: High-Performance IPC Bridge for R Sessions
-Version: 3.4.0.9006
+Version: 3.4.9000.9000
 Authors@R: c(
     person(given = "Randy",
            family = "Lai",
@@ -37,7 +37,9 @@ Suggests:
     systemfonts,
     httpgd,
     jgd,
+    R6,
     rstudioapi,
+    S7,
     svglite,
     tinytest
 NeedsCompilation: no
