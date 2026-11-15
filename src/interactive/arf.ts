@@ -13,6 +13,87 @@ export interface ArfSession {
     session_type?: string;
 }
 
+// TODO: Require arf 0.7.2 once it is released. It reports an R error that
+// follows a caught interrupt as an error rather than as interrupted, and bounds
+// console reads that cannot be answered.
+export const MIN_ARF_VERSION = '0.7.1';
+
+/** arf JSON-RPC error codes that the Interactive client acts on. */
+export const ARF_METHOD_NOT_FOUND = -32601;
+export const ARF_TIMEOUT = -32007;
+
+/** A JSON-RPC error response from arf, keeping its code and data. */
+export class ArfRpcError extends Error {
+    constructor(
+        readonly code: number,
+        readonly rpcMessage: string,
+        readonly data: unknown,
+        raw: unknown,
+    ) {
+        super(JSON.stringify(raw));
+        this.name = 'ArfRpcError';
+    }
+}
+
+/** The client stopped waiting for arf; the request may still be running. */
+export class ArfTransportTimeoutError extends Error {
+    constructor() {
+        super('arf request timed out; evaluation may still be running');
+        this.name = 'ArfTransportTimeoutError';
+    }
+}
+
+export function rpcError(error: unknown): ArfRpcError {
+    const value =
+        error && typeof error === 'object' && !Array.isArray(error)
+            ? (error as Record<string, unknown>)
+            : {};
+    return new ArfRpcError(
+        typeof value.code === 'number' ? value.code : NaN,
+        typeof value.message === 'string' ? value.message : '',
+        value.data,
+        error,
+    );
+}
+
+/** Compares release versions; prereleases count as older than their release. */
+export function arfVersionAtLeast(version: unknown, minimum: string): boolean {
+    const parse = (text: string) => {
+        const match = /^v?(\d+)\.(\d+)\.(\d+)(-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/.exec(text);
+        return match
+            ? { core: [Number(match[1]), Number(match[2]), Number(match[3])], pre: !!match[4] }
+            : undefined;
+    };
+    const actual = typeof version === 'string' ? parse(version) : undefined;
+    const required = parse(minimum);
+    if (!actual || !required) {
+        return false;
+    }
+    for (let i = 0; i < 3; i++) {
+        if (actual.core[i] !== required.core[i]) {
+            return actual.core[i] > required.core[i];
+        }
+    }
+    return !actual.pre || required.pre;
+}
+
+/** Rejects sessions older than MIN_ARF_VERSION, or without the deadline used by inspection. */
+export function checkArfSession(session: Record<string, unknown>): void {
+    if (!arfVersionAtLeast(session.arf_version, MIN_ARF_VERSION)) {
+        const actual =
+            typeof session.arf_version === 'string' ? session.arf_version : 'an unknown version';
+        throw new Error(
+            `R Interactive requires arf ${MIN_ARF_VERSION} or later, but the session runs ${actual}. Update arf and start a new session.`,
+        );
+    }
+    const capabilities = Array.isArray(session.capabilities) ? session.capabilities : [];
+    if (!capabilities.includes('call_execution_timeout')) {
+        throw new Error(
+            'This arf session does not support execution deadlines for handler calls. Update arf and start a new session.',
+        );
+    }
+}
+
 /** arf speaks HTTP JSON-RPC, not sess's JSON Lines framing. */
 export function arfRequest(
     endpoint: string,
@@ -52,7 +133,7 @@ export function arfRequest(
                     try {
                         const result = object(JSON.parse(Buffer.concat(chunks).toString('utf8')));
                         if (result.error) {
-                            reject(new Error(JSON.stringify(result.error)));
+                            reject(rpcError(result.error));
                         } else {
                             resolve(result.result);
                         }
@@ -63,11 +144,7 @@ export function arfRequest(
             },
         );
         if (timeout > 0) {
-            request.setTimeout(timeout, () =>
-                request.destroy(
-                    new Error('arf request timed out; evaluation may still be running'),
-                ),
-            );
+            request.setTimeout(timeout, () => request.destroy(new ArfTransportTimeoutError()));
         }
         request.on('error', reject);
         request.end(body);
