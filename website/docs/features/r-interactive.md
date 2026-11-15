@@ -18,7 +18,7 @@ The R host needs:
 - The session agent automatically uses the extension host's bundled runtime: VS Code's Electron runtime in Node mode on desktop, or VS Code Server's Node runtime remotely. A separate Node.js installation is optional.
 - `tmux` is optional. On Linux, the default supervisor uses tmux when available and otherwise starts an independent detached process. `systemd --user` is another configurable option.
 - R packages `processx`, `later`, `jsonlite`, and `rstudioapi`. Install `languageserver` for language features, `jgd` and `systemfonts` for JGD graphics, `svglite` for the static fallback, and `htmlwidgets`/`htmltools` for HTML output.
-- `arf` is optional. Creating a headless arf session requires an executable on the R host; plain R requires no arf installation. Connecting to an already-running arf uses its socket and does not require arf on the extension host's PATH. The provider contract is tested with arf 0.5.3.
+- arf. Creating a new Interactive session requires an arf executable on the R host. Connecting to an already-running arf uses its socket and does not require arf on the extension host's PATH. The provider contract is tested with arf 0.5.3.
 
 For example, run in the R installation used on the server:
 
@@ -68,7 +68,7 @@ Detached launch goes through a short-lived bootstrap so the agent leaves the edi
 
 ## Start a session
 
-Run **R: New Persistent Interactive Session**, choose **R** or **arf**, and name the session. Each session opens its own Interactive window; select it in **R → Interactive Sessions** to return to it. Plain R does not require arf. Multiple sessions execute concurrently; each R process runs submitted cells serially.
+Run **R: New Persistent Interactive Session**, choose **arf**, and name the session. Each session opens its own Interactive window; select it in **R → Interactive Sessions** to return to it. Multiple sessions execute concurrently; each R process runs submitted cells serially.
 
 ### Connect to an existing arf session
 
@@ -118,7 +118,7 @@ New arf sessions save their resolved absolute executable path, so a later PATH c
 ### R execution and input
 
 - Code runs in `.GlobalEnv`; visible results update `.Last.value`. Output is streamed during execution. Messages, warnings, errors, and traces are represented separately from ordinary console output. Errors show their message followed by the user calls, omitting the worker, arf transport, and condition-handler scaffolding. Saved R and Jupyter notebooks retain both the message and trace.
-- `readline()`, `scan()`, and `browser()` prompts appear as input requests. Canceling the input box leaves R waiting; **Reply to Interactive Input** opens it again. **Interrupt Interactive Session** signals the R process while preserving the environment when R handles the interrupt.
+- Notebook console input and debugger prompts are currently unavailable: `readline()`, `scan()`, and `browser()` prompts cannot be answered from the Interactive window. Use an ordinary R terminal for code that needs console input. **Interrupt Interactive Session** signals the R process while preserving the environment when R handles the interrupt.
 - R remains single-threaded. A native call that does not check interrupts may delay cancellation. Arbitrary environment inspection and table queries are not executed concurrently with user code; cached workspace information remains visible while R is busy.
 - A rerun creates a new execution identity and history entry. Submissions with an existing identity are deduplicated. Reconnect never resubmits code automatically. Ambiguous dispatch failures block the queue until completion or process exit establishes what happened.
 - A client control lease prevents two windows from submitting simultaneously. Other clients can observe retained output; **Take Control of Interactive Session** explicitly transfers control.
