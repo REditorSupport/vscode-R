@@ -4,13 +4,14 @@ local({
   completion <- sess:::inspection_completion
   capture_str <- sess:::capture_str
   prefix <- "sess_inspection_"
+  # The test masks these names in the global environment; restore any that
+  # existed before so that running it in a live session is harmless.
+  masked <- c("$", "@", "T", "$.sess_inspection_s3", ".DollarNames.sess_inspection_s3")
+  saved <- mget(intersect(masked, ls(.GlobalEnv, all.names = TRUE)), envir = .GlobalEnv)
   on.exit({
     rm(list = ls(.GlobalEnv, all.names = TRUE, pattern = paste0("^", prefix)), envir = .GlobalEnv)
-    for (name in c("$", "@", "T", "$.sess_inspection_s3", ".DollarNames.sess_inspection_s3")) {
-      if (exists(name, envir = .GlobalEnv, inherits = FALSE)) {
-        rm(list = name, envir = .GlobalEnv)
-      }
-    }
+    rm(list = intersect(masked, ls(.GlobalEnv, all.names = TRUE)), envir = .GlobalEnv)
+    list2env(saved, envir = .GlobalEnv)
     if ("sess_inspection_search" %in% search()) {
       detach("sess_inspection_search", character.only = TRUE)
     }
@@ -168,11 +169,16 @@ local({
     "...",
     "..1",
     "",
-    "sess_inspection_active$"
+    "sess_inspection_active$",
+    "sess_inspection_active$\"\""
   )) {
     expect_true(invalid(expr), info = expr)
     expect_true(invalid(expr, "$"), info = expr)
   }
+  expect_identical(active, 0L)
+  # Completion without a member operator has no items and reads no binding.
+  expect_null(completion("sess_inspection_active", NULL))
+  expect_null(completion("sess_inspection_active", "["))
   expect_identical(active, 0L)
   expect_true(invalid(1))
   expect_true(invalid(c("a", "b")))

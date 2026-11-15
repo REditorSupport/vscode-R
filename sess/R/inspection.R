@@ -78,13 +78,18 @@ inspection_target <- function(expr) {
     } else if (!is.character(member) || length(member) != 1L || is.na(member)) {
       inspection_invalid("$ and @ must be followed by a name")
     }
-    path <- c(list(list(operator = as.character(operator), name = member)), path)
+    # A quoted member such as `x$""` must still be a valid symbol name.
+    if (!nzchar(member) || nchar(member, type = "bytes") > 10000L) {
+      inspection_invalid("$ and @ must be followed by a non-empty name")
+    }
+    path[[length(path) + 1L]] <- list(operator = as.character(operator), name = member)
     node <- node[[2L]]
   }
   if (!inspection_is_name(node)) {
     inspection_invalid("expr must start with a name")
   }
-  list(root = list(kind = "name", name = as.character(node)), path = path)
+  # Accessors were collected from the outermost one.
+  list(root = list(kind = "name", name = as.character(node)), path = rev(path))
 }
 
 # Apply one accessor with the base operator, regardless of any `$` or `@`
@@ -156,7 +161,12 @@ inspection_completion <- function(expr, trigger = NULL) {
   if (!is.null(trigger) && (!is.character(trigger) || length(trigger) != 1L || is.na(trigger))) {
     inspection_invalid("trigger must be a single string")
   }
-  resolved <- inspection_resolve(inspection_target(expr))
+  target <- inspection_target(expr)
+  # Without a member operator there are no items, so do not read any binding.
+  if (is.null(trigger) || !trigger %in% c("$", "@")) {
+    return(NULL)
+  }
+  resolved <- inspection_resolve(target)
   if (!isTRUE(resolved$found)) {
     return(NULL)
   }
