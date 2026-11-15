@@ -94,16 +94,11 @@ bundled sess package.
 | Channel | Published | How to install |
 | --- | --- | --- |
 | Stable | When a version is tagged | VS Code Marketplace or Open VSX Registry |
-| Daily pre-release | Daily from `main`, after verification passes | **Switch to Pre-Release Version** on the extension's page in VS Code |
+| Daily pre-release | Daily from `main` | **Switch to Pre-Release Version** on the extension's page in VS Code |
 | Development build | After each verified push to `main` | The `vscode-R.vsix` file attached to the [`latest`](https://github.com/REditorSupport/vscode-R/releases/tag/latest) GitHub release |
 
-Stable releases use an even minor version (for example, `3.4.0`), and daily
-pre-releases use the next odd minor version (or keep an odd minor version that
-is already set in development) with the UTC date as the patch version (for
-example, `3.5.20261115`). A scheduled run publishes nothing when
-nothing that affects the published extension has changed since the last
-pre-release, for example when only tests or development tooling changed. Choose **Switch to Release
-Version** on the extension's page to return to stable releases.
+Choose **Switch to Release Version** on the extension's page to return to
+stable releases.
 
 The development build is not published to a registry. Download and install it
 manually:
