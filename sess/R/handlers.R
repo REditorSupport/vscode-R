@@ -704,6 +704,11 @@ handle_complete <- function(expr_str, trigger = NULL) {
     error = function(e) NULL
   )
 
+  completion_items(obj, trigger)
+}
+
+# Completion items for the members of `obj` after the `trigger` operator.
+completion_items <- function(obj, trigger = NULL) {
   if (is.null(obj) || is.null(trigger)) {
     return(NULL)
   }
