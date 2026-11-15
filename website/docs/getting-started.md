@@ -48,8 +48,8 @@ tools you need:
 - [VSCode-R-Debugger](https://github.com/ManuelHentschel/VSCode-R-Debugger): A
   VS Code extension to support R debugging capabilities.
 
-- [`jgd`](https://github.com/REditorSupport/jgd) or
-  [`httpgd`](https://github.com/nx10/httpgd) (optional): Interactive graphics
+- [jgd](https://github.com/REditorSupport/jgd) or
+  [httpgd](https://github.com/nx10/httpgd) (optional): Interactive graphics
   devices used by the
   [plot viewer](./features/plot-viewer.md).
   The default `r.plot.backend` value, `auto`, tries jgd first, then httpgd, then

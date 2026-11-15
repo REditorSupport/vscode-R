@@ -96,7 +96,7 @@ pnpm run build
 Rscript -e 'tinytest::test_package("sess")'
 ```
 
-`pnpm run build` installs the bundled sess and its dependencies, including suggested packages, into the selected R library. jgd checks need `jgd` and `systemfonts`; standard graphics uses `svglite` or PNG. Runtime suites build private pure R sess installations and use disposable sessions/libraries. Keep `R_LIBS` set for the commands below.
+`pnpm run build` installs the bundled sess and its dependencies, including suggested packages, into the selected R library. jgd checks need the jgd and systemfonts packages; standard graphics uses svglite or PNG. Runtime suites build private pure R sess installations and use disposable sessions/libraries. Keep `R_LIBS` set for the commands below.
 
 ```sh
 pnpm run test:interactive

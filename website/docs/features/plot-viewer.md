@@ -34,7 +34,7 @@ The other features that require an attached R session remain available.
 
 ## jgd viewer
 
-Install the `jgd` R package to use the lightweight jgd backend:
+Install the jgd R package to use the lightweight jgd backend:
 
 ```r
 install.packages("jgd")
