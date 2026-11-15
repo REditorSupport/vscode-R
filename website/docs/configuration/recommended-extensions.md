@@ -9,6 +9,33 @@ other editors like RStudio. Many of these are features that vscode-R does not
 directly control, but are possible to handle through VSCode and the libraries
 vscode-R interfaces with. We suggest some of those options here.
 
+## R console, plots, and companion extensions
+
+- [arf](https://github.com/eitsupi/arf) is a modern R console with syntax
+  highlighting, multiline editing, vi/emacs keybindings, and R version
+  switching. It is a successor to [radian](https://github.com/randy3k/radian)
+  written in Rust.
+- [jgd](https://github.com/REditorSupport/jgd) and
+  [httpgd](https://github.com/nx10/httpgd) provide interactive plots in the
+  [plot viewer](../features/plot-viewer.md). If jgd is not installed, vscode-R
+  can offer to install it into a vscode-R-managed library without changing your
+  R libraries.
+- The [Quarto](https://marketplace.visualstudio.com/items?itemName=quarto.quarto)
+  extension adds support for Quarto documents, and
+  [VSCode-R-Debugger](https://github.com/ManuelHentschel/VSCode-R-Debugger)
+  enables VS Code's debugging facilities for R scripts.
+
+For example, with arf and jgd installed, your user `settings.json` might
+include:
+
+```jsonc
+{
+  "r.consolePath": "arf",
+  "r.bracketedPaste": true, // recommended for arf and radian
+  "r.plot.backend": "jgd" // "auto" already prefers jgd, then httpgd
+}
+```
+
 ## Formatting
 
 User's `settings.json` file in VSCode can be configured to format on save:

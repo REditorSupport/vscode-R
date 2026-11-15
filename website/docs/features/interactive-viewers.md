@@ -18,11 +18,27 @@ display tabular data, graphics, [htmlwidgets](http://www.htmlwidgets.org/) and
 
 ### Table viewer
 
-Rows are loaded on demand as you scroll. The table viewer supports sorting,
-column filters, row counts, full-value tooltips, and a column panel for
-searching, showing, hiding, pinning, and reordering columns. Calling `View()` on
-the same object again refreshes the existing tab and preserves its layout when
-the column names, order, and types are unchanged.
+The viewer loads rows on demand and applies column filters and sorting in R
+across the full table.
+
+- **Columns** searches column names, shows or hides matching columns, and pins
+  columns to either edge. Drag entries to reorder them. Row names stay pinned on
+  the left.
+- **Filters** shows filter inputs below the headers. Press Enter to apply text
+  and number filters; use the filter button for ranges, missing values, or
+  combined conditions. **Clear filters** removes every column filter, including
+  filters on hidden columns. The toolbar shows the matching and total row
+  counts.
+- Columns fit the available width by default and adapt when the viewer is
+  resized. **Size to content** sizes the currently displayed cells, up to 480
+  pixels, and keeps those widths; **Fit width** switches back to filling the
+  viewer. Manually resized columns retain their widths while the remaining
+  flexible columns share the space. Hover over a cell to see its full value.
+- Repeated `View()` calls for the same object refresh the existing tab and
+  retain the viewer's sizing mode, column layout, sorting, filters, and page
+  size when the column names, order, and types are unchanged. Refreshed data
+  starts on the first page. **Reset view** restores fit-width sizing, the
+  default layout, filters, sorting, and configured page size.
 
 <img width="1004" alt="image" src="https://user-images.githubusercontent.com/4662568/126723146-24b81ad9-44a8-402c-9d21-381ae36ed112.png">
 
@@ -34,7 +50,7 @@ The list viewer supports collapsing nodes.
 
 ## Plot viewer
 
-The plot viewer supports JGD, httpgd, and a responsive standard SVG/PNG backend.
+The plot viewer supports jgd, httpgd, and a responsive standard SVG/PNG backend.
 For more details, go to
 [Plot viewer](./plot-viewer.md).
 

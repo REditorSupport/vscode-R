@@ -48,11 +48,11 @@ tools you need:
 - [VSCode-R-Debugger](https://github.com/ManuelHentschel/VSCode-R-Debugger): A
   VS Code extension to support R debugging capabilities.
 
-- [`jgd`](https://github.com/REditorSupport/jgd) or
-  [`httpgd`](https://github.com/nx10/httpgd) (optional): Interactive graphics
+- [jgd](https://github.com/REditorSupport/jgd) or
+  [httpgd](https://github.com/nx10/httpgd) (optional): Interactive graphics
   devices used by the
   [plot viewer](./features/plot-viewer.md).
-  The default `r.plot.backend` value, `auto`, tries JGD first, then httpgd, then
+  The default `r.plot.backend` value, `auto`, tries jgd first, then httpgd, then
   the standard viewer.
 
 - [rmarkdown](https://rmarkdown.rstudio.com): An R package and format for
@@ -68,3 +68,45 @@ needed to make each part work well together. To minimize that cost, please refer
 to the detailed installation instructions we provide for
 [Windows](./installation/windows.md), [macOS](./installation/macos.md) and
 [Linux](./installation/linux.md).
+
+## Install the extension
+
+Install the stable release from the
+[VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=REditorSupport.r)
+or the [Open VSX Registry](https://open-vsx.org/extension/REditorSupport/r), or
+from the command line:
+
+```sh
+code --install-extension REditorSupport.r
+```
+
+Then install the languageserver R package:
+
+```r
+install.packages("languageserver")
+```
+
+Create an R file and start coding. When prompted, click **Yes** to install the
+bundled sess package.
+
+### Release channels
+
+| Channel | Published | How to install |
+| --- | --- | --- |
+| Stable | When a version is tagged | VS Code Marketplace or Open VSX Registry |
+| Daily pre-release | Daily from `main` | **Switch to Pre-Release Version** on the extension's page in VS Code |
+| Development build | After each verified push to `main` | The `vscode-R.vsix` file attached to the [`latest`](https://github.com/REditorSupport/vscode-R/releases/tag/latest) GitHub release |
+
+Choose **Switch to Release Version** on the extension's page to return to
+stable releases.
+
+The development build is not published to a registry. Download and install it
+manually:
+
+```sh
+curl -fsSL -o vscode-R.vsix https://github.com/REditorSupport/vscode-R/releases/download/latest/vscode-R.vsix
+code --install-extension vscode-R.vsix
+```
+
+The `latest` release is replaced on each update, so note the extension version
+and the commit it was built from when reporting a problem.

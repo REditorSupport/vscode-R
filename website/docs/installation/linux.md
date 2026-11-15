@@ -68,7 +68,7 @@ remotes::install_github("ManuelHentschel/vscDebugger")
 
 vscode-R supports two optional interactive plot backends:
 
-- [JGD](https://github.com/REditorSupport/jgd) is lightweight, has no external
+- [jgd](https://github.com/REditorSupport/jgd) is lightweight, has no external
   R-package dependencies, and is usually simpler to install.
 - [httpgd](https://github.com/nx10/httpgd) provides a mature, feature-rich SVG
   viewer over HTTP and WebSockets, but has a larger compiled dependency
@@ -81,6 +81,6 @@ install.packages("jgd")
 install.packages("httpgd", repos = c("https://nx10.r-universe.dev", "https://cran.r-project.org"))
 ```
 
-Leave `r.plot.backend` at its default value, `"auto"`, to try JGD first, then
+Leave `r.plot.backend` at its default value, `"auto"`, to try jgd first, then
 httpgd, then the standard viewer. You can instead set it explicitly to `"jgd"`
 or `"httpgd"`. See [Plot viewer](../features/plot-viewer.md) for details.

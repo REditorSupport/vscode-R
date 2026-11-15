@@ -70,7 +70,7 @@ install.packages(
 ## Usage
 
 > [!NOTE]
-> [R Interactive](https://github.com/REditorSupport/vscode-R/wiki/R-Interactive)
+> [R Interactive](https://reditorsupport.github.io/vscode-R/features/r-interactive)
 > prepares its isolated runtime as part of starting an Interactive session; that
 > runtime follows its own lifecycle and does not change ordinary R libraries.
 > R Interactive requires [arf](https://github.com/eitsupi/arf) on the R host.
