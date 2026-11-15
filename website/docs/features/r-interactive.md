@@ -14,7 +14,7 @@ For Remote SSH, install this extension **on the remote host**. R, its packages, 
 
 The R host needs:
 
-- R. The bundled sess package is pure R and needs no compiler; its missing Imports are installed from the configured R repository.
+- R. The bundled sess package is pure R and needs no compiler; its missing Imports are installed from the configured R repository and may need build tools when installed from source.
 - The session agent automatically uses the extension host's bundled runtime: VS Code's Electron runtime in Node mode on desktop, or VS Code Server's Node runtime remotely. A separate Node.js installation is optional.
 - `tmux` is optional. On Linux, the default supervisor uses tmux when available and otherwise starts an independent detached process. `systemd --user` is another configurable option.
 - R packages processx, later, jsonlite, and rstudioapi. Install languageserver for language features, jgd and systemfonts for jgd graphics, svglite for the static fallback, and htmlwidgets/htmltools for HTML output.
