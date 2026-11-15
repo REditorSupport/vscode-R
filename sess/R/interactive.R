@@ -58,6 +58,7 @@
 # Detect the routines on each call: on Unix arf registers them only after
 # startup, so an early negative result must not be cached.
 .interactive_arf_started <- function(id) {
+  return(invisible(NULL)) # EXPERIMENT: no publish
   # arity-lint skip routine-registration: arf registers these routines in the embedding host, not in a package that sess could bind
   if (
     is.loaded("arf_api_version", PACKAGE = "(embedding)", type = ".Call") &&

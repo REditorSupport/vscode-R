@@ -123,7 +123,10 @@ export class Arf {
             throw new Error('Missing arf endpoint');
         }
         // Subscribe before submitting anything so that no started event is missed.
-        const metadata = await this.connect();
+        // EXPERIMENT: no attach, to isolate a macOS fork failure.
+        const metadata = object(
+            await arfRequest(this.endpoint, 'session', {}, 30000, this.abort.signal),
+        );
         checkArfSession(metadata);
         this.emit({
             type: 'provider',
@@ -297,11 +300,7 @@ export class Arf {
         if (this.failure) {
             throw this.failure;
         }
-        if (!this.attach || this.attach.closed) {
-            // The previous execution has finished, so attaching again loses no
-            // state; the session must still be the same arf process.
-            await this.connect();
-        }
+        // EXPERIMENT: no attach.
         const code = `sess:::interactive_execute(${rString(submission.id)}, ${rString(submission.code)}, jsonlite::fromJSON(${rString(JSON.stringify(submission.source ?? null))}, simplifyVector=FALSE))`;
         this.started = false;
         this.execution = { submission: submission.id, interruptRequested: false };
