@@ -732,6 +732,9 @@ completion_items <- function(obj, trigger = NULL) {
     }))
   }
 
+  # TODO: S7 objects are not S4, so their properties are not offered after `@`
+  # yet. They can be recognised without S7 (class "S7_object"), but listing
+  # property names needs S7::prop_names() or S7 internals.
   if (trigger == "@" && isS4(obj)) {
     nms <- methods::slotNames(obj)
     return(lapply(nms, function(n) {
