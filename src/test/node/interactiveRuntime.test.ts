@@ -411,12 +411,16 @@ sess::display("display-${cell}", "text/plain"); cat("stderr-${cell}\\n", file=st
     test('interrupts a slow inspection and continues serving R requests', async () => {
         for (const afterTimeout of [false, true]) {
             const marker = `inspection-started-${String(afterTimeout)}`;
+            // Hover does not evaluate its request, so make reading the binding slow.
+            const binding = `slow_inspection_${String(afterTimeout)}`;
+            const setup = await submit(
+                `makeActiveBinding("${binding}", function() { cat("${marker}"); Sys.sleep(30); 42 }, .GlobalEnv)`,
+            );
+            assert.strictEqual((await finished(setup)).state, 'success');
             const inspection = client
                 .request('inspect', {
                     method: 'hover',
-                    params: {
-                        expr: `local({ cat("${marker}"); Sys.sleep(30); 42 })`,
-                    },
+                    params: { expr: binding },
                 })
                 .then(
                     () => '',
