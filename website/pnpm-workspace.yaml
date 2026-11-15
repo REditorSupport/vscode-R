@@ -2,6 +2,12 @@
 # a lockfile and dependencies separate from the extension at the repository
 # root.
 
+# VitePress 1.x requires Vite 5, which cannot receive all security fixes.
+# Its Vue plugin supports Vite 6. Remove this override when stable VitePress
+# supports a maintained Vite version without it.
+overrides:
+  vite: ^6.4.6
+
 # esbuild's postinstall selects the platform-specific binary used by Vite.
 allowBuilds:
   esbuild: true
