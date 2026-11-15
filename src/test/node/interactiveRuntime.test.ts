@@ -1093,14 +1093,10 @@ dt`);
                 for (j in 1:10) cat(strrep(as.character(i), 8192))
                 i * 2L
             }, mc.cores = 4)
-            cat("\nEXPERIMENT values:\n"); print(lapply(values, function(v) list(class = class(v), value = if (inherits(v, "try-error")) conditionMessage(attr(v, "condition")) else v)))
-            print(warnings()); cat("EXPERIMENT warn option:", getOption("warn"), "\n")
             stopifnot(identical(unlist(values), c(2L, 4L, 6L, 8L)))
             cat("parallel complete")
         `);
-        const state = (await finished(id)).state;
-        console.log('EXPERIMENT transcript:', JSON.stringify(text(id).slice(-4000)));
-        assert.strictEqual(state, 'success');
+        assert.strictEqual((await finished(id)).state, 'success');
         assert.match(text(id), /parallel complete/);
         const next = await submit('21 * 2');
         assert.strictEqual((await finished(next)).state, 'success');
