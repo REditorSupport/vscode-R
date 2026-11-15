@@ -52,7 +52,7 @@ tools you need:
   [`httpgd`](https://github.com/nx10/httpgd) (optional): Interactive graphics
   devices used by the
   [plot viewer](./features/plot-viewer.md).
-  The default `r.plot.backend` value, `auto`, tries JGD first, then httpgd, then
+  The default `r.plot.backend` value, `auto`, tries jgd first, then httpgd, then
   the standard viewer.
 
 - [rmarkdown](https://rmarkdown.rstudio.com): An R package and format for

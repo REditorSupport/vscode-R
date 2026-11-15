@@ -49,15 +49,15 @@ Likewise, use `r.consoleArgs` instead of `r.rterm.option`, and
 ## Plot Settings
 
 - `r.plot.backend`: select `auto`, `standard`, `httpgd`, `jgd`, or `native`.
-  The default `auto` tries JGD first, then httpgd, then the standard viewer.
+  The default `auto` tries jgd first, then httpgd, then the standard viewer.
   `native` leaves R's configured graphics device untouched.
 - `r.plot.format`: select `svglite` or `png` for the standard plot backend
 - `r.plot.devArgs`: supplementary graphics-device arguments for the standard
   backend. Width and height are managed by the responsive viewer and override
   values supplied here.
-- `r.plot.jgd.historyLimit`: maximum number of plots kept in JGD history
+- `r.plot.jgd.historyLimit`: maximum number of plots kept in jgd history
 - `r.plot.jgd.exportWidth`, `r.plot.jgd.exportHeight`, and
-  `r.plot.jgd.exportDpi`: default JGD export dimensions and resolution
+  `r.plot.jgd.exportDpi`: default jgd export dimensions and resolution
 - `r.plot.defaults.colorTheme`: which color theme to use when launching the plot
   httpgd viewer
 - `r.plot.defaults.plotPreviewLayout`: how to display plot previews if more than

@@ -50,7 +50,7 @@ The list viewer supports collapsing nodes.
 
 ## Plot viewer
 
-The plot viewer supports JGD, httpgd, and a responsive standard SVG/PNG backend.
+The plot viewer supports jgd, httpgd, and a responsive standard SVG/PNG backend.
 For more details, go to
 [Plot viewer](./plot-viewer.md).
 

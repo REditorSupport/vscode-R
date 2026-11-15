@@ -17,7 +17,7 @@ The R host needs:
 - R. The bundled sess package is pure R and needs no compiler; its missing Imports are installed from the configured R repository.
 - The session agent automatically uses the extension host's bundled runtime: VS Code's Electron runtime in Node mode on desktop, or VS Code Server's Node runtime remotely. A separate Node.js installation is optional.
 - `tmux` is optional. On Linux, the default supervisor uses tmux when available and otherwise starts an independent detached process. `systemd --user` is another configurable option.
-- R packages `processx`, `later`, `jsonlite`, and `rstudioapi`. Install `languageserver` for language features, `jgd` and `systemfonts` for JGD graphics, `svglite` for the static fallback, and `htmlwidgets`/`htmltools` for HTML output.
+- R packages `processx`, `later`, `jsonlite`, and `rstudioapi`. Install `languageserver` for language features, `jgd` and `systemfonts` for jgd graphics, `svglite` for the static fallback, and `htmlwidgets`/`htmltools` for HTML output.
 - arf. Creating a new Interactive session requires an arf executable on the R host. Connecting to an already-running arf uses its socket and does not require arf on the extension host's PATH. The provider contract is tested with arf 0.5.3.
 
 For example, run in the R installation used on the server:
@@ -136,10 +136,10 @@ External terminal output observed through the arf console bridge is retained in 
 | Output | Behavior |
 | --- | --- |
 | Console, warnings, errors | Incremental output with per-execution limits and explicit truncation notices |
-| Base/grid/ggplot graphics | JGD frames retained by the agent and rendered as scalable SVG; independent font metrics work without a connected editor |
+| Base/grid/ggplot graphics | jgd frames retained by the agent and rendered as scalable SVG; independent font metrics work without a connected editor |
 | Incremental graphics | Recorded execution markers associate updates with their producing cell, including extensions of an existing plot |
 | Plot controls | Compact icons with labels for opening and resizing; **Save…** opens a native VS Code format picker for SVG and PNG |
-| Static fallback | Captured plots when JGD/systemfonts are unavailable or `plotBackend` is `standard` |
+| Static fallback | Captured plots when jgd/systemfonts are unavailable or `plotBackend` is `standard` |
 | Data frames and matrices | On-demand inline pages (20/50/100 rows), first/last and page jumps, sorting, column filters/reordering and Reset; an expanded data viewer remains available. Requests stay bound to their originating session |
 | HTML widgets and HTML tags | Sandboxed browser output with copied local dependencies; dependencies remain after the R temporary source is gone |
 | Explicit MIME | `sess::display(x, mime = "text/markdown")`, HTML, and text formats |
@@ -174,7 +174,7 @@ Full-table handles retain their original objects in R memory without an addition
 
 ### Widgets and output controls
 
-JGD graphics and browser widgets have different interaction models: a static R plot can resize and export, while plotly/leaflet-style interaction comes from the widget's JavaScript. Arbitrary widget behavior that requires browser permissions or unavailable external network resources remains subject to the sandbox and server configuration.
+jgd graphics and browser widgets have different interaction models: a static R plot can resize and export, while plotly/leaflet-style interaction comes from the widget's JavaScript. Arbitrary widget behavior that requires browser permissions or unavailable external network resources remains subject to the sandbox and server configuration.
 
 Table paging uses arrow icons with tooltips and accessible names. **Data viewer**, **Open plot**, and **Fit R device** retain short labels alongside their icons. **Save…** opens VS Code's native format picker without changing the cell height or scroll position, followed by the file save dialog. PNG is offered after the image loads. The picker supports typing, arrow-key navigation, Enter to select, and Escape to cancel. Each output allows one pending picker, and replies to replaced or disposed outputs are ignored.
 
@@ -237,7 +237,7 @@ These limits do not cap total session storage: earlier R generations and executi
 
 Plot storage follows this lifecycle:
 
-- Incremental JGD drawing updates are combined over 200 ms, and pending updates for an execution are flushed when it finishes. The agent saves SVG snapshots; it keeps JGD's drawing operations in memory for live plot handling instead of also saving redundant JSON frame files.
+- Incremental jgd drawing updates are combined over 200 ms, and pending updates for an execution are flushed when it finishes. The agent saves SVG snapshots; it keeps jgd's drawing operations in memory for live plot handling instead of also saving redundant JSON frame files.
 - Generated SVG/JSON assets of at least 4 KiB use gzip when it reduces their size. Identical content is deduplicated. Display and export decode transparently; exported SVG/JSON files remain ordinary files. Existing uncompressed assets remain readable. HTML dependencies retain their original encoding and directory structure.
 - Automatic cleanup starts when a write would exceed 80% of the quota. It removes superseded snapshots and unreferenced generated assets. The latest display version in every retained journal generation is protected, including all dependencies of retained HTML widgets. When journal rotation removes an output's last reference, its assets become eligible for cleanup. A corrupt or unreadable journal prevents cleanup.
 - **R: Clean Up Interactive Assets**, also in the session context menu, runs cleanup immediately and reports reclaimed space and current usage. Clearing cells only hides them; it does not erase durable history or make their final plots eligible for cleanup.
