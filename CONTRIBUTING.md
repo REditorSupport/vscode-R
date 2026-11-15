@@ -1,6 +1,6 @@
 # Contributing to vscode-r
 
-If you are interested in writing code to fix issues, please see [How to Contribute](https://github.com/REditorSupport/vscode-R/wiki/Contributing) in the wiki.
+If you are interested in writing code to fix issues, please see [Contributing](https://reditorsupport.github.io/vscode-R/contributing) on the documentation site.
 
 ## Debugging the extension
 
@@ -84,7 +84,7 @@ Interactive session. Run the source/bootstrap checks with
 
 ## Testing R Interactive
 
-The [architecture and backend contract](src/interactive/README.md) live beside the implementation. User setup and behavior belong in the [R Interactive wiki page](https://github.com/REditorSupport/vscode-R/wiki/R-Interactive).
+The [architecture and backend contract](src/interactive/README.md) live beside the implementation. User setup and behavior belong in the [R Interactive documentation page](https://reditorsupport.github.io/vscode-R/features/r-interactive).
 
 Use Linux or macOS for Interactive runtime tests, with R and an installed arf 0.5.3 executable. Bundled sess is pure R and needs no compiler when its Imports are already installed; missing Imports are installed from the configured repository. Windows runs the remaining extension checks; persistent Interactive supervision remains limited to Linux/macOS. From the repository root, after installing pnpm dependencies, prepare a test library:
 
