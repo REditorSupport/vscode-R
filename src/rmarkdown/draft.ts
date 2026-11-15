@@ -92,7 +92,7 @@ async function launchTemplatePicker(cwd: string): Promise<TemplateItem | undefin
         } else {
             void window
                 .showInformationMessage(
-                    'No templates found. Would you like to browse the wiki page for R packages that provide R Markdown templates?',
+                    'No templates found. Would you like to browse the documentation for R packages that provide R Markdown templates?',
                     'Yes',
                     'No',
                 )
@@ -100,7 +100,7 @@ async function launchTemplatePicker(cwd: string): Promise<TemplateItem | undefin
                     if (select === 'Yes') {
                         void env.openExternal(
                             Uri.parse(
-                                'https://github.com/REditorSupport/vscode-R/wiki/R-Markdown#templates',
+                                'https://reditorsupport.github.io/vscode-R/guide/r-markdown#templates',
                             ),
                         );
                     }
