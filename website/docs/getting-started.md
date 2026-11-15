@@ -98,8 +98,9 @@ bundled sess package.
 | Development build | After each verified push to `main` | The `vscode-R.vsix` file attached to the [`latest`](https://github.com/REditorSupport/vscode-R/releases/tag/latest) GitHub release |
 
 Stable releases use an even minor version (for example, `3.4.0`), and daily
-pre-releases use the following odd minor version with the UTC date as the patch
-version (for example, `3.5.20261115`). A scheduled run publishes nothing when
+pre-releases use the next odd minor version (or keep an odd minor version that
+is already set in development) with the UTC date as the patch version (for
+example, `3.5.20261115`). A scheduled run publishes nothing when
 nothing that affects the published extension has changed since the last
 pre-release, for example when only tests or development tooling changed. Choose **Switch to Release
 Version** on the extension's page to return to stable releases.
