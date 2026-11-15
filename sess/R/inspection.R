@@ -109,7 +109,7 @@ inspection_access <- function(object, operator, name) {
     return(list(found = FALSE))
   }
   if (operator == "@") {
-    if (isS4(object) && !methods::.hasSlot(object, name)) {
+    if (isS4(object) && !inspection_has_slot(object, name)) {
       return(list(found = FALSE))
     }
     if (!isS4(object) && !is.object(object)) {
@@ -121,6 +121,16 @@ inspection_access <- function(object, operator, name) {
   assign(".object", object, envir = env)
   value <- eval(as.call(list(fun, as.name(".object"), as.name(name))), env)
   list(found = TRUE, value = value)
+}
+
+# Whether base `@` reads `name` from an S4 object rather than signalling that
+# there is no such slot. methods::.hasSlot() covers stored slots and other
+# attributes; `@` also reads the data part `.Data`, the S3 class `.S3Class`, and
+# `names` of a list-based object, even when they are not stored as attributes.
+inspection_has_slot <- function(object, name) {
+  methods::.hasSlot(object, name) ||
+    name %in% c(".Data", ".S3Class") ||
+    (identical(name, "names") && typeof(object) == "list")
 }
 
 # Resolve a parsed target to list(found, value). Each step reads its binding

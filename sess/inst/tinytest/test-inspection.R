@@ -91,6 +91,15 @@ local({
   global("s4", methods::new("sess_inspection_s4", items = list(a = "slot item")))
   expect_identical(hover("sess_inspection_s4@items$a")$str, capture_str("slot item"))
   expect_null(hover("sess_inspection_s4@missing"))
+  # Pseudo-slots that base `@` reads but methods::.hasSlot() does not report.
+  expect_identical(hover("sess_inspection_s4@.S3Class")$str, capture_str("sess_inspection_s4"))
+  methods::setClass("sess_inspection_s4_list", contains = "list", where = .GlobalEnv)
+  global("s4_list", methods::new("sess_inspection_s4_list", list(1L)))
+  expect_identical(hover("sess_inspection_s4_list@.Data")$str, capture_str(list(1L)))
+  expect_identical(hover("sess_inspection_s4_list@names")$str, capture_str(NULL))
+  # Errors other than a missing slot are not hidden.
+  methods::removeClass("sess_inspection_s4_list", where = .GlobalEnv)
+  expect_error(hover("sess_inspection_s4_list@.Data"))
   expect_null(hover("sess_inspection_nested@a"))
   expect_identical(vapply(completion("sess_inspection_s4", "@"), `[[`, "", "name"), "items")
   # Masking `$` or `@` in the global environment does not change the operators.
