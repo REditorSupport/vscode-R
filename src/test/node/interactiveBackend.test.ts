@@ -4,6 +4,7 @@ import * as os from 'os';
 import * as path from 'path';
 import { randomUUID } from 'crypto';
 import { createServer } from 'http';
+import * as net from 'net';
 import { SessionAgent } from '../../interactive/agent';
 import { AgentClient } from '../../interactive/client';
 import { AgentConfig, ExecutionRecord, SessionEvent, Submission } from '../../interactive/protocol';
@@ -449,11 +450,41 @@ suite('Interactive backend configuration', () => {
                         return;
                     }
                 }
-                response.end(JSON.stringify({ jsonrpc: '2.0', id: 1, result: {} }));
+                response.end(JSON.stringify({ jsonrpc: '2.0', id: 1, result: { status: 'ok' } }));
             });
         });
+        // arf serves attach (newline-delimited JSON) and HTTP on one endpoint.
+        const listener = net.createServer((socket) => {
+            socket.once('data', (chunk: Buffer) => {
+                if (chunk[0] === '{'.charCodeAt(0)) {
+                    const attach = JSON.parse(chunk.toString()) as { id: number };
+                    socket.write(
+                        JSON.stringify({
+                            jsonrpc: '2.0',
+                            id: attach.id,
+                            result: {
+                                connection_id: 1,
+                                api_version: 1,
+                                capabilities: ['events', 'call_execution_timeout'],
+                                session_id: 'fake',
+                                session: {
+                                    arf_version: '0.7.1',
+                                    capabilities: ['call_execution_timeout'],
+                                },
+                            },
+                        }) + '\n',
+                    );
+                } else {
+                    socket.pause();
+                    socket.unshift(chunk);
+                    server.emit('connection', socket);
+                    socket.resume();
+                }
+            });
+            socket.on('error', () => undefined);
+        });
         const endpoint = path.join(root, 'arf.sock');
-        await new Promise<void>((resolve) => server.listen(endpoint, resolve));
+        await new Promise<void>((resolve) => listener.listen(endpoint, resolve));
         const adapter = new Arf(
             'unused',
             root,
@@ -474,7 +505,7 @@ suite('Interactive backend configuration', () => {
         } finally {
             adapter.dispose();
             server.closeAllConnections();
-            await new Promise<void>((resolve) => server.close(() => resolve()));
+            await new Promise<void>((resolve) => listener.close(() => resolve()));
         }
     });
 });

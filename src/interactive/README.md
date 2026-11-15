@@ -39,9 +39,10 @@ The shipped `sess` backend uses arf with pure R sess helpers:
 [SessBackend](backends/sessBackend.ts) owns readiness, metadata, capabilities, and
 ordered output. [SessBridge](backends/sessBridge.ts) owns authenticated sess
 JSON-RPC, inspection, rich events, and requests to the editor. [Arf](backends/arf.ts)
-owns launch/adoption and dispatch; [process.ts](backends/process.ts) handles
-signals, ownership, and confirmed process exit. Shared discovery/HTTP helpers
-remain in [arf.ts](arf.ts). Plain R Interactive creation is unavailable; ordinary
+owns launch/adoption, dispatch, interruption, and Stop; [process.ts](backends/process.ts)
+handles ownership, signals, and confirmed process exit. Shared discovery/HTTP
+helpers and the version check remain in [arf.ts](arf.ts), and the long-lived
+connection in [arfAttach.ts](arfAttach.ts). Plain R Interactive creation is unavailable; ordinary
 R terminals are unaffected, and existing agents can still be reconnected.
 
 Managed sessions dispatch the private `sess:::interactive_execute` entry point
@@ -55,6 +56,17 @@ R sinks, frontend styling, and forked workers cannot rewrite those frames. A
 server reply timeout after execution started does not cancel R; its events still
 establish completion. Other transport failures remain ambiguous without retries.
 
+The backend attaches to arf before submitting code. Before running a submission,
+sess publishes an arf event carrying its ID, so the event's arf execution ID
+identifies that submission; a managed `user_input` acknowledgement reports the
+same ID. Interruption is an arf IPC `interrupt` for that execution ID, held until
+the ID is known and dropped once sess reports completion. It is never a signal:
+headless arf ends the whole session on SIGINT when R is idle, so a signal that
+races with completion would end the session. sess reports the outcome; arf's
+acceptance does not. Stop sends arf `shutdown` and waits for the process to exit,
+killing it after a deadline. An interactive arf rejects `shutdown` as an unknown
+method; only that answer makes Stop fall back to SIGTERM and then SIGKILL.
+
 Adopted sessions use visible arf evaluation and return captured console output on
 completion, while rich events use sess RPC. The backend waits for both completion
 and the captured response. There is no subscription for arbitrary terminal console
@@ -64,7 +76,8 @@ sess hooks without changing frontend console callbacks or killing adopted R.
 Both providers report notebook stdin/debugger support as unavailable: arf IPC
 `user_input` submits code, rather than answering nested R prompts. Use ordinary
 R terminals for `readline`, `scan`, and debugger interaction. arf IPC is
-experimental; the integration is tested against arf 0.5.3. Persistent supervision
+experimental; the integration requires arf 0.7.1 or later and is tested with
+the version pinned in `mise.toml`. Persistent supervision
 currently remains limited to Linux/macOS.
 
 [SessGraphics](backends/sessGraphics.ts) owns JGD negotiation, its font-metrics worker, plot attribution/coalescing, SVG production, and resize transport. It emits display payloads with stable identities. The agent stores assets and journals references. Static graphics remains available without JGD; another backend can supply SVG/PNG directly.

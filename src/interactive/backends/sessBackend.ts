@@ -208,13 +208,12 @@ export class SessBackend implements SessionBackend {
         return Promise.resolve();
     }
     interrupt(): Promise<void> {
-        this.frontend.process.interrupt();
-        return Promise.resolve();
+        return this.frontend.interrupt();
     }
     async stop(options?: { force?: boolean }): Promise<void> {
         // Stop may arrive after the control endpoint opens but before R is spawned.
         await this.startup;
-        await this.frontend.process.stop(options?.force);
+        await this.frontend.stop(options?.force);
     }
     resizePlot(request: ResizePlotRequest): Promise<void> {
         this.graphics.resize(request);
@@ -394,6 +393,7 @@ export class SessBackend implements SessionBackend {
             return;
         }
         this.graphics.flush(executionId);
+        this.frontend.finished(executionId);
         this.current = undefined;
         this.completion = undefined;
         this.emit({

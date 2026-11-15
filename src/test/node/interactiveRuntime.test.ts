@@ -408,6 +408,17 @@ sess::display("display-${cell}", "text/plain"); cat("stderr-${cell}\\n", file=st
         assert.match(text(next), /17/);
     });
 
+    test('an interrupt between executions does not end the session', async () => {
+        // A signal that reaches idle headless arf ends the session, so an
+        // interrupt that races with completion must not be sent as a signal.
+        const first = await submit('kept_between <- 23');
+        assert.strictEqual((await finished(first)).state, 'success');
+        await assert.rejects(client.request('interrupt'), /No submitted code is running/);
+        const next = await submit('kept_between');
+        assert.strictEqual((await finished(next)).state, 'success');
+        assert.match(text(next), /23/);
+    });
+
     test('interrupts a slow inspection and continues serving R requests', async () => {
         for (const afterTimeout of [false, true]) {
             const marker = `inspection-started-${String(afterTimeout)}`;
