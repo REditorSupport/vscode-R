@@ -79,7 +79,11 @@ local({
   expect_null(complete("sess_hover_df", NULL))
 
   # Other requests give no result, and the request text is not evaluated.
+  # Control flow is rejected: hovering `x` in `repeat x <- x + 1` sends
+  # `repeat x`, which used to loop forever. `repeat break` fails instead of
+  # hanging if it is evaluated again.
   rejected <- c(
+    "repeat break",
     "sess_hover_called <- TRUE",
     "assign(\"sess_hover_called\", TRUE)",
     "sess_hover_list; sess_hover_called <- TRUE",
