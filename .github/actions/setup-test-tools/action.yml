@@ -5,6 +5,13 @@ description: >-
 runs:
   using: composite
   steps:
+    # Rtools puts its MSYS curl on PATH; install mise first on Windows so its
+    # packslip download keeps the literal newline in curl's -w argument.
+    - name: Install arf before Rtools on Windows
+      if: runner.os == 'Windows'
+      uses: jdx/mise-action@6612f0ef07ed2a736cd1e00a94a065522dd41195 # v5.2.5
+      with:
+        working_directory: src/test/node
     - uses: r-lib/actions/setup-r@f9a764fea8d5c63df6ef9a5c7795bf7deb5d7e05 # v2
       with:
         use-public-rspm: true

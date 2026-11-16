@@ -38,8 +38,9 @@ runs:
       run: pnpm run clean && pnpm exec tsc
       shell: bash
     # src/test/node/mise.toml and mise.lock pin the arf version and its
-    # checksums.
+    # checksums. Windows installs them in setup-test-tools before Rtools changes PATH.
     - name: Install arf for Interactive tests
+      if: runner.os != 'Windows'
       uses: jdx/mise-action@6612f0ef07ed2a736cd1e00a94a065522dd41195 # v5.2.5
       with:
         working_directory: src/test/node
