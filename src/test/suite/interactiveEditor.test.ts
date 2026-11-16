@@ -37,6 +37,8 @@ function treeTooltip(item: vscode.TreeItem): string {
 
 suite('Interactive VS Code integration', function () {
     this.timeout(60000);
+    // The Windows extension host can start in the VS Code installation directory.
+    const extensionRoot = path.resolve(__dirname, '../../..');
     let root: string;
     const sourceDirectories: string[] = [];
     let previousRProfile: string | undefined;
@@ -69,7 +71,7 @@ suite('Interactive VS Code integration', function () {
         previousRProfile = process.env.R_PROFILE_USER;
         process.env.R_PROFILE_USER = path.join(root, '.Rprofile');
         fs.mkdirSync(path.join(root, 'library'));
-        fs.cpSync(path.join(process.cwd(), 'sess'), path.join(root, 'sess'), { recursive: true });
+        fs.cpSync(path.join(extensionRoot, 'sess'), path.join(root, 'sess'), { recursive: true });
         await promisify(execFile)('R', [
             'CMD',
             'INSTALL',
@@ -101,7 +103,7 @@ suite('Interactive VS Code integration', function () {
                 storage: path.join(root, id),
                 library: path.join(root, 'library'),
                 rPath: 'R',
-                resources: path.join(process.cwd(), 'R'),
+                resources: path.join(extensionRoot, 'R'),
                 provider: 'arf',
                 arfPath: process.env.ARF_PATH ?? 'arf',
                 supervision: 'detached',
@@ -226,14 +228,14 @@ suite('Interactive VS Code integration', function () {
         );
     function bundleContext(): vscode.ExtensionContext {
         return (
-            createRequire(__filename)(path.join(process.cwd(), 'dist/extension')) as {
+            createRequire(__filename)(path.join(extensionRoot, 'dist/extension')) as {
                 extensionContext: vscode.ExtensionContext;
             }
         ).extensionContext;
     }
     function workspaceProvider(): WorkspaceDataProvider {
         return (
-            createRequire(__filename)(path.join(process.cwd(), 'dist/extension')) as {
+            createRequire(__filename)(path.join(extensionRoot, 'dist/extension')) as {
                 rWorkspace: WorkspaceDataProvider;
             }
         ).rWorkspace;
@@ -1729,7 +1731,7 @@ suite('Interactive VS Code integration', function () {
     test('keeps source-file diagnostics working with lint caching enabled', async function () {
         this.timeout(timeoutWithLanguageServerWaits(2));
         // languageserver deliberately excludes files under the system temporary directory.
-        const directory = fs.mkdtempSync(path.join(process.cwd(), '.r-interactive-source-'));
+        const directory = fs.mkdtempSync(path.join(extensionRoot, '.r-interactive-source-'));
         try {
             const file = path.join(directory, 'diagnostics.R');
             fs.writeFileSync(file, 'file_value<-1\n');
@@ -4297,7 +4299,7 @@ par(mfrow=c(1,1))`,
             assert.strictEqual(notebook.metadata.rGeneration, config.generation);
             assert.deepStrictEqual(config.previousGenerations, [original.generation]);
             assert.notStrictEqual(config.library, path.join(root, 'library'));
-            assert.notStrictEqual(config.resources, path.join(process.cwd(), 'R'));
+            assert.notStrictEqual(config.resources, path.join(extensionRoot, 'R'));
             assert.strictEqual(config.maxOutputBytes, 1.5 * 1024 * 1024);
             assert.strictEqual(config.maxJournalBytes, 24 * 1024 * 1024);
             assert.strictEqual(config.maxAssetBytes, 96 * 1024 * 1024);
@@ -4508,7 +4510,7 @@ par(mfrow=c(1,1))`,
                 storage: path.join(root, id),
                 library: path.join(root, 'library'),
                 rPath: 'R',
-                resources: path.join(process.cwd(), 'R'),
+                resources: path.join(extensionRoot, 'R'),
                 provider: 'arf',
                 arfPath: process.env.ARF_PATH ?? 'arf',
                 supervision: 'detached',
@@ -4714,7 +4716,7 @@ par(mfrow=c(1,1))`,
                     storage: path.join(root, id),
                     rPath: 'R',
                     library: path.join(root, 'library'),
-                    resources: path.join(process.cwd(), 'R'),
+                    resources: path.join(extensionRoot, 'R'),
                     provider: 'arf',
                     arfPath: process.env.ARF_PATH ?? 'arf',
                     supervision: 'test',

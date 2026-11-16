@@ -1125,7 +1125,11 @@ dt`);
         assert.strictEqual((await client.snapshot()).manifest.rPid, manifest.rPid);
     });
 
-    test('forked R workers cannot corrupt the parent console bridge', async () => {
+    test('forked R workers cannot corrupt the parent console bridge', async function () {
+        // R supports forked mclapply workers only on Unix.
+        if (process.platform === 'win32') {
+            this.skip();
+        }
         const id = await submit(`
             values <- parallel::mclapply(1:4, function(i) {
                 for (j in 1:10) cat(strrep(as.character(i), 8192))
