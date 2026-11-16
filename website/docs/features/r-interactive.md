@@ -8,7 +8,7 @@ R Interactive was introduced in vscode-R 3.2.0 ([PR #1805](https://github.com/RE
 
 ## Requirements and setup
 
-Use **VS Code 1.101.0 or newer**. Managed R Interactive sessions support Linux, macOS, and Windows. Windows uses detached supervision; existing-arf discovery/adoption remains available only on Unix. Existing R terminal workflows remain available.
+Use **VS Code 1.101.0 or newer**. R Interactive supports Linux, macOS, and Windows. On Windows, [connecting to an existing arf session](#connect-to-an-existing-arf-session) is not yet supported. Existing R terminal workflows remain available.
 
 For Remote SSH, install this extension **on the remote host**. R, its packages, optional executables, and session storage must be available on that host. For local use, the same requirements apply to your computer.
 
@@ -186,13 +186,13 @@ Already-running sessions and older saved outputs also get compact numeric displa
 
 ## Persistence, storage, and export
 
-On Windows the default registry is `%LOCALAPPDATA%/vscode-r/interactive`. Default storage and runtime directories under per-user `%TEMP%` inherit the user-profile ACL (user, SYSTEM, and administrators). The extension does not rewrite Windows ACLs. Securing a custom or shared storage location is your responsibility. On Linux and macOS, the default registry is `$XDG_STATE_HOME/vscode-r/interactive` when `XDG_STATE_HOME` is a nonempty absolute path. Otherwise, new macOS installations use `~/Library/Application Support/vscode-r/interactive`, and Linux uses `~/.local/state/vscode-r/interactive`. An existing macOS registry at `~/.local/state/vscode-r/interactive` is reused so live sessions remain discoverable; it is never moved automatically.
+The default registry is `$XDG_STATE_HOME/vscode-r/interactive` when `XDG_STATE_HOME` is a nonempty absolute path. Otherwise, new macOS installations use `~/Library/Application Support/vscode-r/interactive`, and Linux uses `~/.local/state/vscode-r/interactive`. An existing macOS registry at `~/.local/state/vscode-r/interactive` is reused so live sessions remain discoverable; it is never moved automatically. Windows always uses `%LOCALAPPDATA%\vscode-r\interactive`.
 
 `r.interactive.storagePath` overrides the default. Use an absolute, writable path, and reload VS Code after changing it. Keep this directory on private, reliable storage on the R host. With Remote SSH, the path and environment belong to the remote host.
 
 If session creation reports `EACCES`, the storage directory or an ancestor is not writable by the R host's user. For example, a root-owned `~/.local` can prevent creating the Linux-style path on macOS. New macOS installations use Application Support to avoid this problem. For a custom path, choose a writable directory using `r.interactive.storagePath` and reload. Changing this setting selects a different registry; it does not migrate existing sessions. Reuse the original setting to reconnect to sessions stored there.
 
-Each session stores a manifest, immutable assets, and one journal directory per process generation. Unix sockets live in a mode-0700 runtime directory. Windows uses named pipes with their default security descriptor, which prevents other users from opening them for writing. Control and sess reuse the existing token authentication. The extension discovers existing agents after a reload and reconstructs the recent transcript. Asset URLs are regenerated through VS Code's remote forwarding support.
+Each session stores a manifest, immutable assets, and one journal directory per process generation. Private Unix sockets and credentials live in a mode-0700 runtime directory. The extension discovers existing agents after a reload and reconstructs the recent transcript. Asset URLs are regenerated through VS Code's remote forwarding support.
 
 With `r.interactive.restore` enabled (the default), reopening the same workspace reconnects its saved sessions, even when no R source file is open. Native Interactive tabs are matched by their saved URI, since VS Code does not retain their notebook metadata across reload. This restores the existing views without opening duplicate empty tabs. A failed reconnect preserves the saved association for a later retry. Sessions remain discoverable through **R: Open Interactive Session** from another workspace or when automatic restoration is disabled. Closing a view or choosing **Disconnect** removes its automatic-restoration entry while leaving R alive.
 
