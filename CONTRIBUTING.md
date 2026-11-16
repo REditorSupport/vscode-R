@@ -119,8 +119,12 @@ and `pnpm run test:extension` to rerun either layer without rebuilding.
 Run `pnpm run test:activation` after compiling to check activation in fresh
 VS Code windows. It verifies that unrelated workspaces and Python Interactive
 windows keep vscode-R inactive, and that R files, commands, terminal profiles,
-tasks, notebooks, and restored native R Interactive inputs activate it. Each
-case uses temporary profiles without the normal suite's forced activation.
+tasks, notebooks, and restored native R Interactive inputs activate it. It also
+checks that a persistent R terminal retains its process and workspace across a
+window reload, then reconnects after explicit R activation. This case needs R
+and the `sess` Imports installed, and installs the bundled package into a
+temporary library. Each case uses temporary profiles without the normal suite's
+forced activation.
 `VSCR_ACTIVATION_VSCODE` selects an existing VS Code executable; otherwise the
 runner downloads current stable. `VSCR_ACTIVATION_CASES` selects a comma-separated
 subset of cases from `scripts/test-activation.cjs`. On headless Linux, use

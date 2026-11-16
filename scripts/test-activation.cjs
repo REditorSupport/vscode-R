@@ -11,6 +11,7 @@ const cases = [
     'workspace', 'command', 'terminal-profile', 'task', 'r-notebook',
     'interactive-create', 'interactive-restore',
     'interactive-background-create', 'interactive-background-restore',
+    'terminal-persistent-reload',
 ];
 const pause = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds));
 
@@ -46,6 +47,7 @@ exports.run = async (api) => {
     const testCase = process.env.VSCR_ACTIVATION_CASE;
     const root = process.env.VSCR_ACTIVATION_ROOT;
     const extension = vscode.extensions.getExtension('REditorSupport.r');
+    let terminalReload;
     assert.ok(extension, 'The development extension must be available');
     // Give delayed startup activation and workspace searches time to run. The
     // normal suite's forced global activation would hide this regression.
@@ -101,6 +103,52 @@ exports.run = async (api) => {
                 await until(() => extension.isActive, 'R Terminal profile did not activate R');
                 await until(() => vscode.window.terminals.length > 0, 'R Terminal was not created');
                 vscode.window.terminals.forEach((terminal) => terminal.dispose());
+                break;
+            }
+            case 'terminal-persistent-reload': {
+                const phaseFile = path.join(root, 'terminal-reload-state.json');
+                const reloading = fs.existsSync(phaseFile);
+                if (!reloading) {
+                    await within(vscode.commands.executeCommand('workbench.action.terminal.newWithProfile',
+                        { config: { extensionIdentifier: 'REditorSupport.r', id: 'r.terminal-profile', title: 'R Terminal' } }),
+                    'Persistent R Terminal creation timed out');
+                }
+                await until(() => vscode.window.terminals.length > 0, 'Persistent R Terminal was not restored');
+                const terminal = vscode.window.terminals[0];
+                const terminalPid = await within(terminal.processId, 'Restored terminal PID was not available');
+                const stateFile = path.join(root, reloading ? 'terminal-after' : 'terminal-before');
+                const rFile = JSON.stringify(stateFile.replace(/\\/g, '/'));
+                const rTemporary = JSON.stringify(`${stateFile}.pending`.replace(/\\/g, '/'));
+                terminal.sendText(`${reloading ? '' : '.vscode_r_activation_marker <- 42; '}` +
+                    `writeLines(c(as.character(Sys.getpid()), get('.session_id', asNamespace('sess'))(), ` +
+                    `as.character(.vscode_r_activation_marker)), ${rTemporary}); ` +
+                    `stopifnot(file.rename(${rTemporary}, ${rFile}))`);
+                await until(() => fs.existsSync(stateFile), 'R terminal did not report its retained state');
+                const [pid, sessionId, marker] = fs.readFileSync(stateFile, 'utf8').trim().split(/\r?\n/);
+                assert.equal(marker, '42', 'Window reload must retain the R workspace');
+                if (!reloading) {
+                    await until(() => extension.exports.session.getSessionReference(sessionId),
+                        'Initial R terminal sess attachment did not complete');
+                    fs.writeFileSync(phaseFile, JSON.stringify({ terminalPid, pid, sessionId,
+                        connectionId: extension.exports.session.getSessionReference(sessionId).connectionId }));
+                    return 'reload';
+                }
+                const previous = JSON.parse(fs.readFileSync(phaseFile, 'utf8'));
+                assert.equal(terminalPid, previous.terminalPid, 'Window reload must retain the terminal process');
+                assert.equal(pid, previous.pid, 'Window reload must retain the same R process');
+                assert.equal(sessionId, previous.sessionId, 'The retained R process must keep its sess identity');
+                assert.equal(extension.isActive, false, 'Restored terminal waits for explicit R activation');
+                assert.ok(!vscode.workspace.textDocuments.some((document) => ['r', 'rmd'].includes(document.languageId)),
+                    'The restored terminal must not rely on an R source document');
+                terminal.show();
+                await until(() => vscode.window.activeTerminal === terminal, 'Restored R terminal did not receive focus');
+                await within(vscode.commands.executeCommand('r.activateRSession'), 'Restored R terminal activation timed out');
+                await until(() => extension.exports.session.getSessionReference(sessionId),
+                    'Explicit activation did not reconnect the retained R terminal');
+                assert.notEqual(extension.exports.session.getSessionReference(sessionId).connectionId, previous.connectionId);
+                terminalReload = { terminalPid, rPid: Number(pid), retainedWorkspace: true,
+                    inactiveAfterReload: true, reconnected: true };
+                terminal.dispose();
                 break;
             }
             case 'task': {
@@ -171,7 +219,7 @@ exports.run = async (api) => {
                 throw new Error(`Unknown activation case: ${testCase}`);
         }
     }
-    const result = { case: testCase, vscode: vscode.version, active: extension.isActive };
+    const result = { case: testCase, vscode: vscode.version, active: extension.isActive, ...terminalReload };
     fs.writeFileSync(path.join(root, `${testCase}.json`), JSON.stringify(result));
     console.log('Activation regression:', JSON.stringify(result));
 };
@@ -207,10 +255,11 @@ async function main() {
     fs.writeFileSync(path.join(helper, 'index.cjs'), `
 const vscode = require('vscode');
 exports.activate = async () => {
-    try { await require(${JSON.stringify(__filename)}).run(vscode); }
+    let reload = false;
+    try { reload = await require(${JSON.stringify(__filename)}).run(vscode) === 'reload'; }
     catch (error) { require('node:fs').writeFileSync(require('node:path').join(process.env.VSCR_ACTIVATION_ROOT,
         process.env.VSCR_ACTIVATION_CASE + '.error'), error.stack || String(error)); }
-    finally { await vscode.commands.executeCommand('workbench.action.quit'); }
+    finally { await vscode.commands.executeCommand(reload ? 'workbench.action.reloadWindow' : 'workbench.action.quit'); }
 };
 `);
     // Reuse the cached syntax dependency when available; clean CI installs only
@@ -231,6 +280,7 @@ exports.activate = async () => {
     try {
         const reports = [];
         for (const testCase of selected) {
+            const persistentTerminal = testCase === 'terminal-persistent-reload';
             const name = testCase.startsWith('interactive-background-') ? 'restore-background'
                 : testCase.startsWith('interactive-') ? 'restore' : testCase;
             const caseRoot = path.join(root, name);
@@ -239,10 +289,12 @@ exports.activate = async () => {
             fs.mkdirSync(workspace, { recursive: true });
             fs.mkdirSync(path.join(profile, 'User'), { recursive: true });
             fs.writeFileSync(path.join(profile, 'User', 'settings.json'), JSON.stringify({
-                'r.lsp.enabled': false, 'r.sessionWatcher': false, 'r.plot.backend': 'native',
+                'r.lsp.enabled': false, 'r.sessionWatcher': persistentTerminal, 'r.plot.backend': 'native',
                 'r.interactive.restore': false, 'r.interactive.storagePath': path.join(caseRoot, 'sessions'),
                 'update.mode': 'none', 'extensions.autoUpdate': false, 'workbench.startupEditor': 'none',
-                'window.restoreWindows': 'all', 'terminal.integrated.enablePersistentSessions': false,
+                'window.restoreWindows': 'all', 'terminal.integrated.enablePersistentSessions': persistentTerminal,
+                ...(persistentTerminal ? { 'r.session.emulateRStudioAPI': false,
+                    'r.consoleArgs': ['--no-save', '--no-restore', '--no-site-file'] } : {}),
             }));
             fs.writeFileSync(path.join(workspace, 'index.js'), 'const unrelated = true;\n');
             if (testCase === 'workspace') {
@@ -259,6 +311,22 @@ exports.activate = async () => {
                 fs.writeFileSync(path.join(caseRoot, 'notebook.rnb'), JSON.stringify({ version: 1, metadata: {}, cells: [] }));
             }
             const env = { VSCR_ACTIVATION_CASE: testCase, VSCR_ACTIVATION_ROOT: caseRoot };
+            if (persistentTerminal) {
+                const library = path.join(caseRoot, 'r-library');
+                const librariesFile = path.join(caseRoot, 'r-library-paths');
+                const emptyProfile = path.join(caseRoot, 'empty-profile');
+                fs.mkdirSync(library);
+                fs.writeFileSync(emptyProfile, '');
+                const rString = (value) => JSON.stringify(value.replace(/\\/g, '/'));
+                const setup = spawnSync('Rscript', ['--vanilla', '-e',
+                    `writeLines(.libPaths(), ${rString(librariesFile)}); ` +
+                    `install.packages(${rString(path.join(repository, 'dist', 'resources', 'sess'))}, ` +
+                    `lib=${rString(library)}, repos=NULL, type='source')`],
+                { encoding: 'utf8', timeout: 300000 });
+                assert.equal(setup.status, 0, `Could not prepare isolated terminal sess: ${setup.stderr}`);
+                env.R_LIBS_USER = [library, ...fs.readFileSync(librariesFile, 'utf8').trim().split(/\r?\n/)].join(path.delimiter);
+                env.R_PROFILE_USER = emptyProfile;
+            }
             const launchArgs = [
                     ...(testCase === 'no-folder' ? [] : [workspace]),
                     '--user-data-dir', profile, '--extensions-dir', extensions,
@@ -267,17 +335,18 @@ exports.activate = async () => {
             ];
             const log = fs.createWriteStream(path.join(caseRoot, `${testCase}.log`));
             try {
-                if (testCase.startsWith('interactive-')) {
+                if (testCase.startsWith('interactive-') || persistentTerminal) {
                     await new Promise((resolve, reject) => {
                         const child = require('node:child_process').spawn(executable, [...launchArgs,
                             '--no-sandbox', '--disable-gpu-sandbox', '--skip-welcome', '--skip-release-notes', '--disable-updates',
                             '--disable-workspace-trust', `--extensionDevelopmentPath=${repository}`,
                             `--extensionDevelopmentPath=${helper}`], { env: { ...process.env, ...env } });
-                        const timer = setTimeout(() => { child.kill(); reject(new Error('Restore window timed out')); }, 45000);
+                        const timer = setTimeout(() => { child.kill(); reject(new Error('Restore window timed out')); },
+                            persistentTerminal ? 90000 : 45000);
                         child.stdout.on('data', (data) => log.write(data));
                         child.stderr.on('data', (data) => log.write(data));
                         child.once('error', (error) => { clearTimeout(timer); reject(error); });
-                        child.once('exit', (code) => {
+                        child.once('close', (code) => {
                             clearTimeout(timer);
                             if (code === 0) { resolve(); }
                             else { reject(new Error(`Restore window exited ${code}`)); }

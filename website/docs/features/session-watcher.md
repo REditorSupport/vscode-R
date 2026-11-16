@@ -12,8 +12,14 @@ session automatically and shows the attached R process in the status bar.
 
 vscode-R 3.0.0 uses the bundled `sess` R package for this connection. If the
 package is missing or older than the extension, vscode-R asks whether it may
-install or update the bundled version. Managed terminals can reconnect after a
-VS Code window reload.
+install or update the bundled version. Managed terminals reconnect after a
+VS Code window reload once vscode-R activates.
+
+VS Code can restore an existing terminal while vscode-R remains inactive. In a
+workspace with no R files or visible R Interactive tab, reconnection waits until
+you use R. Open an R file, or focus the restored R terminal and run
+**R: Activate R Session**, to reconnect it. The R process preserved across the
+window reload is not restarted by reconnection.
 
 ## External and self-managed R sessions
 
