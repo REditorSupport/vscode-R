@@ -77,7 +77,7 @@ Both providers report notebook stdin/debugger support as unavailable: arf IPC
 `user_input` submits code, rather than answering nested R prompts. Use ordinary
 R terminals for `readline`, `scan`, and debugger interaction. arf IPC is
 experimental; the integration requires arf 0.7.1 or later and is tested with
-the version pinned in `mise.toml`. Persistent supervision
+the version pinned in `src/test/node/mise.toml`. Persistent supervision
 currently remains limited to Linux/macOS.
 
 [SessGraphics](backends/sessGraphics.ts) owns JGD negotiation, its font-metrics worker, plot attribution/coalescing, SVG production, and resize transport. It emits display payloads with stable identities. The agent stores assets and journals references. Static graphics remains available without JGD; another backend can supply SVG/PNG directly.
