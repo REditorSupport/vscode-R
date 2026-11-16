@@ -9,7 +9,6 @@ export class RuntimeProcess {
     private exited = false;
     private closed = false;
     private monitor?: NodeJS.Timeout;
-    private stopping?: Promise<void>;
     constructor(
         readonly adopted: boolean,
         private emit: (event: BackendEvent) => void,
@@ -53,7 +52,7 @@ export class RuntimeProcess {
             this.monitor.unref();
         }
     }
-    private alive(): boolean {
+    alive(): boolean {
         if (this.exited || !this.pid) {
             return false;
         }
@@ -77,7 +76,15 @@ export class RuntimeProcess {
             this.emit({ type: 'exit', code, signal });
         }
     }
-    private signal(signal: NodeJS.Signals): void {
+    /** Records an exit observed without a process event, such as an adopted PID that vanished. */
+    markExited(): void {
+        this.exit();
+    }
+    /**
+     * Sends a signal to the R process. The interrupt and stop paths use arf IPC
+     * instead: headless arf ends the whole session on SIGINT.
+     */
+    send(signal: NodeJS.Signals): void {
         if (!this.alive()) {
             this.exit();
             return;
@@ -92,46 +99,27 @@ export class RuntimeProcess {
             }
         }
     }
-    interrupt(): void {
-        this.signal('SIGINT');
-    }
-    stop(force = false): Promise<void> {
-        return (this.stopping ??= this.stopProcess(force));
-    }
-    private async stopProcess(force: boolean): Promise<void> {
-        if (!this.pid) {
-            return;
-        }
-        this.signal(force ? 'SIGKILL' : 'SIGINT');
+    /** Resolves true once the process has exited, or false after `timeout` ms. */
+    async waitForExit(timeout: number): Promise<boolean> {
         const start = Date.now();
-        let terminated = force,
-            killed = force;
         while (this.alive()) {
             if (this.closed) {
-                return;
+                return true;
             }
-            const elapsed = Date.now() - start;
-            if (!terminated && elapsed >= 100) {
-                this.signal('SIGTERM');
-                terminated = true;
-            }
-            if (!killed && elapsed >= 3000) {
-                this.signal('SIGKILL');
-                killed = true;
-            }
-            if (elapsed > 5000) {
-                throw new Error('R has not exited after Stop');
+            if (Date.now() - start >= timeout) {
+                return false;
             }
             await new Promise((resolve) => setTimeout(resolve, 25));
         }
         this.exit();
+        return true;
     }
     dispose(): void {
         if (this.closed) {
             return;
         }
         if (!this.adopted) {
-            this.signal('SIGKILL');
+            this.send('SIGKILL');
         }
         this.closed = true;
         clearInterval(this.monitor);

@@ -1,3 +1,12 @@
+#' Serialize a message with the settings used for every IPC frame (internal)
+#'
+#' Sharing one encoder keeps the frames on the socket and the results of arf handler calls identical
+#' for the same R value.
+#' @keywords internal
+ipc_json <- function(data) {
+  jsonlite::toJSON(data, auto_unbox = TRUE, null = "null", force = TRUE, digits = NA)
+}
+
 #' Write a JSON object to the IPC pipe as a NDJSON line (internal)
 #' @keywords internal
 ipc_write <- function(data) {
@@ -12,7 +21,7 @@ ipc_write <- function(data) {
     return(invisible(FALSE))
   }
 
-  json <- jsonlite::toJSON(data, auto_unbox = TRUE, null = "null", force = TRUE, digits = NA)
+  json <- ipc_json(data)
   line <- c(charToRaw(enc2utf8(json)), as.raw(0x0a))
   tryCatch(
     {

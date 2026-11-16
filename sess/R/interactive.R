@@ -53,6 +53,26 @@
   invisible(NULL)
 }
 
+# Under arf, tell the agent which arf execution runs this submission, so that
+# it can interrupt that execution by ID. The event carries arf's execution ID.
+# Detect the routines on each call: on Unix arf registers them only after
+# startup, so an early negative result must not be cached.
+.interactive_arf_started <- function(id) {
+  # arity-lint skip routine-registration: arf registers these routines in the embedding host, not in a package that sess could bind
+  if (
+    is.loaded("arf_api_version", PACKAGE = "(embedding)", type = ".Call") &&
+      identical(.Call("arf_api_version", PACKAGE = "(embedding)"), 1L)
+  ) {
+    .Call(
+      "arf_publish_event",
+      "vscode-r.interactive.started",
+      list(id = id),
+      PACKAGE = "(embedding)"
+    )
+  }
+  invisible(NULL)
+}
+
 .interactive_write <- function(connection, text) {
   remaining <- processx::conn_write(connection, charToRaw(enc2utf8(text)))
   while (is.raw(remaining) && length(remaining)) {
@@ -333,6 +353,7 @@ interactive_execute <- function(id, code, source = NULL) {
     # The agent can interrupt as soon as started arrives. Install the condition
     # handlers before publishing it or doing any interruptible setup work.
     .interactive_event("started")
+    .interactive_arf_started(id)
     .interactive_plot_context()
     trace_state$depth <- sys.nframe()
     filename <- if (is.null(source$uri)) "<R Interactive>" else source$uri

@@ -1,0 +1,8 @@
+# Tools for the Interactive runtime tests. mise.lock pins each platform's
+# download and checksum; run `mise lock` after changing a version.
+[tools]
+# arf is not installed on Windows, where Interactive runtime tests do not run.
+"github:eitsupi/arf" = { version = "0.7.2-rc.1", os = ["linux", "macos"] }
+
+[settings]
+lockfile = true

@@ -519,8 +519,10 @@ export class SessionAgent {
                 if (params.id && params.id !== this.current) {
                     throw new Error('Execution is no longer running');
                 }
-                // Inspection can still be running after its request timed out,
-                // without a submitted execution in `current`.
+                // Only a submission is interrupted. An inspection stops by itself
+                // at its execution deadline, where the runtime supports one, so
+                // it is not an interrupt target; the backend rejects the request
+                // when nothing has been submitted.
                 await this.backend.interrupt();
                 break;
             case 'input':

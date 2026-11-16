@@ -4,6 +4,7 @@ import * as os from 'os';
 import * as path from 'path';
 import { randomUUID } from 'crypto';
 import { createServer } from 'http';
+import * as net from 'net';
 import { SessionAgent } from '../../interactive/agent';
 import { AgentClient } from '../../interactive/client';
 import { AgentConfig, ExecutionRecord, SessionEvent, Submission } from '../../interactive/protocol';
@@ -16,6 +17,8 @@ import {
     withBackend,
 } from '../../interactive/backendRegistry';
 import { Arf } from '../../interactive/backends/arf';
+import { INSPECTION_SELECTORS } from '../../interactive/backends/arfInspection';
+import { SessBackend } from '../../interactive/backends/sessBackend';
 
 class FakeBackend implements SessionBackend {
     readonly ownership = 'managed' as const;
@@ -449,11 +452,41 @@ suite('Interactive backend configuration', () => {
                         return;
                     }
                 }
-                response.end(JSON.stringify({ jsonrpc: '2.0', id: 1, result: {} }));
+                response.end(JSON.stringify({ jsonrpc: '2.0', id: 1, result: { status: 'ok' } }));
             });
         });
+        // arf serves attach (newline-delimited JSON) and HTTP on one endpoint.
+        const listener = net.createServer((socket) => {
+            socket.once('data', (chunk: Buffer) => {
+                if (chunk[0] === '{'.charCodeAt(0)) {
+                    const attach = JSON.parse(chunk.toString()) as { id: number };
+                    socket.write(
+                        JSON.stringify({
+                            jsonrpc: '2.0',
+                            id: attach.id,
+                            result: {
+                                connection_id: 1,
+                                api_version: 1,
+                                capabilities: ['events', 'call_execution_timeout'],
+                                session_id: 'fake',
+                                session: {
+                                    arf_version: '0.7.2-rc.1',
+                                    capabilities: ['call_execution_timeout'],
+                                },
+                            },
+                        }) + '\n',
+                    );
+                } else {
+                    socket.pause();
+                    socket.unshift(chunk);
+                    server.emit('connection', socket);
+                    socket.resume();
+                }
+            });
+            socket.on('error', () => undefined);
+        });
         const endpoint = path.join(root, 'arf.sock');
-        await new Promise<void>((resolve) => server.listen(endpoint, resolve));
+        await new Promise<void>((resolve) => listener.listen(endpoint, resolve));
         const adapter = new Arf(
             'unused',
             root,
@@ -474,7 +507,272 @@ suite('Interactive backend configuration', () => {
         } finally {
             adapter.dispose();
             server.closeAllConnections();
-            await new Promise<void>((resolve) => server.close(() => resolve()));
+            await new Promise<void>((resolve) => listener.close(() => resolve()));
         }
+    });
+});
+
+(process.platform === 'win32' ? suite.skip : suite)('Interactive inspection routing', function () {
+    this.timeout(10000);
+    let root: string;
+    let endpoints = 0;
+    setup(() => {
+        root = fs.mkdtempSync(path.join(os.tmpdir(), 'r-inspection-routing-'));
+    });
+    teardown(() => fs.rmSync(root, { recursive: true, force: true }));
+
+    /**
+     * An arf that serves attach and handler calls on the attach connection and
+     * evaluate over HTTP, as the real one does on one endpoint.
+     */
+    async function fakeAttachedArf(handlerApi: Record<string, unknown>): Promise<{
+        endpoint: string;
+        calls: Record<string, unknown>[];
+        close(): Promise<void>;
+    }> {
+        const calls: Record<string, unknown>[] = [];
+        const http = createServer((request, response) => {
+            request.resume();
+            request.on('end', () =>
+                response.end(JSON.stringify({ jsonrpc: '2.0', id: 1, result: { status: 'ok' } })),
+            );
+        });
+        const sockets = new Set<net.Socket>();
+        const listener = net.createServer((socket) => {
+            sockets.add(socket);
+            socket.on('error', () => undefined);
+            socket.once('data', (chunk: Buffer) => {
+                if (chunk[0] !== '{'.charCodeAt(0)) {
+                    socket.pause();
+                    socket.unshift(chunk);
+                    http.emit('connection', socket);
+                    socket.resume();
+                    return;
+                }
+                const answer = (message: Record<string, unknown>): void => {
+                    if (message.method === 'attach') {
+                        socket.write(
+                            JSON.stringify({
+                                jsonrpc: '2.0',
+                                id: message.id,
+                                result: {
+                                    connection_id: 1,
+                                    api_version: 1,
+                                    capabilities: ['events', 'call_execution_timeout'],
+                                    session_id: 'fake',
+                                    session: {
+                                        arf_version: '0.7.2',
+                                        capabilities: ['call_execution_timeout'],
+                                        handler_api: handlerApi,
+                                    },
+                                },
+                            }) + '\n',
+                        );
+                    } else if (message.method === 'call') {
+                        calls.push(message.params as Record<string, unknown>);
+                        socket.write(
+                            JSON.stringify({
+                                jsonrpc: '2.0',
+                                id: message.id,
+                                result: {
+                                    value: JSON.stringify({ version: 1, result: { str: 'fake' } }),
+                                    stdout: '',
+                                    stderr: '',
+                                    execution_id: 1,
+                                },
+                            }) + '\n',
+                        );
+                    }
+                };
+                let buffer = '';
+                const read = (data: Buffer): void => {
+                    buffer += data.toString();
+                    let newline: number;
+                    while ((newline = buffer.indexOf('\n')) >= 0) {
+                        answer(JSON.parse(buffer.slice(0, newline)) as Record<string, unknown>);
+                        buffer = buffer.slice(newline + 1);
+                    }
+                };
+                read(chunk);
+                socket.on('data', read);
+            });
+        });
+        // macOS limits Unix socket paths to 104 bytes, and its temporary
+        // directory is already long.
+        const endpoint = path.join(root, `arf-${++endpoints}.sock`);
+        await new Promise<void>((resolve) => listener.listen(endpoint, resolve));
+        return {
+            endpoint,
+            calls,
+            close: async () => {
+                sockets.forEach((socket) => socket.destroy());
+                http.closeAllConnections();
+                await new Promise<void>((resolve) => listener.close(() => resolve()));
+            },
+        };
+    }
+
+    async function adopt(handlerApi: Record<string, unknown>): Promise<{
+        adapter: Arf;
+        calls: Record<string, unknown>[];
+        close(): Promise<void>;
+    }> {
+        const arf = await fakeAttachedArf(handlerApi);
+        const adapter = new Arf(
+            'unused',
+            root,
+            arf.endpoint,
+            true,
+            () => undefined,
+            'token',
+            () => undefined,
+        );
+        await adapter.start('bootstrap', {});
+        return {
+            adapter,
+            calls: arf.calls,
+            close: async () => {
+                adapter.dispose();
+                await arf.close();
+            },
+        };
+    }
+
+    test('an adopted arf with every selector locked runs inspection as a handler call', async () => {
+        const session = await adopt({ state: 'locked', handlers: [...INSPECTION_SELECTORS] });
+        try {
+            assert.ok(session.adapter.callsInspection());
+            assert.deepStrictEqual(
+                await session.adapter.inspect({
+                    method: 'hover',
+                    params: { expr: 'x' },
+                    timeout: 2000,
+                }),
+                { str: 'fake' },
+            );
+            assert.deepStrictEqual(session.calls, [
+                {
+                    handler: 'vscode-r.inspect.json/hover',
+                    args: '{"expr":"x"}',
+                    queue_timeout_ms: 2000,
+                    execution_timeout_ms: 2000,
+                },
+            ]);
+        } finally {
+            await session.close();
+        }
+    });
+
+    test('an adopted arf without the locked selectors keeps the socket and says so', async () => {
+        for (const handlerApi of [
+            { state: 'unexposed', handlers: [] },
+            { state: 'locked', handlers: INSPECTION_SELECTORS.slice(1) },
+            { state: 'revoked', handlers: [...INSPECTION_SELECTORS] },
+        ]) {
+            const session = await adopt(handlerApi);
+            try {
+                assert.ok(!session.adapter.callsInspection(), JSON.stringify(handlerApi));
+            } finally {
+                await session.close();
+            }
+        }
+    });
+
+    test('a managed arf that does not publish every selector fails to start', async () => {
+        const arf = await fakeAttachedArf({
+            state: 'locked',
+            handlers: INSPECTION_SELECTORS.slice(1),
+        });
+        // Stands in for `arf headless --json`: it reports the fake's endpoint.
+        const command = path.join(root, 'arf');
+        fs.writeFileSync(
+            command,
+            `#!/bin/sh\necho '${JSON.stringify({ socket_path: arf.endpoint })}'\nexec sleep 30\n`,
+            { mode: 0o755 },
+        );
+        const adapter = new Arf(
+            command,
+            root,
+            undefined,
+            false,
+            () => undefined,
+            'token',
+            () => undefined,
+        );
+        try {
+            await assert.rejects(
+                adapter.start('bootstrap', {}),
+                /did not publish the R Interactive inspection handlers/,
+            );
+        } finally {
+            adapter.dispose();
+            await arf.close();
+        }
+    });
+
+    function sessBackend(ownership: 'managed' | 'adopted'): SessBackend {
+        return new SessBackend(
+            {
+                id: 'id',
+                generation: 'generation',
+                label: 'Routing',
+                directory: root,
+                storage: root,
+                provider: ownership === 'managed' ? 'arf' : 'arf-existing',
+                supervision: 'test',
+                historyLimit: 50,
+                maxOutputBytes: 1024,
+                maxJournalBytes: 1024,
+            },
+            {
+                frontend: 'arf',
+                ownership,
+                rPath: 'R',
+                library: path.join(root, 'library'),
+                resources: path.join(root, 'resources'),
+                plotBackend: 'standard',
+            },
+        );
+    }
+
+    test('inspection goes to arf handler calls when available and to the socket otherwise', async () => {
+        const requests: unknown[] = [];
+        for (const [ownership, calls] of [
+            ['managed', true],
+            ['adopted', true],
+            ['adopted', false],
+        ] as const) {
+            const backend = sessBackend(ownership);
+            try {
+                (backend as unknown as { frontend: unknown }).frontend = {
+                    callsInspection: () => calls,
+                    inspect: (request: unknown) => {
+                        requests.push(request);
+                        return Promise.resolve('call');
+                    },
+                    dispose: () => undefined,
+                };
+                if (calls) {
+                    assert.strictEqual(
+                        await backend.inspect({ method: 'workspace', params: {} }),
+                        'call',
+                    );
+                } else {
+                    // The socket bridge is not connected here, so it rejects.
+                    await assert.rejects(
+                        backend.inspect({ method: 'workspace', params: {} }),
+                        /R session is disconnected/,
+                    );
+                }
+            } finally {
+                await backend.dispose();
+            }
+        }
+        assert.strictEqual(requests.length, 2);
+    });
+
+    test('only a managed session promises interruptible inspection before it is ready', () => {
+        assert.strictEqual(sessBackend('managed').capabilities.inspectionDeadline, true);
+        assert.strictEqual(sessBackend('adopted').capabilities.inspectionDeadline, false);
     });
 });

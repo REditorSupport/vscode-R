@@ -9,20 +9,26 @@ export interface RuntimeMetadata {
     rPath?: string;
     libraryPaths?: string[];
 }
-export type InspectionMethod =
-    | 'workspace'
-    | 'workspace_children'
-    | 'workspace_view'
-    | 'listview_navigate'
-    | 'listview_view'
-    | 'hover'
-    | 'completion'
-    | 'dataview_init'
-    | 'dataview_page'
-    | 'dataview_dispose';
+export const INSPECTION_METHODS = [
+    'workspace',
+    'workspace_children',
+    'workspace_view',
+    'listview_navigate',
+    'listview_view',
+    'hover',
+    'completion',
+    'dataview_init',
+    'dataview_page',
+    'dataview_dispose',
+] as const;
+export type InspectionMethod = (typeof INSPECTION_METHODS)[number];
 export interface InspectionRequest {
     method: InspectionMethod;
     params: Record<string, unknown>;
+    /**
+     * Milliseconds. Over arf this is the execution deadline: R interrupts the
+     * request when it passes. A request waits at most as long again to start.
+     */
     timeout?: number;
 }
 export interface InputReply {
@@ -79,20 +85,7 @@ export interface SessionBackend {
 export type BackendFactory = (settings: AgentSettings) => SessionBackend;
 
 export function inspectionMethod(value: unknown): InspectionMethod {
-    if (
-        ![
-            'workspace',
-            'workspace_children',
-            'workspace_view',
-            'listview_navigate',
-            'listview_view',
-            'hover',
-            'completion',
-            'dataview_init',
-            'dataview_page',
-            'dataview_dispose',
-        ].includes(String(value))
-    ) {
+    if (!(INSPECTION_METHODS as readonly string[]).includes(String(value))) {
         throw new Error('Unsupported inspection method');
     }
     return value as InspectionMethod;

@@ -552,22 +552,17 @@ dispatch_message <- function(line) {
     }
   } else if (has_method && has_id) {
     # Request from vscode → R must reply
-    handlers <- list(
-      "interactive_stop" = function(p) {
-        interactive_stop()
-        TRUE
-      },
-      "workspace" = function(p) get_workspace_data(p$revision),
-      "workspace_children" = function(p) get_workspace_children(p$name, p$path, p$start, p$view_id),
-      "workspace_view" = function(p) handle_workspace_view(p$name, p$path),
-      "hover" = function(p) handle_hover(p$expr),
-      "completion" = function(p) handle_complete(p$expr, p$trigger),
-      "plot_latest" = function(p) handle_plot_latest(p),
-      "listview_navigate" = function(p) handle_listview_navigate(p$view_id, p$path),
-      "listview_view" = function(p) handle_listview_view(p$view_id, p$index, p$path),
-      "dataview_init" = function(p) handle_dataview_init(p),
-      "dataview_page" = function(p) handle_dataview_page(p),
-      "dataview_dispose" = function(p) handle_dataview_dispose(p)
+    handlers <- c(
+      list(
+        "interactive_stop" = function(p) {
+          interactive_stop()
+          TRUE
+        },
+        "hover" = function(p) handle_hover(p$expr),
+        "completion" = function(p) handle_complete(p$expr, p$trigger),
+        "plot_latest" = function(p) handle_plot_latest(p)
+      ),
+      inspection_handlers()
     )
 
     if (payload$method %in% names(handlers)) {

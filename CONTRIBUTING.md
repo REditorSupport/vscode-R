@@ -86,7 +86,7 @@ Interactive session. Run the source/bootstrap checks with
 
 The [architecture and backend contract](src/interactive/README.md) live beside the implementation. User setup and behavior belong in the [R Interactive documentation page](https://reditorsupport.github.io/vscode-R/features/r-interactive).
 
-Use Linux or macOS for Interactive runtime tests, with R and an installed arf 0.5.3 executable. Bundled sess is pure R and needs no compiler when its Imports are already installed; missing Imports are installed from the configured repository. Windows runs the remaining extension checks; persistent Interactive supervision remains limited to Linux/macOS. From the repository root, after installing pnpm dependencies, prepare a test library:
+Use Linux or macOS for Interactive runtime tests, with R and arf 0.7.2-rc.1 or later. Running `mise install` in `src/test/node` installs the arf version pinned in `src/test/node/mise.toml`, which CI also uses. Bundled sess is pure R and needs no compiler when its Imports are already installed; missing Imports are installed from the configured repository. Windows runs the remaining extension checks; persistent Interactive supervision remains limited to Linux/macOS. From the repository root, after installing pnpm dependencies, prepare a test library:
 
 ```sh
 export R_LIBS=/path/to/test-library
@@ -105,6 +105,8 @@ VSCR_TEST_STATIC=1 pnpm run test:interactive
 pnpm run pretest
 VSCR_TEST_TMUX=1 pnpm exec mocha out/test/node/interactiveRuntime.test.js --ui tdd --timeout 60000 --grep "standalone agent survives its launcher process exiting"
 ```
+
+Inspection runs as arf handler calls, whose output is captured. Tests that need to know when inspection code has started should have the R code write a file rather than wait for output.
 
 The provider is arf. `ARF_PATH` selects its executable; `VSCR_TEST_STATIC=1` selects standard graphics. The tmux variant needs tmux and exercises a real supervised agent, as Linux CI does. These variables can be combined. Check skipped tests when assessing coverage: a missing optional runtime or package is not a verified pass for that feature.
 
