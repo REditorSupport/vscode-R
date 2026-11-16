@@ -1,8 +1,8 @@
 name: Prepare test runtime
 description: >-
   Install R test dependencies, build the extension and bundled sess, install
-  sess, compile the tests and put arf on PATH. Run after
-  setup-test-tools.
+  sess, compile the tests and expose the arf installed by setup-test-tools. Run
+  after setup-test-tools.
 runs:
   using: composite
   steps:
@@ -37,13 +37,6 @@ runs:
     - name: Compile test files
       run: pnpm run clean && pnpm exec tsc
       shell: bash
-    # src/test/node/mise.toml and mise.lock pin the arf version and its
-    # checksums. Windows installs them in setup-test-tools before Rtools changes PATH.
-    - name: Install arf for Interactive tests
-      if: runner.os != 'Windows'
-      uses: jdx/mise-action@6612f0ef07ed2a736cd1e00a94a065522dd41195 # v5.2.5
-      with:
-        working_directory: src/test/node
     - name: Expose arf for Interactive tests
       shell: bash
       working-directory: src/test/node
