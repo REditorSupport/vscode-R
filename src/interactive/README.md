@@ -67,6 +67,42 @@ acceptance does not. Stop sends arf `shutdown` and waits for the process to exit
 killing it after a deadline. An interactive arf rejects `shutdown` as an unknown
 method; only that answer makes Stop fall back to SIGTERM and then SIGKILL.
 
+Inspection (workspace, hover/completion, and data-viewer requests) is an arf
+handler `call` with an execution deadline, not a sess socket request. Under arf
+the sess socket is served from idle event processing, where R interrupts are
+suppressed, so a slow request there cannot be stopped; arf delivers the deadline
+as an interrupt to a handler call and replies only after the handler stopped.
+Managed arf starts with `--ipc-expose`, which publishes ten selectors
+`vscode-r.inspect.json/<method>` from a table installed with sess
+([expose-inspection.R](../../sess/inst/arf/expose-inspection.R)). arf evaluates
+that expression before the bootstrap loads sess from the private library, so the
+handlers only forward to sess when called: they fail with an error until the
+private sess has started, and never load a sess themselves. A handler takes the
+request parameters as one JSON string, validates them in R, and returns the
+result as one JSON string, decoded like a socket reply. `interactive_stop` and
+`plot_latest` are not published, and nothing calls an arbitrary function by
+name. Hover and completion resolve names and `$`/`@` chains without evaluating
+the request text; other input is an R error, which reads as no result.
+
+The request's `timeout` is the execution deadline, and also how long a request
+may wait to start. The reply to a call that hit its deadline follows the
+handler's stop, so the transport wait is longer than both. Errors keep their
+cause: queue timeout (R was busy and the request never ran), execution deadline
+(R interrupted it), transport timeout (the client stopped waiting and it may
+still run), R error, interrupt, and an unpublished handler. Calls go through the
+long-lived attach connection, so arf drops calls that have not started when it
+closes, and replies need no connection per request. Requests are sent one at a
+time: identical read-only requests share a call, a newer hover or completion
+replaces an older one that has not started, and the number of waiting requests
+is bounded, so the arf call queue shared by all clients does not fill.
+
+An adopted arf uses calls only when `session.handler_api` is locked and lists
+every selector, which its user must have published; otherwise inspection stays
+on the sess socket and cannot be interrupted. The `inspectionDeadline`
+capability reports which one applies. Manual interruption of a running
+inspection is not offered: an interrupt request stops submitted code, and an
+inspection stops at its deadline.
+
 Adopted sessions use visible arf evaluation and return captured console output on
 completion, while rich events use sess RPC. The backend waits for both completion
 and the captured response. There is no subscription for arbitrary terminal console
@@ -119,8 +155,8 @@ Use the types in [backend.ts](backend.ts) as the source of truth. The essential 
 - `dispatch()` acknowledges transport, not evaluation completion. `started` and `finished` events establish the result and can arrive before the dispatch promise settles. The agent records admission and the current execution first; late replies must not complete an execution twice.
 - Events carry execution IDs where known. External terminal output stays identifiable as external; missing source or uncertain boundaries must not be invented.
 - A transport failure can leave execution outcome unknown. Block further dispatch until the outcome is established; never automatically retry submitted R code. Transport loss does not prove process death, particularly for adopted arf.
-- Inspection is a typed set of workspace, hover/completion, and data-viewer operations. Keep sockets, subprocesses, wire packets, and transport request IDs inside the backend. Runtime requests to the editor use opaque backend IDs; expired prompts must not become actionable on replay.
-- The agent validates input identity, generation, and controlling-client authorization. The backend delivers input/replies and handles interruption, including slow inspection after its editor request timed out.
+- Inspection is a typed set of workspace, hover/completion, and data-viewer operations. Keep sockets, subprocesses, wire packets, and transport request IDs inside the backend. `InspectionRequest.timeout` is a deadline, and a backend that can interrupt the request reports `inspectionDeadline`. Runtime requests to the editor use opaque backend IDs; expired prompts must not become actionable on replay.
+- The agent validates input identity, generation, and controlling-client authorization. The backend delivers input/replies and handles interruption of submissions. A slow inspection ends at its execution deadline rather than by an interrupt request.
 - Runtime capabilities come from the backend; persistence, history, rename, and queue cancellation remain agent-owned. Use capabilities and ownership for operational checks, with compatibility defaults for older manifests.
 
 ## Lifecycle

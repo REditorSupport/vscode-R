@@ -6,14 +6,28 @@ import {
     checkArfSession,
 } from '../arf';
 import { ArfAttachConnection, ArfEvent } from '../arfAttach';
-import { BackendEvent } from '../backend';
-import { object, Submission } from '../protocol';
+import { BackendEvent, InspectionRequest } from '../backend';
+import { MAX_MESSAGE_BYTES, object, Submission } from '../protocol';
 import { RuntimeProcess } from './process';
 import { rString } from './rCode';
 import { ArfOutput } from './arfOutput';
+import {
+    ArfHandlerApi,
+    CallLimits,
+    InspectionCalls,
+    inspectionCallsAvailable,
+    parseHandlerApi,
+} from './arfInspection';
 
 /** Topic that sess publishes before running submitted code under arf. */
 const STARTED_TOPIC = 'vscode-r.interactive.started';
+
+/**
+ * Longest line accepted on the attach connection. A handler's result is
+ * limited to MAX_MESSAGE_BYTES before it is sent as a JSON string, which can
+ * escape every character once more.
+ */
+const MAX_ATTACH_LINE_BYTES = 8 * MAX_MESSAGE_BYTES;
 
 /** The submission sent to arf, and arf's execution ID once known. */
 interface Execution {
@@ -28,6 +42,11 @@ export class Arf {
     private abort = new AbortController();
     private started = false;
     private attach?: ArfAttachConnection;
+    private attaching?: Promise<Record<string, unknown>>;
+    private handlerApi?: ArfHandlerApi;
+    private inspections = new InspectionCalls((selector, args, limits) =>
+        this.callHandler(selector, args, limits),
+    );
     private sessionId?: string;
     private execution?: Execution;
     private failure?: Error;
@@ -46,7 +65,11 @@ export class Arf {
     markStarted(): void {
         this.started = true;
     }
-    async start(bootstrap: string, env: NodeJS.ProcessEnv): Promise<void> {
+    /**
+     * `expose` is the R expression that arf evaluates, after the R profiles,
+     * to publish handlers. It applies only when this adapter starts arf.
+     */
+    async start(bootstrap: string, env: NodeJS.ProcessEnv, expose?: string): Promise<void> {
         if (!this.process.adopted) {
             const output = new Map(
                 ['stdout', 'stderr'].map((channel) => [
@@ -70,7 +93,7 @@ export class Arf {
                 );
                 const child = this.process.launch(
                     this.command,
-                    ['headless', '--json'],
+                    ['headless', '--json', ...(expose ? ['--ipc-expose', expose] : [])],
                     this.directory,
                     env,
                     (text, channel) => {
@@ -153,22 +176,72 @@ export class Arf {
             throw new Error(`Interactive bootstrap failed in arf: ${detail}`);
         }
     }
-    private async connect(): Promise<Record<string, unknown>> {
+    /** Attaches, or joins an attach that is already in progress. */
+    private connect(): Promise<Record<string, unknown>> {
+        return (this.attaching ??= this.attachOnce().finally(() => {
+            this.attaching = undefined;
+        }));
+    }
+    private async attachOnce(): Promise<Record<string, unknown>> {
         const { connection, result } = await ArfAttachConnection.open(this.endpoint!, {
             subscribe: [STARTED_TOPIC],
             client: { name: 'vscode-R Interactive' },
+            maxLineBytes: MAX_ATTACH_LINE_BYTES,
             onEvent: (event) => this.arfEvent(event),
         });
         if (this.sessionId !== undefined && result.sessionId !== this.sessionId) {
             connection.close();
             throw new Error('The arf endpoint now belongs to a different session');
         }
+        if (this.abort.signal.aborted) {
+            connection.close();
+            throw new Error('arf adapter was disposed');
+        }
         this.sessionId = result.sessionId;
         this.attach = connection;
+        this.handlerApi = parseHandlerApi(result.session);
         return result.session;
+    }
+    /** The attach connection, reattaching to the same session if it was lost. */
+    private async attached(): Promise<ArfAttachConnection> {
+        if (!this.attach || this.attach.closed) {
+            await this.connect();
+        }
+        return this.attach!;
+    }
+    /**
+     * Whether inspection uses handler calls, which stop at their execution
+     * deadline, rather than the sess socket, which cannot be interrupted.
+     */
+    callsInspection(): boolean {
+        return inspectionCallsAvailable(this.process.adopted, this.handlerApi);
+    }
+    /** Runs an inspection as a handler call with the request's execution deadline. */
+    inspect(request: InspectionRequest): Promise<unknown> {
+        return this.inspections.request(request);
+    }
+    private async callHandler(
+        selector: string,
+        args: string,
+        limits: CallLimits,
+    ): Promise<unknown> {
+        // A long-lived connection drops a call that has not started when it
+        // closes, so disposal does not leave inspections queued in R.
+        const connection = await this.attached();
+        return connection.request(
+            'call',
+            {
+                handler: selector,
+                args,
+                queue_timeout_ms: limits.queue,
+                execution_timeout_ms: limits.execution,
+            },
+            { timeout: limits.transport, signal: this.abort.signal },
+        );
     }
     dispose(): void {
         this.abort.abort();
+        this.inspections.close(new Error('R session was disposed'));
         this.attach?.close();
         this.process.dispose();
     }
@@ -181,8 +254,7 @@ export class Arf {
     async interrupt(): Promise<void> {
         const execution = this.execution;
         if (!execution) {
-            // TODO: Interrupt slow inspection through execution deadlines of
-            // handler calls; sess runs it where arf does not deliver interrupts.
+            // Inspection is stopped by its execution deadline, not by this request.
             throw new Error('No submitted code is running');
         }
         execution.interruptRequested = true;
@@ -297,11 +369,9 @@ export class Arf {
         if (this.failure) {
             throw this.failure;
         }
-        if (!this.attach || this.attach.closed) {
-            // The previous execution has finished, so attaching again loses no
-            // state; the session must still be the same arf process.
-            await this.connect();
-        }
+        // The previous execution has finished, so attaching again loses no
+        // state; the session must still be the same arf process.
+        await this.attached();
         const code = `sess:::interactive_execute(${rString(submission.id)}, ${rString(submission.code)}, jsonlite::fromJSON(${rString(JSON.stringify(submission.source ?? null))}, simplifyVector=FALSE))`;
         this.started = false;
         this.execution = { submission: submission.id, interruptRequested: false };

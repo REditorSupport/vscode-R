@@ -21,6 +21,13 @@ export const MIN_ARF_VERSION = '0.7.1';
 /** arf JSON-RPC error codes that the Interactive client acts on. */
 export const ARF_METHOD_NOT_FOUND = -32601;
 export const ARF_TIMEOUT = -32007;
+/** Errors of the `call` method. */
+export const ARF_HANDLER_NOT_FOUND = -32010;
+export const ARF_HANDLER_QUEUE_FULL = -32011;
+export const ARF_HANDLER_QUEUE_TIMEOUT = -32012;
+export const ARF_HANDLER_R_ERROR = -32014;
+export const ARF_HANDLER_INTERRUPTED = -32016;
+export const ARF_HANDLER_EXECUTION_TIMEOUT = -32019;
 
 /** A JSON-RPC error response from arf, keeping its code and data. */
 export class ArfRpcError extends Error {

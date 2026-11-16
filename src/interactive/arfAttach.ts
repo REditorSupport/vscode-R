@@ -25,6 +25,8 @@ export interface ArfAttachOptions {
     client?: { name: string; version?: string };
     /** Bounds connecting and the attach response, not later requests. */
     timeout?: number;
+    /** Longest accepted line from arf; the default is the Interactive message limit. */
+    maxLineBytes?: number;
     /** Registered before attaching, so no event after the response is missed. */
     onEvent?: (event: ArfEvent) => void;
     onClose?: (reason: Error) => void;
@@ -106,7 +108,7 @@ export class ArfAttachConnection {
                 } else if (message.id !== undefined) {
                     connection.response(message);
                 }
-            });
+            }, options.maxLineBytes);
             socket.on('data', (chunk: Buffer) => {
                 try {
                     parser.push(chunk);

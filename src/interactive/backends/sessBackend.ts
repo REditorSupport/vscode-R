@@ -19,6 +19,7 @@ import { SessBridge } from './sessBridge';
 import { SessGraphics } from './sessGraphics';
 import { Arf } from './arf';
 import { rString } from './rCode';
+import { exposeInspectionExpression } from './arfInspection';
 
 const run = promisify(execFile);
 export interface SessOptions {
@@ -70,6 +71,9 @@ export class SessBackend implements SessionBackend {
             tables: true,
             html: true,
             inspection: true,
+            // Whether a slow inspection is stopped at its deadline, which needs
+            // arf handler calls. An adopted session is known only after attaching.
+            inspectionDeadline: options.ownership === 'managed',
             interrupt: process.platform !== 'win32',
             jgd: false,
             plotResize: false,
@@ -172,11 +176,18 @@ export class SessBackend implements SessionBackend {
         const code =
             `base::source(${rString(path.join(this.options.resources, 'interactive-worker.R'))}, local=base::new.env(parent=base::baseenv()))$value(` +
             `${rString(this.options.library)}, ${rString(bootstrap)}, c(${support.map(rString).join(',')}), managed=${this.ownership === 'managed' ? 'TRUE' : 'FALSE'})`;
-        await this.frontend.start(code, {
-            ...process.env,
-            SESS_ENDPOINT: path.join(this.runtime, 'sess.sock'),
-            JGD_SOCKET: this.graphics.endpoint,
-        });
+        // arf evaluates this after the R profiles and before the bootstrap loads
+        // sess, so the published handlers find sess when they are called.
+        const expose = exposeInspectionExpression(this.options.library);
+        await this.frontend.start(
+            code,
+            {
+                ...process.env,
+                SESS_ENDPOINT: path.join(this.runtime, 'sess.sock'),
+                JGD_SOCKET: this.graphics.endpoint,
+            },
+            expose,
+        );
     }
     async dispatch(submission: Submission): Promise<void> {
         await this.startup;
@@ -194,7 +205,10 @@ export class SessBackend implements SessionBackend {
         }
     }
     inspect(request: InspectionRequest): Promise<unknown> {
-        return this.bridge.request(request.method, request.params, request.timeout ?? 5000);
+        // An adopted session that does not publish the handlers keeps the socket.
+        return this.frontend.callsInspection()
+            ? this.frontend.inspect(request)
+            : this.bridge.request(request.method, request.params, request.timeout ?? 5000);
     }
     replyInput(_reply: InputReply): Promise<void> {
         return Promise.reject(
@@ -258,6 +272,7 @@ export class SessBackend implements SessionBackend {
                 break;
             case 'ready':
                 this.frontend.ready = true;
+                this.capabilities.inspectionDeadline = this.frontend.callsInspection();
                 this.emit({
                     type: 'ready',
                     capabilities: { ...this.capabilities },

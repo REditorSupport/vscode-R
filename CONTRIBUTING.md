@@ -106,6 +106,8 @@ pnpm run pretest
 VSCR_TEST_TMUX=1 pnpm exec mocha out/test/node/interactiveRuntime.test.js --ui tdd --timeout 60000 --grep "standalone agent survives its launcher process exiting"
 ```
 
+Inspection runs as arf handler calls, whose output is captured. Tests that need to know when inspection code has started should have the R code write a file rather than wait for output.
+
 The provider is arf. `ARF_PATH` selects its executable; `VSCR_TEST_STATIC=1` selects standard graphics. The tmux variant needs tmux and exercises a real supervised agent, as Linux CI does. These variables can be combined. Check skipped tests when assessing coverage: a missing optional runtime or package is not a verified pass for that feature.
 
 `pnpm run test` prepares the bundle and test files, runs `src/test/node/` directly

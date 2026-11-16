@@ -419,37 +419,75 @@ sess::display("display-${cell}", "text/plain"); cat("stderr-${cell}\\n", file=st
         assert.match(text(next), /23/);
     });
 
-    test('interrupts a slow inspection and continues serving R requests', async () => {
-        for (const afterTimeout of [false, true]) {
-            const marker = `inspection-started-${String(afterTimeout)}`;
-            const inspection = client
-                .request('inspect', {
-                    method: 'hover',
-                    params: {
-                        expr: `local({ cat("${marker}"); Sys.sleep(30); 42 })`,
-                    },
-                })
-                .then(
-                    () => '',
-                    (error: Error) => error.message,
-                );
-            await until(() =>
-                events.some(
-                    (event) => event.type === 'stream' && String(event.data.text).includes(marker),
-                ),
+    test('stops a slow inspection at its execution deadline and continues serving R requests', async () => {
+        // Hovering a plain name reads the binding, which runs R code. It takes
+        // 30 seconds unless it is interrupted, and files record how far it got:
+        // stdout is captured by the call and cannot be used as a signal.
+        const started = path.join(temporary, `${randomUUID()}-started`);
+        const completed = path.join(temporary, `${randomUUID()}-completed`);
+        const binding = await submit(`makeActiveBinding(
+    "slow_binding",
+    function() {
+        writeLines("started", ${rString(started)})
+        for (i in 1:60) Sys.sleep(0.5)
+        writeLines("completed", ${rString(completed)})
+        1L
+    },
+    globalenv()
+)`);
+        assert.strictEqual((await finished(binding)).state, 'success');
+
+        const begun = Date.now();
+        const failure = await client
+            .request('inspect', { method: 'hover', params: { expr: 'slow_binding' } })
+            .then(
+                () => undefined,
+                (error: Error) => error,
             );
-            if (afterTimeout) {
-                assert.match(await inspection, /timed out/i);
-            }
-            await client.request('interrupt');
-            if (!afterTimeout) {
-                assert.match(await inspection, /interrupted/i);
-            }
-            const next = await submit('21 * 2');
-            assert.strictEqual((await finished(next)).state, 'success');
-            assert.match(text(next), /42/);
-            assert.ok(await client.request('inspect', { method: 'workspace' }));
+        const elapsed = Date.now() - begun;
+        assert.ok(failure, 'a slow inspection must fail rather than return a value');
+        assert.match(failure.message, /execution deadline/i);
+        assert.ok(fs.existsSync(started), 'the binding must have started');
+        // The deadline is 5 seconds; the binding alone would take 30.
+        assert.ok(elapsed >= 4000 && elapsed < 15000, `stopped after ${elapsed} ms`);
+
+        // R is free again at once: it was not left running the binding.
+        const next = await submit('21 * 2');
+        assert.strictEqual((await finished(next)).state, 'success');
+        assert.match(text(next), /42/);
+        assert.ok(Date.now() - begun < 20000);
+        assert.ok(!fs.existsSync(completed), 'the binding must have been interrupted');
+        assert.ok(await client.request('inspect', { method: 'workspace' }));
+    });
+
+    test('hover and completion do not evaluate their request text', async () => {
+        const id = await submit('evaluated <- FALSE; items <- list(a = 1, b = 2)');
+        assert.strictEqual((await finished(id)).state, 'success');
+        // A request that is not a name or an accessor chain finds nothing.
+        for (const expr of ['{ evaluated <<- TRUE; 1 }', 'evaluated <<- TRUE', 'repeat items']) {
+            assert.ok(!(await client.request('inspect', { method: 'hover', params: { expr } })));
+            assert.ok(
+                !(await client.request('inspect', {
+                    method: 'completion',
+                    params: { expr, trigger: '$' },
+                })),
+            );
         }
+        const hover = await client.request<{ str: string }>('inspect', {
+            method: 'hover',
+            params: { expr: 'items$a' },
+        });
+        assert.match(hover.str, /1/);
+        const items = await client.request<{ name: string }[]>('inspect', {
+            method: 'completion',
+            params: { expr: 'items', trigger: '$' },
+        });
+        assert.deepStrictEqual(
+            items.map((item) => item.name),
+            ['a', 'b'],
+        );
+        const check = await submit('stopifnot(!evaluated)');
+        assert.strictEqual((await finished(check)).state, 'success');
     });
 
     test('data inspection preserves random draws and reproducible resampling across cells', async () => {
