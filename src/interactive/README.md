@@ -1,6 +1,6 @@
 # R Interactive architecture
 
-R Interactive keeps R execution independent of the VS Code extension host. Each session has an agent, a runtime backend, a durable transcript, and retained assets. The editor reconnects to the agent instead of resubmitting code. See the [wiki user guide](https://github.com/REditorSupport/vscode-R/wiki/R-Interactive) for setup and behavior, and [CONTRIBUTING.md](../../CONTRIBUTING.md#testing-r-interactive) for validation commands.
+R Interactive keeps R execution independent of the VS Code extension host. Each session has an agent, a runtime backend, a durable transcript, and retained assets. The editor reconnects to the agent instead of resubmitting code. See the [user guide](https://reditorsupport.github.io/vscode-R/features/r-interactive) for setup and behavior, and [CONTRIBUTING.md](../../CONTRIBUTING.md#testing-r-interactive) for validation commands.
 
 ## Component boundaries
 

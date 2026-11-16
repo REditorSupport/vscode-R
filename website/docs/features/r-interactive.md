@@ -8,17 +8,17 @@ R Interactive was introduced in vscode-R 3.2.0 ([PR #1805](https://github.com/RE
 
 ## Requirements and setup
 
-Use **VS Code 1.101.0 or newer**. R Interactive currently supports Linux and macOS; its native console bridge does not support Windows. Existing R terminal workflows remain available.
+Use **VS Code 1.101.0 or newer**. R Interactive currently supports Linux and macOS; persistent session supervision is not available on Windows. Existing R terminal workflows remain available.
 
 For Remote SSH, install this extension **on the remote host**. R, its packages, optional executables, and session storage must be available on that host. For local use, the same requirements apply to your computer.
 
 The R host needs:
 
-- R, plus either compatible pre-built sess/dependency packages or a C compiler capable of building R packages (`r-base-dev` and `build-essential` on Debian/Ubuntu).
+- R. The bundled sess package is pure R and needs no compiler; its missing Imports are installed from the configured R repository and may need build tools when installed from source.
 - The session agent automatically uses the extension host's bundled runtime: VS Code's Electron runtime in Node mode on desktop, or VS Code Server's Node runtime remotely. A separate Node.js installation is optional.
 - `tmux` is optional. On Linux, the default supervisor uses tmux when available and otherwise starts an independent detached process. `systemd --user` is another configurable option.
-- R packages `processx`, `later`, `jsonlite`, and `rstudioapi`. Install `languageserver` for language features, `jgd` and `systemfonts` for JGD graphics, `svglite` for the static fallback, and `htmlwidgets`/`htmltools` for HTML output.
-- `arf` is optional. Creating a headless arf session requires an executable on the R host; plain R requires no arf installation. Connecting to an already-running arf uses its socket and does not require arf on the extension host's PATH. The provider contract was exercised with arf 0.5.1.
+- R packages processx, later, jsonlite, and rstudioapi. Install languageserver for language features, jgd and systemfonts for jgd graphics, svglite for the static fallback, and htmlwidgets/htmltools for HTML output.
+- arf. Creating a new Interactive session requires an arf executable on the R host. Connecting to an already-running arf uses its socket and does not require arf on the extension host's PATH. The provider contract is tested with arf 0.5.3.
 
 For example, run in the R installation used on the server:
 
@@ -37,11 +37,7 @@ Runtime availability and version (Node.js 18+) are checked before installation o
 
 ### R packages and project libraries
 
-The extension installs its bundled `sess` into a private, content-addressed library. It does not replace your installed `sess` package. If the source build fails, including when build tools are missing, it tries a compiler-free package from [R-universe](https://reditorsupport.r-universe.dev/sess). Installation diagnostics appear in the **R Interactive** output channel.
-
-On macOS, the fallback uses R's matching binary repository. On Ubuntu, it uses a repository matching the host's codename, architecture, and R version. It never assumes that an Ubuntu binary is compatible with another Linux distribution. Dependencies for a binary fallback come from the matching R-universe repositories. No global repository settings are changed.
-
-The compiler-free fallback requires a published `sess` build compatible with the native Interactive bridge. A matching package version alone is insufficient; the extension checks the compatibility marker, required functions, and registered native console routines. Until a compatible build is published for your host, building the bundled package requires a C compiler. Missing or incompatible binaries produce an installation error with diagnostics in **R Interactive**.
+The extension installs its bundled pure R sess into a private, content-addressed library when starting an Interactive session. It does not replace your installed sess package. Missing Imports are installed from the configured R repository; no global repository settings are changed. Installation diagnostics appear in the **R Interactive** output channel.
 
 That private library is used only to load the bridge; it is not added to your session's `.libPaths()` or `R_LIBS`. Package installation follows ordinary R behavior: `install.packages()` defaults to the first library in `.libPaths()`, usually your user library. Startup files can customize that order, and an explicit `lib=` still takes precedence. The extension does not force a user-library destination over a project library.
 
@@ -72,7 +68,7 @@ Detached launch goes through a short-lived bootstrap so the agent leaves the edi
 
 ## Start a session
 
-Run **R: New Persistent Interactive Session**, choose **R** or **arf**, and name the session. Each session opens its own Interactive window; select it in **R → Interactive Sessions** to return to it. Plain R does not require arf. Multiple sessions execute concurrently; each R process runs submitted cells serially.
+Run **R: New Persistent Interactive Session**, choose **arf**, and name the session. Each session opens its own Interactive window; select it in **R → Interactive Sessions** to return to it. Multiple sessions execute concurrently; each R process runs submitted cells serially.
 
 ### Connect to an existing arf session
 
@@ -122,7 +118,7 @@ New arf sessions save their resolved absolute executable path, so a later PATH c
 ### R execution and input
 
 - Code runs in `.GlobalEnv`; visible results update `.Last.value`. Output is streamed during execution. Messages, warnings, errors, and traces are represented separately from ordinary console output. Errors show their message followed by the user calls, omitting the worker, arf transport, and condition-handler scaffolding. Saved R and Jupyter notebooks retain both the message and trace.
-- `readline()`, `scan()`, and `browser()` prompts appear as input requests. Canceling the input box leaves R waiting; **Reply to Interactive Input** opens it again. **Interrupt Interactive Session** signals the R process while preserving the environment when R handles the interrupt.
+- Notebook console input and debugger prompts are currently unavailable: `readline()`, `scan()`, and `browser()` prompts cannot be answered from the Interactive window. Use an ordinary R terminal for code that needs console input. **Interrupt Interactive Session** signals the R process while preserving the environment when R handles the interrupt.
 - R remains single-threaded. A native call that does not check interrupts may delay cancellation. Arbitrary environment inspection and table queries are not executed concurrently with user code; cached workspace information remains visible while R is busy.
 - A rerun creates a new execution identity and history entry. Submissions with an existing identity are deduplicated. Reconnect never resubmits code automatically. Ambiguous dispatch failures block the queue until completion or process exit establishes what happened.
 - A client control lease prevents two windows from submitting simultaneously. Other clients can observe retained output; **Take Control of Interactive Session** explicitly transfers control.
@@ -140,10 +136,10 @@ External terminal output observed through the arf console bridge is retained in 
 | Output | Behavior |
 | --- | --- |
 | Console, warnings, errors | Incremental output with per-execution limits and explicit truncation notices |
-| Base/grid/ggplot graphics | JGD frames retained by the agent and rendered as scalable SVG; independent font metrics work without a connected editor |
+| Base/grid/ggplot graphics | jgd frames retained by the agent and rendered as scalable SVG; independent font metrics work without a connected editor |
 | Incremental graphics | Recorded execution markers associate updates with their producing cell, including extensions of an existing plot |
 | Plot controls | Compact icons with labels for opening and resizing; **Save…** opens a native VS Code format picker for SVG and PNG |
-| Static fallback | Captured plots when JGD/systemfonts are unavailable or `plotBackend` is `standard` |
+| Static fallback | Captured plots when jgd/systemfonts are unavailable or `plotBackend` is `standard` |
 | Data frames and matrices | On-demand inline pages (20/50/100 rows), first/last and page jumps, sorting, column filters/reordering and Reset; an expanded data viewer remains available. Requests stay bound to their originating session |
 | HTML widgets and HTML tags | Sandboxed browser output with copied local dependencies; dependencies remain after the R temporary source is gone |
 | Explicit MIME | `sess::display(x, mime = "text/markdown")`, HTML, and text formats |
@@ -178,7 +174,7 @@ Full-table handles retain their original objects in R memory without an addition
 
 ### Widgets and output controls
 
-JGD graphics and browser widgets have different interaction models: a static R plot can resize and export, while plotly/leaflet-style interaction comes from the widget's JavaScript. Arbitrary widget behavior that requires browser permissions or unavailable external network resources remains subject to the sandbox and server configuration.
+jgd graphics and browser widgets have different interaction models: a static R plot can resize and export, while plotly/leaflet-style interaction comes from the widget's JavaScript. Arbitrary widget behavior that requires browser permissions or unavailable external network resources remains subject to the sandbox and server configuration.
 
 Table paging uses arrow icons with tooltips and accessible names. **Data viewer**, **Open plot**, and **Fit R device** retain short labels alongside their icons. **Save…** opens VS Code's native format picker without changing the cell height or scroll position, followed by the file save dialog. PNG is offered after the image loads. The picker supports typing, arrow-key navigation, Enter to select, and Escape to cancel. Each output allows one pending picker, and replies to replaced or disposed outputs are ignored.
 
@@ -241,7 +237,7 @@ These limits do not cap total session storage: earlier R generations and executi
 
 Plot storage follows this lifecycle:
 
-- Incremental JGD drawing updates are combined over 200 ms, and pending updates for an execution are flushed when it finishes. The agent saves SVG snapshots; it keeps JGD's drawing operations in memory for live plot handling instead of also saving redundant JSON frame files.
+- Incremental jgd drawing updates are combined over 200 ms, and pending updates for an execution are flushed when it finishes. The agent saves SVG snapshots; it keeps jgd's drawing operations in memory for live plot handling instead of also saving redundant JSON frame files.
 - Generated SVG/JSON assets of at least 4 KiB use gzip when it reduces their size. Identical content is deduplicated. Display and export decode transparently; exported SVG/JSON files remain ordinary files. Existing uncompressed assets remain readable. HTML dependencies retain their original encoding and directory structure.
 - Automatic cleanup starts when a write would exceed 80% of the quota. It removes superseded snapshots and unreferenced generated assets. The latest display version in every retained journal generation is protected, including all dependencies of retained HTML widgets. When journal rotation removes an output's last reference, its assets become eligible for cleanup. A corrupt or unreadable journal prevents cleanup.
 - **R: Clean Up Interactive Assets**, also in the session context menu, runs cleanup immediately and reports reclaimed space and current usage. Clearing cells only hides them; it does not erase durable history or make their final plots eligible for cleanup.

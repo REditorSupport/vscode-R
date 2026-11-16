@@ -2,131 +2,33 @@
 
 <!-- badges: start -->
 
-<a href="https://marketplace.visualstudio.com/items?itemName=reditorsupport.r"><img src="https://img.shields.io/github/v/release/REditorSupport/vscode-R?label=release" alt="Release"></a>
-<a href="https://github.com/REditorSupport/vscode-R/releases/tag/latest"><img src="https://img.shields.io/github/package-json/v/REditorSupport/vscode-R/main?label=dev" alt="Development version"></a>
-<a href="https://github.com/REditorSupport/vscode-R/actions/workflows/main.yml"><img src="https://img.shields.io/github/actions/workflow/status/REditorSupport/vscode-R/main.yml?branch=main&label=ci" alt="CI"></a>
+<a href="https://reditorsupport.github.io/vscode-R/"><img src="https://img.shields.io/badge/docs-website-blue" alt="Documentation"></a>
+<a href="https://marketplace.visualstudio.com/items?itemName=REditorSupport.r"><img src="https://img.shields.io/badge/VS%20Code%20Marketplace-install-007ACC" alt="VS Code Marketplace"></a>
+<a href="https://open-vsx.org/extension/REditorSupport/r"><img src="https://img.shields.io/badge/Open%20VSX-install-C160EF" alt="Open VSX Registry"></a>
 
 <!-- badges: end -->
 
-This [VS Code](https://code.visualstudio.com/) extension provides support for the [R programming language](https://www.r-project.org), including features such as R language service based on code analysis, interacting with R terminals, viewing data, plots, workspace variables, help pages, managing packages, and working with [R Markdown](https://rmarkdown.rstudio.com/) documents. See the [wiki](https://github.com/REditorSupport/vscode-R/wiki) for full documentation.
+This [VS Code](https://code.visualstudio.com/) extension provides support for the [R programming language](https://www.r-project.org), including an R language service based on code analysis, interaction with R terminals, viewers for data, plots, workspace variables, and help pages, package management, and [R Markdown](https://rmarkdown.rstudio.com/) support.
 
-The R and R Markdown syntaxes are located in a sibling package [vscode-R-syntax](https://github.com/REditorSupport/vscode-R-syntax).
+**Documentation: <https://reditorsupport.github.io/vscode-R/>**
 
-## What's new in 3.0.0
-
-v3.0.0 is a major release with faster, more reliable R session communication,
-powered by the [`sess`](./sess/README.md) package. The extension includes `sess`
-and prompts to install or update the bundled copy when needed. Missing Imports
-are installed from the configured R repository. See the [changelog](./CHANGELOG.md)
-for other changes and upgrade notes.
+See [Getting Started](https://reditorsupport.github.io/vscode-R/getting-started) for an overview, and the installation guides for [Windows](https://reditorsupport.github.io/vscode-R/installation/windows), [macOS](https://reditorsupport.github.io/vscode-R/installation/macos), and [Linux](https://reditorsupport.github.io/vscode-R/installation/linux) for detailed setup instructions.
 
 ## Quickstart
 
-1. [Install R](https://cloud.r-project.org/) (>= 3.4.0) on your system. On Windows, we recommend letting the installer write the R path to the registry.
+1. [Install R](https://cloud.r-project.org/) (>= 3.4.0).
 
-2. Install the [`languageserver`](https://github.com/REditorSupport/languageserver) package from R.
+2. Install the [languageserver](https://github.com/REditorSupport/languageserver) package from R.
 
     ```r
     install.packages("languageserver")
     ```
 
-3. Install the stable release of this extension from the [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=reditorsupport.r) or the [Open VSX Registry](https://open-vsx.org/extension/reditorsupport/r). This release requires VS Code 1.101.0 or later.
+3. Install this extension from the [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=REditorSupport.r) or the [Open VSX Registry](https://open-vsx.org/extension/REditorSupport/r). It requires VS Code 1.101.0 or later.
 
-    ```sh
-    code --install-extension REditorSupport.r
-    ```
+4. Create an R file and start coding! (Click **Yes** if prompted to install sess.)
 
-    To receive daily development updates, choose **Switch to Pre-Release Version** on the R extension's page in VS Code. New pre-releases are published to the VS Code Marketplace and Open VSX Registry when `main` changes and verification passes. Choose **Switch to Release Version** to return to stable releases. When reporting problems, include the extension version and reproduction steps.
-
-    Alternatively, you can test the latest development version by installing from GitHub:
-
-    <details>
-    <summary>Install the development version</summary>
-
-    The [`latest`](https://github.com/REditorSupport/vscode-R/releases/tag/latest)
-    pre-release is updated after successful verification of a push to `main`. Download and install it:
-
-    ```sh
-    curl -fsSL -o vscode-R.vsix https://github.com/REditorSupport/vscode-R/releases/download/latest/vscode-R.vsix
-    code --install-extension vscode-R.vsix
-    ```
-
-    </details>
-
-4. Create an R file and start coding! (Click **Yes** if prompted to install `sess`.)
-
-### Recommended extras
-
-Steps 1–3 above are all that's required to get started with R in VS Code. But we also recommend the following software for a fully optimized R + VS Code experience:
-
-* Install an interactive plotting backend for a better R graphics experience:
-  * [jgd](https://github.com/grantmcdermott/jgd): Lightweight JSON graphics device with native vscode-R integration. If it is not installed, vscode-R can offer to install it into a vscode-R-managed library without changing your R libraries.
-  * [httpgd](https://github.com/nx10/httpgd): SVG-based graphics device served via HTTP and WebSockets.
-
-* [arf](https://github.com/eitsupi/arf): A modern R console with many features: syntax highlighting, multiline editing, vi/emacs keybindings, R version switching, etc. Successor to [radian](https://github.com/randy3k/radian) written in Rust.
-
-* Complementary VS Code extensions:
-  * [Quarto](https://marketplace.visualstudio.com/items?itemName=quarto.quarto): the official Quarto plugin for VS Code.
-  * [VSCode-R-Debugger](https://github.com/ManuelHentschel/VSCode-R-Debugger): enables VS Code's debugging facilities for R scripts.
-
-For example, assuming that you have installed `arf` and `jgd`, your user `settings.json` might include:
-
-```jsonc
-{
-    "r.consolePath": "arf",
-    "r.bracketedPaste": true,  // recommended for arf (and radian)
-    "r.plot.backend": "jgd"    // "auto" already prefers jgd, then httpgd
-}
-```
-
-Please consult the relevant installation wiki pages for your OS ([Windows](https://github.com/REditorSupport/vscode-R/wiki/Installation:-Windows) | [macOS](https://github.com/REditorSupport/vscode-R/wiki/Installation:-macOS) | [Linux](https://github.com/REditorSupport/vscode-R/wiki/Installation:-Linux)) for more detailed instructions.
-
-Set `r.plot.backend` to `"native"` to use R's configured graphics device without
-opening the VS Code plot viewer automatically. The `"standard"` backend continues
-to display static plots in VS Code.
-
-## Features
-
-* Snippets for R and R Markdown.
-
-* [R Language Service](https://github.com/REditorSupport/vscode-R/wiki/R-Language-Service): Code completion, function signature, symbol highlight, document outline, formatting, definition, diagnostics, references, and more.
-
-* [Interacting with R terminals](https://github.com/REditorSupport/vscode-R/wiki/Interacting-with-R-terminals): Sending code to terminals, running multiple terminals, working with remote servers.
-
-* [Package development](https://github.com/REditorSupport/vscode-R/wiki/Package-development): Build, test, install, load all and other commands from devtools.
-
-* [Keyboard shortcuts](https://github.com/REditorSupport/vscode-R/wiki/Keyboard-shortcuts): Built-in and customizable keyboard shortcuts.
-
-* [Workspace viewer](https://github.com/REditorSupport/vscode-R/wiki/Sidebar-user-interface#workspace-viewer): Environment pane to show global variables in the attached R session.
-
-* [Help pages viewer](https://github.com/REditorSupport/vscode-R/wiki/Sidebar-user-interface#help-pages-viewer): Viewing R help pages and searching help topics.
-
-* [Package management](https://github.com/REditorSupport/vscode-R/wiki/Sidebar-user-interface#package-management): Installing and removing R packages.
-
-* Session symbol hover and completion.
-
-* [Data viewer](https://github.com/REditorSupport/vscode-R/wiki/Interactive-viewers#data-viewer): Viewing data frames, matrices, Arrow tables, and polars data frames in a paged, sortable, filterable grid; lists in a tree view.
-
-* [Plot viewer](https://github.com/REditorSupport/vscode-R/wiki/Plot-viewer): Interactive plot viewer with support for [jgd](https://github.com/grantmcdermott/jgd) and [httpgd](https://github.com/nx10/httpgd) backends, plus a standard PNG/SVG fallback.
-
-* [Webpage viewer](https://github.com/REditorSupport/vscode-R/wiki/Interactive-viewers#webpage-viewer): Viewing [htmlwidgets](https://www.htmlwidgets.org) such as interactive graphics and [visual profiling results](https://rstudio.github.io/profvis/).
-
-* [Browser viewer](https://github.com/REditorSupport/vscode-R/wiki/Interactive-viewers#browser-viewer): Viewing interactive [shiny](https://shiny.rstudio.com) apps.
-
-* [R Markdown support](https://github.com/REditorSupport/vscode-R/wiki/R-Markdown): R Markdown chunk highlighting, chunk navigation, execute commands, and preview.
-
-* [RStudio add-in support](https://github.com/REditorSupport/vscode-R/wiki/RStudio-addin-support): Run supported RStudio add-ins in VS Code with a live R session.
-
-* Full support of [Remote Development](https://code.visualstudio.com/docs/remote/remote-overview) via [SSH](https://code.visualstudio.com/docs/remote/ssh), [Containers](https://code.visualstudio.com/docs/remote/containers) and [WSL](https://code.visualstudio.com/docs/remote/wsl).
-
-## Exploring data
-
-Call `View(x)` to open a table. The viewer loads rows on demand and applies column filters and sorting in R across the full table.
-
-* **Columns** searches column names, shows or hides matching columns, and pins columns to either edge. Drag entries to reorder them. Row names stay pinned on the left.
-* **Filters** shows filter inputs below the headers. Press Enter to apply text and number filters; use the filter button for ranges, missing values, or combined conditions. **Clear filters** removes every column filter, including filters on hidden columns. The toolbar shows the matching and total row counts.
-* Columns fit the available width by default and adapt when the viewer is resized. **Size to content** sizes the currently displayed cells, up to 480 pixels, and keeps those widths; **Fit width** switches back to filling the viewer. Manually resized columns retain their widths while the remaining flexible columns share the space. Hover over a cell to see its full value.
-* Repeated `View()` calls for the same object retain the viewer's sizing mode, column layout, sorting, filters, and page size when the column names, order, and types are unchanged. Refreshed data starts on the first page. **Reset view** restores fit-width sizing, the default layout, filters, sorting, and configured page size.
+Daily pre-releases are also available: choose **Switch to Pre-Release Version** on the extension's page in VS Code. See [release channels](https://reditorsupport.github.io/vscode-R/getting-started#release-channels) for details and development builds.
 
 ## Questions, bug reports, ideas, and contributions
 
@@ -134,10 +36,8 @@ Call `View(x)` to open a table. The viewer loads rows on demand and applies colu
 
 * If you have an idea for a new feature or behavior change, please [start an Ideas discussion](https://github.com/REditorSupport/vscode-R/discussions/new?category=ideas).
 
-* If you find a reproducible problem with the extension, please [check the existing issues](https://github.com/REditorSupport/vscode-R/issues) and then [file a bug report](https://github.com/REditorSupport/vscode-R/issues/new/choose).
+* If you find a reproducible problem with the extension, please [check the existing issues](https://github.com/REditorSupport/vscode-R/issues) and then [file a bug report](https://github.com/REditorSupport/vscode-R/issues/new/choose). Include the extension version and reproduction steps.
 
-* Contributions are always welcome! Please see the [contributing guide](https://github.com/REditorSupport/vscode-R/wiki/Contributing) for more details.
+* Contributions are always welcome! Please see the [contributing guide](https://reditorsupport.github.io/vscode-R/contributing) for more details.
 
-## Persistent R Interactive
-
-This experimental feature provides native VS Code Interactive windows with independent arf sessions, including adoption of existing arf sessions over Remote SSH. vscode-R installs the bundled pure-R `sess` snapshot; missing Imports come from the configured R repository. Managed sessions retain streaming output, interruption, rich tables, HTML, and plots; notebook console input and debugger prompts are currently unavailable. See the [setup and usage guide](https://github.com/REditorSupport/vscode-R/wiki/R-Interactive) for session switching, persistence, rich outputs, and platform requirements.
+The R and R Markdown syntaxes are located in a sibling package, [vscode-R-syntax](https://github.com/REditorSupport/vscode-R-syntax). See the [changelog](https://github.com/REditorSupport/vscode-R/blob/main/CHANGELOG.md) for changes in each release.

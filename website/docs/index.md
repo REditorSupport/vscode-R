@@ -74,7 +74,7 @@ or [Linux](./installation/linux.md).
   sortable, filterable grid that loads rows on demand, or lists as JSON.
 
 - [Plot viewer](./features/plot-viewer.md):
-  Interactive JGD and httpgd backends, plus a responsive standard SVG/PNG
+  Interactive jgd and httpgd backends, plus a responsive standard SVG/PNG
   viewer.
 
 - [Webpage viewer](./features/interactive-viewers.md#webpage-viewer):
