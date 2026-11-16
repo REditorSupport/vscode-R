@@ -208,6 +208,8 @@ interface Job {
     request: InspectionRequest;
     key?: string;
     limits: CallLimits;
+    /** When the request must have started, waiting here and in arf together. */
+    startBy: number;
     promise: Promise<unknown>;
     resolve(value: unknown): void;
     reject(error: unknown): void;
@@ -276,7 +278,7 @@ export class InspectionCalls {
             execution: timeout,
             transport: 2 * timeout + TRANSPORT_MARGIN,
         };
-        const job = { request, key, limits } as Job;
+        const job = { request, key, limits, startBy: Date.now() + timeout } as Job;
         job.promise = new Promise((resolve, reject) => {
             job.resolve = resolve;
             job.reject = reject;
@@ -321,6 +323,24 @@ export class InspectionCalls {
             return;
         }
         clearTimeout(job.timer);
+        // The time spent waiting here counts towards the wait to start, so arf
+        // gets only what is left of it.
+        const queue = Math.ceil(job.startBy - Date.now());
+        if (queue < 1) {
+            job.reject(
+                new InspectionError(
+                    'queue_timeout',
+                    `R inspection '${job.request.method}' waited ${job.limits.queue} ms for earlier requests`,
+                ),
+            );
+            this.pump();
+            return;
+        }
+        job.limits = {
+            queue,
+            execution: job.limits.execution,
+            transport: queue + job.limits.execution + TRANSPORT_MARGIN,
+        };
         this.running = job;
         const { method, params } = job.request;
         void Promise.resolve()

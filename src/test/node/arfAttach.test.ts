@@ -341,12 +341,14 @@ suite('arf inspection calls', () => {
                 assert.deepStrictEqual(result, { str: 'x' });
                 assert.strictEqual(requests.length, 1);
                 assert.strictEqual(requests[0].method, 'call');
-                assert.deepStrictEqual(params(requests[0]), {
+                const { queue_timeout_ms: queue, ...sent } = params(requests[0]);
+                assert.deepStrictEqual(sent, {
                     handler: 'vscode-r.inspect.json/hover',
                     args: '{"expr":"obj$name"}',
-                    queue_timeout_ms: 1500,
                     execution_timeout_ms: 1500,
                 });
+                // What is left of the wait to start, measured from the request.
+                assert.ok(Number(queue) > 0 && Number(queue) <= 1500, String(queue));
             },
         );
     });
@@ -596,6 +598,34 @@ suite('arf inspection calls', () => {
                 assert.strictEqual(await running, 1);
                 await new Promise((resolve) => setTimeout(resolve, 30));
                 assert.strictEqual(requests.length, 1, 'the expired request is never sent');
+            },
+        );
+    });
+
+    test('a request that waited here gets only the rest of its wait to start from arf', async () => {
+        let socket!: net.Socket;
+        await withInspection(
+            (_message, connection) => {
+                socket = connection;
+            },
+            async (inspection, requests) => {
+                const running = inspection.request({ method: 'workspace', params: {} });
+                await until(() => requests.length === 1);
+                const waiting = inspection.request({
+                    method: 'workspace_view',
+                    params: { name: 'x' },
+                    timeout: 5000,
+                });
+                await new Promise((resolve) => setTimeout(resolve, 300));
+                socket.write(line({ jsonrpc: '2.0', id: requests[0].id, result: callReply(1) }));
+                assert.strictEqual(await running, 1);
+                await until(() => requests.length === 2);
+                const sent = params(requests[1]);
+                // It waited at least 300 ms here; allow for coarse timers.
+                assert.ok(Number(sent.queue_timeout_ms) <= 4800, String(sent.queue_timeout_ms));
+                assert.strictEqual(sent.execution_timeout_ms, 5000);
+                socket.write(line({ jsonrpc: '2.0', id: requests[1].id, result: callReply(2) }));
+                assert.strictEqual(await waiting, 2);
             },
         );
     });
