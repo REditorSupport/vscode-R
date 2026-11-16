@@ -678,6 +678,38 @@ suite('Interactive backend configuration', () => {
         }
     });
 
+    test('a managed arf that does not publish every selector fails to start', async () => {
+        const arf = await fakeAttachedArf({
+            state: 'locked',
+            handlers: INSPECTION_SELECTORS.slice(1),
+        });
+        // Stands in for `arf headless --json`: it reports the fake's endpoint.
+        const command = path.join(root, 'arf');
+        fs.writeFileSync(
+            command,
+            `#!/bin/sh\necho '${JSON.stringify({ socket_path: arf.endpoint })}'\nexec sleep 30\n`,
+            { mode: 0o755 },
+        );
+        const adapter = new Arf(
+            command,
+            root,
+            undefined,
+            false,
+            () => undefined,
+            'token',
+            () => undefined,
+        );
+        try {
+            await assert.rejects(
+                adapter.start('bootstrap', {}),
+                /did not publish the R Interactive inspection handlers/,
+            );
+        } finally {
+            adapter.dispose();
+            await arf.close();
+        }
+    });
+
     function sessBackend(ownership: 'managed' | 'adopted'): SessBackend {
         return new SessBackend(
             {

@@ -148,6 +148,10 @@ export class Arf {
         // Subscribe before submitting anything so that no started event is missed.
         const metadata = await this.connect();
         checkArfSession(metadata);
+        // The published table must match the selectors that inspection calls.
+        if (!this.process.adopted && !this.callsInspection()) {
+            throw new Error('arf did not publish the R Interactive inspection handlers');
+        }
         this.emit({
             type: 'provider',
             data: {
@@ -214,7 +218,7 @@ export class Arf {
      * deadline, rather than the sess socket, which cannot be interrupted.
      */
     callsInspection(): boolean {
-        return inspectionCallsAvailable(this.process.adopted, this.handlerApi);
+        return inspectionCallsAvailable(this.handlerApi);
     }
     /** Runs an inspection as a handler call with the request's execution deadline. */
     inspect(request: InspectionRequest): Promise<unknown> {

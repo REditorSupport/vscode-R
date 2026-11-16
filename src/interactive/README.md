@@ -74,7 +74,8 @@ suppressed, so a slow request there cannot be stopped; arf delivers the deadline
 as an interrupt to a handler call and replies only after the handler stopped.
 Managed arf starts with `--ipc-expose`, which publishes ten selectors
 `vscode-r.inspect.json/<method>` from a table installed with sess
-([expose-inspection.R](../../sess/inst/arf/expose-inspection.R)). arf evaluates
+([expose-inspection.R](../../sess/inst/arf/expose-inspection.R)); startup fails
+if the session does not report all of them as published. arf evaluates
 that expression before the bootstrap loads sess from the private library, so the
 handlers only forward to sess when called: they fail with an error until the
 private sess has started, and never load a sess themselves. A handler takes the

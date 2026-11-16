@@ -652,20 +652,15 @@ suite('arf inspection handlers', () => {
         }
     });
 
-    test('a managed session always calls; an adopted one only with every selector locked', () => {
-        assert.ok(inspectionCallsAvailable(false, undefined));
-        assert.ok(inspectionCallsAvailable(false, handlers([], 'unexposed')));
-        assert.ok(inspectionCallsAvailable(true, handlers([...INSPECTION_SELECTORS, 'demo/add'])));
-        assert.ok(!inspectionCallsAvailable(true, undefined));
-        assert.ok(!inspectionCallsAvailable(true, handlers([], 'unexposed')));
-        assert.ok(!inspectionCallsAvailable(true, handlers([...INSPECTION_SELECTORS], 'revoked')));
-        assert.ok(
-            !inspectionCallsAvailable(true, handlers([...INSPECTION_SELECTORS], 'unexposed')),
-        );
-        assert.ok(!inspectionCallsAvailable(true, handlers(INSPECTION_SELECTORS.slice(1))));
+    test('inspection calls need a locked handler list with every selector', () => {
+        assert.ok(inspectionCallsAvailable(handlers([...INSPECTION_SELECTORS, 'demo/add'])));
+        assert.ok(!inspectionCallsAvailable(undefined));
+        assert.ok(!inspectionCallsAvailable(handlers([], 'unexposed')));
+        assert.ok(!inspectionCallsAvailable(handlers([...INSPECTION_SELECTORS], 'revoked')));
+        assert.ok(!inspectionCallsAvailable(handlers([...INSPECTION_SELECTORS], 'unexposed')));
+        assert.ok(!inspectionCallsAvailable(handlers(INSPECTION_SELECTORS.slice(1))));
         assert.ok(
             !inspectionCallsAvailable(
-                true,
                 handlers(INSPECTION_SELECTORS.map((name) => name.replace('.json', '.other'))),
             ),
         );

@@ -57,18 +57,12 @@ export function parseHandlerApi(session: Record<string, unknown>): ArfHandlerApi
 }
 
 /**
- * Whether inspection can use handler calls and their execution deadlines. A
- * session started by Interactive publishes the handlers itself. An adopted one
- * is trusted only when its handler list is locked and has every selector;
- * otherwise inspection stays on the sess socket, where it cannot be interrupted.
+ * Whether inspection can use handler calls and their execution deadlines: the
+ * session's handler list is locked and has every selector. A session started
+ * by Interactive must publish them; an adopted one without them keeps
+ * inspection on the sess socket, where it cannot be interrupted.
  */
-export function inspectionCallsAvailable(
-    adopted: boolean,
-    api: ArfHandlerApi | undefined,
-): boolean {
-    if (!adopted) {
-        return true;
-    }
+export function inspectionCallsAvailable(api: ArfHandlerApi | undefined): boolean {
     return (
         api?.state === 'locked' &&
         INSPECTION_SELECTORS.every((selector) => api.handlers.includes(selector))
