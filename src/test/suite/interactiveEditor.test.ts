@@ -3841,26 +3841,91 @@ par(mfrow=c(1,1))`,
             manifest: manifests[1],
         } as vscode.QuickPickItem);
         const info = sinon.stub(vscode.window, 'showInformationMessage').resolves(undefined);
+        const displaysOf = (outputs: readonly vscode.NotebookCellOutput[]) =>
+            outputs
+                .flatMap((output) => output.items)
+                .filter((item) => item.mime === DISPLAY_MIME)
+                .map(
+                    (item) =>
+                        JSON.parse(Buffer.from(item.data).toString()) as Record<string, unknown>,
+                );
+        // Record when the stop notice and display updates reach the notebook, so
+        // a timeout reports which displays stayed running and what was pending.
+        const stopped = Date.now();
+        const timeline: string[] = [];
+        const changes = vscode.workspace.onDidChangeNotebookDocument((event) => {
+            if (event.notebook !== notebook) {
+                return;
+            }
+            const at = `${Date.now() - stopped}ms`;
+            for (const change of event.contentChanges) {
+                for (const cell of change.addedCells) {
+                    if (cell.metadata.rNoticeKind) {
+                        timeline.push(`${at} notice ${String(cell.metadata.rNoticeKind)}`);
+                    }
+                }
+            }
+            for (const change of event.cellChanges) {
+                const running =
+                    change.outputs && displaysOf(change.outputs).map((data) => data.running);
+                if (running?.length) {
+                    timeline.push(`${at} cell ${change.cell.index} running=${running.join(',')}`);
+                }
+            }
+        });
+        const displayDiagnostics = (): string => {
+            const manager = interactiveManager() as unknown as {
+                views: Map<
+                    string,
+                    {
+                        notebook: vscode.NotebookDocument;
+                        client: AgentClient;
+                        executions: Map<string, unknown>;
+                        outputQueue: {
+                            pending: Set<string>;
+                            running?: Promise<void>;
+                            timer?: NodeJS.Timeout;
+                            paused: number;
+                            disposed: boolean;
+                        };
+                    }
+                >;
+            };
+            const view = [...manager.views.values()].find((item) => item.notebook === notebook);
+            const queue = view?.outputQueue;
+            return [
+                `Timed out waiting for every display to stop running after ${Date.now() - stopped}ms`,
+                `displays: ${JSON.stringify(
+                    notebook.getCells().flatMap((cell) =>
+                        displaysOf(cell.outputs).map((data) => ({
+                            cell: cell.index,
+                            executionId: String(cell.metadata.rExecutionId),
+                            kind: data.kind,
+                            generation: data.generation,
+                            running: data.running,
+                            connected: data.connected,
+                        })),
+                    ),
+                )}`,
+                view
+                    ? `view: status=${view.client.manifest.status} connected=${view.client.connected} executions=${view.executions.size}`
+                    : 'view: none',
+                queue
+                    ? `queue: pending=${JSON.stringify([...queue.pending])} running=${queue.running !== undefined} timer=${queue.timer !== undefined} paused=${queue.paused} disposed=${queue.disposed}`
+                    : 'queue: none',
+                `timeline: ${timeline.join('; ') || 'none'}`,
+            ].join('\n');
+        };
         try {
             await vscode.commands.executeCommand('r.interactive.stop', notebook.uri);
             await until(() =>
                 notebook.getCells().some((cell) => cell.metadata.rNoticeKind === 'stopped'),
             );
             const displays = (): Record<string, unknown>[] =>
-                notebook
-                    .getCells()
-                    .flatMap((cell) => cell.outputs)
-                    .flatMap((output) => output.items)
-                    .filter((item) => item.mime === DISPLAY_MIME)
-                    .map(
-                        (item) =>
-                            JSON.parse(Buffer.from(item.data).toString()) as Record<
-                                string,
-                                unknown
-                            >,
-                    );
+                notebook.getCells().flatMap((cell) => displaysOf(cell.outputs));
             await until(
                 () => displays().length > 0 && displays().every((data) => data.running === false),
+                displayDiagnostics,
             );
             const ended = manifests[0].ended;
             assert.ok(typeof ended === 'number' && ended >= manifests[0].created);
@@ -3918,6 +3983,7 @@ par(mfrow=c(1,1))`,
                 client.close();
             }
         } finally {
+            changes.dispose();
             confirmation.restore();
             picker.restore();
             info.restore();
