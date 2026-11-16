@@ -116,6 +116,16 @@ in Node/Mocha, then runs the extension-host suites.
 supervision. After preparing once with `pnpm run pretest`, use `pnpm run test:node`
 and `pnpm run test:extension` to rerun either layer without rebuilding.
 
+Run `pnpm run test:activation` after compiling to check activation in fresh
+VS Code windows. It verifies that unrelated workspaces and Python Interactive
+windows keep vscode-R inactive, and that R files, commands, terminal profiles,
+tasks, notebooks, and restored native R Interactive inputs activate it. Each
+case uses temporary profiles without the normal suite's forced activation.
+`VSCR_ACTIVATION_VSCODE` selects an existing VS Code executable; otherwise the
+runner downloads current stable. `VSCR_ACTIVATION_CASES` selects a comma-separated
+subset of cases from `scripts/test-activation.cjs`. On headless Linux, use
+`xvfb-run -a pnpm run test:activation`.
+
 To debug extension-host tests, select **Extension Tests** in Run and Debug and
 press **F5**. The pre-launch task runs `pnpm run pretest`, and the debugger then
 asks which `.vscode-test.mjs` configuration to run (`provider-tests`,

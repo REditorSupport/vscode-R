@@ -2601,6 +2601,7 @@
     "test": "pnpm run test:node && pnpm run test:extension",
     "test:node": "mocha \"out/test/node/**/*.test.js\" --config .mocharc.interactive.cjs",
     "test:extension": "vscode-test",
+    "test:activation": "node scripts/test-activation.cjs",
     "lint": "oxlint src",
     "format": "oxfmt .",
     "format:check": "oxfmt --check .",
