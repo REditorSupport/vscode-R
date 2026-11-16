@@ -18,7 +18,7 @@ The R host needs:
 - The session agent automatically uses the extension host's bundled runtime: VS Code's Electron runtime in Node mode on desktop, or VS Code Server's Node runtime remotely. A separate Node.js installation is optional.
 - `tmux` is optional. On Linux, the default supervisor uses tmux when available and otherwise starts an independent detached process. `systemd --user` is another configurable option.
 - R packages processx, later, jsonlite, and rstudioapi. Install languageserver for language features, jgd and systemfonts for jgd graphics, svglite for the static fallback, and htmlwidgets/htmltools for HTML output.
-- arf. Creating a new Interactive session requires an arf executable on the R host. Connecting to an already-running arf uses its socket and does not require arf on the extension host's PATH. The provider contract is tested with arf 0.5.3.
+- arf. Creating a new Interactive session requires an arf executable on the R host. Connecting to an already-running arf uses its socket and does not require arf on the extension host's PATH. R Interactive requires arf 0.7.2-rc.1 or later.
 
 For example, run in the R installation used on the server:
 

@@ -13,10 +13,11 @@ export interface ArfSession {
     session_type?: string;
 }
 
-// TODO: Require arf 0.7.2 once it is released. It reports an R error that
-// follows a caught interrupt as an error rather than as interrupted, and bounds
-// console reads that cannot be answered.
-export const MIN_ARF_VERSION = '0.7.1';
+// 0.7.2-rc.1 keeps forked R workers from crashing on macOS, reports an R error
+// that follows a caught interrupt as an error rather than as interrupted, and
+// bounds console reads that cannot be answered.
+// TODO: Require arf 0.7.2 once it is released.
+export const MIN_ARF_VERSION = '0.7.2-rc.1';
 
 /** arf JSON-RPC error codes that the Interactive client acts on. */
 export const ARF_METHOD_NOT_FOUND = -32601;
@@ -63,12 +64,22 @@ export function rpcError(error: unknown): ArfRpcError {
     );
 }
 
-/** Compares release versions; prereleases count as older than their release. */
+/**
+ * Whether `version` has at least the precedence of `minimum` under SemVer 2.0.0:
+ * a prerelease is older than its release, and prerelease identifiers compare
+ * field by field (numbers numerically and below text). Build metadata is ignored.
+ */
 export function arfVersionAtLeast(version: unknown, minimum: string): boolean {
     const parse = (text: string) => {
-        const match = /^v?(\d+)\.(\d+)\.(\d+)(-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/.exec(text);
+        const match =
+            /^v?(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?(?:\+[0-9A-Za-z.-]+)?$/.exec(
+                text,
+            );
         return match
-            ? { core: [Number(match[1]), Number(match[2]), Number(match[3])], pre: !!match[4] }
+            ? {
+                  core: [Number(match[1]), Number(match[2]), Number(match[3])],
+                  pre: match[4]?.split('.') ?? [],
+              }
             : undefined;
     };
     const actual = typeof version === 'string' ? parse(version) : undefined;
@@ -81,7 +92,26 @@ export function arfVersionAtLeast(version: unknown, minimum: string): boolean {
             return actual.core[i] > required.core[i];
         }
     }
-    return !actual.pre || required.pre;
+    // A release is newer than any of its prereleases.
+    if (!actual.pre.length || !required.pre.length) {
+        return !actual.pre.length;
+    }
+    const numeric = /^\d+$/;
+    for (let i = 0; i < Math.min(actual.pre.length, required.pre.length); i++) {
+        const [a, b] = [actual.pre[i], required.pre[i]];
+        if (a === b) {
+            continue;
+        }
+        if (numeric.test(a) && numeric.test(b)) {
+            return Number(a) > Number(b);
+        }
+        if (numeric.test(a) !== numeric.test(b)) {
+            return !numeric.test(a);
+        }
+        return a > b;
+    }
+    // With equal leading identifiers, the longer prerelease is newer.
+    return actual.pre.length >= required.pre.length;
 }
 
 /** Rejects sessions older than MIN_ARF_VERSION, or without the deadline used by inspection. */

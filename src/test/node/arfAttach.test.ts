@@ -243,7 +243,7 @@ suite('arf attach connection', () => {
 });
 
 suite('arf version requirement', () => {
-    test('compares release versions and treats prereleases as older', () => {
+    test('compares versions with SemVer precedence', () => {
         assert.ok(arfVersionAtLeast('0.7.1', '0.7.1'));
         assert.ok(arfVersionAtLeast('0.7.2', '0.7.1'));
         assert.ok(arfVersionAtLeast('0.10.0', '0.7.1'));
@@ -255,17 +255,31 @@ suite('arf version requirement', () => {
         assert.ok(!arfVersionAtLeast(undefined, '0.7.1'));
         assert.ok(!arfVersionAtLeast('0.7', '0.7.1'));
         assert.ok(!arfVersionAtLeast('latest', '0.7.1'));
+        // Prerelease minimums.
+        assert.ok(arfVersionAtLeast('0.7.2-rc.1', '0.7.2-rc.1'));
+        assert.ok(arfVersionAtLeast('0.7.2-rc.1+build.5', '0.7.2-rc.1'));
+        assert.ok(arfVersionAtLeast('0.7.2-rc.2', '0.7.2-rc.1'));
+        assert.ok(arfVersionAtLeast('0.7.2-rc.10', '0.7.2-rc.2'));
+        assert.ok(arfVersionAtLeast('0.7.2-rc.1.1', '0.7.2-rc.1'));
+        assert.ok(arfVersionAtLeast('0.7.2-rc.a', '0.7.2-rc.1'));
+        assert.ok(arfVersionAtLeast('0.7.2', '0.7.2-rc.1'));
+        assert.ok(arfVersionAtLeast('0.7.3-alpha', '0.7.2-rc.1'));
+        assert.ok(!arfVersionAtLeast('0.7.2-rc.0', '0.7.2-rc.1'));
+        assert.ok(!arfVersionAtLeast('0.7.2-beta.9', '0.7.2-rc.1'));
+        assert.ok(!arfVersionAtLeast('0.7.2-rc', '0.7.2-rc.1'));
+        assert.ok(!arfVersionAtLeast('0.7.1', '0.7.2-rc.1'));
     });
 
     test('rejects old sessions and sessions without handler call deadlines', () => {
-        checkArfSession({ arf_version: '0.7.1', capabilities: ['call_execution_timeout'] });
+        checkArfSession({ arf_version: '0.7.2-rc.1', capabilities: ['call_execution_timeout'] });
         assert.throws(
-            () => checkArfSession({ arf_version: '0.5.3', capabilities: [] }),
-            /requires arf 0\.7\.1 or later, but the session runs 0\.5\.3/,
+            () =>
+                checkArfSession({ arf_version: '0.7.1', capabilities: ['call_execution_timeout'] }),
+            /requires arf 0\.7\.2-rc\.1 or later, but the session runs 0\.7\.1/,
         );
         assert.throws(() => checkArfSession({}), /an unknown version/);
         assert.throws(
-            () => checkArfSession({ arf_version: '0.7.1', capabilities: [] }),
+            () => checkArfSession({ arf_version: '0.7.2-rc.1', capabilities: [] }),
             /execution deadlines/,
         );
     });

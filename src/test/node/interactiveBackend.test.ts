@@ -470,7 +470,7 @@ suite('Interactive backend configuration', () => {
                                 capabilities: ['events', 'call_execution_timeout'],
                                 session_id: 'fake',
                                 session: {
-                                    arf_version: '0.7.1',
+                                    arf_version: '0.7.2-rc.1',
                                     capabilities: ['call_execution_timeout'],
                                 },
                             },

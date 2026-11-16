@@ -112,7 +112,7 @@ sess hooks without changing frontend console callbacks or killing adopted R.
 Both providers report notebook stdin/debugger support as unavailable: arf IPC
 `user_input` submits code, rather than answering nested R prompts. Use ordinary
 R terminals for `readline`, `scan`, and debugger interaction. arf IPC is
-experimental; the integration requires arf 0.7.1 or later and is tested with
+experimental; the integration requires arf 0.7.2-rc.1 or later and is tested with
 the version pinned in `src/test/node/mise.toml`. Persistent supervision
 currently remains limited to Linux/macOS.
 
