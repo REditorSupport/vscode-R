@@ -29,6 +29,8 @@ import {
     StreamMessageWriter,
     createMessageConnection,
     DocumentOnTypeFormattingRequest,
+    ErrorCodes,
+    ResponseError,
 } from 'vscode-languageclient/node';
 
 function treeTooltip(item: vscode.TreeItem): string {
@@ -4827,12 +4829,13 @@ async function stopLanguageClient(client: LanguageClient): Promise<void> {
         await client.stop(10000);
     } catch (error) {
         // R's language server can close on shutdown before the client's exit
-        // notification is written. The client has already completed cleanup.
+        // notification is written (EPIPE), or, as seen on Windows, before its
+        // shutdown response arrives. The client has already completed cleanup.
         if (
             client.state === State.Stopped &&
-            error instanceof Error &&
-            'code' in error &&
-            error.code === 'EPIPE'
+            ((error instanceof ResponseError &&
+                error.code === ErrorCodes.PendingResponseRejected) ||
+                (error instanceof Error && 'code' in error && error.code === 'EPIPE'))
         ) {
             return;
         }
@@ -4907,10 +4910,58 @@ suite('Interactive language client cleanup', () => {
         }
     });
 
+    test('accepts the server closing before it answers shutdown', async () => {
+        const connections: Array<{ dispose(): void }> = [];
+        const server = net.createServer((socket) => {
+            const connection = createMessageConnection(
+                new StreamMessageReader(socket),
+                new StreamMessageWriter(socket),
+            );
+            connections.push(connection);
+            connection.onRequest('initialize', () => ({ capabilities: {} }));
+            // Close without replying, leaving the client's shutdown request pending.
+            connection.onRequest('shutdown', () => {
+                socket.destroy();
+                return new Promise<never>(() => undefined);
+            });
+            connection.listen();
+        });
+        await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+        const socket = net.connect((server.address() as net.AddressInfo).port, '127.0.0.1');
+        const channel = vscode.window.createOutputChannel('Test language client cleanup', {
+            log: true,
+        });
+        const client = new LanguageClient(
+            'cleanup-test',
+            'Cleanup test',
+            () =>
+                Promise.resolve({
+                    reader: new StreamMessageReader(socket),
+                    writer: new StreamMessageWriter(socket),
+                }),
+            { documentSelector: [], outputChannel: channel },
+        );
+        try {
+            await client.start();
+            await stopLanguageClient(client);
+            assert.strictEqual(client.state, State.Stopped);
+        } finally {
+            socket.destroy();
+            connections.forEach((connection) => connection.dispose());
+            await new Promise<void>((resolve) => server.close(() => resolve()));
+            channel.dispose();
+        }
+    });
+
     test('does not suppress unrelated shutdown failures or an unstopped client', async () => {
         const error = Object.assign(new Error('Socket shutdown failed'), { code: 'EPIPE' });
+        const pending = new ResponseError(
+            ErrorCodes.PendingResponseRejected,
+            'Pending response rejected since connection got disposed',
+        );
         for (const [state, failure] of [
             [State.Running, error],
+            [State.Running, pending],
             [State.Stopped, new Error('Unexpected shutdown failure')],
             [State.Stopped, new Error('Stopping the server timed out')],
         ] as const) {
