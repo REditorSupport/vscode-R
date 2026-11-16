@@ -14,6 +14,13 @@ const cases = [
 ];
 const pause = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds));
 
+function clearElectronNodeMode(environment) {
+    for (const key of Object.keys(environment)) {
+        if (key.toUpperCase() === 'ELECTRON_RUN_AS_NODE') { delete environment[key]; }
+    }
+}
+exports.clearElectronNodeMode = clearElectronNodeMode;
+
 async function until(predicate, message) {
     const deadline = Date.now() + 15000;
     while (!predicate()) {
@@ -170,6 +177,10 @@ exports.run = async (api) => {
 };
 
 async function main() {
+    // Electron on Windows enters Node mode even when this variable is empty.
+    // runTests merges process.env itself, so remove it from our environment
+    // before either the test runner or ordinary restore windows inherit it.
+    clearElectronNodeMode(process.env);
     const { downloadAndUnzipVSCode, resolveCliArgsFromVSCodeExecutablePath, runTests } = require('@vscode/test-electron');
     const { spawnSync } = require('node:child_process');
     const executable = process.env.VSCR_ACTIVATION_VSCODE || await downloadAndUnzipVSCode();
@@ -247,8 +258,7 @@ exports.activate = async () => {
             if (testCase === 'r-notebook') {
                 fs.writeFileSync(path.join(caseRoot, 'notebook.rnb'), JSON.stringify({ version: 1, metadata: {}, cells: [] }));
             }
-            const env = { VSCR_ACTIVATION_CASE: testCase, VSCR_ACTIVATION_ROOT: caseRoot,
-                ELECTRON_RUN_AS_NODE: '' };
+            const env = { VSCR_ACTIVATION_CASE: testCase, VSCR_ACTIVATION_ROOT: caseRoot };
             const launchArgs = [
                     ...(testCase === 'no-folder' ? [] : [workspace]),
                     '--user-data-dir', profile, '--extensions-dir', extensions,

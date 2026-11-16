@@ -51,6 +51,9 @@ writeLines(
 )
 
 runner <- file.path(root, "run-case.R")
+# Match production: the follower waits through the owner's consent, install and load.
+# Source installation can take more than a minute on Windows runners.
+parallel_setup_timeout <- 300
 writeLines(
   c(
     "args <- commandArgs(TRUE)",
@@ -370,9 +373,7 @@ writeLines(
     "} else if (mode %in% c('parallel_approve', 'parallel_decline', 'parallel_third',",
     "                       'parallel_failure', 'parallel_retry')) {",
     "  timeout <- 10",
-    # The follower budget covers the owner's whole source install, which can
-    # take well over 20 seconds on Windows runners.
-    "  parallel_setup_timeout <- 60",
+    sprintf("  parallel_setup_timeout <- %d", parallel_setup_timeout),
     "  if (mode == 'parallel_approve') {",
     "    result <- attach_sess(timeout=timeout, setup_timeout=parallel_setup_timeout)",
     "    stopifnot(identical(result, TRUE), 'sess' %in% loadedNamespaces())",
@@ -466,7 +467,11 @@ r_binary <- file.path(R.home("bin"), if (.Platform$OS.type == "windows") "R.exe"
 r_literal <- function(value) encodeString(value, quote = "\"")
 read_child_logs <- function(paths) {
   read_log <- function(path) {
-    tryCatch(readLines(path, warn = FALSE), error = function(e) paste("could not read", path))
+    # Windows can deny reads while a child still has its redirected stream open.
+    suppressWarnings(tryCatch(
+      readLines(path, warn = FALSE),
+      error = function(e) paste("could not read", path)
+    ))
   }
   c(read_log(paths$stdout), read_log(paths$stderr))
 }
@@ -898,16 +903,17 @@ start_parallel_child <- function(case_root, mode, role, result_file, install_hel
 
 wait_for_child <- function(paths, description) {
   # Must exceed the parallel follower's setup budget so its own diagnostic wins.
-  deadline <- Sys.time() + 90
+  deadline <- Sys.time() + parallel_setup_timeout + 30
   while (!file.exists(paths$result) && Sys.time() < deadline) {
     Sys.sleep(0.01)
   }
-  child_output <- read_child_logs(paths)
   if (!file.exists(paths$result)) {
+    child_output <- read_child_logs(paths)
     stop(paste(description, "timed out; child output:", paste(child_output, collapse = "\n")))
   }
   result <- readLines(paths$result, warn = FALSE)
   if (!identical(result, "ok")) {
+    child_output <- read_child_logs(paths)
     stop(paste(
       description,
       "failed:",
@@ -977,7 +983,11 @@ run_parallel_setup <- function(approve) {
   wait_for_file(follower_observed, 10, "follower observation of the held setup lock")
 
   if (approve) {
-    wait_for_file(description_visible, 60, "installed package metadata while owner holds lock")
+    wait_for_file(
+      description_visible,
+      parallel_setup_timeout - 30,
+      "installed package metadata while owner holds lock"
+    )
     stopifnot(dir.exists(lock_path), file.exists(file.path(managed_library, "sess", "DESCRIPTION")))
     stopifnot(!file.exists(load_log), !file.exists(ready_path))
     file.create(install_release)
