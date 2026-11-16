@@ -178,24 +178,11 @@ The agent uses the extension host runtime by default: Electron in Node mode on d
 
 The [original plans and dated review reports](https://github.com/REditorSupport/vscode-R/tree/c2167d2cdb403375fa10ad3e29cde73a49cfc014/docs) are preserved at a fixed revision of [PR #1805](https://github.com/REditorSupport/vscode-R/pull/1805). They describe development history, not the current contract. The backend boundary originated in [this review](https://github.com/REditorSupport/vscode-R/pull/1805#pullrequestreview-5392223174).
 
-## Windows transport and persistence
+## Windows
 
-Control, sess, and JGD use native named pipes on Windows, with no socket-file
-operations. JGD receives an `npipe:` URI. Registry entries are metadata only;
-reconnection and launch readiness require an authenticated agent handshake.
-Windows auto supervision launches a detached agent directly, without inheriting the editor console,
-with hidden windows and file-backed logs, without an editor IPC channel or inherited console handles.
-Electron agents retain `ELECTRON_RUN_AS_NODE`; R children do not. Unlike Unix
-orphaning, a second launcher cannot escape a Windows kill-on-close Job Object.
-Full VS Code exit must therefore be checked in the actual supported editor:
-Node detachment alone does not promise survival under arbitrary job policies.
-
-Named pipes keep the default Windows security descriptor: other users cannot
-open them for writing. Control and sess reuse the existing token authentication;
-JGD replies only on the requesting connection. This is not a Unix 0600 ACL.
-
-Default storage under `%LOCALAPPDATA%` and runtime directories under per-user
-`%TEMP%` inherit the user-profile ACL (user, SYSTEM, and administrators).
-The extension does not rewrite Windows ACLs. Securing shared or custom storage
-and TEMP locations is the user's responsibility. The default registry is
-`%LOCALAPPDATA%/vscode-r/interactive` (with a home-relative fallback).
+Control, sess, and jgd endpoints are named pipes with the default security
+descriptor, which other users cannot open for writing; control and sess still
+require the session token. Storage under `%LOCALAPPDATA%` and runtime directories
+under `%TEMP%` rely on the inherited user-profile ACL, which the extension does
+not rewrite. The detached agent has no editor-owned stdio and cannot leave a Job
+Object that forbids breakaway.
