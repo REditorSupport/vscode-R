@@ -239,6 +239,13 @@ export type CallTransport = (
  * Each request's timeout is its execution deadline. A request stopped by its
  * deadline is an error, as is an interrupt or a failure to reach arf. An R
  * error in hover or completion means that nothing was found and is `null`.
+ *
+ * After a transport timeout the next request is sent although the previous
+ * handler may still be running, for example in native code that ignores the
+ * interrupt. It cannot run alongside: arf runs calls one at a time, so it
+ * waits in arf's queue and is dropped unrun when its queue timeout passes. The
+ * connection is not closed to cancel it, because it also carries the events
+ * that track submitted code. A late reply is ignored by its request ID.
  */
 export class InspectionCalls {
     private waiting: Job[] = [];
