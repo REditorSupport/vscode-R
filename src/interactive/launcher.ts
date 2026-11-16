@@ -42,6 +42,15 @@ export function defaultStorage(
     return path.join(home, 'Library', 'Application Support', 'vscode-r', 'interactive');
 }
 
+/**
+ * Working directory for a new session. Without a workspace, use the user's home
+ * (USERPROFILE on Windows) rather than HOME or the extension host's cwd, which
+ * can be the editor's installation directory.
+ */
+export function defaultSessionDirectory(workspace: string | undefined): string {
+    return workspace ?? os.homedir();
+}
+
 export function discoverSessions(root: string): SessionManifest[] {
     let names: string[];
     try {

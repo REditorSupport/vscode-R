@@ -19,6 +19,7 @@ import {
 import { AgentClient, probeSession } from '../../interactive/client';
 import {
     agentEnvironment,
+    defaultSessionDirectory,
     defaultStorage,
     discoverSessions,
     hasSessionEndpoint,
@@ -183,6 +184,19 @@ suite('Interactive storage', () => {
         assert.deepStrictEqual(agentEnvironment({ NODE_OPTIONS: '--max-old-space-size=2048' }), {
             NODE_OPTIONS: '--max-old-space-size=2048',
         });
+    });
+    test('starts sessions without a workspace in the user home, not the host cwd', () => {
+        const saved = process.env.HOME;
+        delete process.env.HOME;
+        try {
+            assert.notStrictEqual(os.homedir(), process.cwd());
+            assert.strictEqual(defaultSessionDirectory(undefined), os.homedir());
+        } finally {
+            if (saved !== undefined) {
+                process.env.HOME = saved;
+            }
+        }
+        assert.strictEqual(defaultSessionDirectory('/workspace'), '/workspace');
     });
     let home: string;
     setup(() => {

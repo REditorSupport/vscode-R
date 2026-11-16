@@ -24,6 +24,7 @@ import { ExecutionCellIndex } from './cellIndex';
 import type { StreamSnapshot, StreamText } from './streamText';
 import { OutputQueue } from './outputQueue';
 import {
+    defaultSessionDirectory,
     defaultStorage,
     discoverSessions,
     hasSessionEndpoint,
@@ -1109,11 +1110,10 @@ export class InteractiveManager
         }
         const directory =
             adopt?.cwd ??
-            vscode.workspace.getWorkspaceFolder(resource ?? vscode.Uri.file(this.root))?.uri
-                .fsPath ??
-            vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ??
-            process.env.HOME ??
-            process.cwd();
+            defaultSessionDirectory(
+                vscode.workspace.getWorkspaceFolder(resource ?? vscode.Uri.file(this.root))?.uri
+                    .fsPath ?? vscode.workspace.workspaceFolders?.[0]?.uri.fsPath,
+            );
         const rPath = await util.getRpath(false, resource);
         if (!rPath) {
             throw new Error('Configure an R executable before starting Interactive');
