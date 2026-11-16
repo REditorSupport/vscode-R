@@ -7,12 +7,12 @@
 # - An arf handler call runs on the R thread under an execution deadline, and
 #   arf interrupts the handler when the deadline passes.
 #
-# Both use the handlers of `inspection_handlers()`. Only `hover` and
-# `completion` differ: the socket path still evaluates the request text, while
-# a handler call resolves it with `inspection_hover()` and
-# `inspection_completion()`, which never evaluate it. Handlers published to arf
-# run outside arf's evaluation policy and approval, so they must not accept
-# code from the client.
+# Both use the handlers of `inspection_handlers()`. Both resolve `hover` and
+# `completion` with `inspection_hover()` and `inspection_completion()`, which
+# never evaluate the request text. The socket turns every error into no result,
+# while a handler call reports it, so the client can tell an invalid request
+# from a failure. Handlers published to arf run outside arf's evaluation policy
+# and approval, so they must not accept code from the client.
 #
 # Contract of the `vscode-r.inspect.json` namespace: a handler takes the method
 # parameters as one JSON string, the same object the socket carries as
