@@ -684,27 +684,17 @@ handle_listview_view <- function(view_id, index, path = list()) {
   workspace_show_view(location$data, location$title, state$owner %||% state$title)
 }
 
-handle_hover <- function(expr_str) {
-  tryCatch(
-    {
-      expr <- parse(text = expr_str, keep.source = FALSE)[[1]]
-      obj <- eval(expr, .GlobalEnv)
-      list(str = capture_str(obj))
-    },
-    error = function(e) NULL
-  )
-}
+# Hover and completion for the socket session. Requests are resolved with the
+# shared inspection parser and resolver (inspection.R) without evaluating the
+# request text. Hover and completion are shown without an explicit user
+# action, so any failure, including invalid requests and errors from methods
+# such as `.DollarNames()`, is reported to the editor as no result rather than
+# as an error with a console warning. Interrupts are not caught, so that the
+# dispatcher can reply that the request was interrupted.
+handle_hover <- function(expr_str) tryCatch(inspection_hover(expr_str), error = function(e) NULL)
 
 handle_complete <- function(expr_str, trigger = NULL) {
-  obj <- tryCatch(
-    {
-      expr <- parse(text = expr_str, keep.source = FALSE)[[1]]
-      eval(expr, .GlobalEnv)
-    },
-    error = function(e) NULL
-  )
-
-  completion_items(obj, trigger)
+  tryCatch(inspection_completion(expr_str, trigger), error = function(e) NULL)
 }
 
 # Completion items for the members of `obj` after the `trigger` operator.
