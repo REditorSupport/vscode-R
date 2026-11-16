@@ -357,6 +357,8 @@ interactive_execute <- function(id, code, source = NULL) {
     .interactive_plot_context()
     trace_state$depth <- sys.nframe()
     filename <- if (is.null(source$uri)) "<R Interactive>" else source$uri
+    # Editor documents may use CRLF, which parse(text = ...) does not strip.
+    code <- gsub("\r\n", "\n", code, fixed = TRUE)
     text <- strsplit(code, "\n", fixed = TRUE)[[1L]]
     expressions <- parse(text = code, srcfile = srcfilecopy(filename, text), keep.source = TRUE)
     for (expr in expressions) {

@@ -35,6 +35,10 @@ function treeTooltip(item: vscode.TreeItem): string {
     return typeof item.tooltip === 'string' ? item.tooltip : (item.tooltip?.value ?? '');
 }
 
+function documentEol(document: vscode.TextDocument): string {
+    return document.eol === vscode.EndOfLine.CRLF ? '\r\n' : '\n';
+}
+
 suite('Interactive VS Code integration', function () {
     this.timeout(60000);
     // The Windows extension host can start in the VS Code installation directory.
@@ -1411,13 +1415,14 @@ suite('Interactive VS Code integration', function () {
                 languageServerWaitMs,
             );
             try {
-                for (const [text, ch, expected] of [
+                for (const [text, ch, formatted] of [
                     ['typed_value<-sum(1,2', ')', 'typed_value <- sum(1, 2)'],
                     ['typed_value<-x[1', ']', 'typed_value <- x[1]'],
                     ['if(TRUE){typed_value<-1', '}', 'if (TRUE) {\n  typed_value <- 1\n}'],
                     ['typed_value<-1', '\n', 'typed_value <- 1\n'],
                     ['if(TRUE){', '\n', 'if (TRUE) {\n  '],
                 ]) {
+                    const expected = formatted.replace(/\n/g, documentEol(document));
                     await editor.edit((builder) =>
                         builder.replace(new vscode.Range(0, 0, document.lineCount, 0), text),
                     );
@@ -1777,7 +1782,8 @@ suite('Interactive VS Code integration', function () {
                     const client = service.clients.get(result.inputUri.toString());
                     return (
                         client?.isRunning() === true &&
-                        client.clientOptions.workspaceFolder?.uri.fsPath === manifest.directory
+                        client.clientOptions.workspaceFolder?.uri.fsPath ===
+                            vscode.Uri.file(manifest.directory).fsPath
                     );
                 });
             }
@@ -1812,7 +1818,7 @@ suite('Interactive VS Code integration', function () {
                 before,
                 'Cell reuse must keep the existing native Interactive tab',
             );
-            assert.ok(input.getText().startsWith('# keep my draft\n'));
+            assert.ok(input.getText().startsWith(`# keep my draft${documentEol(input)}`));
             assert.ok(input.getText().includes('editor_value <- 42'));
             assert.strictEqual((await client.snapshot()).executions.length, count);
         } finally {
@@ -1845,7 +1851,7 @@ suite('Interactive VS Code integration', function () {
         assert.ok(initial);
         const uri = cell.document.uri.toString(),
             summary = cell.executionSummary;
-        const code = cell.document.getText() + '\n# unsubmitted edit';
+        const code = cell.document.getText() + documentEol(cell.document) + '# unsubmitted edit';
         const edit = new vscode.WorkspaceEdit();
         edit.replace(cell.document.uri, new vscode.Range(0, 0, cell.document.lineCount, 0), code);
         await vscode.workspace.applyEdit(edit);
@@ -2481,7 +2487,9 @@ cat("\n")`;
                 assert.deepStrictEqual(options?.filters, { [choice.label]: [choice.format] });
                 assert.strictEqual(
                     options?.defaultUri?.fsPath,
-                    path.join(root, `${manifests[0].label}-history.${choice.format}`),
+                    vscode.Uri.file(
+                        path.join(root, `${manifests[0].label}-history.${choice.format}`),
+                    ).fsPath,
                 );
             }
             assert.strictEqual(save.callCount, 4);
@@ -4530,6 +4538,8 @@ par(mfrow=c(1,1))`,
             // Four arf sessions start one after another; slow macOS runners can
             // need more than the 60 second default before the shared notebook runs.
             this.timeout(180000);
+            // Do not depend on earlier lifecycle tests (including Unix-only restart) stopping R.
+            await Promise.all(agents.map((agent) => agent.close()));
             for (let i = 0; i < 4; i++) {
                 await start();
             }

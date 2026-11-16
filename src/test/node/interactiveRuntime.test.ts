@@ -137,6 +137,15 @@ suite('Interactive real R runtime', function () {
             .join('');
     }
 
+    test('evaluates CRLF editor code while retaining its original text in history', async () => {
+        const code = 'crlf_value <- 41\r\ncrlf_value + 1\r\n';
+        const id = await submit(code);
+        const record = await finished(id);
+        assert.strictEqual(record.state, 'success');
+        assert.strictEqual(record.code, code);
+        assert.match(text(id), /42/);
+    });
+
     test('streams output before completion and keeps one R environment', async () => {
         const id = await submit(
             'answer <- 42; cat("early λ🙂\\n"); Sys.sleep(0.5); cat("late\\n"); answer',
