@@ -515,6 +515,7 @@ suite('Interactive backend configuration', () => {
 (process.platform === 'win32' ? suite.skip : suite)('Interactive inspection routing', function () {
     this.timeout(10000);
     let root: string;
+    let endpoints = 0;
     setup(() => {
         root = fs.mkdtempSync(path.join(os.tmpdir(), 'r-inspection-routing-'));
     });
@@ -596,7 +597,9 @@ suite('Interactive backend configuration', () => {
                 socket.on('data', read);
             });
         });
-        const endpoint = path.join(root, `arf-${randomUUID()}.sock`);
+        // macOS limits Unix socket paths to 104 bytes, and its temporary
+        // directory is already long.
+        const endpoint = path.join(root, `arf-${++endpoints}.sock`);
         await new Promise<void>((resolve) => listener.listen(endpoint, resolve));
         return {
             endpoint,
