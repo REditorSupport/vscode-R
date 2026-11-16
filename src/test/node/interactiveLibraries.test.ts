@@ -14,7 +14,7 @@ import { SessionEvent } from '../../interactive/protocol';
 
 const run = promisify(execFile);
 
-(process.platform === 'win32' ? suite.skip : suite)('Interactive library isolation', function () {
+suite('Interactive library isolation', function () {
     this.timeout(120000);
     let root: string;
     let runtime: Awaited<ReturnType<typeof installRuntime>>;
@@ -55,7 +55,11 @@ const run = promisify(execFile);
 
     const startup =
         '\nstartup_library_paths <- .libPaths()\nstartup_library_env <- Sys.getenv(c("R_LIBS", "R_LIBS_USER", "R_LIBS_SITE"))\n';
-    test('loads private-only bridge dependencies without redirecting user package installs', async () => {
+    test('loads private-only bridge dependencies without redirecting user package installs', async function () {
+        // This fixture replaces the base library with symlinks, requiring Windows privileges.
+        if (process.platform === 'win32') {
+            this.skip();
+        }
         const socketRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'r-lib-'));
         const endpoint = path.join(socketRoot, 's');
         const sockets = new Set<net.Socket>();

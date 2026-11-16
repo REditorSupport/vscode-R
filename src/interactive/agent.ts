@@ -4,6 +4,7 @@ import * as path from 'path';
 import * as os from 'os';
 import { randomBytes, randomUUID } from 'crypto';
 import { StringDecoder } from 'string_decoder';
+import { localEndpoint, listenLocal } from './transport';
 import { JsonLines } from './framing';
 import { SessionJournal, atomicJson, retainedAssetIds } from './journal';
 import { AssetStore } from './assets';
@@ -116,7 +117,7 @@ export class SessionAgent {
             label: config.label,
             host: os.hostname(),
             directory: config.directory,
-            endpoint: path.join(this.runtime, 'control.sock'),
+            endpoint: localEndpoint(this.runtime, 'control.sock'),
             token: randomBytes(32).toString('hex'),
             agentPid: process.pid,
             provider: config.provider,
@@ -169,11 +170,7 @@ export class SessionAgent {
     private async listen(endpoint: string, connect: (socket: net.Socket) => void): Promise<void> {
         const server = net.createServer(connect);
         this.servers.push(server);
-        await new Promise<void>((resolve, reject) => {
-            server.once('error', reject);
-            server.listen(endpoint, resolve);
-        });
-        fs.chmodSync(endpoint, 0o600);
+        await listenLocal(server, endpoint);
     }
 
     private saveManifest(): void {

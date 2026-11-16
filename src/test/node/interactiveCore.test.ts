@@ -5,6 +5,7 @@ import * as path from 'path';
 import * as net from 'net';
 import { get } from 'http';
 import { gunzipSync } from 'zlib';
+import { localEndpoint } from '../../interactive/transport';
 import { SessionJournal, retainedAssetIds, readPreviousJournal } from '../../interactive/journal';
 import { JsonLines } from '../../interactive/framing';
 import { AssetStore, exportedAssetName } from '../../interactive/assets';
@@ -364,9 +365,6 @@ suite('Interactive protocol and persistence', () => {
     });
 
     test('session probes verify identity and live status without claiming control and bound unresponsive endpoints', async function () {
-        if (process.platform === 'win32') {
-            this.skip();
-        }
         const manifest: SessionManifest = {
             id: 'probe',
             generation: 'first',
@@ -374,7 +372,7 @@ suite('Interactive protocol and persistence', () => {
             label: 'Probe',
             host: os.hostname(),
             directory,
-            endpoint: path.join(directory, 'probe.sock'),
+            endpoint: localEndpoint(directory, 'probe.sock'),
             token: 'test-token',
             agentPid: process.pid,
             provider: 'r',
@@ -425,22 +423,23 @@ suite('Interactive protocol and persistence', () => {
             const regularFile = path.join(directory, 'not-a-socket');
             fs.writeFileSync(regularFile, '');
             assert.ok(!hasSessionEndpoint({ ...manifest, endpoint: regularFile }));
+            assert.strictEqual(
+                await probeSession({ ...manifest, endpoint: regularFile }),
+                undefined,
+            );
         } finally {
             await new Promise<void>((resolve) => server.close(() => resolve()));
         }
-        assert.ok(!hasSessionEndpoint(manifest));
+        assert.strictEqual(hasSessionEndpoint(manifest), process.platform === 'win32');
         assert.strictEqual(await probeSession(manifest), undefined);
     });
 
     test('a failed handshake closes its socket and a canceled attempt leaves its replacement connected', async function () {
-        if (process.platform === 'win32') {
-            this.skip();
-        }
         const manifest = {
             id: 'connection',
             generation: 'first',
             protocol: 1,
-            endpoint: path.join(directory, 'connection.sock'),
+            endpoint: localEndpoint(directory, 'connection.sock'),
             token: 'test-token',
         } as SessionManifest;
         let identity = { ...manifest, generation: 'other' };
@@ -495,14 +494,11 @@ suite('Interactive protocol and persistence', () => {
     });
 
     test('replays history before live events arriving in the same socket read', async function () {
-        if (process.platform === 'win32') {
-            this.skip();
-        }
         const manifest = {
             id: 'replay',
             generation: 'first',
             protocol: 1,
-            endpoint: path.join(directory, 'replay.sock'),
+            endpoint: localEndpoint(directory, 'replay.sock'),
             token: 'test-token',
         } as SessionManifest;
         const journal = new SessionJournal(directory, manifest.generation);

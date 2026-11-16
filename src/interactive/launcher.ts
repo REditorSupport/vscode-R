@@ -1,9 +1,10 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
-import { execFile } from 'child_process';
+import { execFile, spawn } from 'child_process';
 import { createHash, randomUUID } from 'crypto';
 import { promisify } from 'util';
+import { probeSession } from './client';
 import { AgentConfig, SessionManifest, identifier } from './protocol';
 import { atomicJson } from './journal';
 import { hostNodeRuntime, NodeRuntime } from './nodeExecutable';
@@ -19,6 +20,15 @@ export function defaultStorage(
     home = os.homedir(),
     environment = process.env,
 ): string {
+    if (platform === 'win32') {
+        return path.win32.join(
+            environment.LOCALAPPDATA && path.win32.isAbsolute(environment.LOCALAPPDATA)
+                ? environment.LOCALAPPDATA
+                : path.win32.join(home, 'AppData', 'Local'),
+            'vscode-r',
+            'interactive',
+        );
+    }
     const xdg = environment.XDG_STATE_HOME;
     // XDG paths must be absolute; an empty value is equivalent to being unset.
     if (xdg && path.isAbsolute(xdg)) {
@@ -66,19 +76,25 @@ export function discoverSessions(root: string): SessionManifest[] {
     return sessions.sort((a, b) => b.created - a.created);
 }
 
-/** Cheap rejection of stale registry entries; a socket still needs an authenticated probe. */
-export function hasSessionEndpoint(manifest: SessionManifest): boolean {
+/** Cheap stale-entry rejection only; an authenticated probe still establishes liveness. */
+export function hasSessionEndpoint(
+    manifest: SessionManifest,
+    platform = process.platform,
+): boolean {
     if (
         !Number.isSafeInteger(manifest.agentPid) ||
         manifest.agentPid <= 0 ||
         typeof manifest.endpoint !== 'string' ||
-        !path.isAbsolute(manifest.endpoint)
+        !(platform === 'win32'
+            ? manifest.endpoint.startsWith('\\\\.\\pipe\\')
+            : path.isAbsolute(manifest.endpoint))
     ) {
         return false;
     }
     try {
         process.kill(manifest.agentPid, 0);
-        return fs.statSync(manifest.endpoint).isSocket();
+        // Named pipes have no socket-file entry. Do not open or stat the pipe here.
+        return platform === 'win32' || fs.statSync(manifest.endpoint).isSocket();
     } catch {
         return false;
     }
@@ -216,6 +232,28 @@ export async function launchAgent(
                 { cause: error },
             );
         }
+    } else if (process.platform === 'win32') {
+        // Detached avoids libuv's kill-child-on-parent-exit job and console inheritance.
+        // libuv does not request CREATE_BREAKAWAY_FROM_JOB: an enclosing job that
+        // disallows breakaway still controls lifetime, even with a second launcher.
+        // No editor-owned stdio/IPC handles are inherited, including with Electron.
+        const descriptor = fs.openSync(path.join(config.storage, 'agent.log'), 'a', 0o600);
+        try {
+            const child = spawn(node, [agent, file], {
+                detached: true,
+                windowsHide: true,
+                cwd: config.directory,
+                env,
+                stdio: ['ignore', descriptor, descriptor],
+            });
+            await new Promise<void>((resolve, reject) => {
+                child.once('error', reject);
+                child.once('spawn', resolve);
+            });
+            child.unref();
+        } finally {
+            fs.closeSync(descriptor);
+        }
     } else {
         if (supervisor.notice) {
             log(supervisor.notice);
@@ -243,8 +281,11 @@ export async function launchAgent(
             const manifest = JSON.parse(
                 fs.readFileSync(path.join(config.storage, 'manifest.json'), 'utf8'),
             ) as SessionManifest;
-            if (manifest.generation === config.generation) {
-                return manifest;
+            if (manifest.id === config.id && manifest.generation === config.generation) {
+                const live = await probeSession(manifest);
+                if (live) {
+                    return live;
+                }
             }
         } catch {
             /* Atomic manifest is published after the endpoints are ready. */

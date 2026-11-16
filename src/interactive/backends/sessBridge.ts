@@ -1,7 +1,6 @@
-import * as fs from 'fs';
 import * as net from 'net';
-import * as path from 'path';
 import { randomUUID } from 'crypto';
+import { localEndpoint, listenLocal } from '../transport';
 import { JsonLines } from '../framing';
 import { object } from '../protocol';
 import { BackendEvent, ClientReply } from '../backend';
@@ -32,6 +31,10 @@ export class SessBridge {
         private notification: (method: string, params: Record<string, unknown>) => void,
     ) {}
 
+    get endpoint(): string {
+        return localEndpoint(this.directory, 'sess.sock');
+    }
+
     async start(): Promise<void> {
         await this.listen('sess.sock', (socket) => this.connectSess(socket));
     }
@@ -39,7 +42,7 @@ export class SessBridge {
         if (this.closed) {
             throw new Error('Bridge disposed during startup');
         }
-        const endpoint = path.join(this.directory, name);
+        const endpoint = localEndpoint(this.directory, name);
         const server = net.createServer((socket) => {
             this.sockets.add(socket);
             const timer = setTimeout(() => {
@@ -55,11 +58,7 @@ export class SessBridge {
             connect(socket);
         });
         this.servers.push(server);
-        await new Promise<void>((resolve, reject) => {
-            server.once('error', reject);
-            server.listen(endpoint, resolve);
-        });
-        fs.chmodSync(endpoint, 0o600);
+        await listenLocal(server, endpoint);
     }
     private send(socket: net.Socket, message: unknown): void {
         if (!socket.destroyed) {

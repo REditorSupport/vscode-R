@@ -26,7 +26,7 @@ import { rString } from '../../interactive/backends/rCode';
 const run = promisify(execFile);
 const delay = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 
-(process.platform === 'win32' ? suite.skip : suite)('Interactive real R runtime', function () {
+suite('Interactive real R runtime', function () {
     this.timeout(60000);
     let temporary: string;
     let root: string;
@@ -1738,14 +1738,14 @@ ggplot(diamonds, aes(x = carat, y = price, color = cut)) +
             supervision === 'auto'
                 ? `${process.platform === 'linux' ? 'Linux' : 'Desktop'} auto without tmux`
                 : 'Detached';
-        test(`${label} session leaves the editor process tree and retains objects after its termination`, async () => {
+        test(`${label} session ${process.platform === 'win32' ? 'survives editor termination and retains objects' : 'leaves the editor process tree and retains objects after its termination'}`, async () => {
             const runtime = hostNodeRuntime();
             const node = runtime.executable;
             const rPath = resolveExecutable('R', root);
             assert.ok(rPath);
             const arfPath = resolveExecutable(process.env.ARF_PATH ?? 'arf', root);
             const environment = nodeEnvironment(runtime);
-            if (supervision === 'auto') {
+            if (supervision === 'auto' && process.platform !== 'win32') {
                 // arf discovers R via PATH on Linux. Keep R and its shell utilities
                 // available while excluding tmux even on CI hosts where it is installed.
                 const bin = path.join(temporary, 'without-tmux');
@@ -1843,18 +1843,22 @@ ggplot(diamonds, aes(x = carat, y = price, color = cut)) +
                 await complete(before);
                 const originalPid = (await independent.snapshot()).manifest.rPid;
                 assert.ok(originalPid);
-                // Check every ancestor, while the editor is still alive. A direct detached
-                // child survives ordinary exit but remains vulnerable to recursive cleanup.
-                let ancestor = value.agentPid;
-                for (let i = 0; ancestor > 1 && i < 50; i++) {
-                    assert.notStrictEqual(
-                        ancestor,
-                        parent.pid,
-                        'Agent must not remain in the editor process tree',
-                    );
-                    ancestor = Number(
-                        (await run('ps', ['-p', String(ancestor), '-o', 'ppid='])).stdout.trim(),
-                    );
+                if (process.platform !== 'win32') {
+                    // Check every ancestor, while the editor is still alive. A direct detached
+                    // child survives ordinary exit but remains vulnerable to recursive cleanup.
+                    let ancestor = value.agentPid;
+                    for (let i = 0; ancestor > 1 && i < 50; i++) {
+                        assert.notStrictEqual(
+                            ancestor,
+                            parent.pid,
+                            'Agent must not remain in the editor process tree',
+                        );
+                        ancestor = Number(
+                            (
+                                await run('ps', ['-p', String(ancestor), '-o', 'ppid='])
+                            ).stdout.trim(),
+                        );
+                    }
                 }
                 independent.close();
                 await new Promise<void>((resolve) => {
@@ -1894,6 +1898,9 @@ ggplot(diamonds, aes(x = carat, y = price, color = cut)) +
     }
 
     test('adopts an existing arf process without losing its objects', async function () {
+        if (process.platform === 'win32') {
+            this.skip();
+        }
         const arf = process.env.ARF_PATH ?? 'arf';
         try {
             await run(arf, ['--version']);

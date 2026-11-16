@@ -22,6 +22,7 @@ export class RuntimeProcess {
     ): ChildProcess {
         this.child = spawn(command, args, {
             cwd: directory,
+            windowsHide: true,
             env,
             stdio: ['ignore', 'pipe', 'pipe'],
         });
@@ -90,7 +91,8 @@ export class RuntimeProcess {
             return;
         }
         try {
-            process.kill(this.pid!, signal);
+            // Node's Windows signals forcibly terminate; never use them for interrupt.
+            process.kill(this.pid!, process.platform === 'win32' ? 'SIGKILL' : signal);
         } catch (error) {
             if ((error as NodeJS.ErrnoException).code === 'ESRCH') {
                 this.exit();

@@ -5,6 +5,7 @@ import * as path from 'path';
 import { randomUUID } from 'crypto';
 import { createServer } from 'http';
 import * as net from 'net';
+import { localEndpoint } from '../../interactive/transport';
 import { SessionAgent } from '../../interactive/agent';
 import { AgentClient } from '../../interactive/client';
 import { AgentConfig, ExecutionRecord, SessionEvent, Submission } from '../../interactive/protocol';
@@ -125,8 +126,8 @@ suite('Interactive backend configuration', () => {
     });
 });
 
-// A fake backend still uses the agent's real Unix socket transport.
-(process.platform === 'win32' ? suite.skip : suite)('Interactive backend contract', function () {
+// A fake backend still uses the agent's real local transport.
+suite('Interactive backend contract', function () {
     this.timeout(10000);
     let root: string,
         backend: FakeBackend,
@@ -485,7 +486,7 @@ suite('Interactive backend configuration', () => {
             });
             socket.on('error', () => undefined);
         });
-        const endpoint = path.join(root, 'arf.sock');
+        const endpoint = localEndpoint(root, 'arf.sock');
         await new Promise<void>((resolve) => listener.listen(endpoint, resolve));
         const adapter = new Arf(
             'unused',

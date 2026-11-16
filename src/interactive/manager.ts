@@ -1042,7 +1042,9 @@ export class InteractiveManager
 
     refresh(): void {
         try {
-            this.manifests = discoverSessions(this.root).filter(hasSessionEndpoint);
+            this.manifests = discoverSessions(this.root).filter((manifest) =>
+                hasSessionEndpoint(manifest),
+            );
         } catch (error) {
             this.manifests = [];
             this.report(error);
@@ -1282,7 +1284,9 @@ export class InteractiveManager
 
     private async sessionChoices(): Promise<SessionChoice[]> {
         this.refresh();
-        const live = await runningSessions(this.manifests.filter(hasSessionEndpoint));
+        const live = await runningSessions(
+            this.manifests.filter((manifest) => hasSessionEndpoint(manifest)),
+        );
         const terminals: ArfSession[] = [];
         const arfCandidates = discoverArf().filter(
             (arf) => fs.existsSync(arf.socket_path) && !live.some((item) => item.rPid === arf.pid),

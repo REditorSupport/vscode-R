@@ -66,10 +66,9 @@ import { AgentConfig } from '../../interactive/protocol';
             () => prepareSupervisor('invalid', root, 'linux', root),
             /Unknown session supervisor.*r\.interactive\.supervision/,
         );
-        assert.throws(
-            () => prepareSupervisor('auto', root, 'win32', root),
-            /require Linux or macOS/,
-        );
+        assert.deepStrictEqual(prepareSupervisor('auto', root, 'win32', root), {
+            kind: 'detached',
+        });
     });
 
     test('missing explicit supervisors fail before creating storage or launching Node', async () => {

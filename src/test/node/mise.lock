@@ -23,3 +23,8 @@ url_api = "https://api.github.com/repos/eitsupi/arf/releases/assets/750984111"
 checksum = "sha256:123dd5fa45b14d96c2b46609063c8424fdba25ced91976b4ebab9eae187178f3"
 url = "https://github.com/eitsupi/arf/releases/download/v0.7.2-rc.1/arf-console-x86_64-apple-darwin.tar.xz"
 url_api = "https://api.github.com/repos/eitsupi/arf/releases/assets/750984161"
+
+[tools."github:eitsupi/arf"."platforms.windows-x64"]
+checksum = "sha256:805f90edd9af3fea962d9ec592c03afafa006b53cc692d7db5d64f68105dca58"
+url = "https://github.com/eitsupi/arf/releases/download/v0.7.2-rc.1/arf-console-x86_64-pc-windows-msvc.zip"
+url_api = "https://api.github.com/repos/eitsupi/arf/releases/assets/750984167"

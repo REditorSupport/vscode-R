@@ -35,7 +35,7 @@ function treeTooltip(item: vscode.TreeItem): string {
     return typeof item.tooltip === 'string' ? item.tooltip : (item.tooltip?.value ?? '');
 }
 
-(process.platform === 'win32' ? suite.skip : suite)('Interactive VS Code integration', function () {
+suite('Interactive VS Code integration', function () {
     this.timeout(60000);
     let root: string;
     const sourceDirectories: string[] = [];
@@ -329,7 +329,10 @@ function treeTooltip(item: vscode.TreeItem): string {
             await config.update('interactive.arfPath', previous, vscode.ConfigurationTarget.Global);
         }
     });
-    test('usable custom arf is offered, but removal while naming a session prevents launch', async () => {
+    test('usable custom arf is offered, but removal while naming a session prevents launch', async function () {
+        if (process.platform === 'win32') {
+            this.skip();
+        }
         const config = vscode.workspace.getConfiguration('r');
         const previous = config.inspect<string>('interactive.arfPath')?.globalValue;
         const executable = path.join(root, 'custom arf');
@@ -431,7 +434,10 @@ function treeTooltip(item: vscode.TreeItem): string {
             );
         }
     });
-    test('missing explicit tmux reports a recovery setting before installing or creating a session', async () => {
+    test('missing explicit tmux reports a recovery setting before installing or creating a session', async function () {
+        if (process.platform === 'win32') {
+            this.skip();
+        }
         const config = vscode.workspace.getConfiguration('r');
         const previous = config.inspect<string>('interactive.supervision')?.globalValue;
         const entries = fs.readdirSync(root);
@@ -741,7 +747,10 @@ function treeTooltip(item: vscode.TreeItem): string {
         }
     });
 
-    test('refreshes a controller opened during startup when R becomes ready', async () => {
+    test('refreshes a controller opened during startup when R becomes ready', async function () {
+        if (process.platform === 'win32') {
+            this.skip();
+        }
         const id = randomUUID();
         const ready = path.join(root, 'release-startup');
         const arf = resolveExecutable(process.env.ARF_PATH ?? 'arf', root);
@@ -2253,7 +2262,10 @@ cat("\n")`;
         }
     });
 
-    test('New Persistent Interactive Session focuses its own input and preserves the previous session draft', async () => {
+    test('New Persistent Interactive Session focuses its own input and preserves the previous session draft', async function () {
+        if (process.platform === 'win32') {
+            this.skip();
+        }
         const settings = vscode.workspace.getConfiguration('r');
         const previousArf = settings.inspect<string>('interactive.arfPath')?.globalValue;
         const previousNode = settings.inspect<string>('interactive.nodePath')?.globalValue;
@@ -3925,6 +3937,9 @@ par(mfrow=c(1,1))`,
     });
 
     test('restart keeps the window, drafts, transcript, bindings and kernel through multiple R processes', async function () {
+        if (process.platform === 'win32') {
+            this.skip();
+        }
         const restartTimeouts = {
             'cancelled restart': 30000,
             'missing arf': 30000,
