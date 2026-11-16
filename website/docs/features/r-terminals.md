@@ -17,8 +17,14 @@ For an alternative R console, see [arf](https://github.com/eitsupi/arf).
 
 If the R session watcher is enabled, then it will attach to the R session
 whenever a new R terminal is created. The status of the session watcher is shown
-in the status bar like below. Managed terminals reconnect automatically after a
-VS Code window reload.
+in the status bar like below.
+
+Managed terminals reconnect automatically after a VS Code window reload once
+vscode-R activates. VS Code can restore an existing terminal without activating
+vscode-R. In a workspace with no R files or visible R Interactive tab,
+reconnection waits until you use R. Open an R file, or focus the restored R
+terminal and run **R: Activate R Session**, to reconnect it. This reconnects the
+R process preserved across the window reload without restarting it.
 
 ![R session status bar item](/images/r-status-bar-item.png)
 

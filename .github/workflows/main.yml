@@ -110,6 +110,12 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup-test-tools
       - uses: ./.github/actions/prepare-test-runtime
+      - name: Test on-demand activation (Linux)
+        if: runner.os == 'Linux'
+        run: xvfb-run -a pnpm run test:activation
+      - name: Test on-demand activation
+        if: runner.os != 'Linux'
+        run: pnpm run test:activation
       - name: Run plot lifecycle extension tests (Linux)
         if: runner.os == 'Linux'
         run: xvfb-run -a pnpm run test:extension --label plot-lifecycle
@@ -128,6 +134,7 @@ jobs:
         with:
           name: extension-test-logs-${{ runner.os }}
           path: |
+            .vscode-test/activation/*.log
             .vscode-test/user-data/**/logs/**/exthost/exthost.log
             .vscode-test/user-data/**/logs/**/exthost/output_logging_*/*.log
           retention-days: 7

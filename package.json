@@ -35,9 +35,7 @@
     "onWebviewPanel:r.htmlViewer",
     "onLanguage:r",
     "onLanguage:rmd",
-    "onNotebook:r-interactive",
-    "onNotebook:interactive",
-    "onStartupFinished"
+    "onNotebook:r-interactive"
   ],
   "main": "./dist/extension",
   "contributes": {
@@ -2457,7 +2455,7 @@
           "tags": ["experimental"],
           "type": "boolean",
           "default": true,
-          "description": "Reconnect the workspace’s Interactive sessions when VS Code reopens."
+          "description": "Automatically reconnect the workspace’s Interactive sessions when R features are used."
         },
         "r.interactive.historyLimit": {
           "tags": ["experimental"],
@@ -2603,6 +2601,7 @@
     "test": "pnpm run test:node && pnpm run test:extension",
     "test:node": "mocha \"out/test/node/**/*.test.js\" --config .mocharc.interactive.cjs",
     "test:extension": "vscode-test",
+    "test:activation": "node --test scripts/activation-environment.test.cjs && node scripts/test-activation.cjs",
     "lint": "oxlint src",
     "format": "oxfmt .",
     "format:check": "oxfmt --check .",
