@@ -209,8 +209,6 @@ const COALESCED: ReadonlySet<InspectionMethod> = new Set([
     'completion',
     'dataview_page',
 ]);
-/** An editor asks again whenever the cursor moves; only the latest request matters. */
-const SUPERSEDED: ReadonlySet<InspectionMethod> = new Set(['hover', 'completion']);
 
 interface Job {
     request: InspectionRequest;
@@ -233,10 +231,10 @@ export type CallTransport = (
  *
  * arf serializes calls anyway, so waiting here costs no time while keeping
  * its queue (64 calls, shared by all clients) from filling up. Requests that
- * wait are bounded: identical read-only ones share one call, a newer hover or
- * completion replaces an older one that has not started, a request that has
- * waited as long as its own timeout fails as a queue timeout, and there is a
- * hard limit on how many wait.
+ * wait are bounded: identical read-only ones share one call, a request that
+ * has waited as long as its own timeout fails as a queue timeout, and there is
+ * a hard limit on how many wait. Requests that differ are never dropped for
+ * one another, since they can come from different clients.
  *
  * Each request's timeout is its execution deadline. A request stopped by its
  * deadline is an error, as is an interrupt or a failure to reach arf. An R
@@ -265,12 +263,6 @@ export class InspectionCalls {
                 if (job?.key === key) {
                     return job.promise;
                 }
-            }
-        }
-        if (SUPERSEDED.has(request.method)) {
-            for (const job of this.waiting.filter((job) => job.request.method === request.method)) {
-                this.drop(job);
-                job.resolve(null);
             }
         }
         if (this.waiting.length >= MAX_PENDING) {

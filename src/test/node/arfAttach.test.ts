@@ -538,7 +538,7 @@ suite('arf inspection calls', () => {
         );
     });
 
-    test('a newer hover or completion replaces an older one that has not started', async () => {
+    test('distinct waiting hovers are each answered, as they can come from different clients', async () => {
         let socket!: net.Socket;
         await withInspection(
             (_message, connection) => {
@@ -547,36 +547,27 @@ suite('arf inspection calls', () => {
             async (inspection, requests) => {
                 const running = inspection.request({ method: 'workspace', params: {} });
                 await until(() => requests.length === 1);
-                const hovers = ['a', 'b', 'c'].map((expr) =>
+                const hovers = ['a', 'b'].map((expr) =>
                     inspection.request({ method: 'hover', params: { expr } }),
-                );
-                const completions = ['a', 'b'].map((expr) =>
-                    inspection.request({ method: 'completion', params: { expr, trigger: '$' } }),
                 );
                 socket.write(
                     line({ jsonrpc: '2.0', id: requests[0].id, result: callReply('done') }),
                 );
                 assert.strictEqual(await running, 'done');
-                await until(() => requests.length === 2);
-                socket.write(
-                    line({ jsonrpc: '2.0', id: requests[1].id, result: callReply({ str: 'c' }) }),
-                );
-                assert.deepStrictEqual(await hovers[2], { str: 'c' });
-                assert.strictEqual(await hovers[0], null);
-                assert.strictEqual(await hovers[1], null);
-                assert.strictEqual(await completions[0], null);
-                await until(() => requests.length === 3);
-                socket.write(
-                    line({
-                        jsonrpc: '2.0',
-                        id: requests[2].id,
-                        result: callReply([{ name: 'b' }]),
-                    }),
-                );
-                assert.deepStrictEqual(await completions[1], [{ name: 'b' }]);
+                for (const [index, expr] of ['a', 'b'].entries()) {
+                    await until(() => requests.length === index + 2);
+                    socket.write(
+                        line({
+                            jsonrpc: '2.0',
+                            id: requests[index + 1].id,
+                            result: callReply({ str: expr }),
+                        }),
+                    );
+                    assert.deepStrictEqual(await hovers[index], { str: expr });
+                }
                 assert.deepStrictEqual(
                     requests.map((request) => params(request).args),
-                    ['{}', '{"expr":"c"}', '{"expr":"b","trigger":"$"}'],
+                    ['{}', '{"expr":"a"}', '{"expr":"b"}'],
                 );
             },
         );

@@ -92,9 +92,8 @@ cause: queue timeout (R was busy and the request never ran), execution deadline
 still run), R error, interrupt, and an unpublished handler. Calls go through the
 long-lived attach connection, so arf drops calls that have not started when it
 closes, and replies need no connection per request. Requests are sent one at a
-time: identical read-only requests share a call, a newer hover or completion
-replaces an older one that has not started, and the number of waiting requests
-is bounded, so the arf call queue shared by all clients does not fill.
+time: identical read-only requests share a call, and the number of waiting
+requests is bounded, so the arf call queue shared by all clients does not fill.
 
 An adopted arf uses calls only when `session.handler_api` is locked and lists
 every selector, which its user must have published; otherwise inspection stays
