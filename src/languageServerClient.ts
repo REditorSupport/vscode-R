@@ -5,7 +5,7 @@ import type { ChildProcess } from 'node:child_process';
 import type { DisposableProcess } from './util';
 
 /** Transport errors that mean the peer closed or reset the connection. */
-const DISCONNECTS = new Set(['EPIPE', 'ECONNRESET', 'ECONNABORTED']);
+const DISCONNECTS = new Set(['EPIPE', 'ECONNRESET', 'ECONNABORTED', 'ERR_STREAM_DESTROYED']);
 
 function disconnectCode(error: unknown): string | undefined {
     const code =
