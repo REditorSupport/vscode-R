@@ -52,6 +52,7 @@ export class LanguageService implements Disposable {
     private readonly startup: Promise<void>;
     private readonly startupCancellation = new AbortController();
     private readonly startingClients = new Set<CancellableLanguageClient>();
+    private readonly stoppingClients = new Set<Promise<void>>();
     private disposed = false;
 
     constructor() {
@@ -70,6 +71,16 @@ export class LanguageService implements Disposable {
             listener.dispose();
         });
         return this.stopLanguageService();
+    }
+
+    /** Stops a client removed from the service; disposal still waits for it. */
+    private stopClient(client: LanguageClient): Promise<void> {
+        const stopping = client.stop().catch((error: unknown) => {
+            this.outputChannel.appendLine(`Failed to stop language server: ${String(error)}`);
+        });
+        this.stoppingClients.add(stopping);
+        void stopping.finally(() => this.stoppingClients.delete(stopping));
+        return stopping;
     }
 
     private spawnServer(
@@ -539,7 +550,7 @@ export class LanguageService implements Disposable {
             if (client) {
                 this.clients.delete(key);
                 this.initSet.delete(key);
-                void client.stop();
+                void this.stopClient(client);
             }
         };
 
@@ -560,7 +571,9 @@ export class LanguageService implements Disposable {
                         const client = this.clients.get(key);
                         this.clients.delete(key);
                         this.initSet.delete(key);
-                        await client?.stop();
+                        if (client) {
+                            await this.stopClient(client);
+                        }
                     }
                     await didOpenTextDocument(document);
                     if (this.clients.has(key)) {
@@ -606,7 +619,7 @@ export class LanguageService implements Disposable {
                     if (client) {
                         this.clients.delete(key);
                         this.initSet.delete(key);
-                        void client.stop();
+                        void this.stopClient(client);
                     }
                 }
             }),
@@ -652,7 +665,7 @@ export class LanguageService implements Disposable {
     private async stopLanguageService(): Promise<void> {
         await this.startup;
         await Promise.all(this.clientUpdates.values());
-        const promises: Thenable<void>[] = [];
+        const promises: Thenable<void>[] = [...this.stoppingClients];
         for (const client of this.clients.values()) {
             promises.push(client.stop());
         }

@@ -1,8 +1,19 @@
-import { LanguageClient, State } from 'vscode-languageclient/node';
+import { ErrorAction, LanguageClient, State } from 'vscode-languageclient/node';
 import type { LanguageClientOptions, ServerOptions } from 'vscode-languageclient/node';
 import type { Socket } from 'node:net';
 import type { ChildProcess } from 'node:child_process';
 import type { DisposableProcess } from './util';
+
+/** Transport errors that mean the peer closed or reset the connection. */
+const DISCONNECTS = new Set(['EPIPE', 'ECONNRESET', 'ECONNABORTED']);
+
+function disconnectCode(error: unknown): string | undefined {
+    const code =
+        error && typeof error === 'object' && 'code' in error
+            ? (error as { code: unknown }).code
+            : undefined;
+    return typeof code === 'string' && DISCONNECTS.has(code) ? code : undefined;
+}
 
 function cancelledStartup(): Error {
     const error = new Error('R language server startup was cancelled.');
@@ -15,7 +26,14 @@ class StartupResources {
     readonly cancellation = new AbortController();
     private readonly releases: Array<() => void> = [];
     private readonly exits: Promise<void>[] = [];
+    /** Owned server processes and whether each has closed. */
+    private readonly processes = new Map<ChildProcess, boolean>();
     private disposed = false;
+    /** Set when stop() begins for the connection these resources belong to. */
+    stopRequested = false;
+    /** The exit notification is written only after shutdown was answered. */
+    exitSent = false;
+    stopping?: Promise<void>;
 
     constructor(
         private readonly parent: AbortSignal,
@@ -56,18 +74,28 @@ class StartupResources {
     }
 
     watchProcess(child: ChildProcess): void {
-        if (this.disposed || child.exitCode !== null || child.signalCode !== null) {
+        if (this.disposed || this.processes.has(child)) {
+            return;
+        }
+        const exited = child.exitCode !== null || child.signalCode !== null;
+        this.processes.set(child, exited);
+        if (exited) {
             return;
         }
         this.exits.push(
             new Promise<void>((resolve) => {
-                child.once('close', resolve);
-                this.own(() => child.removeListener('close', resolve));
+                const closed = () => {
+                    this.processes.set(child, true);
+                    resolve();
+                };
+                child.once('close', closed);
+                this.own(() => child.removeListener('close', closed));
             }),
         );
     }
 
-    async waitForExit(): Promise<void> {
+    /** Waits briefly for owned processes; true if there is one and all of them closed. */
+    async waitForExit(): Promise<boolean> {
         let timer: NodeJS.Timeout | undefined;
         try {
             // shutdown()/exit() acknowledge transport writes, not process exit.
@@ -82,6 +110,7 @@ class StartupResources {
         } finally {
             clearTimeout(timer);
         }
+        return this.processes.size > 0 && [...this.processes.values()].every(Boolean);
     }
 
     throwIfCancelled(): void {
@@ -116,6 +145,22 @@ export class CancellableLanguageClient extends LanguageClient {
         private readonly cancellation: AbortSignal,
     ) {
         super(id, name, serverOptions, clientOptions);
+        const handler = this.clientOptions.errorHandler!;
+        this.clientOptions.errorHandler = {
+            error: (error, message, count) => {
+                // A server can close its end once it has answered shutdown.
+                // That is the requested outcome, not a failure to report.
+                const code = disconnectCode(error);
+                if (code && this.resources?.stopRequested) {
+                    this.outputChannel.appendLine(
+                        `The R language server connection closed while stopping (${code}).`,
+                    );
+                    return { action: ErrorAction.Continue, handled: true };
+                }
+                return handler.error(error, message, count);
+            },
+            closed: () => handler.closed(),
+        };
     }
 
     override start(): Promise<void> {
@@ -183,6 +228,13 @@ export class CancellableLanguageClient extends LanguageClient {
     protected override async createMessageTransports(encoding: string) {
         const resources = this.resources;
         const transports = await super.createMessageTransports(encoding);
+        const write = transports.writer.write.bind(transports.writer);
+        transports.writer.write = (message) => {
+            if (resources && 'method' in message && message.method === 'exit') {
+                resources.exitSent = true;
+            }
+            return write(message);
+        };
         // Executable-based stdio starts inside LanguageClient. Its public process
         // handle is available once transports exist, before initialize is sent.
         const child = this.serverProcess;
@@ -198,20 +250,42 @@ export class CancellableLanguageClient extends LanguageClient {
         return transports;
     }
 
-    override async stop(timeout?: number): Promise<void> {
+    override stop(timeout?: number): Promise<void> {
         const resources = this.resources;
         if (this.state === State.Starting || this.state === State.StartFailed) {
             // LanguageClient's initialization failure handler also calls stop().
             // Its base implementation rejects in these states; closing owned
             // transports instead lets the pending initialize request reject.
             resources?.dispose();
-            return;
+            return Promise.resolve();
         }
+        if (!resources) {
+            return super.stop(timeout);
+        }
+        return (resources.stopping ??= this.stopRunning(resources, timeout));
+    }
+
+    private async stopRunning(resources: StartupResources, timeout?: number): Promise<void> {
+        resources.stopRequested = true;
         try {
-            await super.stop(timeout);
-            await resources?.waitForExit();
+            try {
+                await super.stop(timeout);
+            } catch (error) {
+                // R's languageserver exits once it answers shutdown, so writing
+                // the exit notification can fail. That still stopped the server
+                // if it answered shutdown and its process closed by itself.
+                const code = disconnectCode(error);
+                if (!code || !resources.exitSent || !(await resources.waitForExit())) {
+                    throw error;
+                }
+                this.outputChannel.appendLine(
+                    `The R language server exited after answering shutdown, before the exit notification (${code}).`,
+                );
+                return;
+            }
+            await resources.waitForExit();
         } finally {
-            resources?.dispose();
+            resources.dispose();
         }
     }
 }
