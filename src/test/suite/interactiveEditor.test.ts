@@ -73,15 +73,15 @@ suite('Interactive VS Code integration', function () {
     let originalLanguageClients: Set<LanguageClient>;
     suiteSetup(async () => {
         originalTabs = new Set(vscode.window.tabGroups.all.flatMap((group) => group.tabs));
-        resources.add('tabs', 'suite tabs', () => {
-            for (const tab of vscode.window.tabGroups.all.flatMap((group) => group.tabs)) {
-                if (!originalTabs.has(tab)) {
-                    resources.add('tabs', tab.label, () =>
-                        vscode.window.tabGroups.close(tab, true),
-                    );
-                }
-            }
-        });
+        // Close the suite's tabs in one call rather than with concurrent tab-group edits.
+        resources.add('tabs', 'suite tabs', () =>
+            vscode.window.tabGroups.close(
+                vscode.window.tabGroups.all
+                    .flatMap((group) => group.tabs)
+                    .filter((tab) => !originalTabs.has(tab)),
+                true,
+            ),
+        );
         resources.add('agents', 'suite agents', () => {
             agents?.forEach((agent, index) =>
                 resources.add('agents', `agent ${index}`, () => agent.close()),
