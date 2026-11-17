@@ -2593,7 +2593,7 @@ suite('Standalone plot restoration', () => {
         }
     });
 
-    test('a retained JGD tab redraws plots made while hidden without resizing R', async () => {
+    test('a retained jgd tab redraws plots made while hidden without resizing R', async () => {
         interface Inspection {
             hidden: boolean;
             background: string;
