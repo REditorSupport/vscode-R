@@ -2600,6 +2600,7 @@ suite('Standalone plot restoration', () => {
             container: number[];
             canvas: number[];
             pixel: number[];
+            log: unknown[];
         }
         let panel: vscode.WebviewPanel | undefined;
         let inspection: Inspection | undefined;
@@ -2623,6 +2624,41 @@ suite('Standalone plot restoration', () => {
         panel!.webview.html = panel!.webview.html.replace(
             '</body>',
             `<script>
+            // Diagnostics for an intermittent failure: record what each
+            // replay, visibility change and resize report saw. Function
+            // declarations of the viewer script are globals, so this wraps
+            // the calls the viewer makes itself.
+            const log = [];
+            const record = (event, data) => log.push({ t: Math.round(performance.now()), event,
+                hidden: document.hidden, panelVisible, generation: replayGeneration,
+                container: [container.clientWidth, container.clientHeight], ...data });
+            const canvasState = () => ({ style: [canvas.style.width, canvas.style.height],
+                client: [canvas.clientWidth, canvas.clientHeight],
+                backing: [canvas.width, canvas.height], dpr: window.devicePixelRatio });
+            const viewerReplay = doReplay;
+            doReplay = async (plot, gen) => {
+                record('replay-start', { gen, background: plot.device.bg, ops: plot.ops.length });
+                try {
+                    return await viewerReplay(plot, gen);
+                } finally {
+                    record('replay-end', { gen, ...canvasState() });
+                }
+            };
+            // acquireVsCodeApi() returns a frozen object, so record the
+            // viewer's decision to send a resize instead of the send itself.
+            const viewerReport = reportViewportSize;
+            reportViewportSize = () => {
+                const before = [lastSentW, lastSentH];
+                viewerReport();
+                record('report-viewport', { before, after: [lastSentW, lastSentH] });
+            };
+            window.addEventListener('message', (event) => {
+                if (['render', 'visibility'].includes(event.data.type)) {
+                    record('message-' + event.data.type, { visible: event.data.visible });
+                }
+            });
+            document.addEventListener('visibilitychange', () => record('visibilitychange', {}));
+            new ResizeObserver(() => record('container-resized', canvasState())).observe(container);
             window.addEventListener('message', async (event) => {
                 if (event.data.type !== 'inspect-canvas') return;
                 if (event.data.visible) await new Promise(requestAnimationFrame);
@@ -2632,7 +2668,8 @@ suite('Standalone plot restoration', () => {
                     background: currentPlot?.device.bg,
                     container: [container.clientWidth, container.clientHeight],
                     canvas: [canvas.clientWidth, canvas.clientHeight],
-                    pixel: Array.from(ctx.getImageData(0, 0, 1, 1).data)
+                    pixel: Array.from(ctx.getImageData(0, 0, 1, 1).data),
+                    log: log.slice()
                 });
             });
         </script></body>`,
@@ -2689,23 +2726,46 @@ suite('Standalone plot restoration', () => {
             panel!.reveal();
             await waitForValue(() => (panel!.visible ? true : undefined));
             const shown = await inspect();
-            assert.deepStrictEqual(
-                shown.container,
-                visible.container,
-                'the viewport did not change',
-            );
-            assert.deepStrictEqual(
-                shown.canvas,
-                shown.container,
-                'visibility alone restores the full canvas',
-            );
-            assert.deepStrictEqual(
-                shown.pixel,
-                [255, 0, 255, 255],
-                'the canvas contains the newly selected plot',
-            );
-            assert.strictEqual(history.count('device'), 2);
-            sinon.assert.notCalled(resize);
+            try {
+                assert.deepStrictEqual(
+                    shown.container,
+                    visible.container,
+                    'the viewport did not change',
+                );
+                assert.deepStrictEqual(
+                    shown.canvas,
+                    shown.container,
+                    'visibility alone restores the full canvas',
+                );
+                assert.deepStrictEqual(
+                    shown.pixel,
+                    [255, 0, 255, 255],
+                    'the canvas contains the newly selected plot',
+                );
+                assert.strictEqual(history.count('device'), 2);
+                sinon.assert.notCalled(resize);
+            } catch (error) {
+                // Show whether a later replay corrects the canvas and whether R
+                // was asked to resize, along with the webview's own timeline.
+                await new Promise((resolve) => setTimeout(resolve, 1000));
+                let settled: unknown;
+                let webview = shown.log;
+                try {
+                    const { log, ...later } = await inspect();
+                    settled = later;
+                    webview = log;
+                } catch (inspectionError) {
+                    settled = `not available: ${String(inspectionError)}`;
+                }
+                (error as Error).message += `\nDiagnostics: ${JSON.stringify({
+                    initial: { container: visible.container, canvas: visible.canvas },
+                    shown: { ...shown, log: undefined },
+                    settledAfter1s: settled,
+                    resizeCalls: resize.getCalls().map((call) => call.args),
+                    webview,
+                })}`;
+                throw error;
+            }
         } finally {
             panel?.dispose();
             if (coveringEditor) {
