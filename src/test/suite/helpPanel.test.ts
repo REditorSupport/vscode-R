@@ -5,6 +5,7 @@ import * as path from 'path';
 import { HelpPanel } from '../../helpViewer/panel';
 import type { HelpFile, RHelp } from '../../helpViewer';
 import * as util from '../../util';
+import { trackModuleTimers, type ModuleTimerTracker } from '../common/fakeTimers';
 import { mockExtensionContext } from '../common/mockvscode';
 
 suite('Help panel navigation', () => {
@@ -23,31 +24,19 @@ suite('Help panel navigation', () => {
         return { promise, resolve };
     }
 
-    // Fake timers replace setTimeout for the whole extension host. On failure,
-    // report what is pending so a Help timer can be told apart from one that
-    // unrelated code scheduled during the test.
-    function assertNoPendingTimers(clock: sinon.SinonFakeTimers): void {
-        const count = clock.countTimers();
-        if (count === 0) {
-            return;
-        }
-        const internals = clock as unknown as {
-            timerHeap?: {
-                timers: { type?: string; delay?: number; callAt?: number; func: unknown }[];
-            };
-            jobs?: { func: unknown }[];
-        };
-        const source = (func: unknown) => String(func).replace(/\s+/g, ' ').slice(0, 300);
-        assert.fail(
-            [
-                `Expected no pending fake timers at ${clock.now}, found ${count}:`,
-                ...(internals.timerHeap?.timers ?? []).map(
-                    (timer) =>
-                        `${timer.type} delay=${timer.delay} callAt=${timer.callAt}: ${source(timer.func)}`,
-                ),
-                ...(internals.jobs ?? []).map((job) => `job: ${source(job.func)}`),
-            ].join('\n'),
-        );
+    // Fake timers replace setTimeout for the whole extension host, so count
+    // only the timers that HelpPanel schedules.
+    const helpModules = [require.resolve('../../helpViewer/panel')];
+    let helpTimers: ModuleTimerTracker | undefined;
+
+    function useHelpFakeTimers(): sinon.SinonFakeTimers {
+        const clock = sandbox.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+        helpTimers = trackModuleTimers(helpModules);
+        return clock;
+    }
+
+    function assertNoPendingHelpTimers(): void {
+        assert.strictEqual(helpTimers?.pending(), 0, 'Help leaves no pending timers');
     }
 
     async function settleNavigation(navigation: Promise<void>): Promise<void> {
@@ -98,35 +87,38 @@ suite('Help panel navigation', () => {
             help?.dispose();
             closed?.dispose();
         } finally {
+            helpTimers?.restore();
+            helpTimers = undefined;
             sandbox.restore();
         }
     });
 
     test('Back still works when a webview cannot acknowledge its scroll position', async () => {
-        const clock = sandbox.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+        const clock = useHelpFakeTimers();
         const pending = help.goBack();
         await clock.tickAsync(1000);
         await pending;
         assert.match(panel.webview.html, /First/);
-        assertNoPendingTimers(clock);
+        assertNoPendingHelpTimers();
     });
 
     test('closing the panel settles pending navigation without waiting for a timeout', async () => {
-        const clock = sandbox.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+        useHelpFakeTimers();
         const pending = help.goBack();
+        assert.strictEqual(helpTimers?.pending(), 1, 'Help waits for the scroll position');
         panel.dispose();
         await pending;
         assert.strictEqual(help.panel, undefined);
-        assertNoPendingTimers(clock);
+        assertNoPendingHelpTimers();
     });
 
     test('failed delivery falls back immediately instead of waiting for the scroll timeout', async () => {
-        const clock = sandbox.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+        const clock = useHelpFakeTimers();
         postMessage.resolves(false);
         await help.goBack();
         await clock.tickAsync(0);
         assert.match(panel.webview.html, /First/);
-        assertNoPendingTimers(clock);
+        assertNoPendingHelpTimers();
     });
 
     test('closing Help during a refresh fetch does not recreate its panel', async () => {
@@ -178,7 +170,7 @@ suite('Help panel navigation', () => {
             html: '<body>Older preview</body>',
         });
         load.onSecondCall().returns(second.promise);
-        const clock = sandbox.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+        const clock = useHelpFakeTimers();
         const older = help.refreshPreview('/pkg');
         await clock.tickAsync(0);
         sinon.assert.calledOnce(postMessage);
@@ -196,11 +188,11 @@ suite('Help panel navigation', () => {
         await newer;
         assert.strictEqual(htmlAfterOlder, original);
         assert.match(panel.webview.html, /Latest preview/);
-        assertNoPendingTimers(clock);
+        assertNoPendingHelpTimers();
     });
 
     test('closing Help during a refresh scroll wait leaves it closed and cancels its timer', async () => {
-        const clock = sandbox.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+        const clock = useHelpFakeTimers();
         load.resolves({ requestPath: '/second', html: '<body>Refreshed</body>' });
         const create = sandbox.stub(vscode.window, 'createWebviewPanel');
         const refresh = help.refresh();
@@ -209,7 +201,7 @@ suite('Help panel navigation', () => {
         panel.dispose();
         await refresh;
         assert.strictEqual(help.panel, undefined);
-        assertNoPendingTimers(clock);
+        assertNoPendingHelpTimers();
         sinon.assert.notCalled(create);
     });
 
@@ -225,7 +217,7 @@ suite('Help panel navigation', () => {
     });
 
     test('navigation while a refresh awaits scroll prevents stale replacement', async () => {
-        const clock = sandbox.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+        const clock = useHelpFakeTimers();
         load.resolves({ requestPath: '/second', html: '<body>Refreshed second</body>' });
         const refresh = help.refresh();
         await clock.tickAsync(0);
@@ -234,7 +226,7 @@ suite('Help panel navigation', () => {
         await clock.tickAsync(1000);
         await refresh;
         assert.match(panel.webview.html, /Third/);
-        assertNoPendingTimers(clock);
+        assertNoPendingHelpTimers();
     });
 
     test('closing during async page preparation prevents a late write to the disposed webview', async () => {
