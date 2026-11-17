@@ -2,13 +2,21 @@ import * as assert from 'node:assert';
 import { EventEmitter } from 'node:events';
 import * as sinon from 'sinon';
 import * as vscode from 'vscode';
+import {
+    createMessageConnection,
+    State,
+    StreamMessageReader,
+    StreamMessageWriter,
+} from 'vscode-languageclient/node';
 import type { LanguageClient } from 'vscode-languageclient/node';
 import childProcess from 'node:child_process';
+import * as net from 'node:net';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import * as os from 'node:os';
 import { LanguageService } from '../../languageService';
 import { connectTcpLanguageServer } from '../../languageServerTransport';
+import { CancellableLanguageClient } from '../../languageServerClient';
 import * as util from '../../util';
 import { mockExtensionContext } from '../common/mockvscode';
 
@@ -425,5 +433,151 @@ suite('Language service initialization cancellation', () => {
         assert.strictEqual(state.clientUpdates.size, 0);
         assert.strictEqual(children.length, 2);
         watcherDisposals.forEach((dispose) => sinon.assert.calledOnce(dispose));
+    });
+});
+
+suite('Language client stop', () => {
+    let sandbox: sinon.SinonSandbox;
+    let errors: sinon.SinonStub;
+    let cleanup: Array<() => unknown>;
+
+    setup(() => {
+        sandbox = sinon.createSandbox();
+        errors = sandbox.stub(vscode.window, 'showErrorMessage').resolves(undefined);
+        cleanup = [];
+    });
+
+    teardown(async () => {
+        try {
+            for (const release of cleanup.reverse()) {
+                await release();
+            }
+        } finally {
+            sandbox.restore();
+        }
+    });
+
+    const disconnect = (code: string) => Object.assign(new Error(`socket ${code}`), { code });
+
+    /**
+     * A TCP language server owned by a real child process, like R's server.
+     * The child exits only when the test calls `exitChild()`. With
+     * `closeAtExitNotification`, the client sees the order R can produce: the
+     * server has answered shutdown and closed, so reading resets and writing the
+     * exit notification fails.
+     */
+    async function startServer(options: {
+        closeAtExitNotification?: { exitChild: boolean };
+    }): Promise<{
+        client: CancellableLanguageClient;
+        child: childProcess.ChildProcess;
+        errorHandler: sinon.SinonSpy;
+        serverSocket: () => net.Socket;
+    }> {
+        const channel = vscode.window.createOutputChannel('Test language client stop', {
+            log: true,
+        });
+        cleanup.push(() => channel.dispose());
+        const child = childProcess.spawn(
+            process.execPath,
+            ['-e', "process.stdin.on('end', () => process.exit(0)); process.stdin.resume();"],
+            {
+                env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' },
+                stdio: ['pipe', 'ignore', 'ignore'],
+            },
+        );
+        const closed = new Promise<void>((resolve) => child.once('close', () => resolve()));
+        cleanup.push(async () => {
+            child.kill('SIGKILL');
+            await closed;
+        });
+        let serverSocket: net.Socket | undefined;
+        const connections: Array<{ dispose(): void }> = [];
+        const server = net.createServer((socket) => {
+            serverSocket = socket;
+            socket.on('error', () => undefined);
+            const connection = createMessageConnection(
+                new StreamMessageReader(socket),
+                new StreamMessageWriter(socket),
+            );
+            connections.push(connection);
+            connection.onRequest('initialize', () => ({ capabilities: {} }));
+            connection.onRequest('shutdown', () => null);
+            connection.listen();
+        });
+        await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+        cleanup.push(async () => {
+            connections.forEach((connection) => connection.dispose());
+            serverSocket?.destroy();
+            await new Promise<void>((resolve) => server.close(() => resolve()));
+        });
+        const client: CancellableLanguageClient = new CancellableLanguageClient(
+            'stop-test',
+            'Stop test',
+            async () => {
+                client.ownProcess(
+                    Object.assign(child, {
+                        dispose: () => child.kill('SIGKILL'),
+                    }) as unknown as util.DisposableProcess,
+                );
+                const socket = net.connect((server.address() as net.AddressInfo).port, '127.0.0.1');
+                await new Promise<void>((resolve) => socket.once('connect', resolve));
+                client.ownSocket(socket);
+                const writer = new StreamMessageWriter(socket);
+                const close = options.closeAtExitNotification;
+                if (close) {
+                    const write = writer.write.bind(writer);
+                    writer.write = async (message) => {
+                        if (!('method' in message) || message.method !== 'exit') {
+                            return write(message);
+                        }
+                        if (close.exitChild) {
+                            child.stdin!.end();
+                            await closed;
+                        }
+                        socket.emit('error', disconnect('ECONNRESET'));
+                        throw disconnect('EPIPE');
+                    };
+                }
+                return { reader: new StreamMessageReader(socket), writer };
+            },
+            { documentSelector: [], outputChannel: channel },
+            new AbortController().signal,
+        );
+        const errorHandler = sandbox.spy(client.clientOptions.errorHandler!, 'error');
+        await client.start();
+        cleanup.push(() => client.stop().catch(() => undefined));
+        return { client, child, errorHandler, serverSocket: () => serverSocket! };
+    }
+
+    test('a server that exits after answering shutdown stops without a user-facing error', async () => {
+        const { client, child, errorHandler } = await startServer({
+            closeAtExitNotification: { exitChild: true },
+        });
+        await client.stop();
+        assert.strictEqual(client.state, State.Stopped);
+        assert.strictEqual(child.exitCode, 0, 'The server must exit by itself, not be killed');
+        sinon.assert.calledWithMatch(errorHandler, sinon.match.has('code', 'ECONNRESET'));
+        // The client reports connection errors after its handler returns.
+        await new Promise((resolve) => setImmediate(resolve));
+        sinon.assert.notCalled(errors);
+    });
+
+    test('a server that answers shutdown but keeps running still fails the stop', async () => {
+        const { client } = await startServer({ closeAtExitNotification: { exitChild: false } });
+        await assert.rejects(
+            client.stop(),
+            (error) => (error as { code?: string }).code === 'EPIPE',
+        );
+    });
+
+    test('a reset connection while running is still reported', async () => {
+        const { serverSocket } = await startServer({});
+        serverSocket().resetAndDestroy();
+        const deadline = Date.now() + 5000;
+        while (!errors.called) {
+            assert.ok(Date.now() < deadline, 'An unexpected disconnect must be reported');
+            await new Promise((resolve) => setTimeout(resolve, 20));
+        }
     });
 });
