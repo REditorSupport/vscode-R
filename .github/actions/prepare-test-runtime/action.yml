@@ -6,6 +6,11 @@ description: >-
 runs:
   using: composite
   steps:
+    - name: Install macOS dependencies
+      if: runner.os == 'macOS'
+      shell: bash
+      run: |
+        brew install --cask xquartz
     - name: Install R test dependencies
       uses: r-lib/actions/setup-r-dependencies@f9a764fea8d5c63df6ef9a5c7795bf7deb5d7e05 # v2
       with:
