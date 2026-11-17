@@ -10,6 +10,7 @@ import { promisify } from 'util';
 import { createRequire } from 'module';
 import { randomUUID } from 'crypto';
 import { TestResources } from '../common/testResources';
+import { FailureDiagnostics } from '../common/failureDiagnostics';
 import { SessionAgent } from '../../interactive/agentMain';
 import { AgentClient } from '../../interactive/client';
 import { InteractiveSerializer, DISPLAY_MIME } from '../../interactive/notebook';
@@ -239,10 +240,15 @@ suite('Interactive VS Code integration', function () {
     // the cleanup to finish before Mocha advances.
     const cleanupReserveMs = 5000;
     let runningTest: { test: Mocha.Runnable; started: number } | undefined;
+    let workspaceFocusDiagnostics: FailureDiagnostics | undefined;
     setup(function () {
         runningTest = this.currentTest && { test: this.currentTest, started: Date.now() };
     });
-    teardown(() => {
+    teardown(function () {
+        if (this.currentTest?.state === 'failed') {
+            workspaceFocusDiagnostics?.report();
+        }
+        workspaceFocusDiagnostics = undefined;
         runningTest = undefined;
     });
     const until = async (
@@ -3719,49 +3725,96 @@ par(mfrow=c(1,1))`,
     });
     test('Workspace follows native focus and bound sources, and actions retain their displayed owner', async () => {
         const workspace = workspaceProvider;
+        let inspectedClient: AgentClient | undefined;
+        const diagnostics = new FailureDiagnostics('Workspace focus and displayed owner', () => ({
+            activeEditor: vscode.window.activeTextEditor?.document.uri.toString() ?? null,
+            activeNotebook: vscode.window.activeNotebookEditor?.notebook.uri.toString() ?? null,
+            notebookSession: vscode.window.activeNotebookEditor?.notebook.metadata
+                .rSessionId as unknown,
+            owner: workspace().owner?.sessionId,
+            markerLength: workspace().data?.globalenv.workspace_marker?.length,
+            sessions: manifests.map(({ id, generation, status, rPid }) => ({
+                id,
+                generation,
+                status,
+                rPid,
+            })),
+            inspectionClient: inspectedClient
+                ? {
+                      connected: inspectedClient.connected,
+                      control: inspectedClient.control,
+                      session: inspectedClient.manifest.id,
+                      generation: inspectedClient.manifest.generation,
+                      status: inspectedClient.manifest.status,
+                  }
+                : null,
+        }));
+        workspaceFocusDiagnostics = diagnostics;
+        const step = <T>(name: string, operation: () => PromiseLike<T>) =>
+            diagnostics.trace(name, operation);
         const nodes = async (): Promise<GlobalEnvItem[]> => {
             const provider = workspace();
-            const root = (await provider.getChildren()).find((item) => item.id === 'globalenv');
-            return (await provider.getChildren(root)) as GlobalEnvItem[];
+            const root = (await step('workspace roots', () => provider.getChildren())).find(
+                (item) => item.id === 'globalenv',
+            );
+            return (await step('workspace variables', () =>
+                provider.getChildren(root),
+            )) as GlobalEnvItem[];
         };
         const focus = async (index: number): Promise<void> => {
-            await vscode.commands.executeCommand('r.interactive.open', manifests[index]);
+            await step(`focus ${index}: r.interactive.open`, () =>
+                vscode.commands.executeCommand('r.interactive.open', manifests[index]),
+            );
             const notebook = vscode.workspace.notebookDocuments.find(
                 (doc) => doc.metadata.rSessionId === manifests[index].id,
             );
             assert.ok(notebook);
-            await vscode.commands.executeCommand(
-                'interactive.open',
-                { preserveFocus: false },
-                notebook.uri,
+            await step(`focus ${index}: interactive.open`, () =>
+                vscode.commands.executeCommand(
+                    'interactive.open',
+                    { preserveFocus: false },
+                    notebook.uri,
+                ),
             );
-            await vscode.commands.executeCommand('interactive.input.focus');
-            await until(
-                () =>
-                    workspace().owner?.sessionId ===
-                    `${manifests[index].id}:${manifests[index].generation}`,
+            await step(`focus ${index}: interactive.input.focus`, () =>
+                vscode.commands.executeCommand('interactive.input.focus'),
+            );
+            await step(`focus ${index}: owner`, () =>
+                until(
+                    () =>
+                        workspace().owner?.sessionId ===
+                        `${manifests[index].id}:${manifests[index].generation}`,
+                ),
             );
         };
         for (const index of [0, 1]) {
             await focus(index);
-            await vscode.commands.executeCommand(
-                'r.runSelection',
-                `workspace_marker <- rep(${index}, ${index + 1}); workspace_list <- list(owner = ${index})`,
+            await step(`session ${index}: r.runSelection`, () =>
+                vscode.commands.executeCommand(
+                    'r.runSelection',
+                    `workspace_marker <- rep(${index}, ${index + 1}); workspace_list <- list(owner = ${index})`,
+                ),
             );
-            await until(() => workspace().data?.globalenv.workspace_marker?.length === index + 1);
+            await step(`session ${index}: workspace marker`, () =>
+                until(() => workspace().data?.globalenv.workspace_marker?.length === index + 1),
+            );
         }
         await focus(0);
         const oldNode = (await nodes()).find((node) => node.label === 'workspace_marker');
         assert.ok(oldNode);
-        const source = await vscode.workspace.openTextDocument({
-            language: 'r',
-            content: 'workspace_marker',
-        });
-        await vscode.window.showTextDocument(source);
-        await vscode.commands.executeCommand('r.interactive.bindDocument');
+        const source = await step('open source document', () =>
+            vscode.workspace.openTextDocument({
+                language: 'r',
+                content: 'workspace_marker',
+            }),
+        );
+        await step('show source document', () => vscode.window.showTextDocument(source));
+        await step('bind source document', () =>
+            vscode.commands.executeCommand('r.interactive.bindDocument'),
+        );
         await focus(1);
-        await vscode.window.showTextDocument(source);
-        await until(() => workspace().owner === oldNode.owner);
+        await step('show source document', () => vscode.window.showTextDocument(source));
+        await step('bound source owner', () => until(() => workspace().owner === oldNode.owner));
         assert.strictEqual(workspace().data?.globalenv.workspace_marker.length, 1);
         const list = (await nodes()).find((node) => node.label === 'workspace_list');
         assert.ok(list);
@@ -3769,7 +3822,7 @@ par(mfrow=c(1,1))`,
         const ownerBefore = provider.owner?.sessionId;
         const generationBefore = (provider as unknown as { childPageGeneration: number })
             .childPageGeneration;
-        const children = await provider.getChildren(list);
+        const children = await step('workspace list children', () => provider.getChildren(list));
         const ownerAfter = provider.owner?.sessionId;
         const generationAfter = (provider as unknown as { childPageGeneration: number })
             .childPageGeneration;
@@ -3790,17 +3843,26 @@ par(mfrow=c(1,1))`,
             }),
         );
         await focus(1);
-        await vscode.commands.executeCommand('r.workspaceViewer.remove', oldNode);
+        await step('remove displayed node', () =>
+            vscode.commands.executeCommand('r.workspaceViewer.remove', oldNode),
+        );
         const firstClient = new AgentClient(manifests[0]);
-        await firstClient.connect({ claim: false });
+        inspectedClient = firstClient;
+        await step('inspection client connect', () => firstClient.connect({ claim: false }));
         try {
             let removed = false;
             const deadline = Date.now() + 10000;
             while (!removed && Date.now() < deadline) {
-                removed = !((await firstClient.snapshot()).workspace as WorkspaceData | undefined)
-                    ?.globalenv.workspace_marker;
+                removed = !(
+                    (await step('removal snapshot', () => firstClient.snapshot())).workspace as
+                        | WorkspaceData
+                        | undefined
+                )?.globalenv.workspace_marker;
                 if (!removed) {
-                    await new Promise((resolve) => setTimeout(resolve, 50));
+                    await step(
+                        'removal poll interval',
+                        () => new Promise((resolve) => setTimeout(resolve, 50)),
+                    );
                 }
             }
             assert.ok(removed, 'Remove applies to the displayed node owner');
@@ -3813,10 +3875,14 @@ par(mfrow=c(1,1))`,
             firstClient.close();
         }
         // Closing/detaching an active view must not leave live-looking objects behind.
-        await vscode.commands.executeCommand('r.interactive.detach', manifests[1]);
+        await step('detach second session', () =>
+            vscode.commands.executeCommand('r.interactive.detach', manifests[1]),
+        );
         assert.strictEqual(workspace().owner, undefined);
         assert.deepStrictEqual(await nodes(), []);
-        await vscode.commands.executeCommand('r.interactive.open', manifests[0]);
+        await step('restore first session', () =>
+            vscode.commands.executeCommand('r.interactive.open', manifests[0]),
+        );
     });
     test('native toolbar actions target their notebook while another session is active', async () => {
         await vscode.commands.executeCommand('r.interactive.open', manifests[0]);
