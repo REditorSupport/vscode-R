@@ -4897,11 +4897,13 @@ async function stopLanguageClient(client: LanguageClient): Promise<void> {
         // R's language server can close on shutdown before the client's exit
         // notification is written (EPIPE), or, as seen on Windows, before its
         // shutdown response arrives. The client has already completed cleanup.
+        // Match by code: the extension bundles its own vscode-languageclient,
+        // so its ResponseError is not an instance of the class imported here.
         if (
             client.state === State.Stopped &&
-            ((error instanceof ResponseError &&
-                error.code === ErrorCodes.PendingResponseRejected) ||
-                (error instanceof Error && 'code' in error && error.code === 'EPIPE'))
+            error instanceof Error &&
+            'code' in error &&
+            (error.code === ErrorCodes.PendingResponseRejected || error.code === 'EPIPE')
         ) {
             return;
         }
@@ -5017,6 +5019,30 @@ suite('Interactive language client cleanup', () => {
             await new Promise<void>((resolve) => server.close(() => resolve()));
             channel.dispose();
         }
+    });
+
+    test('accepts a pending shutdown rejected by the extension bundle', async () => {
+        // The extension bundles vscode-languageclient, so its clients reject with
+        // a ResponseError class that is distinct from the one this test imports.
+        class BundledResponseError extends Error {
+            constructor(
+                readonly code: number,
+                message: string,
+            ) {
+                super(message);
+            }
+        }
+        const client = {
+            state: State.Stopped,
+            stop: () =>
+                Promise.reject(
+                    new BundledResponseError(
+                        ErrorCodes.PendingResponseRejected,
+                        'Pending response rejected since connection got disposed',
+                    ),
+                ),
+        } as unknown as LanguageClient;
+        await stopLanguageClient(client);
     });
 
     test('does not suppress unrelated shutdown failures or an unstopped client', async () => {
