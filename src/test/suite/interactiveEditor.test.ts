@@ -5019,6 +5019,30 @@ suite('Interactive language client cleanup', () => {
         }
     });
 
+    test('accepts a pending shutdown rejected by the extension bundle', async () => {
+        // The extension bundles vscode-languageclient, so its clients reject with
+        // a ResponseError class that is distinct from the one this test imports.
+        class BundledResponseError extends Error {
+            constructor(
+                readonly code: number,
+                message: string,
+            ) {
+                super(message);
+            }
+        }
+        const client = {
+            state: State.Stopped,
+            stop: () =>
+                Promise.reject(
+                    new BundledResponseError(
+                        ErrorCodes.PendingResponseRejected,
+                        'Pending response rejected since connection got disposed',
+                    ),
+                ),
+        } as unknown as LanguageClient;
+        await stopLanguageClient(client);
+    });
+
     test('does not suppress unrelated shutdown failures or an unstopped client', async () => {
         const error = Object.assign(new Error('Socket shutdown failed'), { code: 'EPIPE' });
         const pending = new ResponseError(
