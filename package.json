@@ -2612,6 +2612,7 @@
     "test:sess-identity": "Rscript --vanilla R/tests/sess_source.R",
     "test:sess-attach": "Rscript --vanilla R/tests/attach_sess.R",
     "test:sess-source": "node --test scripts/sess-source.test.js && pnpm run test:sess-identity && pnpm run test:sess-attach",
+    "coverage:sess": "node scripts/prepare-sess.js && Rscript --vanilla scripts/coverage-sess.R",
     "test:tool-library": "Rscript --vanilla R/tests/tool-library.R",
     "test:tool-consent": "Rscript --vanilla R/tests/tool-consent.R",
     "test:prepare-jgd": "Rscript --vanilla R/tests/prepare-jgd.R",

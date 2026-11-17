@@ -98,6 +98,15 @@ Rscript -e 'tinytest::test_package("sess")'
 
 `pnpm run build` installs the bundled sess and its dependencies, including suggested packages, into the selected R library. jgd checks need the jgd and systemfonts packages; standard graphics uses svglite or PNG. Runtime suites build private pure R sess installations and use disposable sessions/libraries. Keep `R_LIBS` set for the commands below.
 
+To measure sess coverage, install covr 4.0.0 and xml2 in the same test library:
+
+```sh
+Rscript -e 'remotes::install_version("covr", version = "4.0.0", dependencies = NA, upgrade = "never"); install.packages("xml2")'
+pnpm run coverage:sess
+```
+
+The command prepares a disposable sess bundle and runs its tinytest suite under covr. Open `dist/coverage/sess/report.html` to inspect uncovered code; keep the adjacent `lib` directory with the HTML report. The output also includes Cobertura XML, an R coverage object and test logs. The R workflow runs this check on Ubuntu and uploads the full directory as `sess-coverage`, with the line coverage percentage in the job summary. Test or tooling failures fail the check; there is no minimum coverage percentage. Install sess's suggested packages for a comparable local result. This measures the R package tests; separate extension and arf runtime tests do not contribute to this report, and platform-specific paths can remain uncovered.
+
 ```sh
 pnpm run test:interactive
 ARF_PATH=/path/to/arf pnpm run test:interactive
