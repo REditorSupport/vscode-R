@@ -8,7 +8,7 @@ R Interactive was introduced in vscode-R 3.2.0 ([PR #1805](https://github.com/RE
 
 ## Requirements and setup
 
-Use **VS Code 1.101.0 or newer**. R Interactive currently supports Linux and macOS; persistent session supervision is not available on Windows. Existing R terminal workflows remain available.
+Use **VS Code 1.101.0 or newer**. R Interactive supports Linux, macOS, and Windows. On Windows, [connecting to an existing arf session](#connect-to-an-existing-arf-session) is not yet supported. Existing R terminal workflows remain available.
 
 For Remote SSH, install this extension **on the remote host**. R, its packages, optional executables, and session storage must be available on that host. For local use, the same requirements apply to your computer.
 
@@ -60,7 +60,7 @@ Typical remote settings:
 
 Executable paths, storage location, supervision, graphics backend, and output/journal/asset size limits are excluded from VS Code Settings Sync by default because they depend on the R host. Execution target, table presentation, automatic reconnection, and history-length preferences can still sync.
 
-Use the paths appropriate for your server. Linux `auto` prefers tmux when its executable is on the extension host's PATH. If tmux is missing or not executable, it uses a detached agent and records the fallback in the **R Interactive** output channel and agent log. Session Details shows **Independent process**. macOS `auto` also uses a detached agent. Both plain R and managed arf support this fallback with the same Interactive features.
+Use the paths appropriate for your server. Linux `auto` prefers tmux when its executable is on the extension host's PATH. If tmux is missing or not executable, it uses a detached agent and records the fallback in the **R Interactive** output channel and agent log. Session Details shows **Independent process**. macOS and Windows `auto` also use a detached agent. Both plain R and managed arf support this fallback with the same Interactive features.
 
 Selecting `tmux` or `systemd` explicitly requires `tmux` or `systemd-run` on the R host. Missing executables produce an actionable error before installing a runtime or stopping the current R process for restart. Install the selected supervisor or change `r.interactive.supervision` to `auto` or `detached`. New sessions and restarts use the current setting; merely reconnecting leaves the existing supervisor unchanged. If an installed supervisor fails to launch (for example, a systemd user service is unavailable), the error includes its diagnostics. The extension does not retry with another supervisor after a launch attempt, which could create duplicate R processes.
 
@@ -186,7 +186,7 @@ Already-running sessions and older saved outputs also get compact numeric displa
 
 ## Persistence, storage, and export
 
-The default registry is `$XDG_STATE_HOME/vscode-r/interactive` when `XDG_STATE_HOME` is a nonempty absolute path. Otherwise, new macOS installations use `~/Library/Application Support/vscode-r/interactive`, and Linux uses `~/.local/state/vscode-r/interactive`. An existing macOS registry at `~/.local/state/vscode-r/interactive` is reused so live sessions remain discoverable; it is never moved automatically.
+The default registry is `$XDG_STATE_HOME/vscode-r/interactive` when `XDG_STATE_HOME` is a nonempty absolute path. Otherwise, new macOS installations use `~/Library/Application Support/vscode-r/interactive`, and Linux uses `~/.local/state/vscode-r/interactive`. An existing macOS registry at `~/.local/state/vscode-r/interactive` is reused so live sessions remain discoverable; it is never moved automatically. Windows always uses `%LOCALAPPDATA%\vscode-r\interactive`.
 
 `r.interactive.storagePath` overrides the default. Use an absolute, writable path, and reload VS Code after changing it. Keep this directory on private, reliable storage on the R host. With Remote SSH, the path and environment belong to the remote host.
 

@@ -113,8 +113,8 @@ Both providers report notebook stdin/debugger support as unavailable: arf IPC
 `user_input` submits code, rather than answering nested R prompts. Use ordinary
 R terminals for `readline`, `scan`, and debugger interaction. arf IPC is
 experimental; the integration requires arf 0.7.2-rc.1 or later and is tested with
-the version pinned in `src/test/node/mise.toml`. Persistent supervision
-currently remains limited to Linux/macOS.
+the version pinned in `src/test/node/mise.toml`. Managed sessions also support
+Windows with detached supervision; existing-arf discovery/adoption remains Unix-only.
 
 [SessGraphics](backends/sessGraphics.ts) owns JGD negotiation, its font-metrics worker, plot attribution/coalescing, SVG production, and resize transport. It emits display payloads with stable identities. The agent stores assets and journals references. Static graphics remains available without JGD; another backend can supply SVG/PNG directly.
 
@@ -177,3 +177,12 @@ The agent uses the extension host runtime by default: Electron in Node mode on d
 [interactiveBackend.test.ts](../test/node/interactiveBackend.test.ts) uses a scripted backend without sess configuration to exercise agent policy, event ordering, ambiguity, input, and lifecycle rules. Real-runtime, library-isolation, supervisor, editor, and renderer checks cover the integration; see the [test instructions](../../CONTRIBUTING.md#testing-r-interactive) and [analysis fixtures](../test/examples/README.md).
 
 The [original plans and dated review reports](https://github.com/REditorSupport/vscode-R/tree/c2167d2cdb403375fa10ad3e29cde73a49cfc014/docs) are preserved at a fixed revision of [PR #1805](https://github.com/REditorSupport/vscode-R/pull/1805). They describe development history, not the current contract. The backend boundary originated in [this review](https://github.com/REditorSupport/vscode-R/pull/1805#pullrequestreview-5392223174).
+
+## Windows
+
+Control, sess, and jgd endpoints are named pipes with the default security
+descriptor, which other users cannot open for writing; control and sess still
+require the session token. Storage under `%LOCALAPPDATA%` and runtime directories
+under `%TEMP%` rely on the inherited user-profile ACL, which the extension does
+not rewrite. The detached agent has no editor-owned stdio and cannot leave a Job
+Object that forbids breakaway.

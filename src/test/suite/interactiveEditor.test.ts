@@ -29,14 +29,22 @@ import {
     StreamMessageWriter,
     createMessageConnection,
     DocumentOnTypeFormattingRequest,
+    ErrorCodes,
+    ResponseError,
 } from 'vscode-languageclient/node';
 
 function treeTooltip(item: vscode.TreeItem): string {
     return typeof item.tooltip === 'string' ? item.tooltip : (item.tooltip?.value ?? '');
 }
 
-(process.platform === 'win32' ? suite.skip : suite)('Interactive VS Code integration', function () {
+function documentEol(document: vscode.TextDocument): string {
+    return document.eol === vscode.EndOfLine.CRLF ? '\r\n' : '\n';
+}
+
+suite('Interactive VS Code integration', function () {
     this.timeout(60000);
+    // The Windows extension host can start in the VS Code installation directory.
+    const extensionRoot = path.resolve(__dirname, '../../..');
     let root: string;
     const sourceDirectories: string[] = [];
     let previousRProfile: string | undefined;
@@ -69,7 +77,7 @@ function treeTooltip(item: vscode.TreeItem): string {
         previousRProfile = process.env.R_PROFILE_USER;
         process.env.R_PROFILE_USER = path.join(root, '.Rprofile');
         fs.mkdirSync(path.join(root, 'library'));
-        fs.cpSync(path.join(process.cwd(), 'sess'), path.join(root, 'sess'), { recursive: true });
+        fs.cpSync(path.join(extensionRoot, 'sess'), path.join(root, 'sess'), { recursive: true });
         await promisify(execFile)('R', [
             'CMD',
             'INSTALL',
@@ -101,7 +109,7 @@ function treeTooltip(item: vscode.TreeItem): string {
                 storage: path.join(root, id),
                 library: path.join(root, 'library'),
                 rPath: 'R',
-                resources: path.join(process.cwd(), 'R'),
+                resources: path.join(extensionRoot, 'R'),
                 provider: 'arf',
                 arfPath: process.env.ARF_PATH ?? 'arf',
                 supervision: 'detached',
@@ -226,14 +234,14 @@ function treeTooltip(item: vscode.TreeItem): string {
         );
     function bundleContext(): vscode.ExtensionContext {
         return (
-            createRequire(__filename)(path.join(process.cwd(), 'dist/extension')) as {
+            createRequire(__filename)(path.join(extensionRoot, 'dist/extension')) as {
                 extensionContext: vscode.ExtensionContext;
             }
         ).extensionContext;
     }
     function workspaceProvider(): WorkspaceDataProvider {
         return (
-            createRequire(__filename)(path.join(process.cwd(), 'dist/extension')) as {
+            createRequire(__filename)(path.join(extensionRoot, 'dist/extension')) as {
                 rWorkspace: WorkspaceDataProvider;
             }
         ).rWorkspace;
@@ -329,7 +337,10 @@ function treeTooltip(item: vscode.TreeItem): string {
             await config.update('interactive.arfPath', previous, vscode.ConfigurationTarget.Global);
         }
     });
-    test('usable custom arf is offered, but removal while naming a session prevents launch', async () => {
+    test('usable custom arf is offered, but removal while naming a session prevents launch', async function () {
+        if (process.platform === 'win32') {
+            this.skip();
+        }
         const config = vscode.workspace.getConfiguration('r');
         const previous = config.inspect<string>('interactive.arfPath')?.globalValue;
         const executable = path.join(root, 'custom arf');
@@ -431,7 +442,10 @@ function treeTooltip(item: vscode.TreeItem): string {
             );
         }
     });
-    test('missing explicit tmux reports a recovery setting before installing or creating a session', async () => {
+    test('missing explicit tmux reports a recovery setting before installing or creating a session', async function () {
+        if (process.platform === 'win32') {
+            this.skip();
+        }
         const config = vscode.workspace.getConfiguration('r');
         const previous = config.inspect<string>('interactive.supervision')?.globalValue;
         const entries = fs.readdirSync(root);
@@ -741,7 +755,10 @@ function treeTooltip(item: vscode.TreeItem): string {
         }
     });
 
-    test('refreshes a controller opened during startup when R becomes ready', async () => {
+    test('refreshes a controller opened during startup when R becomes ready', async function () {
+        if (process.platform === 'win32') {
+            this.skip();
+        }
         const id = randomUUID();
         const ready = path.join(root, 'release-startup');
         const arf = resolveExecutable(process.env.ARF_PATH ?? 'arf', root);
@@ -1400,13 +1417,14 @@ function treeTooltip(item: vscode.TreeItem): string {
                 languageServerWaitMs,
             );
             try {
-                for (const [text, ch, expected] of [
+                for (const [text, ch, formatted] of [
                     ['typed_value<-sum(1,2', ')', 'typed_value <- sum(1, 2)'],
                     ['typed_value<-x[1', ']', 'typed_value <- x[1]'],
                     ['if(TRUE){typed_value<-1', '}', 'if (TRUE) {\n  typed_value <- 1\n}'],
                     ['typed_value<-1', '\n', 'typed_value <- 1\n'],
                     ['if(TRUE){', '\n', 'if (TRUE) {\n  '],
                 ]) {
+                    const expected = formatted.replace(/\n/g, documentEol(document));
                     await editor.edit((builder) =>
                         builder.replace(new vscode.Range(0, 0, document.lineCount, 0), text),
                     );
@@ -1720,7 +1738,7 @@ function treeTooltip(item: vscode.TreeItem): string {
     test('keeps source-file diagnostics working with lint caching enabled', async function () {
         this.timeout(timeoutWithLanguageServerWaits(2));
         // languageserver deliberately excludes files under the system temporary directory.
-        const directory = fs.mkdtempSync(path.join(process.cwd(), '.r-interactive-source-'));
+        const directory = fs.mkdtempSync(path.join(extensionRoot, '.r-interactive-source-'));
         try {
             const file = path.join(directory, 'diagnostics.R');
             fs.writeFileSync(file, 'file_value<-1\n');
@@ -1766,7 +1784,8 @@ function treeTooltip(item: vscode.TreeItem): string {
                     const client = service.clients.get(result.inputUri.toString());
                     return (
                         client?.isRunning() === true &&
-                        client.clientOptions.workspaceFolder?.uri.fsPath === manifest.directory
+                        client.clientOptions.workspaceFolder?.uri.fsPath ===
+                            vscode.Uri.file(manifest.directory).fsPath
                     );
                 });
             }
@@ -1801,7 +1820,7 @@ function treeTooltip(item: vscode.TreeItem): string {
                 before,
                 'Cell reuse must keep the existing native Interactive tab',
             );
-            assert.ok(input.getText().startsWith('# keep my draft\n'));
+            assert.ok(input.getText().startsWith(`# keep my draft${documentEol(input)}`));
             assert.ok(input.getText().includes('editor_value <- 42'));
             assert.strictEqual((await client.snapshot()).executions.length, count);
         } finally {
@@ -1834,7 +1853,7 @@ function treeTooltip(item: vscode.TreeItem): string {
         assert.ok(initial);
         const uri = cell.document.uri.toString(),
             summary = cell.executionSummary;
-        const code = cell.document.getText() + '\n# unsubmitted edit';
+        const code = cell.document.getText() + documentEol(cell.document) + '# unsubmitted edit';
         const edit = new vscode.WorkspaceEdit();
         edit.replace(cell.document.uri, new vscode.Range(0, 0, cell.document.lineCount, 0), code);
         await vscode.workspace.applyEdit(edit);
@@ -2253,7 +2272,10 @@ cat("\n")`;
         }
     });
 
-    test('New Persistent Interactive Session focuses its own input and preserves the previous session draft', async () => {
+    test('New Persistent Interactive Session focuses its own input and preserves the previous session draft', async function () {
+        if (process.platform === 'win32') {
+            this.skip();
+        }
         const settings = vscode.workspace.getConfiguration('r');
         const previousArf = settings.inspect<string>('interactive.arfPath')?.globalValue;
         const previousNode = settings.inspect<string>('interactive.nodePath')?.globalValue;
@@ -2467,7 +2489,9 @@ cat("\n")`;
                 assert.deepStrictEqual(options?.filters, { [choice.label]: [choice.format] });
                 assert.strictEqual(
                     options?.defaultUri?.fsPath,
-                    path.join(root, `${manifests[0].label}-history.${choice.format}`),
+                    vscode.Uri.file(
+                        path.join(root, `${manifests[0].label}-history.${choice.format}`),
+                    ).fsPath,
                 );
             }
             assert.strictEqual(save.callCount, 4);
@@ -3925,6 +3949,9 @@ par(mfrow=c(1,1))`,
     });
 
     test('restart keeps the window, drafts, transcript, bindings and kernel through multiple R processes', async function () {
+        if (process.platform === 'win32') {
+            this.skip();
+        }
         const restartTimeouts = {
             'cancelled restart': 30000,
             'missing arf': 30000,
@@ -4282,7 +4309,7 @@ par(mfrow=c(1,1))`,
             assert.strictEqual(notebook.metadata.rGeneration, config.generation);
             assert.deepStrictEqual(config.previousGenerations, [original.generation]);
             assert.notStrictEqual(config.library, path.join(root, 'library'));
-            assert.notStrictEqual(config.resources, path.join(process.cwd(), 'R'));
+            assert.notStrictEqual(config.resources, path.join(extensionRoot, 'R'));
             assert.strictEqual(config.maxOutputBytes, 1.5 * 1024 * 1024);
             assert.strictEqual(config.maxJournalBytes, 24 * 1024 * 1024);
             assert.strictEqual(config.maxAssetBytes, 96 * 1024 * 1024);
@@ -4493,7 +4520,7 @@ par(mfrow=c(1,1))`,
                 storage: path.join(root, id),
                 library: path.join(root, 'library'),
                 rPath: 'R',
-                resources: path.join(process.cwd(), 'R'),
+                resources: path.join(extensionRoot, 'R'),
                 provider: 'arf',
                 arfPath: process.env.ARF_PATH ?? 'arf',
                 supervision: 'detached',
@@ -4513,6 +4540,8 @@ par(mfrow=c(1,1))`,
             // Four arf sessions start one after another; slow macOS runners can
             // need more than the 60 second default before the shared notebook runs.
             this.timeout(180000);
+            // Do not depend on earlier lifecycle tests (including Unix-only restart) stopping R.
+            await Promise.all(agents.map((agent) => agent.close()));
             for (let i = 0; i < 4; i++) {
                 await start();
             }
@@ -4699,7 +4728,7 @@ par(mfrow=c(1,1))`,
                     storage: path.join(root, id),
                     rPath: 'R',
                     library: path.join(root, 'library'),
-                    resources: path.join(process.cwd(), 'R'),
+                    resources: path.join(extensionRoot, 'R'),
                     provider: 'arf',
                     arfPath: process.env.ARF_PATH ?? 'arf',
                     supervision: 'test',
@@ -4800,12 +4829,13 @@ async function stopLanguageClient(client: LanguageClient): Promise<void> {
         await client.stop(10000);
     } catch (error) {
         // R's language server can close on shutdown before the client's exit
-        // notification is written. The client has already completed cleanup.
+        // notification is written (EPIPE), or, as seen on Windows, before its
+        // shutdown response arrives. The client has already completed cleanup.
         if (
             client.state === State.Stopped &&
-            error instanceof Error &&
-            'code' in error &&
-            error.code === 'EPIPE'
+            ((error instanceof ResponseError &&
+                error.code === ErrorCodes.PendingResponseRejected) ||
+                (error instanceof Error && 'code' in error && error.code === 'EPIPE'))
         ) {
             return;
         }
@@ -4880,10 +4910,58 @@ suite('Interactive language client cleanup', () => {
         }
     });
 
+    test('accepts the server closing before it answers shutdown', async () => {
+        const connections: Array<{ dispose(): void }> = [];
+        const server = net.createServer((socket) => {
+            const connection = createMessageConnection(
+                new StreamMessageReader(socket),
+                new StreamMessageWriter(socket),
+            );
+            connections.push(connection);
+            connection.onRequest('initialize', () => ({ capabilities: {} }));
+            // Close without replying, leaving the client's shutdown request pending.
+            connection.onRequest('shutdown', () => {
+                socket.destroy();
+                return new Promise<never>(() => undefined);
+            });
+            connection.listen();
+        });
+        await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+        const socket = net.connect((server.address() as net.AddressInfo).port, '127.0.0.1');
+        const channel = vscode.window.createOutputChannel('Test language client cleanup', {
+            log: true,
+        });
+        const client = new LanguageClient(
+            'cleanup-test',
+            'Cleanup test',
+            () =>
+                Promise.resolve({
+                    reader: new StreamMessageReader(socket),
+                    writer: new StreamMessageWriter(socket),
+                }),
+            { documentSelector: [], outputChannel: channel },
+        );
+        try {
+            await client.start();
+            await stopLanguageClient(client);
+            assert.strictEqual(client.state, State.Stopped);
+        } finally {
+            socket.destroy();
+            connections.forEach((connection) => connection.dispose());
+            await new Promise<void>((resolve) => server.close(() => resolve()));
+            channel.dispose();
+        }
+    });
+
     test('does not suppress unrelated shutdown failures or an unstopped client', async () => {
         const error = Object.assign(new Error('Socket shutdown failed'), { code: 'EPIPE' });
+        const pending = new ResponseError(
+            ErrorCodes.PendingResponseRejected,
+            'Pending response rejected since connection got disposed',
+        );
         for (const [state, failure] of [
             [State.Running, error],
+            [State.Running, pending],
             [State.Stopped, new Error('Unexpected shutdown failure')],
             [State.Stopped, new Error('Stopping the server timed out')],
         ] as const) {

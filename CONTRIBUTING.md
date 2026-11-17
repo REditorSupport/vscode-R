@@ -86,7 +86,7 @@ Interactive session. Run the source/bootstrap checks with
 
 The [architecture and backend contract](src/interactive/README.md) live beside the implementation. User setup and behavior belong in the [R Interactive documentation page](https://reditorsupport.github.io/vscode-R/features/r-interactive).
 
-Use Linux or macOS for Interactive runtime tests, with R and arf 0.7.2-rc.1 or later. Running `mise install` in `src/test/node` installs the arf version pinned in `src/test/node/mise.toml`, which CI also uses. Bundled sess is pure R and needs no compiler when its Imports are already installed; missing Imports are installed from the configured repository. Windows runs the remaining extension checks; persistent Interactive supervision remains limited to Linux/macOS. From the repository root, after installing pnpm dependencies, prepare a test library:
+Use Linux, macOS, or Windows for managed Interactive runtime tests, with R and arf 0.7.2-rc.1 or later. Running `mise install` in `src/test/node` installs the arf version pinned in `src/test/node/mise.toml`, which CI also uses. Bundled sess is pure R and needs no compiler when its Imports are already installed; missing Imports are installed from the configured repository. Windows uses detached supervision for managed Interactive sessions. From the repository root, after installing pnpm dependencies, prepare a test library:
 
 ```sh
 export R_LIBS=/path/to/test-library
@@ -150,8 +150,8 @@ PR CI, main pushes and manual runs execute the full supported suites on every
 OS. Linux and macOS run the same Node and Interactive editor tests, including
 the actual VS Code Electron runtime check with no Node executable on PATH and
 successful session creation using the default VS Code runtime.
-Windows skips the Interactive runtime/editor suites because persistent
-supervision currently requires Linux/macOS. Linux additionally runs the tmux launcher survival case
+Windows also runs managed Interactive runtime/editor tests; individual Unix shell
+fixtures and existing-arf adoption tests remain excluded. Linux additionally runs the tmux launcher survival case
 once with tmux enabled and uses Xvfb for extension-host tests. Source/bootstrap
 checks, installed identity verification and sess package tests run on every OS.
 

@@ -1,10 +1,17 @@
 name: Set up test tools
 description: >-
-  Install R, pnpm, Node.js and the locked npm dependencies. R packages are not
-  installed yet, so sess bootstrap checks can run in this base environment.
+  Install arf, R, pnpm, Node.js and the locked npm dependencies. R packages are
+  not installed yet, so sess bootstrap checks can run in this base environment.
 runs:
   using: composite
   steps:
+    # src/test/node/mise.toml and mise.lock pin the arf version and its
+    # checksums. Run before setup-r: on Windows, the Rtools curl it puts on PATH
+    # breaks mise-action's packslip download (jdx/mise-action#743).
+    - name: Install arf for Interactive tests
+      uses: jdx/mise-action@6612f0ef07ed2a736cd1e00a94a065522dd41195 # v5.2.5
+      with:
+        working_directory: src/test/node
     - uses: r-lib/actions/setup-r@f9a764fea8d5c63df6ef9a5c7795bf7deb5d7e05 # v2
       with:
         use-public-rspm: true

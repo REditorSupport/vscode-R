@@ -11,9 +11,6 @@ export function prepareSupervisor(
     platform = process.platform,
     pathValue = process.env.PATH,
 ): SessionSupervisor {
-    if (platform === 'win32') {
-        throw new Error('Persistent Interactive sessions currently require Linux or macOS');
-    }
     if (requested === 'detached' || (requested === 'auto' && platform !== 'linux')) {
         return { kind: 'detached' };
     }
@@ -21,6 +18,9 @@ export function prepareSupervisor(
         throw new Error(
             `Unknown session supervisor “${requested}”. Set r.interactive.supervision to auto, tmux, systemd, or detached.`,
         );
+    }
+    if (platform === 'win32') {
+        throw new Error('Windows supports auto or detached session supervision');
     }
     const kind = requested === 'systemd' ? 'systemd' : 'tmux';
     const command = kind === 'systemd' ? 'systemd-run' : 'tmux';

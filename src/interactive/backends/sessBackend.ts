@@ -74,7 +74,7 @@ export class SessBackend implements SessionBackend {
             // Whether a slow inspection is stopped at its deadline, which needs
             // arf handler calls. An adopted session is known only after attaching.
             inspectionDeadline: options.ownership === 'managed',
-            interrupt: process.platform !== 'win32',
+            interrupt: true,
             jgd: false,
             plotResize: false,
             restart: options.ownership === 'managed',
@@ -168,7 +168,7 @@ export class SessBackend implements SessionBackend {
         this.capabilities.plotResize = this.graphics.enabled;
         const bootstrap = path.join(this.runtime, 'bootstrap.json');
         atomicJson(bootstrap, {
-            sess: path.join(this.runtime, 'sess.sock'),
+            sess: this.bridge.endpoint,
             jgd: this.graphics.endpoint,
             token: this.token,
             useJgd: this.graphics.enabled,
@@ -183,7 +183,7 @@ export class SessBackend implements SessionBackend {
             code,
             {
                 ...process.env,
-                SESS_ENDPOINT: path.join(this.runtime, 'sess.sock'),
+                SESS_ENDPOINT: this.bridge.endpoint,
                 JGD_SOCKET: this.graphics.endpoint,
             },
             expose,

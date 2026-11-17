@@ -2408,7 +2408,7 @@
             "detached"
           ],
           "default": "auto",
-          "description": "Independent session supervision. Auto prefers tmux on Linux when available, otherwise uses a detached process; macOS uses a detached process. Explicit tmux/systemd selections require their executables on the R host. Detached processes survive editor reload/exit, but host logout policies may stop them. Changes apply to new or restarted sessions."
+          "description": "Independent session supervision. Auto prefers tmux on Linux when available, otherwise uses a detached process; macOS and Windows use a detached process. Explicit tmux/systemd selections require their executables on the R host. Detached processes survive editor reload/exit, but host logout policies may stop them. Changes apply to new or restarted sessions."
         },
         "r.interactive.nodePath": {
           "tags": ["experimental"],
@@ -2429,7 +2429,7 @@
           "type": "string",
           "ignoreSync": true,
           "default": "",
-          "description": "Absolute, writable path on the R host for persistent Interactive sessions. Empty uses $XDG_STATE_HOME/vscode-r/interactive when set, otherwise ~/Library/Application Support/vscode-r/interactive on macOS or ~/.local/state/vscode-r/interactive on Linux. Existing macOS registries at the Linux-style path are reused. Reload VS Code after changing this setting."
+          "description": "Absolute, writable path on the R host for persistent Interactive sessions. Empty uses $XDG_STATE_HOME/vscode-r/interactive when set, otherwise ~/Library/Application Support/vscode-r/interactive on macOS or ~/.local/state/vscode-r/interactive on Linux. Windows uses %LOCALAPPDATA%/vscode-r/interactive and inherits its existing ACL. Securing a custom or shared storage location is your responsibility. Existing macOS registries at the Linux-style path are reused. Reload VS Code after changing this setting."
         },
         "r.interactive.plotBackend": {
           "tags": ["experimental"],
