@@ -2757,14 +2757,19 @@ suite('Standalone plot restoration', () => {
                 } catch (inspectionError) {
                     settled = `not available: ${String(inspectionError)}`;
                 }
-                (error as Error).message += `\nDiagnostics: ${JSON.stringify({
+                const original = error as Error;
+                const diagnostics = JSON.stringify({
                     initial: { container: visible.container, canvas: visible.canvas },
                     shown: { ...shown, log: undefined },
                     settledAfter1s: settled,
                     resizeCalls: resize.getCalls().map((call) => call.args),
                     webview,
-                })}`;
-                throw error;
+                });
+                // A new error is thrown because Mocha prints the original stack,
+                // which would not include an appended message.
+                throw new Error(`${original.message}\nDiagnostics: ${diagnostics}`, {
+                    cause: original,
+                });
             }
         } finally {
             panel?.dispose();
