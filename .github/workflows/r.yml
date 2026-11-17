@@ -12,6 +12,7 @@ on:
       - 'package.json'
       - 'pnpm-lock.yaml'
       - 'pnpm-workspace.yaml'
+      - 'scripts/prepare-sess.js'
       # Arity file discovery honours .gitignore.
       - '.gitignore'
       - '.github/workflows/r.yml'
@@ -29,6 +30,44 @@ permissions:
   contents: read
 
 jobs:
+  coverage-sess:
+    name: sess coverage
+    runs-on: ubuntu-latest
+    env:
+      GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+      - uses: r-lib/actions/setup-r@f9a764fea8d5c63df6ef9a5c7795bf7deb5d7e05 # v2
+        with:
+          use-public-rspm: true
+      - uses: r-lib/actions/setup-r-dependencies@f9a764fea8d5c63df6ef9a5c7795bf7deb5d7e05 # v2
+        with:
+          working-directory: sess
+          # Include sess Suggests so optional package tests contribute coverage.
+          extra-packages: |
+            any::remotes
+            any::xml2
+      - name: Install covr 4.0.0
+        # covr 4.0.0 Suggests itself, which conflicts with an exact pak pin
+        # when setup-r-dependencies includes all suggested dependencies.
+        run: remotes::install_version("covr", version = "4.0.0", dependencies = NA, upgrade = "never")
+        shell: Rscript {0}
+      - name: Prepare sess package
+        run: node scripts/prepare-sess.js
+      - name: Measure sess coverage
+        run: Rscript --vanilla scripts/coverage-sess.R
+      - name: Upload sess coverage report and test logs
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: sess-coverage
+          path: dist/coverage/sess
+          if-no-files-found: ignore
+          retention-days: 14
+
   format:
     runs-on: ubuntu-latest
     steps:
