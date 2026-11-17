@@ -4897,11 +4897,13 @@ async function stopLanguageClient(client: LanguageClient): Promise<void> {
         // R's language server can close on shutdown before the client's exit
         // notification is written (EPIPE), or, as seen on Windows, before its
         // shutdown response arrives. The client has already completed cleanup.
+        // Match by code: the extension bundles its own vscode-languageclient,
+        // so its ResponseError is not an instance of the class imported here.
         if (
             client.state === State.Stopped &&
-            ((error instanceof ResponseError &&
-                error.code === ErrorCodes.PendingResponseRejected) ||
-                (error instanceof Error && 'code' in error && error.code === 'EPIPE'))
+            error instanceof Error &&
+            'code' in error &&
+            (error.code === ErrorCodes.PendingResponseRejected || error.code === 'EPIPE')
         ) {
             return;
         }
