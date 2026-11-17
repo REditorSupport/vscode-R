@@ -23,6 +23,33 @@ suite('Help panel navigation', () => {
         return { promise, resolve };
     }
 
+    // Fake timers replace setTimeout for the whole extension host. On failure,
+    // report what is pending so a Help timer can be told apart from one that
+    // unrelated code scheduled during the test.
+    function assertNoPendingTimers(clock: sinon.SinonFakeTimers): void {
+        const count = clock.countTimers();
+        if (count === 0) {
+            return;
+        }
+        const internals = clock as unknown as {
+            timerHeap?: {
+                timers: { type?: string; delay?: number; callAt?: number; func: unknown }[];
+            };
+            jobs?: { func: unknown }[];
+        };
+        const source = (func: unknown) => String(func).replace(/\s+/g, ' ').slice(0, 300);
+        assert.fail(
+            [
+                `Expected no pending fake timers at ${clock.now}, found ${count}:`,
+                ...(internals.timerHeap?.timers ?? []).map(
+                    (timer) =>
+                        `${timer.type} delay=${timer.delay} callAt=${timer.callAt}: ${source(timer.func)}`,
+                ),
+                ...(internals.jobs ?? []).map((job) => `job: ${source(job.func)}`),
+            ].join('\n'),
+        );
+    }
+
     async function settleNavigation(navigation: Promise<void>): Promise<void> {
         await navigation;
         await new Promise<void>((resolve) => setImmediate(resolve));
@@ -81,7 +108,7 @@ suite('Help panel navigation', () => {
         await clock.tickAsync(1000);
         await pending;
         assert.match(panel.webview.html, /First/);
-        assert.strictEqual(clock.countTimers(), 0);
+        assertNoPendingTimers(clock);
     });
 
     test('closing the panel settles pending navigation without waiting for a timeout', async () => {
@@ -90,7 +117,7 @@ suite('Help panel navigation', () => {
         panel.dispose();
         await pending;
         assert.strictEqual(help.panel, undefined);
-        assert.strictEqual(clock.countTimers(), 0);
+        assertNoPendingTimers(clock);
     });
 
     test('failed delivery falls back immediately instead of waiting for the scroll timeout', async () => {
@@ -99,7 +126,7 @@ suite('Help panel navigation', () => {
         await help.goBack();
         await clock.tickAsync(0);
         assert.match(panel.webview.html, /First/);
-        assert.strictEqual(clock.countTimers(), 0);
+        assertNoPendingTimers(clock);
     });
 
     test('closing Help during a refresh fetch does not recreate its panel', async () => {
@@ -169,7 +196,7 @@ suite('Help panel navigation', () => {
         await newer;
         assert.strictEqual(htmlAfterOlder, original);
         assert.match(panel.webview.html, /Latest preview/);
-        assert.strictEqual(clock.countTimers(), 0);
+        assertNoPendingTimers(clock);
     });
 
     test('closing Help during a refresh scroll wait leaves it closed and cancels its timer', async () => {
@@ -182,7 +209,7 @@ suite('Help panel navigation', () => {
         panel.dispose();
         await refresh;
         assert.strictEqual(help.panel, undefined);
-        assert.strictEqual(clock.countTimers(), 0);
+        assertNoPendingTimers(clock);
         sinon.assert.notCalled(create);
     });
 
@@ -207,7 +234,7 @@ suite('Help panel navigation', () => {
         await clock.tickAsync(1000);
         await refresh;
         assert.match(panel.webview.html, /Third/);
-        assert.strictEqual(clock.countTimers(), 0);
+        assertNoPendingTimers(clock);
     });
 
     test('closing during async page preparation prevents a late write to the disposed webview', async () => {
