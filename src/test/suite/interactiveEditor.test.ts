@@ -9,6 +9,7 @@ import { execFile } from 'child_process';
 import { promisify } from 'util';
 import { createRequire } from 'module';
 import { randomUUID } from 'crypto';
+import { TestResources } from '../common/testResources';
 import { SessionAgent } from '../../interactive/agentMain';
 import { AgentClient } from '../../interactive/client';
 import { InteractiveSerializer, DISPLAY_MIME } from '../../interactive/notebook';
@@ -47,6 +48,20 @@ suite('Interactive VS Code integration', function () {
     const extensionRoot = path.resolve(__dirname, '../../..');
     let root: string;
     const sourceDirectories: string[] = [];
+    const resources = new TestResources([
+        'environment',
+        'detach',
+        'settings',
+        'connections',
+        'agents',
+        'updates',
+        'clients',
+        'tabs',
+        'final-updates',
+        'final-clients',
+        'settle',
+        'directories',
+    ] as const);
     let previousRProfile: string | undefined;
     let previousTmpdir: string | undefined;
     let previousStorage: string | undefined;
@@ -58,14 +73,57 @@ suite('Interactive VS Code integration', function () {
     let originalLanguageClients: Set<LanguageClient>;
     suiteSetup(async () => {
         originalTabs = new Set(vscode.window.tabGroups.all.flatMap((group) => group.tabs));
+        // Close the suite's tabs in one call rather than with concurrent tab-group edits.
+        resources.add('tabs', 'suite tabs', () =>
+            vscode.window.tabGroups.close(
+                vscode.window.tabGroups.all
+                    .flatMap((group) => group.tabs)
+                    .filter((tab) => !originalTabs.has(tab)),
+                true,
+            ),
+        );
+        resources.add('agents', 'suite agents', () => {
+            agents?.forEach((agent, index) =>
+                resources.add('agents', `agent ${index}`, () => agent.close()),
+            );
+        });
+        resources.add(
+            'settle',
+            'existing post-shutdown grace',
+            () => new Promise((resolve) => setTimeout(resolve, 200)),
+        );
+        resources.add('directories', 'source directories', () => {
+            for (const directory of sourceDirectories) {
+                resources.add('directories', directory, () =>
+                    fs.rmSync(directory, { recursive: true, force: true }),
+                );
+            }
+        });
         // Match R's cwd and temporary root on macOS as well as Linux. Symlinked
         // /var or /tmp paths otherwise hide languageserver's temp-file filter.
         previousTmpdir = process.env.TMPDIR;
+        resources.add('environment', 'TMPDIR', () => {
+            if (previousTmpdir === undefined) {
+                delete process.env.TMPDIR;
+            } else {
+                process.env.TMPDIR = previousTmpdir;
+            }
+        });
         process.env.TMPDIR = fs.realpathSync(os.tmpdir());
         root = fs.mkdtempSync(path.join(os.tmpdir(), 'r-interactive-editor-'));
+        resources.add('directories', root, () => fs.rmSync(root, { recursive: true, force: true }));
         previousStorage = vscode.workspace
             .getConfiguration('r')
             .inspect<string>('interactive.storagePath')?.globalValue;
+        resources.add('settings', 'interactive.storagePath', () =>
+            vscode.workspace
+                .getConfiguration('r')
+                .update(
+                    'interactive.storagePath',
+                    previousStorage,
+                    vscode.ConfigurationTarget.Global,
+                ),
+        );
         await vscode.workspace
             .getConfiguration('r')
             .update('interactive.storagePath', root, vscode.ConfigurationTarget.Global);
@@ -75,6 +133,13 @@ suite('Interactive VS Code integration', function () {
             'options(languageserver.lint_cache = TRUE)\n',
         );
         previousRProfile = process.env.R_PROFILE_USER;
+        resources.add('environment', 'R_PROFILE_USER', () => {
+            if (previousRProfile === undefined) {
+                delete process.env.R_PROFILE_USER;
+            } else {
+                process.env.R_PROFILE_USER = previousRProfile;
+            }
+        });
         process.env.R_PROFILE_USER = path.join(root, '.Rprofile');
         fs.mkdirSync(path.join(root, 'library'));
         fs.cpSync(path.join(extensionRoot, 'sess'), path.join(root, 'sess'), { recursive: true });
@@ -86,6 +151,42 @@ suite('Interactive VS Code integration', function () {
             path.join(root, 'sess'),
         ]);
         await vscode.extensions.getExtension('REditorSupport.r')?.activate();
+        resources.add('detach', 'Interactive views', () =>
+            vscode.commands.executeCommand('r.interactive.detach'),
+        );
+        const service = languageService();
+        originalLanguageClients = new Set(service.clients.values());
+        const clients = new Map<LanguageClient, string>();
+        const waitForUpdates = (phase: 'updates' | 'final-updates') => {
+            for (const [key, pending] of service.clientUpdates) {
+                resources.add(phase, `client update ${key}`, () => pending);
+            }
+            [...service.stoppingClients].forEach((pending, index) =>
+                resources.add(phase, `stopping client ${index}`, () => pending),
+            );
+        };
+        const stopClients = (phase: 'clients' | 'final-clients', remove: boolean) => {
+            for (const [key, client] of service.clients) {
+                if (!originalLanguageClients.has(client)) {
+                    clients.set(client, key);
+                    if (remove) {
+                        service.clients.delete(key);
+                    }
+                }
+            }
+            for (const [client, key] of clients) {
+                resources.add(phase, `language client ${key}`, () => stopLanguageClient(client));
+            }
+        };
+        resources.add('updates', 'pending language-service work', () => waitForUpdates('updates'));
+        // Stop before tab-close handlers can start an unobserved stop.
+        resources.add('clients', 'suite language clients', () => stopClients('clients', false));
+        resources.add('final-updates', 'tab-close language-service work', () =>
+            waitForUpdates('final-updates'),
+        );
+        resources.add('final-clients', 'remaining language clients', () =>
+            stopClients('final-clients', true),
+        );
         await until(
             () => [...languageService().clients.values()].some((client) => client.isRunning()),
             'Timed out starting the R language server for Interactive language-service integration tests',
@@ -95,6 +196,9 @@ suite('Interactive VS Code integration', function () {
         // registry. Recreate only the manager, just as a host reload would do.
         const context = bundleContext();
         previousConnections = context.workspaceState.get('r.interactive.connections');
+        resources.add('connections', 'r.interactive.connections', () =>
+            context.workspaceState.update('r.interactive.connections', previousConnections),
+        );
         await context.workspaceState.update('r.interactive.connections', []);
         recreateManager(context);
         agents = [];
@@ -124,54 +228,10 @@ suite('Interactive VS Code integration', function () {
             fs.writeFileSync(path.join(config.storage, 'config.json'), JSON.stringify(config));
         }
     });
+    // Mocha also runs teardown after a failed setup, retaining its original
+    // failure separately from the aggregated cleanup failures.
     suiteTeardown(async () => {
-        if (previousTmpdir === undefined) {
-            delete process.env.TMPDIR;
-        } else {
-            process.env.TMPDIR = previousTmpdir;
-        }
-        if (previousRProfile === undefined) {
-            delete process.env.R_PROFILE_USER;
-        } else {
-            process.env.R_PROFILE_USER = previousRProfile;
-        }
-        await vscode.commands.executeCommand('r.interactive.detach');
-        await vscode.workspace
-            .getConfiguration('r')
-            .update('interactive.storagePath', previousStorage, vscode.ConfigurationTarget.Global);
-        await bundleContext().workspaceState.update(
-            'r.interactive.connections',
-            previousConnections,
-        );
-        await Promise.all(agents?.map((agent) => agent.close()) ?? []);
-        const service = languageService();
-        await Promise.all(service.clientUpdates.values());
-        const clients = new Set(
-            [...service.clients.values()].filter((client) => !originalLanguageClients.has(client)),
-        );
-        // Await shutdown before tab-close handlers can start an unobserved stop.
-        await Promise.all([...clients].map(stopLanguageClient));
-        // Detach retains editors. Close this suite's tabs and await its language
-        // servers before deleting directories that those R processes use as cwd.
-        await vscode.window.tabGroups.close(
-            vscode.window.tabGroups.all
-                .flatMap((group) => group.tabs)
-                .filter((tab) => !originalTabs.has(tab)),
-            true,
-        );
-        await Promise.all(service.clientUpdates.values());
-        for (const [key, client] of service.clients) {
-            if (!originalLanguageClients.has(client)) {
-                clients.add(client);
-                service.clients.delete(key);
-            }
-        }
-        await Promise.all([...clients].map(stopLanguageClient));
-        await new Promise((resolve) => setTimeout(resolve, 200));
-        fs.rmSync(root, { recursive: true, force: true });
-        sourceDirectories.forEach((directory) =>
-            fs.rmSync(directory, { recursive: true, force: true }),
-        );
+        await resources.dispose();
     });
     // Mocha does not await a test that exceeds its timeout, so a wait that
     // outlives the test would run its cleanup while a later test is using the
@@ -249,6 +309,7 @@ suite('Interactive VS Code integration', function () {
     function languageService(): {
         clients: Map<string, LanguageClient>;
         clientUpdates: Map<string, Promise<void>>;
+        stoppingClients: Set<Promise<void>>;
     } {
         const service = bundleContext().subscriptions.find(
             (item) => (item as { clients?: unknown }).clients instanceof Map,
@@ -4572,6 +4633,7 @@ par(mfrow=c(1,1))`,
         }
     });
     suite('bulk session management', () => {
+        const bulkResources = new TestResources(['client', 'detach'] as const);
         const bulk: SessionManifest[] = [];
         let other: AgentClient;
         let notebook: vscode.NotebookDocument;
@@ -4612,6 +4674,7 @@ par(mfrow=c(1,1))`,
                 await start();
             }
             other = new AgentClient(bulk[2]);
+            bulkResources.add('client', 'other-window client', () => other.close());
             await other.connect();
             await vscode.commands.executeCommand('r.interactive.open', bulk[0]);
             const opened = vscode.workspace.notebookDocuments.find(
@@ -4619,6 +4682,9 @@ par(mfrow=c(1,1))`,
             );
             assert.ok(opened);
             notebook = opened;
+            bulkResources.add('detach', 'bulk notebook', () =>
+                vscode.commands.executeCommand('r.interactive.detach', notebook.uri),
+            );
             const edit = new vscode.WorkspaceEdit();
             edit.set(notebook.uri, [
                 vscode.NotebookEdit.insertCells(0, [
@@ -4638,10 +4704,7 @@ par(mfrow=c(1,1))`,
             windowCount = vscode.workspace.notebookDocuments.length;
         });
         suiteTeardown(async () => {
-            other?.close();
-            if (notebook) {
-                await vscode.commands.executeCommand('r.interactive.detach', notebook.uri);
-            }
+            await bulkResources.dispose();
         });
         test('cancelling the multi-select picker or all-session confirmation leaves every session alive', async () => {
             const picker = sinon.stub(vscode.window, 'showQuickPick').resolves(undefined);
