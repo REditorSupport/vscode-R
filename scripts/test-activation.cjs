@@ -42,6 +42,33 @@ async function within(promise, message) {
     } finally { clearTimeout(timer); }
 }
 
+// Record the terminal's process tree so a failed CI run shows whether R was
+// alive and, on macOS, where its main thread was waiting.
+function recordTerminalProcesses(root, terminalPid) {
+    if (process.platform === 'win32') { return; }
+    const { spawnSync } = require('node:child_process');
+    const output = path.join(root, 'terminal-processes.log');
+    const run = (command, args) => {
+        const result = spawnSync(command, args, { encoding: 'utf8', timeout: 15000 });
+        fs.appendFileSync(output, `$ ${command} ${args.join(' ')}\n${result.stdout || ''}${result.stderr || ''}` +
+            `${result.error ? `${result.error}\n` : ''}\n`);
+        return result.stdout || '';
+    };
+    const table = run('ps', ['-A', '-o', 'pid=,ppid=,stat=,command=']);
+    const parents = new Map(table.split('\n').map((line) => line.trim().split(/\s+/))
+        .filter((fields) => fields.length > 1).map(([pid, ppid]) => [pid, ppid]));
+    const descendants = [...parents.keys()].filter((pid) => {
+        for (let current = pid; current; current = parents.get(current)) {
+            if (current === String(terminalPid)) { return pid !== String(terminalPid); }
+            if (current === '1' || current === '0') { return false; }
+        }
+        return false;
+    });
+    if (process.platform === 'darwin') {
+        descendants.forEach((pid) => run('sample', [pid, '2']));
+    }
+}
+
 exports.run = async (api) => {
     const vscode = api?.extensions ? api : require('vscode');
     const testCase = process.env.VSCR_ACTIVATION_CASE;
@@ -116,14 +143,52 @@ exports.run = async (api) => {
                 await until(() => vscode.window.terminals.length > 0, 'Persistent R Terminal was not restored');
                 const terminal = vscode.window.terminals[0];
                 const terminalPid = await within(terminal.processId, 'Restored terminal PID was not available');
-                const stateFile = path.join(root, reloading ? 'terminal-after' : 'terminal-before');
-                const rFile = JSON.stringify(stateFile.replace(/\\/g, '/'));
-                const rTemporary = JSON.stringify(`${stateFile}.pending`.replace(/\\/g, '/'));
-                terminal.sendText(`${reloading ? '' : '.vscode_r_activation_marker <- 42; '}` +
+                const previous = reloading ? JSON.parse(fs.readFileSync(phaseFile, 'utf8')) : undefined;
+                if (reloading) {
+                    assert.equal(terminalPid, previous.terminalPid, 'Window reload must retain the terminal process');
+                }
+                const phase = reloading ? 'after' : 'before';
+                const events = path.join(root, 'terminal-events.log');
+                const record = (event) => fs.appendFileSync(events, `${new Date().toISOString()} ${phase} ${event}\n`);
+                const rPath = (file) => JSON.stringify(file.replace(/\\/g, '/'));
+                // A known PID only means the pty exists. While VS Code replays a
+                // revived terminal's buffer it can drop input, so wait until R
+                // answers an idempotent probe before sending the state check.
+                const probeFile = path.join(root, `terminal-probe-${phase}`);
+                const probe = `writeLines(as.character(Sys.getpid()), ${rPath(`${probeFile}.pending`)}); ` +
+                    `invisible(file.rename(${rPath(`${probeFile}.pending`)}, ${rPath(probeFile)}))`;
+                const probeDeadline = Date.now() + 30000;
+                let probes = 0;
+                while (!fs.existsSync(probeFile)) {
+                    if (Date.now() >= probeDeadline) {
+                        recordTerminalProcesses(root, terminalPid);
+                        assert.fail(`R terminal did not answer ${probes} input probes`);
+                    }
+                    terminal.sendText(probe);
+                    record(`probe ${++probes} sent`);
+                    const resend = Date.now() + 2000;
+                    while (!fs.existsSync(probeFile) && Date.now() < resend) { await pause(50); }
+                }
+                record(`probe answered by R ${fs.readFileSync(probeFile, 'utf8').trim()}`);
+                const stateFile = path.join(root, `terminal-${phase}`);
+                const errorFile = `${stateFile}.error`;
+                terminal.sendText('tryCatch({ ' +
+                    `${reloading ? '' : '.vscode_r_activation_marker <- 42; '}` +
                     `writeLines(c(as.character(Sys.getpid()), get('.session_id', asNamespace('sess'))(), ` +
-                    `as.character(.vscode_r_activation_marker)), ${rTemporary}); ` +
-                    `stopifnot(file.rename(${rTemporary}, ${rFile}))`);
-                await until(() => fs.existsSync(stateFile), 'R terminal did not report its retained state');
+                    `as.character(.vscode_r_activation_marker)), ${rPath(`${stateFile}.pending`)}); ` +
+                    `stopifnot(file.rename(${rPath(`${stateFile}.pending`)}, ${rPath(stateFile)})) ` +
+                    `}, error = function(e) writeLines(conditionMessage(e), ${rPath(errorFile)}))`);
+                record('state check sent');
+                try {
+                    await until(() => fs.existsSync(stateFile) || fs.existsSync(errorFile),
+                        'R terminal did not report its retained state');
+                } catch (error) {
+                    recordTerminalProcesses(root, terminalPid);
+                    throw error;
+                }
+                assert.ok(!fs.existsSync(errorFile), fs.existsSync(errorFile) &&
+                    `R terminal state check failed: ${fs.readFileSync(errorFile, 'utf8')}`);
+                record('state reported');
                 const [pid, sessionId, marker] = fs.readFileSync(stateFile, 'utf8').trim().split(/\r?\n/);
                 assert.equal(marker, '42', 'Window reload must retain the R workspace');
                 if (!reloading) {
@@ -133,8 +198,6 @@ exports.run = async (api) => {
                         connectionId: extension.exports.session.getSessionReference(sessionId).connectionId }));
                     return 'reload';
                 }
-                const previous = JSON.parse(fs.readFileSync(phaseFile, 'utf8'));
-                assert.equal(terminalPid, previous.terminalPid, 'Window reload must retain the terminal process');
                 assert.equal(pid, previous.pid, 'Window reload must retain the same R process');
                 assert.equal(sessionId, previous.sessionId, 'The retained R process must keep its sess identity');
                 assert.equal(extension.isActive, false, 'Restored terminal waits for explicit R activation');
@@ -332,6 +395,8 @@ exports.activate = async () => {
                     '--user-data-dir', profile, '--extensions-dir', extensions,
                     '--disable-renderer-backgrounding', '--disable-background-timer-throttling',
                     '--disable-backgrounding-occluded-windows',
+                    // Pty host trace logs show whether reload-time input reached R.
+                    ...(persistentTerminal ? ['--log', 'trace'] : []),
             ];
             const log = fs.createWriteStream(path.join(caseRoot, `${testCase}.log`));
             try {
@@ -370,10 +435,24 @@ exports.activate = async () => {
             fs.mkdirSync(artifacts, { recursive: true });
             for (const directory of fs.readdirSync(root, { withFileTypes: true })) {
                 if (!directory.isDirectory()) { continue; }
-                for (const file of fs.readdirSync(path.join(root, directory.name))) {
-                    if (file.endsWith('.log')) {
-                        fs.copyFileSync(path.join(root, directory.name, file),
-                            path.join(artifacts, `${directory.name}-${file}`));
+                const caseRoot = path.join(root, directory.name);
+                if (directory.name === 'terminal-persistent-reload') {
+                    fs.mkdirSync(path.join(artifacts, directory.name), { recursive: true });
+                }
+                for (const file of fs.readdirSync(caseRoot, { withFileTypes: true })) {
+                    if (file.name.endsWith('.log')) {
+                        fs.copyFileSync(path.join(caseRoot, file.name),
+                            path.join(artifacts, `${directory.name}-${file.name}`));
+                    } else if (directory.name === 'terminal-persistent-reload' && file.isFile()) {
+                        // Phase and probe files show how far each window got.
+                        fs.copyFileSync(path.join(caseRoot, file.name),
+                            path.join(artifacts, directory.name, file.name));
+                    }
+                }
+                if (directory.name === 'terminal-persistent-reload') {
+                    const logs = path.join(caseRoot, 'profile', 'logs');
+                    if (fs.existsSync(logs)) {
+                        fs.cpSync(logs, path.join(artifacts, directory.name, 'logs'), { recursive: true });
                     }
                 }
             }
