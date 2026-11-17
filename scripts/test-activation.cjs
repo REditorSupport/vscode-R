@@ -43,7 +43,8 @@ async function within(promise, message) {
 }
 
 // Record the terminal's process tree so a failed CI run shows whether R was
-// alive and, on macOS, where its main thread was waiting.
+// alive and, on macOS, where its main thread was waiting. The R Terminal
+// profile runs R directly, so the terminal PID is usually R itself.
 function recordTerminalProcesses(root, terminalPid) {
     if (process.platform === 'win32') { return; }
     const { spawnSync } = require('node:child_process');
@@ -57,16 +58,47 @@ function recordTerminalProcesses(root, terminalPid) {
     const table = run('ps', ['-A', '-o', 'pid=,ppid=,stat=,command=']);
     const parents = new Map(table.split('\n').map((line) => line.trim().split(/\s+/))
         .filter((fields) => fields.length > 1).map(([pid, ppid]) => [pid, ppid]));
-    const descendants = [...parents.keys()].filter((pid) => {
+    const tree = [...parents.keys()].filter((pid) => {
         for (let current = pid; current; current = parents.get(current)) {
-            if (current === String(terminalPid)) { return pid !== String(terminalPid); }
+            if (current === String(terminalPid)) { return true; }
             if (current === '1' || current === '0') { return false; }
         }
         return false;
     });
     if (process.platform === 'darwin') {
-        descendants.forEach((pid) => run('sample', [pid, '2']));
+        tree.forEach((pid) => run('sample', [pid, '2']));
     }
+}
+
+// VS Code saves the terminal layout through a debounced call that a window
+// reload does not flush, and no extension API reports the save. A terminal
+// missing from the saved layout is not revived, so read the pty host trace log
+// (this case runs with --log trace) to find whether the last accepted layout
+// includes the persistent process whose OS PID is `pid`.
+function terminalLayoutState(logs, pid) {
+    const sessions = fs.existsSync(logs) ? fs.readdirSync(logs).sort() : [];
+    const file = sessions.length ? path.join(logs, sessions[sessions.length - 1], 'ptyhost.log') : undefined;
+    const state = { file, id: undefined, saved: false, pending: undefined, layout: undefined };
+    if (!file || !fs.existsSync(file)) { return state; }
+    const json = (text) => { try { return JSON.parse(text); } catch { return undefined; } };
+    for (const line of fs.readFileSync(file, 'utf8').split('\n')) {
+        const ready = /PtyService#_onProcessReady\.fire\((\{.*\})\)\s*$/.exec(line);
+        if (ready) {
+            const event = json(ready[1]);
+            if (event?.event?.pid === pid) { state.id = event.id; }
+            continue;
+        }
+        const request = /\[RPC Request\] PtyService#setTerminalLayoutInfo\((\{.*\})\)\s*$/.exec(line);
+        if (request) {
+            state.layout = request[1];
+            state.pending = state.id !== undefined && (json(request[1])?.tabs ?? []).some((tab) =>
+                (tab.terminals ?? []).some((entry) => entry.terminal === state.id));
+        } else if (/\[trace\] \[RPC Response\] PtyService#setTerminalLayoutInfo undefined\s*$/.test(line) && state.pending !== undefined) {
+            state.saved = state.pending;
+            state.pending = undefined;
+        }
+    }
+    return state;
 }
 
 exports.run = async (api) => {
@@ -140,12 +172,30 @@ exports.run = async (api) => {
                         { config: { extensionIdentifier: 'REditorSupport.r', id: 'r.terminal-profile', title: 'R Terminal' } }),
                     'Persistent R Terminal creation timed out');
                 }
-                await until(() => vscode.window.terminals.length > 0, 'Persistent R Terminal was not restored');
-                const terminal = vscode.window.terminals[0];
-                const terminalPid = await within(terminal.processId, 'Restored terminal PID was not available');
                 const previous = reloading ? JSON.parse(fs.readFileSync(phaseFile, 'utf8')) : undefined;
-                if (reloading) {
-                    assert.equal(terminalPid, previous.terminalPid, 'Window reload must retain the terminal process');
+                let terminal;
+                let terminalPid;
+                if (!reloading) {
+                    await until(() => vscode.window.terminals.length > 0, 'Persistent R Terminal was not created');
+                    terminal = vscode.window.terminals[0];
+                    terminalPid = await within(terminal.processId, 'Persistent R Terminal PID was not available');
+                } else {
+                    // The terminal order says nothing about which process was
+                    // revived; VS Code may also open a new default shell.
+                    const deadline = Date.now() + 15000;
+                    while (!terminal) {
+                        const candidates = await Promise.all(vscode.window.terminals.map(async (candidate) =>
+                            ({ candidate, pid: await Promise.race([candidate.processId, pause(200)]) })));
+                        terminal = candidates.find(({ pid }) => pid === previous.terminalPid)?.candidate;
+                        if (!terminal) {
+                            if (Date.now() >= deadline) { recordTerminalProcesses(root, previous.terminalPid); }
+                            assert.ok(Date.now() < deadline, `Window reload did not revive the R terminal ` +
+                                `(PID ${previous.terminalPid}); terminals: ${JSON.stringify(candidates.map(
+                                    ({ candidate, pid }) => ({ name: candidate.name, pid })))}`);
+                            await pause(100);
+                        }
+                    }
+                    terminalPid = previous.terminalPid;
                 }
                 const phase = reloading ? 'after' : 'before';
                 const events = path.join(root, 'terminal-events.log');
@@ -194,6 +244,15 @@ exports.run = async (api) => {
                 if (!reloading) {
                     await until(() => extension.exports.session.getSessionReference(sessionId),
                         'Initial R terminal sess attachment did not complete');
+                    const logs = path.join(root, 'profile', 'logs');
+                    const layoutDeadline = Date.now() + 15000;
+                    let layout;
+                    while (!(layout = terminalLayoutState(logs, terminalPid)).saved || layout.pending === false) {
+                        assert.ok(Date.now() < layoutDeadline, 'VS Code did not save a terminal layout with the ' +
+                            `R terminal before reload: ${JSON.stringify(layout)}`);
+                        await pause(100);
+                    }
+                    record(`layout with persistent terminal ${layout.id} saved`);
                     fs.writeFileSync(phaseFile, JSON.stringify({ terminalPid, pid, sessionId,
                         connectionId: extension.exports.session.getSessionReference(sessionId).connectionId }));
                     return 'reload';
