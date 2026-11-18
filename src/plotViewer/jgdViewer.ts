@@ -901,11 +901,16 @@ function reportViewportSize() {
         vscode.postMessage({ type: 'resize', width: w, height: h });
     }
 }
+// Report the viewport only after its size has settled, so R is not resized to
+// a layout that is about to change.
+function scheduleViewportReport() {
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(reportViewportSize, 300);
+}
 const resizeObserver = new ResizeObserver(() => {
     if (!panelVisible || document.hidden) return;
     if (currentPlot) replay(currentPlot);
-    clearTimeout(resizeTimer);
-    resizeTimer = setTimeout(reportViewportSize, 300);
+    scheduleViewportReport();
 });
 resizeObserver.observe(container);
 
@@ -917,10 +922,13 @@ function refreshVisibility() {
     }
     // A retained, hidden webview has a temporary layout. Its visible size
     // may be unchanged, so ResizeObserver alone cannot restore the canvas.
+    // The visibility message can arrive before that layout is replaced, so
+    // the viewport is reported after it settles; ResizeObserver then redraws
+    // the canvas and postpones the report until the restored size.
     requestAnimationFrame(() => {
         if (!panelVisible || document.hidden) return;
         if (currentPlot) replay(currentPlot);
-        reportViewportSize();
+        scheduleViewportReport();
     });
 }
 document.addEventListener('visibilitychange', refreshVisibility);
