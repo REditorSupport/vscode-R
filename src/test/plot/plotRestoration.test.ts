@@ -2944,7 +2944,13 @@ suite('Standalone plot restoration', () => {
         sandbox.stub(vscode.window, 'showSaveDialog').resolves(undefined);
         const effects = await probeJgdWebview(`
             const applied = [];
-            applyPostEffects = (ctx, effects) => applied.push(effects.map((effect) => effect.type));
+            // Record only the export: selecting another plot also redraws it on
+            // the visible canvas with its own effects.
+            const viewerApplyPostEffects = applyPostEffects;
+            applyPostEffects = (ctx, effects) => {
+                if (ctx.canvas !== canvas) applied.push(effects.map((effect) => effect.type));
+                return viewerApplyPostEffects(ctx, effects);
+            };
             const plot = (effect) => ({
                 version: 1,
                 sessionId: 'device',
