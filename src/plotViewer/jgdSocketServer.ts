@@ -222,8 +222,11 @@ export class JgdSocketServer {
         this.sessions.set(sessionId, session);
         this.notifyConnectionChange(sessionId);
 
-        socket.on('data', (data) => {
-            session.buffer += data.toString();
+        // Decode the stream rather than each chunk, so a UTF-8 character
+        // split across chunks is not replaced (jgd decodes with TextDecoderStream).
+        socket.setEncoding('utf8');
+        socket.on('data', (data: string) => {
+            session.buffer += data;
             let newlineIdx: number;
             while ((newlineIdx = session.buffer.indexOf('\n')) !== -1) {
                 const line = session.buffer.substring(0, newlineIdx);
@@ -458,6 +461,13 @@ export class JgdSocketServer {
             return;
         }
         const request = { width: w, height: h, plotIndex };
+        // TODO: This treats the next frame as the completion of the pending
+        // resize, unlike the jgd reference server, which forwards every
+        // distinct size without waiting. R sends no frame when a replay fails,
+        // when the display list is empty, or when it drops a plotIndex resize
+        // read during a metrics exchange; later resizes then stay queued until
+        // an unrelated frame arrives. The protocol has no completion message
+        // to wait for instead: https://github.com/REditorSupport/jgd/issues/79
         if (session.pendingResize) {
             session.queuedResize = request;
             return;

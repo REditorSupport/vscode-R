@@ -2704,6 +2704,30 @@ suite('Standalone plot restoration', () => {
                 }
             });
             document.addEventListener('visibilitychange', () => record('visibilitychange', {}));
+            // VS Code can deliver the visibility message while a revealed
+            // webview still has its hidden, temporary layout. Reproduce that
+            // on request. This listener runs after the viewer's, so the
+            // viewer's animation frame callback reads the temporary layout
+            // first. The layout is restored one frame later, so that, as in
+            // VS Code, ResizeObserver sees both the temporary and the
+            // restored size.
+            let holdTemporaryLayout = false;
+            window.addEventListener('message', (event) => {
+                if (event.data.type === 'hold-temporary-layout') {
+                    holdTemporaryLayout = true;
+                } else if (event.data.type === 'visibility' && event.data.visible && holdTemporaryLayout) {
+                    holdTemporaryLayout = false;
+                    const style = container.style.cssText;
+                    container.style.cssText = style + ';flex:0 0 116px;width:300px';
+                    record('temporary-layout', {});
+                    requestAnimationFrame(() =>
+                        requestAnimationFrame(() => {
+                            container.style.cssText = style;
+                            record('restored-layout', {});
+                        }),
+                    );
+                }
+            });
             new ResizeObserver(() => record('container-resized', canvasState())).observe(container);
             window.addEventListener('message', async (event) => {
                 if (event.data.type !== 'inspect-canvas') return;
@@ -2769,9 +2793,37 @@ suite('Standalone plot restoration', () => {
                 'the newest plot reached the hidden webview',
             );
 
+            await panel!.webview.postMessage({ type: 'hold-temporary-layout' });
             panel!.reveal();
             await waitForValue(() => (panel!.visible ? true : undefined));
-            const shown = await inspect();
+            // The webview can keep its hidden, temporary layout for a moment
+            // after the panel becomes visible. Wait until the newest plot is
+            // drawn at the restored viewport and the viewer has decided
+            // whether to resize R after the reveal. A resize message would be
+            // delivered before the inspection that follows it.
+            const sameSize = (a: number[], b: number[]) => a[0] === b[0] && a[1] === b[1];
+            const settled = (state: Inspection) => {
+                const log = state.log as { event: string; visible?: boolean }[];
+                let revealed = -1;
+                log.forEach((entry, index) => {
+                    if (entry.event === 'message-visibility' && entry.visible) {
+                        revealed = index;
+                    }
+                });
+                return (
+                    revealed >= 0 &&
+                    log.slice(revealed).some((entry) => entry.event === 'report-viewport') &&
+                    sameSize(state.container, visible.container) &&
+                    sameSize(state.canvas, state.container) &&
+                    state.pixel.join() === [255, 0, 255, 255].join()
+                );
+            };
+            let shown = await inspect();
+            const deadline = Date.now() + 10000;
+            while (!settled(shown) && Date.now() < deadline) {
+                await new Promise((resolve) => setTimeout(resolve, 50));
+                shown = await inspect();
+            }
             try {
                 assert.deepStrictEqual(
                     shown.container,
@@ -2790,6 +2842,9 @@ suite('Standalone plot restoration', () => {
                 );
                 assert.strictEqual(history.count('device'), 2);
                 sinon.assert.notCalled(resize);
+                // Without this, the checks above could pass without the viewer
+                // ever deciding whether to resize R after the reveal.
+                assert.ok(settled(shown), 'the viewer reported its viewport after the reveal');
             } catch (error) {
                 // Show whether a later replay corrects the canvas and whether R
                 // was asked to resize, along with the webview's own timeline.
@@ -2824,6 +2879,139 @@ suite('Standalone plot restoration', () => {
                 await executeRealCommand('workbench.action.revertAndCloseActiveEditor');
             }
         }
+    });
+
+    // A 1x1 PNG; decoding it makes a raster op wait like a real image.
+    const pixelPng =
+        'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
+
+    // Runs code in a real jgd webview, where the viewer's functions and state
+    // are globals, after the viewer has received its plot, and returns the
+    // value the code resolves to. An unhandled rejection, for example from an
+    // export the code started, is reported as the probe's error.
+    async function probeJgdWebview(code: string): Promise<unknown> {
+        let panel: vscode.WebviewPanel | undefined;
+        let result: { value?: unknown; error?: string } | undefined;
+        (vscode.window.createWebviewPanel as sinon.SinonStub).callsFake(
+            (...args: Parameters<typeof createRealWebviewPanel>) => {
+                panel = createRealWebviewPanel(...args);
+                panel.webview.onDidReceiveMessage(
+                    (message: { type: string; value?: unknown; error?: string }) => {
+                        if (message.type === 'probe-result') {
+                            result = message;
+                        }
+                    },
+                );
+                return panel;
+            },
+        );
+        const value = await manager();
+        value.jgdManager.history.addPlot('device', frame('device'));
+        value.jgdManager.getViewer('device')!.show();
+        try {
+            panel!.webview.html = panel!.webview.html.replace(
+                '</body>',
+                `<script>
+                window.addEventListener('unhandledrejection', (event) => {
+                    vscode.postMessage({ type: 'probe-result', error: String(event.reason?.stack ?? event.reason) });
+                });
+                (async () => {
+                    try {
+                        while (!currentPlot) await new Promise((resolve) => setTimeout(resolve, 10));
+                        const value = await (async () => { ${code} })();
+                        vscode.postMessage({ type: 'probe-result', value });
+                    } catch (error) {
+                        vscode.postMessage({ type: 'probe-result', error: String(error?.stack ?? error) });
+                    }
+                })();
+                </script></body>`,
+            );
+            const message = await waitForValue(() => result);
+            if (message.error) {
+                throw new Error(message.error);
+            }
+            return message.value;
+        } finally {
+            panel?.dispose();
+        }
+    }
+
+    test('a jgd raster does not inherit opacity or filters from earlier ops', async () => {
+        const state = await probeJgdWebview(`
+            const canvas = document.createElement('canvas');
+            canvas.width = 10;
+            canvas.height = 10;
+            const ctx = canvas.getContext('2d');
+            const rc = makeRenderCtx();
+            await renderOp(ctx, { op: 'rect', x0: 0, y0: 0, x1: 5, y1: 5,
+                gc: { fill: 'red', ext: { opacity: 0.2, filter: 'blur(2px)' } } }, 10, rc);
+            const drawImage = ctx.drawImage;
+            let state;
+            ctx.drawImage = function (...args) {
+                state = { alpha: ctx.globalAlpha, filter: ctx.filter };
+                return drawImage.apply(this, args);
+            };
+            await renderOp(ctx, { op: 'raster', data: '${pixelPng}', x: 0, y: 10, w: 1, h: 1,
+                interpolate: false }, 10, rc);
+            return state;
+        `);
+        assert.deepStrictEqual(state, { alpha: 1, filter: 'none' });
+    });
+
+    test('jgd post effects keep explicit zero values', async () => {
+        const filters = await probeJgdWebview(`
+            const filters = ['brightness', 'contrast', 'grayscale', 'saturate', 'sepia', 'invert']
+                .map((type) => effectToFilter({ type, value: 0 }));
+            const canvas = document.createElement('canvas');
+            canvas.width = 2;
+            canvas.height = 2;
+            const ctx = canvas.getContext('2d');
+            const filter = Object.getOwnPropertyDescriptor(CanvasRenderingContext2D.prototype, 'filter');
+            const glow = [];
+            Object.defineProperty(ctx, 'filter', {
+                get() { return filter.get.call(this); },
+                set(value) { glow.push(value); filter.set.call(this, value); },
+            });
+            applyGlowEffect(ctx, { type: 'glow', radius: 0, brightness: 0 });
+            return [...filters, glow[0]];
+        `);
+        assert.deepStrictEqual(filters, [
+            'brightness(0)',
+            'contrast(0)',
+            'grayscale(0)',
+            'saturate(0)',
+            'sepia(0)',
+            'invert(0)',
+            'blur(0px) brightness(0)',
+        ]);
+    });
+
+    test('a jgd PNG export keeps the plot selected when it started', async () => {
+        sandbox.stub(vscode.window, 'showSaveDialog').resolves(undefined);
+        const effects = await probeJgdWebview(`
+            const applied = [];
+            // Record only the export: selecting another plot also redraws it on
+            // the visible canvas with its own effects.
+            const viewerApplyPostEffects = applyPostEffects;
+            applyPostEffects = (ctx, effects) => {
+                if (ctx.canvas !== canvas) applied.push(effects.map((effect) => effect.type));
+                return viewerApplyPostEffects(ctx, effects);
+            };
+            const plot = (effect) => ({
+                version: 1,
+                sessionId: 'device',
+                device: { width: 10, height: 10, dpi: 96, bg: 'white' },
+                ops: [{ op: 'raster', data: '${pixelPng}', x: 0, y: 10, w: 1, h: 1, interpolate: false }],
+                frameExt: { postEffects: [{ type: effect }] },
+            });
+            currentPlot = plot('sepia');
+            handleExport('png', 10, 10);
+            // Select another plot while the export waits for its raster.
+            currentPlot = plot('invert');
+            while (applied.length === 0) await new Promise((resolve) => setTimeout(resolve, 10));
+            return applied;
+        `);
+        assert.deepStrictEqual(effects, [['sepia']]);
     });
 
     test('shutdown during credential loading does not reopen a connection or panel', async () => {

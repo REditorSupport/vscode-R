@@ -535,6 +535,10 @@ export class JgdViewer implements PlotViewer {
             return { type: 'metrics_response', id: request.id, ...cached };
         }
 
+        // TODO: Summing cached per-character widths avoids a webview round
+        // trip, but it ignores kerning and shaping, so it can differ from the
+        // width of the string as drawn. The jgd reference viewer measures the
+        // whole string with measureText().
         if (request.kind === 'strWidth' && request.str) {
             const baseFontKey = `12|${canonical}|${fontFace}`;
             const scale = fontSize / 12;
@@ -901,11 +905,16 @@ function reportViewportSize() {
         vscode.postMessage({ type: 'resize', width: w, height: h });
     }
 }
+// Report the viewport only after its size has settled, so R is not resized to
+// a layout that is about to change.
+function scheduleViewportReport() {
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(reportViewportSize, 300);
+}
 const resizeObserver = new ResizeObserver(() => {
     if (!panelVisible || document.hidden) return;
     if (currentPlot) replay(currentPlot);
-    clearTimeout(resizeTimer);
-    resizeTimer = setTimeout(reportViewportSize, 300);
+    scheduleViewportReport();
 });
 resizeObserver.observe(container);
 
@@ -917,10 +926,13 @@ function refreshVisibility() {
     }
     // A retained, hidden webview has a temporary layout. Its visible size
     // may be unchanged, so ResizeObserver alone cannot restore the canvas.
+    // The visibility message can arrive before that layout is replaced, so
+    // the viewport is reported after it settles; ResizeObserver then redraws
+    // the canvas and postpones the report until the restored size.
     requestAnimationFrame(() => {
         if (!panelVisible || document.hidden) return;
         if (currentPlot) replay(currentPlot);
-        reportViewportSize();
+        scheduleViewportReport();
     });
 }
 document.addEventListener('visibilitychange', refreshVisibility);
@@ -1044,15 +1056,15 @@ function makeRenderCtx() {
 
 function effectToFilter(effect) {
     switch (effect.type) {
-        case 'blur': return 'blur(' + (effect.radius || 0) + 'px)';
-        case 'brightness': return 'brightness(' + (effect.value || 1) + ')';
-        case 'contrast': return 'contrast(' + (effect.value || 1) + ')';
-        case 'grayscale': return 'grayscale(' + (effect.value || 1) + ')';
-        case 'saturate': return 'saturate(' + (effect.value || 1) + ')';
-        case 'sepia': return 'sepia(' + (effect.value || 1) + ')';
-        case 'hue-rotate': return 'hue-rotate(' + (effect.angle || 0) + 'deg)';
-        case 'invert': return 'invert(' + (effect.value || 1) + ')';
-        default: return effect.filter || '';
+        case 'blur': return 'blur(' + (effect.radius ?? 0) + 'px)';
+        case 'brightness': return 'brightness(' + (effect.value ?? 1) + ')';
+        case 'contrast': return 'contrast(' + (effect.value ?? 1) + ')';
+        case 'grayscale': return 'grayscale(' + (effect.value ?? 1) + ')';
+        case 'saturate': return 'saturate(' + (effect.value ?? 1) + ')';
+        case 'sepia': return 'sepia(' + (effect.value ?? 1) + ')';
+        case 'hue-rotate': return 'hue-rotate(' + (effect.angle ?? 0) + 'deg)';
+        case 'invert': return 'invert(' + (effect.value ?? 1) + ')';
+        default: return effect.filter ?? '';
     }
 }
 
@@ -1068,7 +1080,7 @@ function applyGlowEffect(ctx, effect) {
     ctx.save();
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.clearRect(0, 0, w, h);
-    ctx.filter = 'blur(' + (effect.radius || 3) + 'px) brightness(' + (effect.brightness || 1.5) + ')';
+    ctx.filter = 'blur(' + (effect.radius ?? 3) + 'px) brightness(' + (effect.brightness ?? 1.5) + ')';
     ctx.drawImage(origCanvas, 0, 0);
     ctx.filter = 'none';
     ctx.drawImage(origCanvas, 0, 0);
@@ -1329,6 +1341,8 @@ async function renderOp(ctx, op, plotH, rc) {
             break;
         }
         case 'raster': {
+            // Reset state left by earlier ops, such as gc.ext opacity or filters.
+            applyGc(ctx, op.gc);
             const img = new Image();
             img.src = op.data;
             await img.decode();
@@ -1385,35 +1399,38 @@ function handleMetricsRequest(msg) {
 }
 
 function handleExport(format, exportW, exportH) {
-    if (!currentPlot) return;
+    // Export the plot selected when the request arrived; the selection can
+    // change while rasters decode (jgd passes the plot to renderToOffscreen).
+    const plot = currentPlot;
+    if (!plot) return;
     if (format === 'png') {
         const offscreen = document.createElement('canvas');
-        const plotW = currentPlot.device.width;
-        const plotH = currentPlot.device.height;
+        const plotW = plot.device.width;
+        const plotH = plot.device.height;
         const scale = Math.min(exportW / plotW, exportH / plotH);
         offscreen.width = plotW * scale;
         offscreen.height = plotH * scale;
         const offCtx = offscreen.getContext('2d');
         offCtx.scale(scale, scale);
-        if (currentPlot.device.bg) {
-            offCtx.fillStyle = currentPlot.device.bg;
+        if (plot.device.bg) {
+            offCtx.fillStyle = plot.device.bg;
             offCtx.fillRect(0, 0, plotW, plotH);
         }
         (async () => {
             const rc = makeRenderCtx();
-            for (const op of currentPlot.ops) {
+            for (const op of plot.ops) {
                 const curCtx = rc.groupStack.length > 0 ? rc.groupStack[rc.groupStack.length - 1].ctx : offCtx;
                 await renderOp(curCtx, op, plotH, rc);
             }
             let exportCanvas = offscreen;
-            if (currentPlot.frameExt && currentPlot.frameExt.postEffects) {
+            if (plot.frameExt && plot.frameExt.postEffects) {
                 const postCanvas = document.createElement('canvas');
                 postCanvas.width = offscreen.width;
                 postCanvas.height = offscreen.height;
                 const postCtx = postCanvas.getContext('2d');
                 if (postCtx) {
                     postCtx.drawImage(offscreen, 0, 0);
-                    applyPostEffects(postCtx, currentPlot.frameExt.postEffects);
+                    applyPostEffects(postCtx, plot.frameExt.postEffects);
                     exportCanvas = postCanvas;
                 }
             }
@@ -1428,7 +1445,7 @@ function handleExport(format, exportW, exportH) {
             }, 'image/png');
         })();
     } else if (format === 'svg') {
-        const svg = plotToSvg(currentPlot, exportW, exportH);
+        const svg = plotToSvg(plot, exportW, exportH);
         const base64 = btoa(unescape(encodeURIComponent(svg)));
         vscode.postMessage({ type: 'export_data', format: 'svg', data: base64 });
     }
