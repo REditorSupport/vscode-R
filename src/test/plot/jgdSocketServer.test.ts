@@ -192,8 +192,15 @@ suite('JGD SocketServer', () => {
         const bytes = Buffer.from(JSON.stringify(makePlotMsg('日本語')) + '\n');
         // Split inside the three-byte encoding of the first character.
         const split = bytes.indexOf(Buffer.from('日')) + 1;
+        // Send the rest only after the server has handled the first part, so
+        // the two parts reach it as separate chunks.
+        const sessions = (server as unknown as { sessions: Map<string, { buffer: string }> })
+            .sessions;
+        const received = () => [...sessions.values()].some((session) => session.buffer.length > 0);
         client.socket.write(bytes.subarray(0, split));
-        await waitMs(50);
+        while (!received()) {
+            await waitMs(5);
+        }
         client.socket.write(bytes.subarray(split));
         client.send({ type: 'metrics_request', id: 1 });
         await client.readLine();

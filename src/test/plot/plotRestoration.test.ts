@@ -2840,8 +2840,9 @@ suite('Standalone plot restoration', () => {
         'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
 
     // Runs code in a real jgd webview, where the viewer's functions and state
-    // are globals, after the viewer has rendered its plot, and returns the
-    // value the code resolves to.
+    // are globals, after the viewer has received its plot, and returns the
+    // value the code resolves to. An unhandled rejection, for example from an
+    // export the code started, is reported as the probe's error.
     async function probeJgdWebview(code: string): Promise<unknown> {
         let panel: vscode.WebviewPanel | undefined;
         let result: { value?: unknown; error?: string } | undefined;
@@ -2865,6 +2866,9 @@ suite('Standalone plot restoration', () => {
             panel!.webview.html = panel!.webview.html.replace(
                 '</body>',
                 `<script>
+                window.addEventListener('unhandledrejection', (event) => {
+                    vscode.postMessage({ type: 'probe-result', error: String(event.reason?.stack ?? event.reason) });
+                });
                 (async () => {
                     try {
                         while (!currentPlot) await new Promise((resolve) => setTimeout(resolve, 10));
