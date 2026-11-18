@@ -2796,6 +2796,9 @@ suite('Standalone plot restoration', () => {
                 );
                 assert.strictEqual(history.count('device'), 2);
                 sinon.assert.notCalled(resize);
+                // Without this, the checks above could pass without the viewer
+                // ever deciding whether to resize R after the reveal.
+                assert.ok(settled(shown), 'the viewer reported its viewport after the reveal');
             } catch (error) {
                 // Show whether a later replay corrects the canvas and whether R
                 // was asked to resize, along with the webview's own timeline.
