@@ -16,12 +16,104 @@ import {
 import { extensionContext } from '../../extension';
 import { mockExtensionContext } from '../common/mockvscode';
 import { waitForValue } from '../common/sessionConnections';
+import { FailureDiagnostics } from '../common/failureDiagnostics';
 
 const fixtureSandboxes = new Set<sinon.SinonSandbox>();
 const fixtureViewers = new Map<
     sinon.SinonSandbox,
     ReturnType<typeof initializeHtmlWidgetViewers>
 >();
+
+let widgetDiagnostics: FailureDiagnostics;
+let diagnosticPanels: vscode.WebviewPanel[];
+let diagnosticMessages: Array<{
+    panel: number;
+    message: string;
+    generation?: number;
+    href?: string;
+}>;
+
+function observeWidgetPanel(panel: vscode.WebviewPanel): void {
+    const index = diagnosticPanels.push(panel) - 1;
+    const messages = diagnosticMessages;
+    const listener = panel.webview.onDidReceiveMessage((value: unknown) => {
+        const message = value as { message?: unknown; generation?: unknown; href?: unknown } | null;
+        if (
+            !message ||
+            (message.message !== 'widget/loaded' && message.message !== 'linkClicked')
+        ) {
+            return;
+        }
+        messages.push({
+            panel: index,
+            message: message.message,
+            generation: typeof message.generation === 'number' ? message.generation : undefined,
+            href: typeof message.href === 'string' ? message.href.slice(0, 400) : undefined,
+        });
+        if (messages.length > 16) {
+            messages.shift();
+        }
+    });
+    panel.onDidDispose(() => {
+        listener.dispose();
+    });
+}
+
+function widgetSnapshot(
+    panels: vscode.WebviewPanel[],
+    messages: typeof diagnosticMessages,
+): unknown {
+    const scriptFile = path.resolve(__dirname, '../../../dist/webviews/webview/index.js');
+    let script: unknown;
+    try {
+        script = { file: scriptFile, bytes: fs.statSync(scriptFile).size };
+    } catch (error) {
+        script = { file: scriptFile, error: String(error) };
+    }
+    return {
+        script,
+        fixtureExtensionPath: extensionContext?.extensionPath ?? null,
+        activeTab: vscode.window.tabGroups.activeTabGroup.activeTab?.label,
+        messages,
+        panels: panels.map((panel, index) => {
+            try {
+                const injectedScript = panel.webview.html.match(
+                    /<script\b[^>]*data-generation=[^>]*>/i,
+                )?.[0];
+                const entry = [...fixtureViewers.values()]
+                    .flatMap((manager) => [...manager.viewers.values()])
+                    .find((entry) => entry.panel === panel);
+                return {
+                    index,
+                    title: panel.title,
+                    active: panel.active,
+                    visible: panel.visible,
+                    injectedScript: injectedScript ?? null,
+                    enableScripts: panel.webview.options.enableScripts,
+                    localResourceRoots: panel.webview.options.localResourceRoots?.map((uri) =>
+                        uri.toString(),
+                    ),
+                    revision:
+                        entry?.revision ??
+                        injectedScript?.match(/data-generation="(\d+)"/)?.[1] ??
+                        null,
+                    loading: entry?.loading,
+                    loadStatus: entry?.loadStatus,
+                };
+            } catch (error) {
+                return { index, unavailable: String(error) };
+            }
+        }),
+    };
+}
+
+function waitForWidget<T>(
+    name: string,
+    condition: () => T | undefined,
+    timeout = 10000,
+): PromiseLike<T> {
+    return widgetDiagnostics.trace(name, () => waitForValue(condition, timeout));
+}
 
 function createFixtureSandbox(): sinon.SinonSandbox {
     const sandbox = sinon.createSandbox();
@@ -51,8 +143,10 @@ async function focusHtmlViewer(panel: vscode.WebviewPanel): Promise<void> {
     panel.reveal(panel.viewColumn, false);
     // reveal() queues a workbench request. Await editor focus before running
     // commands, rather than relying on a possibly stale panel.active value.
-    await vscode.commands.executeCommand('workbench.action.focusActiveEditorGroup');
-    await waitForValue(() =>
+    await widgetDiagnostics.trace('focus active editor group', () =>
+        vscode.commands.executeCommand('workbench.action.focusActiveEditorGroup'),
+    );
+    await waitForWidget('HTML Viewer focus', () =>
         panel.active && vscode.window.tabGroups.activeTabGroup.activeTab?.label === panel.title
             ? true
             : undefined,
@@ -60,7 +154,19 @@ async function focusHtmlViewer(panel: vscode.WebviewPanel): Promise<void> {
 }
 
 suite('HTML widget browser rendering', () => {
-    teardown(async () => {
+    setup(function () {
+        const panels: vscode.WebviewPanel[] = [];
+        const messages: typeof diagnosticMessages = [];
+        diagnosticPanels = panels;
+        diagnosticMessages = messages;
+        widgetDiagnostics = new FailureDiagnostics(this.currentTest!.fullTitle(), () =>
+            widgetSnapshot(panels, messages),
+        );
+    });
+    teardown(async function () {
+        if (this.currentTest?.state === 'failed') {
+            widgetDiagnostics.report();
+        }
         // Mocha timeouts do not cancel an async test body. Release its own
         // manager and mocks here, even if the body's finally block runs later.
         try {
@@ -100,6 +206,7 @@ suite('HTML widget browser rendering', () => {
             sandbox.stub(vscode.window, 'createWebviewPanel').callsFake((...args) => {
                 const panel = createPanel(...args);
                 panels.push(panel);
+                observeWidgetPanel(panel);
                 panel.webview.onDidReceiveMessage(
                     (message: { message?: string; generation?: number }) => {
                         if (
@@ -123,18 +230,20 @@ suite('HTML widget browser rendering', () => {
             await showWebView(first, 'First', 'Two', context);
             const entry = [...manager.viewers.values()][0];
             await focusHtmlViewer(entry.panel);
-            await waitForValue(() =>
+            await waitForWidget('initial widget/loaded acknowledgement', () =>
                 acknowledgements.includes(entry.revision) ? true : undefined,
             );
             await showWebView(blocked, 'Blocked', 'Two', context);
             const blockedGeneration = entry.revision;
             const html = entry.panel.webview.html;
             assert.strictEqual(entry.loading, true);
-            await waitForValue(() => (!entry.loading ? true : undefined));
-            await waitForValue(() => (entry.loadStatus === 'unconfirmed' ? true : undefined));
+            await waitForWidget('CSP navigation unlock', () => (!entry.loading ? true : undefined));
+            await waitForWidget('CSP load status', () =>
+                entry.loadStatus === 'unconfirmed' ? true : undefined,
+            );
             // Only the active viewer updates the status item; hidden items retain their text.
             await focusHtmlViewer(entry.panel);
-            await waitForValue(() =>
+            await waitForWidget('CSP loading status text', () =>
                 loadingStatus.text === 'HTML Viewer: Load not confirmed. Please wait or retry.'
                     ? true
                     : undefined,
@@ -155,18 +264,20 @@ suite('HTML widget browser rendering', () => {
             );
             await runHtmlViewerCommand('back');
             assert.strictEqual(entry.state.index, 0);
-            await waitForValue(() =>
+            await waitForWidget('back navigation acknowledgement', () =>
                 acknowledgements.includes(entry.revision) ? true : undefined,
             );
             assert.ok(entry.panel.webview.html.includes('First output'));
             await focusHtmlViewer(entry.panel);
             await runHtmlViewerCommand('forward');
             assert.strictEqual(entry.state.index, 1);
-            await waitForValue(() => (!entry.loading ? true : undefined));
+            await waitForWidget('forward navigation unlock', () =>
+                !entry.loading ? true : undefined,
+            );
             await focusHtmlViewer(entry.panel);
             await runHtmlViewerCommand('remove');
             assert.strictEqual(entry.state.history.length, 1);
-            await waitForValue(() =>
+            await waitForWidget('remove navigation acknowledgement', () =>
                 acknowledgements.includes(entry.revision) ? true : undefined,
             );
         } finally {
@@ -199,6 +310,7 @@ suite('HTML widget browser rendering', () => {
             sandbox.stub(vscode.window, 'createWebviewPanel').callsFake((...args) => {
                 const panel = createPanel(...args);
                 panels.push(panel);
+                observeWidgetPanel(panel);
                 return panel;
             });
             sandbox.stub(vscode.env, 'openExternal').callsFake((uri) => {
@@ -236,7 +348,10 @@ suite('HTML widget browser rendering', () => {
                 const file = path.join(directory, `${structure}.html`);
                 fs.writeFileSync(file, html);
                 await showWebView(file, 'History entry title', 'Two');
-                const response = await waitForValue(() => result);
+                const response = await waitForWidget(
+                    `document report (${structure})`,
+                    () => result,
+                );
                 assert.strictEqual(response.path, '/document');
                 const observations = new URLSearchParams(response.query);
                 assert.strictEqual(observations.get('title'), 'Authored R output', structure);
@@ -289,6 +404,7 @@ suite('HTML widget browser rendering', () => {
             sandbox.stub(vscode.window, 'createWebviewPanel').callsFake((...args) => {
                 const panel = createPanel(...args);
                 panels.push(panel);
+                observeWidgetPanel(panel);
                 return panel;
             });
             sandbox.stub(vscode.env, 'openExternal').callsFake((uri) => {
@@ -342,7 +458,7 @@ suite('HTML widget browser rendering', () => {
                     </script></body></html>`,
                 );
                 await showWebView(file, 'Authored base', 'Two');
-                const response = await waitForValue(() => result);
+                const response = await waitForWidget('authored base resource report', () => result);
                 assert.strictEqual(response.path, '/base');
                 const observations = new URLSearchParams(response.query);
                 assert.strictEqual(observations.get('value'), 'authored base', fixture.href);
@@ -425,6 +541,7 @@ suite('HTML widget browser rendering', () => {
             sandbox.stub(vscode.window, 'createWebviewPanel').callsFake((...args) => {
                 const panel = createPanel(...args);
                 panels.push(panel);
+                observeWidgetPanel(panel);
                 return panel;
             });
             sandbox.stub(vscode.env, 'openExternal').callsFake((uri) => {
@@ -467,7 +584,7 @@ suite('HTML widget browser rendering', () => {
                     'Two',
                     session.getViewerSessionContext(source.sessionId),
                 );
-                const response = await waitForValue(() => result);
+                const response = await waitForWidget('resource scope report', () => result);
                 assert.strictEqual(
                     new URLSearchParams(response.query).get('access'),
                     'blocked',
@@ -519,6 +636,7 @@ suite('HTML widget browser rendering', () => {
             sandbox.stub(vscode.window, 'createWebviewPanel').callsFake((...args) => {
                 const panel = createPanel(...args);
                 panels.push(panel);
+                observeWidgetPanel(panel);
                 return panel;
             });
             const executeCommand = vscode.commands.executeCommand.bind(vscode.commands);
@@ -564,7 +682,7 @@ suite('HTML widget browser rendering', () => {
                 'Two',
                 session.getViewerSessionContext(source.sessionId),
             );
-            const response = await waitForValue(() => result);
+            const response = await waitForWidget('Find key report', () => result);
             assert.strictEqual(response.path, '/find');
             const observations = new URLSearchParams(response.query);
             for (const name of ['ctrl', 'cmd', 'handled']) {
@@ -573,7 +691,9 @@ suite('HTML widget browser rendering', () => {
             for (const name of ['plain', 'shift', 'alt']) {
                 assert.strictEqual(observations.get(name), 'false', name);
             }
-            await waitForValue(() => (findCommands === 2 ? true : undefined));
+            await waitForWidget('native Find commands', () =>
+                findCommands === 2 ? true : undefined,
+            );
             assert.strictEqual(
                 command.withArgs('editor.action.webvieweditor.showFind').callCount,
                 2,
@@ -622,6 +742,7 @@ suite('HTML widget browser rendering', () => {
             sandbox.stub(vscode.window, 'createWebviewPanel').callsFake((...args) => {
                 const panel = createPanel(...args);
                 panels.push(panel);
+                observeWidgetPanel(panel);
                 return panel;
             });
             sandbox.stub(vscode.env, 'openExternal').callsFake((uri) => {
@@ -677,7 +798,7 @@ suite('HTML widget browser rendering', () => {
                 'Two',
                 session.getViewerSessionContext(source.sessionId),
             );
-            const response = await waitForValue(() => result);
+            const response = await waitForWidget('fragment navigation report', () => result);
             assert.strictEqual(response.path, '/fragments');
             const observations = new URLSearchParams(response.query);
             for (const key of [
@@ -751,6 +872,7 @@ suite('HTML widget browser rendering', () => {
             sandbox.stub(vscode.window, 'createWebviewPanel').callsFake((...args) => {
                 const panel = createPanel(...args);
                 panels.push(panel);
+                observeWidgetPanel(panel);
                 // Delay replacement delivery to exercise the interval between the
                 // options and HTML workbench messages, without delaying a clear.
                 const webview = panel.webview;
@@ -815,7 +937,7 @@ suite('HTML widget browser rendering', () => {
             const loaded = async (count: number) => {
                 await Promise.all(writes);
                 await focusHtmlViewer(panels[0]);
-                await waitForValue(() =>
+                await waitForWidget(`history report ${count} and loading completion`, () =>
                     reports.length >= count &&
                     [...viewerManager.viewers.values()].some(
                         (entry) => entry.panel === panels[0] && !entry.loading,
@@ -934,6 +1056,7 @@ suite('HTML widget browser rendering', () => {
             sandbox.stub(vscode.window, 'createWebviewPanel').callsFake((...args) => {
                 const panel = createPanel(...args);
                 panels.push(panel);
+                observeWidgetPanel(panel);
                 return panel;
             });
             sandbox.stub(vscode.env, 'openExternal').callsFake((uri) => {
@@ -983,20 +1106,23 @@ suite('HTML widget browser rendering', () => {
             const count = (name: string) => urls.filter((uri) => uri.path === `/${name}`).length;
             const loaded = async (name: string, previous: number) => {
                 await focusHtmlViewer(panels.at(-1)!);
-                const uri = await waitForValue(() => {
-                    const reports = urls.filter((uri) => uri.path === `/${name}`);
-                    const latest = reports.at(-1);
-                    const params = new URLSearchParams(latest?.query);
-                    return reports.length > previous &&
-                        ['css', 'image', 'fetch', 'direct'].every(
-                            (key) => params.get(key) === 'true',
-                        ) &&
-                        [...viewerManager.viewers.values()].some(
-                            (entry) => entry.panel === panels.at(-1) && !entry.loading,
-                        )
-                        ? latest
-                        : undefined;
-                });
+                const uri = await waitForWidget(
+                    `resource report for ${name} and loading completion`,
+                    () => {
+                        const reports = urls.filter((uri) => uri.path === `/${name}`);
+                        const latest = reports.at(-1);
+                        const params = new URLSearchParams(latest?.query);
+                        return reports.length > previous &&
+                            ['css', 'image', 'fetch', 'direct'].every(
+                                (key) => params.get(key) === 'true',
+                            ) &&
+                            [...viewerManager.viewers.values()].some(
+                                (entry) => entry.panel === panels.at(-1) && !entry.loading,
+                            )
+                            ? latest
+                            : undefined;
+                    },
+                );
                 const dimensions = new URLSearchParams(uri.query);
                 assert.ok(
                     Number(dimensions.get('width')) > 0 && Number(dimensions.get('height')) > 0,
@@ -1100,6 +1226,7 @@ suite('HTML widget browser rendering', () => {
                 const panel = createPanel(...args);
                 if (panel.viewType === 'r.htmlViewer') {
                     panels.push(panel);
+                    observeWidgetPanel(panel);
                     panel.webview.onDidReceiveMessage(
                         (message: { message?: string; generation?: number }) => {
                             if (
@@ -1162,7 +1289,7 @@ suite('HTML widget browser rendering', () => {
                 tempdir: directory,
                 wd: directory,
             });
-            await waitForValue(() => (attached ? true : undefined));
+            await waitForWidget('native session attachment', () => (attached ? true : undefined));
             const first = path.join(directory, 'first.html');
             const second = path.join(directory, 'second.html');
             fs.writeFileSync(
@@ -1174,7 +1301,7 @@ suite('HTML widget browser rendering', () => {
                 '<!doctype html><html><head></head><body>Native second</body></html>',
             );
             notify('webview', { url: first, title: 'First' });
-            const panel = await waitForValue(() =>
+            const panel = await waitForWidget('native first output panel', () =>
                 panels[0]?.webview.html.includes('Native first') ? panels[0] : undefined,
             );
             const run = async (
@@ -1185,7 +1312,9 @@ suite('HTML widget browser rendering', () => {
                     Number(/data-generation="(\d+)"/.exec(viewer.webview.html)?.[1]);
                 const ready = () => loaded.get(viewer) === generation();
                 await focusHtmlViewer(viewer);
-                await waitForValue(() => (ready() ? true : undefined));
+                await waitForWidget(`native ${action} readiness`, () =>
+                    ready() ? true : undefined,
+                );
                 const key = {
                     back: 'canGoBack',
                     forward: 'canGoForward',
@@ -1194,7 +1323,7 @@ suite('HTML widget browser rendering', () => {
                 }[action];
                 // A browser acknowledgement can precede the workbench's toolbar
                 // update. Wait for the native command to be enabled as well.
-                await waitForValue(() =>
+                await waitForWidget(`native ${action} toolbar context`, () =>
                     ready() && viewer.active && contexts.get(`r.htmlViewer.${key}`) === true
                         ? true
                         : undefined,
@@ -1203,7 +1332,7 @@ suite('HTML widget browser rendering', () => {
                 await vscode.commands.executeCommand(`r.htmlViewer.${action}`);
                 // Navigation must load a new document, rather than accepting the
                 // previous page's acknowledgement if the command was ignored.
-                await waitForValue(() =>
+                await waitForWidget(`native ${action} generation transition`, () =>
                     ready() && (action === 'info' || generation() > previousGeneration)
                         ? true
                         : undefined,
@@ -1211,7 +1340,7 @@ suite('HTML widget browser rendering', () => {
                 // Title changes reach the workbench asynchronously. Navigation
                 // preserves focus, so check the viewer's group even if another
                 // group becomes active before the next action refocuses it.
-                await waitForValue(() =>
+                await waitForWidget('native viewer focus', () =>
                     vscode.window.tabGroups.all.find(
                         (group) => group.viewColumn === viewer.viewColumn,
                     )?.activeTab?.label === viewer.title
@@ -1220,7 +1349,7 @@ suite('HTML widget browser rendering', () => {
                 );
             };
             notify('webview', { url: second, title: 'Second' });
-            await waitForValue(() =>
+            await waitForWidget('native second output', () =>
                 panel.webview.html.includes('Native second') ? true : undefined,
             );
             await run(panel, 'back');
