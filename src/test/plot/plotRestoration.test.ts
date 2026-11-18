@@ -1720,6 +1720,20 @@ suite('Standalone plot restoration', () => {
             '--slave',
             process.platform === 'win32' ? '--ess' : '--interactive',
         ]);
+        // Diagnostics for an intermittent timeout before the first result:
+        // record the process lifecycle so a failure shows how far R got.
+        const started = Date.now();
+        const events: string[] = [];
+        const record = (event: string) => events.push(`${Date.now() - started}ms ${event}`);
+        r.once('spawn', () => record(`spawn pid=${String(r.pid)}`));
+        r.once('error', (error) => record(`error ${String(error)}`));
+        r.once('exit', (code, signal) =>
+            record(`exit code=${String(code)} signal=${String(signal)}`),
+        );
+        r.once('close', (code, signal) =>
+            record(`close code=${String(code)} signal=${String(signal)}`),
+        );
+        r.stdin.on('error', (error) => record(`stdin error ${String(error)}`));
         const exited = new Promise<void>((resolve) => r.once('exit', () => resolve()));
         let output = '';
         let errors = '';
@@ -1731,20 +1745,52 @@ suite('Standalone plot restoration', () => {
         });
         let sequence = 0;
         const evaluate = async (code: string): Promise<string> => {
-            const marker = `HTTPGD_RESULT_${++sequence}:`;
+            const id = ++sequence;
+            const marker = `HTTPGD_RESULT_${id}:`;
+            // Each top-level expression reports when it starts, so a timeout
+            // shows which one R was evaluating.
+            const stage = `HTTPGD_STAGE_${id}:`;
+            const evaluationStarted = Date.now();
             r.stdin.write(
-                `tryCatch({value <- {${code}}; cat(${JSON.stringify(marker)}, jsonlite::toJSON(value, auto_unbox=TRUE), "\\n", sep="")}, error=function(e) cat(${JSON.stringify(marker)}, jsonlite::toJSON(list(error=conditionMessage(e)), auto_unbox=TRUE), "\\n", sep=""))\n`,
+                `tryCatch({exprs <- parse(text=${JSON.stringify(code)}); for (i in seq_along(exprs)) {cat(${JSON.stringify(stage)}, i, "/", length(exprs), "\\n", sep=""); value <- eval(exprs[[i]], globalenv())}; cat(${JSON.stringify(marker)}, jsonlite::toJSON(value, auto_unbox=TRUE), "\\n", sep="")}, error=function(e) cat(${JSON.stringify(marker)}, jsonlite::toJSON(list(error=conditionMessage(e)), auto_unbox=TRUE), "\\n", sep=""))\n`,
+                (error) =>
+                    record(`stdin write ${id} ${error ? `failed: ${String(error)}` : 'done'}`),
             );
-            const line = await waitForValue(() => {
-                if (r.exitCode !== null) {
-                    throw new Error(`R exited: ${errors}`);
-                }
-                const start = output.indexOf(marker);
-                const end = output.indexOf('\n', start);
-                return start >= 0 && end >= 0
-                    ? output.slice(start + marker.length, end)
-                    : undefined;
-            });
+            const describe = () =>
+                JSON.stringify({
+                    evaluation: id,
+                    code,
+                    elapsedMs: Date.now() - evaluationStarted,
+                    pid: r.pid,
+                    exitCode: r.exitCode,
+                    signalCode: r.signalCode,
+                    spawn: [r.spawnfile, ...r.spawnargs],
+                    stages: output
+                        .split('\n')
+                        .filter((line) => line.startsWith(stage))
+                        .map((line) => line.slice(stage.length)),
+                    marker: output.includes(marker),
+                    events,
+                    stdoutTail: output.slice(-2000),
+                    stderrTail: errors.slice(-2000),
+                });
+            let line: string;
+            try {
+                line = await waitForValue(() => {
+                    if (r.exitCode !== null || r.signalCode !== null) {
+                        throw new Error(`R exited: ${errors}`);
+                    }
+                    const start = output.indexOf(marker);
+                    const end = output.indexOf('\n', start);
+                    return start >= 0 && end >= 0
+                        ? output.slice(start + marker.length, end)
+                        : undefined;
+                });
+            } catch (error) {
+                throw new Error(`${(error as Error).message}\nDiagnostics: ${describe()}`, {
+                    cause: error,
+                });
+            }
             const result: unknown = JSON.parse(line);
             assert.strictEqual(typeof result, 'string', line);
             return result as string;
