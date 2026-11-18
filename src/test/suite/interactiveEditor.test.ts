@@ -3762,7 +3762,11 @@ par(mfrow=c(1,1))`,
         // step can be broken down. The wrappers only observe the original calls,
         // and teardown removes them.
         const restores: (() => void)[] = [];
+        // After a Mocha timeout this body keeps running past teardown, so a
+        // wrapper installed then would never be removed.
+        let tracingRestored = false;
         restoreWorkspaceFocusTracing = () => {
+            tracingRestored = true;
             for (const restore of restores.splice(0).reverse()) {
                 restore();
             }
@@ -3772,6 +3776,9 @@ par(mfrow=c(1,1))`,
             key: keyof T & string,
             name: (args: unknown[]) => string,
         ): void => {
+            if (tracingRestored) {
+                return;
+            }
             const target = owner as Record<string, unknown>;
             const original = target[key] as (...args: unknown[]) => PromiseLike<unknown>;
             target[key] = function (this: unknown, ...args: unknown[]) {
