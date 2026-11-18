@@ -4,7 +4,7 @@ import * as vscode from 'vscode';
 import { RMarkdownCodeLensProvider } from '../../rmarkdown';
 
 suite('R Markdown chunk decorations', () => {
-    test('clears current chunk borders when the document has no chunks', async () => {
+    test('clears current chunk borders when the document has no chunks', () => {
         const document = {
             languageId: 'r',
             uri: vscode.Uri.parse('untitled:rmarkdown-decoration-test'),
