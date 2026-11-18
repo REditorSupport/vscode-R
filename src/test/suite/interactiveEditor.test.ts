@@ -3816,25 +3816,42 @@ par(mfrow=c(1,1))`,
         await step('show source document', () => vscode.window.showTextDocument(source));
         await step('bound source owner', () => until(() => workspace().owner === oldNode.owner));
         assert.strictEqual(workspace().data?.globalenv.workspace_marker.length, 1);
-        const list = (await nodes()).find((node) => node.label === 'workspace_list');
-        assert.ok(list);
+        // Focus changes and workspace notifications for the same owner invalidate
+        // child pages; the provider then discards in-flight replies and asks the
+        // tree to refetch. Refetch like the tree does, but only after such an
+        // invalidation, so an empty reply from a stable tree still fails.
         const provider = workspace();
-        const ownerBefore = provider.owner?.sessionId;
-        const generationBefore = (provider as unknown as { childPageGeneration: number })
-            .childPageGeneration;
-        const children = await step('workspace list children', () => provider.getChildren(list));
-        const ownerAfter = provider.owner?.sessionId;
-        const generationAfter = (provider as unknown as { childPageGeneration: number })
-            .childPageGeneration;
+        const invalidations: string[] = [];
+        let children: vscode.TreeItem[] = [];
+        for (let attempt = 1; ; attempt++) {
+            const list = (await nodes()).find((node) => node.label === 'workspace_list');
+            assert.ok(list);
+            assert.strictEqual(list.owner, oldNode.owner);
+            let invalidated = false;
+            const listener = provider.onDidChangeTreeData(() => {
+                invalidated = true;
+            });
+            try {
+                children = await step('workspace list children', () => provider.getChildren(list));
+            } finally {
+                listener.dispose();
+            }
+            if (!invalidated) {
+                break;
+            }
+            invalidations.push(`attempt ${attempt}: ${children.length} children`);
+            assert.ok(
+                attempt < 5,
+                `Workspace children were invalidated during every fetch: ${invalidations.join(', ')}`,
+            );
+        }
+        assert.strictEqual(provider.owner, oldNode.owner);
         assert.ok(
             children.some((child) => String(child.description).includes('0')),
             JSON.stringify({
                 expectedOwner: oldNode.owner?.sessionId,
-                itemOwner: list.owner?.sessionId,
-                ownerBefore,
-                ownerAfter,
-                generationBefore,
-                generationAfter,
+                owner: provider.owner?.sessionId,
+                invalidations,
                 displayedList: provider.data?.globalenv.workspace_list,
                 returnedChildren: children.map((child) => ({
                     label: child.label,

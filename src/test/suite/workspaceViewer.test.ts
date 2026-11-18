@@ -128,6 +128,36 @@ suite('Workspace Viewer', () => {
         sinon.assert.calledOnce(secondRequest);
     });
 
+    test('a same-owner invalidation during a child request discards the reply and asks the tree to refetch', async () => {
+        session.updateSessionWorkspace(first, data('mutable'));
+        const replies: ((value: unknown) => void)[] = [];
+        first.requester = () =>
+            new Promise((resolve) => {
+                replies.push(resolve);
+            });
+        const child = (value: number) => ({
+            children: [
+                { str: `int ${value}`, class: 'integer', type: 'integer', has_children: false },
+            ],
+        });
+        const node = (await envNodes())[0];
+        const changed = sandbox.spy();
+        const listener = provider.onDidChangeTreeData(changed);
+        try {
+            const pending = provider.getChildren(node);
+            session.invalidateWorkspaceChildren(first);
+            sinon.assert.calledOnce(changed);
+            replies[0](child(1));
+            assert.deepStrictEqual(await pending, []);
+            const refetched = provider.getChildren(node);
+            replies[1](child(2));
+            assert.strictEqual((await refetched)[0].description, 'int 2');
+            assert.strictEqual(replies.length, 2);
+        } finally {
+            listener.dispose();
+        }
+    });
+
     test('background workspace replies update their owner without selecting it', async () => {
         let reply!: (value: unknown) => void;
         first.requester = () =>
