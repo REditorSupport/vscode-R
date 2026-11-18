@@ -2832,6 +2832,129 @@ suite('Standalone plot restoration', () => {
         }
     });
 
+    // A 1x1 PNG; decoding it makes a raster op wait like a real image.
+    const pixelPng =
+        'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
+
+    // Runs code in a real jgd webview, where the viewer's functions and state
+    // are globals, after the viewer has rendered its plot, and returns the
+    // value the code resolves to.
+    async function probeJgdWebview(code: string): Promise<unknown> {
+        let panel: vscode.WebviewPanel | undefined;
+        let result: { value?: unknown; error?: string } | undefined;
+        (vscode.window.createWebviewPanel as sinon.SinonStub).callsFake(
+            (...args: Parameters<typeof createRealWebviewPanel>) => {
+                panel = createRealWebviewPanel(...args);
+                panel.webview.onDidReceiveMessage(
+                    (message: { type: string; value?: unknown; error?: string }) => {
+                        if (message.type === 'probe-result') {
+                            result = message;
+                        }
+                    },
+                );
+                return panel;
+            },
+        );
+        const value = await manager();
+        value.jgdManager.history.addPlot('device', frame('device'));
+        value.jgdManager.getViewer('device')!.show();
+        try {
+            panel!.webview.html = panel!.webview.html.replace(
+                '</body>',
+                `<script>
+                (async () => {
+                    try {
+                        while (!currentPlot) await new Promise((resolve) => setTimeout(resolve, 10));
+                        const value = await (async () => { ${code} })();
+                        vscode.postMessage({ type: 'probe-result', value });
+                    } catch (error) {
+                        vscode.postMessage({ type: 'probe-result', error: String(error?.stack ?? error) });
+                    }
+                })();
+                </script></body>`,
+            );
+            const message = await waitForValue(() => result);
+            if (message.error) {
+                throw new Error(message.error);
+            }
+            return message.value;
+        } finally {
+            panel?.dispose();
+        }
+    }
+
+    test('a jgd raster does not inherit opacity or filters from earlier ops', async () => {
+        const state = await probeJgdWebview(`
+            const canvas = document.createElement('canvas');
+            canvas.width = 10;
+            canvas.height = 10;
+            const ctx = canvas.getContext('2d');
+            const rc = makeRenderCtx();
+            await renderOp(ctx, { op: 'rect', x0: 0, y0: 0, x1: 5, y1: 5,
+                gc: { fill: 'red', ext: { opacity: 0.2, filter: 'blur(2px)' } } }, 10, rc);
+            const drawImage = ctx.drawImage;
+            let state;
+            ctx.drawImage = function (...args) {
+                state = { alpha: ctx.globalAlpha, filter: ctx.filter };
+                return drawImage.apply(this, args);
+            };
+            await renderOp(ctx, { op: 'raster', data: '${pixelPng}', x: 0, y: 10, w: 1, h: 1,
+                interpolate: false }, 10, rc);
+            return state;
+        `);
+        assert.deepStrictEqual(state, { alpha: 1, filter: 'none' });
+    });
+
+    test('jgd post effects keep explicit zero values', async () => {
+        const filters = await probeJgdWebview(`
+            const filters = ['brightness', 'contrast', 'grayscale', 'saturate', 'sepia', 'invert']
+                .map((type) => effectToFilter({ type, value: 0 }));
+            const canvas = document.createElement('canvas');
+            canvas.width = 2;
+            canvas.height = 2;
+            const ctx = canvas.getContext('2d');
+            const filter = Object.getOwnPropertyDescriptor(CanvasRenderingContext2D.prototype, 'filter');
+            const glow = [];
+            Object.defineProperty(ctx, 'filter', {
+                get() { return filter.get.call(this); },
+                set(value) { glow.push(value); filter.set.call(this, value); },
+            });
+            applyGlowEffect(ctx, { type: 'glow', radius: 0, brightness: 0 });
+            return [...filters, glow[0]];
+        `);
+        assert.deepStrictEqual(filters, [
+            'brightness(0)',
+            'contrast(0)',
+            'grayscale(0)',
+            'saturate(0)',
+            'sepia(0)',
+            'invert(0)',
+            'blur(0px) brightness(0)',
+        ]);
+    });
+
+    test('a jgd PNG export keeps the plot selected when it started', async () => {
+        sandbox.stub(vscode.window, 'showSaveDialog').resolves(undefined);
+        const effects = await probeJgdWebview(`
+            const applied = [];
+            applyPostEffects = (ctx, effects) => applied.push(effects.map((effect) => effect.type));
+            const plot = (effect) => ({
+                version: 1,
+                sessionId: 'device',
+                device: { width: 10, height: 10, dpi: 96, bg: 'white' },
+                ops: [{ op: 'raster', data: '${pixelPng}', x: 0, y: 10, w: 1, h: 1, interpolate: false }],
+                frameExt: { postEffects: [{ type: effect }] },
+            });
+            currentPlot = plot('sepia');
+            handleExport('png', 10, 10);
+            // Select another plot while the export waits for its raster.
+            currentPlot = plot('invert');
+            while (applied.length === 0) await new Promise((resolve) => setTimeout(resolve, 10));
+            return applied;
+        `);
+        assert.deepStrictEqual(effects, [['sepia']]);
+    });
+
     test('shutdown during credential loading does not reopen a connection or panel', async () => {
         const source = owner('httpgd-owner', '14001');
         focus(source);

@@ -187,6 +187,19 @@ suite('JGD SocketServer', () => {
         assert.strictEqual(history.currentPlot(secondId)?.device.bg, 'still live');
     });
 
+    test('decodes a UTF-8 character split across socket chunks', async () => {
+        const client = await connect();
+        const bytes = Buffer.from(JSON.stringify(makePlotMsg('日本語')) + '\n');
+        // Split inside the three-byte encoding of the first character.
+        const split = bytes.indexOf(Buffer.from('日')) + 1;
+        client.socket.write(bytes.subarray(0, split));
+        await waitMs(50);
+        client.socket.write(bytes.subarray(split));
+        client.send({ type: 'metrics_request', id: 1 });
+        await client.readLine();
+        assert.strictEqual(history.currentPlot()?.device.bg, '日本語');
+    });
+
     suite('frame routing', () => {
         test('resize replays retain their target when snapshots carry restoration metadata', async () => {
             const identity = {
