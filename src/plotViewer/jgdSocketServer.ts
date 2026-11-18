@@ -461,6 +461,13 @@ export class JgdSocketServer {
             return;
         }
         const request = { width: w, height: h, plotIndex };
+        // TODO: This treats the next frame as the completion of the pending
+        // resize, unlike the jgd reference server, which forwards every
+        // distinct size without waiting. R sends no frame when a replay fails,
+        // when the display list is empty, or when it drops a plotIndex resize
+        // read during a metrics exchange; later resizes then stay queued until
+        // an unrelated frame arrives. The protocol has no completion message
+        // to wait for instead: https://github.com/REditorSupport/jgd/issues/79
         if (session.pendingResize) {
             session.queuedResize = request;
             return;

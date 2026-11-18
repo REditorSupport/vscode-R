@@ -535,6 +535,10 @@ export class JgdViewer implements PlotViewer {
             return { type: 'metrics_response', id: request.id, ...cached };
         }
 
+        // TODO: Summing cached per-character widths avoids a webview round
+        // trip, but it ignores kerning and shaping, so it can differ from the
+        // width of the string as drawn. The jgd reference viewer measures the
+        // whole string with measureText().
         if (request.kind === 'strWidth' && request.str) {
             const baseFontKey = `12|${canonical}|${fontFace}`;
             const scale = fontSize / 12;
