@@ -222,8 +222,11 @@ export class JgdSocketServer {
         this.sessions.set(sessionId, session);
         this.notifyConnectionChange(sessionId);
 
-        socket.on('data', (data) => {
-            session.buffer += data.toString();
+        // Decode the stream rather than each chunk, so a UTF-8 character
+        // split across chunks is not replaced (jgd decodes with TextDecoderStream).
+        socket.setEncoding('utf8');
+        socket.on('data', (data: string) => {
+            session.buffer += data;
             let newlineIdx: number;
             while ((newlineIdx = session.buffer.indexOf('\n')) !== -1) {
                 const line = session.buffer.substring(0, newlineIdx);
