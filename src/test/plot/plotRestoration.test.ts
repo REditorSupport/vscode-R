@@ -2658,6 +2658,26 @@ suite('Standalone plot restoration', () => {
                 }
             });
             document.addEventListener('visibilitychange', () => record('visibilitychange', {}));
+            // VS Code can deliver the visibility message while a revealed
+            // webview still has its hidden, temporary layout. Reproduce that
+            // on request. This listener runs after the viewer's, so the
+            // viewer's animation frame callback reads the temporary layout
+            // before the callback registered here restores it.
+            let holdTemporaryLayout = false;
+            window.addEventListener('message', (event) => {
+                if (event.data.type === 'hold-temporary-layout') {
+                    holdTemporaryLayout = true;
+                } else if (event.data.type === 'visibility' && event.data.visible && holdTemporaryLayout) {
+                    holdTemporaryLayout = false;
+                    const style = container.style.cssText;
+                    container.style.cssText = style + ';flex:0 0 116px;width:300px';
+                    record('temporary-layout', {});
+                    requestAnimationFrame(() => {
+                        container.style.cssText = style;
+                        record('restored-layout', {});
+                    });
+                }
+            });
             new ResizeObserver(() => record('container-resized', canvasState())).observe(container);
             window.addEventListener('message', async (event) => {
                 if (event.data.type !== 'inspect-canvas') return;
@@ -2723,9 +2743,37 @@ suite('Standalone plot restoration', () => {
                 'the newest plot reached the hidden webview',
             );
 
+            await panel!.webview.postMessage({ type: 'hold-temporary-layout' });
             panel!.reveal();
             await waitForValue(() => (panel!.visible ? true : undefined));
-            const shown = await inspect();
+            // The webview can keep its hidden, temporary layout for a moment
+            // after the panel becomes visible. Wait until the newest plot is
+            // drawn at the restored viewport and the viewer has decided
+            // whether to resize R after the reveal. A resize message would be
+            // delivered before the inspection that follows it.
+            const sameSize = (a: number[], b: number[]) => a[0] === b[0] && a[1] === b[1];
+            const settled = (state: Inspection) => {
+                const log = state.log as { event: string; visible?: boolean }[];
+                let revealed = -1;
+                log.forEach((entry, index) => {
+                    if (entry.event === 'message-visibility' && entry.visible) {
+                        revealed = index;
+                    }
+                });
+                return (
+                    revealed >= 0 &&
+                    log.slice(revealed).some((entry) => entry.event === 'report-viewport') &&
+                    sameSize(state.container, visible.container) &&
+                    sameSize(state.canvas, state.container) &&
+                    state.pixel.join() === [255, 0, 255, 255].join()
+                );
+            };
+            let shown = await inspect();
+            const deadline = Date.now() + 10000;
+            while (!settled(shown) && Date.now() < deadline) {
+                await new Promise((resolve) => setTimeout(resolve, 50));
+                shown = await inspect();
+            }
             try {
                 assert.deepStrictEqual(
                     shown.container,
