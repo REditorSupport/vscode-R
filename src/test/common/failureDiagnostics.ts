@@ -3,6 +3,9 @@ interface Stage {
     pending: number;
     totalMs: number;
     lastMs?: number;
+    /** The slowest call and when it started, relative to the start of the test. */
+    maxMs?: number;
+    maxStartedAtMs?: number;
     pendingSince?: number;
     lastResult?: 'fulfilled' | 'rejected';
 }
@@ -18,7 +21,15 @@ export class FailureDiagnostics {
         private readonly snapshot: () => unknown,
     ) {}
 
-    trace<T>(name: string, operation: () => PromiseLike<T>): PromiseLike<T> {
+    /**
+     * `reportOnReject: false` is for operations the test does not await, whose
+     * rejection may be handled by their caller and is not a test failure.
+     */
+    trace<T>(
+        name: string,
+        operation: () => PromiseLike<T>,
+        { reportOnReject = true }: { reportOnReject?: boolean } = {},
+    ): PromiseLike<T> {
         const started = Date.now();
         const stage = this.stages.get(name) ?? { calls: 0, pending: 0, totalMs: 0 };
         this.stages.set(name, stage);
@@ -28,11 +39,15 @@ export class FailureDiagnostics {
         const finish = (result: 'fulfilled' | 'rejected') => {
             stage.lastMs = Date.now() - started;
             stage.totalMs += stage.lastMs;
+            if (stage.maxMs === undefined || stage.lastMs > stage.maxMs) {
+                stage.maxMs = stage.lastMs;
+                stage.maxStartedAtMs = started - this.started;
+            }
             stage.lastResult = result;
             if (--stage.pending === 0) {
                 stage.pendingSince = undefined;
             }
-            if (result === 'rejected') {
+            if (result === 'rejected' && reportOnReject) {
                 this.report();
             }
         };

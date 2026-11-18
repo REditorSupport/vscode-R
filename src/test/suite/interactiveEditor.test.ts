@@ -241,6 +241,7 @@ suite('Interactive VS Code integration', function () {
     const cleanupReserveMs = 5000;
     let runningTest: { test: Mocha.Runnable; started: number } | undefined;
     let workspaceFocusDiagnostics: FailureDiagnostics | undefined;
+    let restoreWorkspaceFocusTracing: (() => void) | undefined;
     setup(function () {
         runningTest = this.currentTest && { test: this.currentTest, started: Date.now() };
     });
@@ -249,6 +250,8 @@ suite('Interactive VS Code integration', function () {
             workspaceFocusDiagnostics?.report();
         }
         workspaceFocusDiagnostics = undefined;
+        restoreWorkspaceFocusTracing?.();
+        restoreWorkspaceFocusTracing = undefined;
         runningTest = undefined;
     });
     const until = async (
@@ -3726,7 +3729,9 @@ par(mfrow=c(1,1))`,
     test('Workspace follows native focus and bound sources, and actions retain their displayed owner', async () => {
         const workspace = workspaceProvider;
         let inspectedClient: AgentClient | undefined;
+        let agentRequestsTraced = false;
         const diagnostics = new FailureDiagnostics('Workspace focus and displayed owner', () => ({
+            agentRequestsTraced,
             activeEditor: vscode.window.activeTextEditor?.document.uri.toString() ?? null,
             activeNotebook: vscode.window.activeNotebookEditor?.notebook.uri.toString() ?? null,
             notebookSession: vscode.window.activeNotebookEditor?.notebook.metadata
@@ -3752,6 +3757,63 @@ par(mfrow=c(1,1))`,
         workspaceFocusDiagnostics = diagnostics;
         const step = <T>(name: string, operation: () => PromiseLike<T>) =>
             diagnostics.trace(name, operation);
+        // Time the VS Code commands, notebook edits, and agent requests made
+        // during each step, including those the extension makes, so that a slow
+        // step can be broken down. The wrappers only observe the original calls,
+        // and teardown removes them.
+        const restores: (() => void)[] = [];
+        // After a Mocha timeout this body keeps running past teardown, so a
+        // wrapper installed then would never be removed.
+        let tracingRestored = false;
+        restoreWorkspaceFocusTracing = () => {
+            tracingRestored = true;
+            for (const restore of restores.splice(0).reverse()) {
+                restore();
+            }
+        };
+        const traceCalls = <T extends object>(
+            owner: T,
+            key: keyof T & string,
+            name: (args: unknown[]) => string,
+        ): void => {
+            if (tracingRestored) {
+                return;
+            }
+            const target = owner as Record<string, unknown>;
+            const original = target[key] as (...args: unknown[]) => PromiseLike<unknown>;
+            target[key] = function (this: unknown, ...args: unknown[]) {
+                return diagnostics.trace(name(args), () => original.apply(this, args), {
+                    reportOnReject: false,
+                });
+            };
+            restores.push(() => {
+                target[key] = original;
+            });
+        };
+        traceCalls(vscode.commands, 'executeCommand', ([id, key]) =>
+            id === 'setContext' ? `command setContext ${String(key)}` : `command ${String(id)}`,
+        );
+        traceCalls(vscode.workspace, 'applyEdit', () => 'workspace.applyEdit');
+        // The extension is bundled separately from this test, so wrap the
+        // prototype of a client it created once a view exists.
+        const traceAgentRequests = (): void => {
+            if (agentRequestsTraced) {
+                return;
+            }
+            const manager = interactiveManager() as unknown as {
+                views: Map<string, { client: object }>;
+            };
+            const client = [...manager.views.values()][0]?.client;
+            if (!client) {
+                return;
+            }
+            traceCalls(
+                Object.getPrototypeOf(client) as { request: unknown },
+                'request',
+                ([method]) => `agent ${String(method)}`,
+            );
+            agentRequestsTraced = true;
+        };
         const nodes = async (): Promise<GlobalEnvItem[]> => {
             const provider = workspace();
             const root = (await step('workspace roots', () => provider.getChildren())).find(
@@ -3765,6 +3827,7 @@ par(mfrow=c(1,1))`,
             await step(`focus ${index}: r.interactive.open`, () =>
                 vscode.commands.executeCommand('r.interactive.open', manifests[index]),
             );
+            traceAgentRequests();
             const notebook = vscode.workspace.notebookDocuments.find(
                 (doc) => doc.metadata.rSessionId === manifests[index].id,
             );
