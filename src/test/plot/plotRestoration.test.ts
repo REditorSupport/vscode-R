@@ -2662,7 +2662,9 @@ suite('Standalone plot restoration', () => {
             // webview still has its hidden, temporary layout. Reproduce that
             // on request. This listener runs after the viewer's, so the
             // viewer's animation frame callback reads the temporary layout
-            // before the callback registered here restores it.
+            // first. The layout is restored one frame later, so that, as in
+            // VS Code, ResizeObserver sees both the temporary and the
+            // restored size.
             let holdTemporaryLayout = false;
             window.addEventListener('message', (event) => {
                 if (event.data.type === 'hold-temporary-layout') {
@@ -2672,10 +2674,12 @@ suite('Standalone plot restoration', () => {
                     const style = container.style.cssText;
                     container.style.cssText = style + ';flex:0 0 116px;width:300px';
                     record('temporary-layout', {});
-                    requestAnimationFrame(() => {
-                        container.style.cssText = style;
-                        record('restored-layout', {});
-                    });
+                    requestAnimationFrame(() =>
+                        requestAnimationFrame(() => {
+                            container.style.cssText = style;
+                            record('restored-layout', {});
+                        }),
+                    );
                 }
             });
             new ResizeObserver(() => record('container-resized', canvasState())).observe(container);
