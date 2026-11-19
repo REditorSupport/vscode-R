@@ -651,14 +651,19 @@ suite('Interactive backend contract', function () {
                 }),
                 { str: 'fake' },
             );
-            assert.deepStrictEqual(session.calls, [
-                {
-                    handler: 'vscode-r.inspect.json/hover',
-                    args: '{"expr":"x"}',
-                    queue_timeout_ms: 2000,
-                    execution_timeout_ms: 2000,
-                },
-            ]);
+            assert.strictEqual(session.calls.length, 1);
+            const { queue_timeout_ms: queue, ...sent } = session.calls[0];
+            assert.deepStrictEqual(sent, {
+                handler: 'vscode-r.inspect.json/hover',
+                args: '{"expr":"x"}',
+                execution_timeout_ms: 2000,
+            });
+            // What is left of the wait to start, measured from the request, so
+            // it can be less than the timeout by the time the call is sent.
+            assert.ok(
+                Number.isInteger(queue) && Number(queue) > 0 && Number(queue) <= 2000,
+                String(queue),
+            );
         } finally {
             await session.close();
         }
