@@ -100,6 +100,11 @@ export interface WorkspaceData {
 
 // Thin adapter to track per-socket metadata alongside net.Socket
 interface IpcSocket extends net.Socket {
+    /**
+     * Settles once an attached connection has looked up its terminal and made
+     * its activation decision; the connection is usable before that.
+     */
+    _terminalLookup?: Promise<void>;
     _terminalPid?: number;
     _pipePath?: string;
     _sessionId?: string;
@@ -3862,58 +3867,22 @@ async function handleNotification(message: Record<string, unknown>, socket: IpcS
             pendingSessionAttachments.set(sessionId, pendingAttachment);
             const selectionRevision = sessionSelectionRevision;
             const selectedTerminal = window.activeTerminal;
-            const discardPendingAttachment = (): void => {
-                if (pendingSessionAttachments.get(sessionId) !== pendingAttachment) {
-                    return;
-                }
-                pendingSessionAttachments.delete(sessionId);
-                pendingAttachment.controller.abort();
-                if (!socket._sessionId) {
-                    socket.destroy();
-                }
-            };
-            let candidate: NativeTerminalCandidate | undefined;
-            try {
-                candidate =
-                    autoActivate && rPid && isLocalHost(host)
-                        ? await findLocalTerminal(rPid, pendingAttachment.controller.signal)
-                        : undefined;
-            } catch (error) {
-                discardPendingAttachment();
-                throw error;
-            }
-            if (!isLiveSessionSocket(socket)) {
-                discardPendingAttachment();
-                return;
-            }
-            // Another attach notification on this socket may have completed while
-            // local terminal association was being resolved above.
-            const attachedSessionId = socket._sessionId;
-            if (attachedSessionId) {
-                if (attachedSessionId !== sessionId) {
-                    void window.showErrorMessage(
-                        `Cannot attach R session ${sessionId}: this IPC connection is already bound to session ${attachedSessionId}. Reconnect using a new IPC connection.`,
-                    );
-                    socket.destroy();
-                }
-                return;
-            }
-            const currentPendingAttachment = pendingSessionAttachments.get(sessionId);
-            if (currentPendingAttachment !== pendingAttachment) {
-                // A newer handshake can reuse the same socket. Only destroy a
-                // different obsolete socket; never close the newer handshake's socket.
-                if (currentPendingAttachment?.socket !== socket) {
-                    socket.destroy();
-                }
-                return;
-            }
-            pendingSessionAttachments.delete(sessionId);
-            if (!isLiveSessionSocket(socket)) {
-                socket.destroy();
-                return;
-            }
-            const native = candidate?.isCurrent() ? candidate : undefined;
+
+            // Register the connection before any await. Finding its terminal can
+            // take seconds (a process-table query on Windows), and the session
+            // must be usable while that runs; the terminal is associated after.
             const previous = sessions.get(sessionId);
+            // A reconnect from the same local R process keeps its native terminal,
+            // so selecting that terminal still selects the session meanwhile.
+            const inherited =
+                previous &&
+                rPid &&
+                previous.pid === rPid &&
+                isLocalHost(host) &&
+                previous.host === (host || 'unknown')
+                    ? terminalRegistry.forSession(previous)
+                    : undefined;
+            const inheritedTerminalPid = previous?.socket._terminalPid;
             if (previous) {
                 terminalRegistry.releaseSession(previous);
             }
@@ -3926,6 +3895,19 @@ async function handleNotification(message: Record<string, unknown>, socket: IpcS
             );
             session.connectionId = crypto.randomBytes(16).toString('hex');
             session.attachmentId = attachmentId;
+            session.rVer = String(params.version);
+            session.pid = rPid;
+            session.info = (params.info as SessionInfo | undefined) ?? {
+                version: session.rVer,
+                command: '',
+                start_time: '',
+            };
+            session.sessionDir = params.tempdir;
+            session.workingDir = params.wd;
+            let lookupDone!: () => void;
+            socket._terminalLookup = new Promise<void>((resolve) => {
+                lookupDone = resolve;
+            });
             socket._sessionId = sessionId;
             sessions.set(sessionId, session);
             const changes: RSessionConnectionChange[] = [];
@@ -3936,32 +3918,75 @@ async function handleNotification(message: Record<string, unknown>, socket: IpcS
             if (previous && previous.socket !== socket) {
                 previous.socket.destroy();
             }
-            session.rVer = String(params.version);
-            session.pid = rPid;
-            session.info = (params.info as SessionInfo | undefined) ?? {
-                version: session.rVer,
-                command: '',
-                start_time: '',
-            };
-            session.sessionDir = params.tempdir;
-            session.workingDir = params.wd;
-
-            const terminalPid =
-                native && terminalRegistry.attachNative(native.terminal, session)
-                    ? native.pid
-                    : undefined;
-            if (terminalPid) {
-                socket._terminalPid = Number(terminalPid);
+            if (
+                inherited?.kind === 'native' &&
+                terminalRegistry.attachNative(inherited.terminal, session) &&
+                inheritedTerminalPid
+            ) {
+                socket._terminalPid = inheritedTerminalPid;
             }
+            // Replacing the selected connection keeps the user's logical choice.
+            const replacesSelection = previous !== undefined && activeSession === previous;
+            let activation: Promise<void> = replacesSelection
+                ? activateSession(session)
+                : Promise.resolve();
+            // The lookup below can take seconds; observe a rejection now and
+            // still surface it when the activation is awaited.
+            activation.catch(() => undefined);
+            const isCurrentAttachment = () =>
+                sessions.get(sessionId) === session &&
+                session.socket === socket &&
+                socket._sessionId === sessionId &&
+                isLiveSessionSocket(socket) &&
+                !pendingAttachment.controller.signal.aborted;
+            // Start the lookup before notifying listeners, so its ownership snapshot
+            // detects a terminal a listener binds explicitly.
+            const discovery =
+                autoActivate && rPid && isLocalHost(host)
+                    ? findLocalTerminal(rPid, pendingAttachment.controller.signal).catch(
+                          (error: unknown) => {
+                              console.error(
+                                  `[startSessionWatcher] terminal lookup for session ${sessionId} failed`,
+                                  error,
+                              );
+                              return undefined;
+                          },
+                      )
+                    : Promise.resolve(undefined);
+            const connected = createSessionReference(session);
+            if (connected) {
+                changes.push(Object.freeze({ kind: 'connected', session: connected }));
+            }
+            enqueueSessionConnectionChanges(changes);
+            purgeAddinPickerItems();
+
+            let candidate: NativeTerminalCandidate | undefined;
+            try {
+                candidate = await discovery;
+            } finally {
+                if (pendingSessionAttachments.get(sessionId) === pendingAttachment) {
+                    pendingSessionAttachments.delete(sessionId);
+                }
+            }
+            if (!isCurrentAttachment()) {
+                lookupDone();
+                await activation;
+                return;
+            }
+            const native = candidate?.isCurrent() ? candidate : undefined;
+            if (native && terminalRegistry.attachNative(native.terminal, session)) {
+                socket._terminalPid = Number(native.pid);
+            }
+            const terminalPid =
+                terminalRegistry.forSession(session)?.kind === 'native'
+                    ? socket._terminalPid
+                    : undefined;
 
             const canUseLegacyUiEffects =
                 autoActivate &&
                 selectionRevision === sessionSelectionRevision &&
                 selectedTerminal === window.activeTerminal;
-            let activation: Promise<void> = Promise.resolve();
-            if (previous && activeSession === previous) {
-                activation = activateSession(session);
-            } else if (autoActivate) {
+            if (!replacesSelection && autoActivate) {
                 activation = activateAttachedSession(
                     session,
                     previous,
@@ -3969,19 +3994,14 @@ async function handleNotification(message: Record<string, unknown>, socket: IpcS
                     selectedTerminal,
                 );
             }
-            // Capture after the synchronous activation decision but before notifying
-            // listeners, so a reentrant user/listener selection cancels stale effects.
+            // Capture after the synchronous activation decision, so a later
+            // user or listener selection cancels stale effects.
             const committedSelectionRevision = sessionSelectionRevision;
-            const connected = createSessionReference(session);
-            if (connected) {
-                changes.push(Object.freeze({ kind: 'connected', session: connected }));
-            }
-            enqueueSessionConnectionChanges(changes);
 
             console.info(
                 `[startSessionWatcher] attach session ${sessionId} (${host || 'unknown'}:${rPid || 'unknown'}), terminal PID: ${terminalPid ?? 'unassociated'}`,
             );
-            purgeAddinPickerItems();
+            lookupDone();
             await activation;
             const mayApplyUiEffects = () =>
                 activeSession === session ||
