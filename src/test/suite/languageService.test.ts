@@ -119,6 +119,126 @@ suite('Language service startup lifecycle', () => {
         sinon.assert.notCalled(stop);
     });
 
+    test('closing an input while its server starts stops the server once it is registered', async () => {
+        const opened: ((document: vscode.TextDocument) => unknown)[] = [];
+        const closed: ((document: vscode.TextDocument) => unknown)[] = [];
+        const listen =
+            (listeners: ((document: vscode.TextDocument) => unknown)[]) =>
+            (listener: (document: vscode.TextDocument) => unknown) => {
+                listeners.push(listener);
+                return { dispose: () => {} };
+            };
+        sandbox.stub(vscode.workspace, 'onDidOpenTextDocument').callsFake(listen(opened));
+        sandbox.stub(vscode.workspace, 'onDidCloseTextDocument').callsFake(listen(closed));
+        sandbox.stub(vscode.workspace, 'textDocuments').value([]);
+        const globalStop = sandbox.stub().resolves();
+        const inputStop = sandbox.stub().resolves();
+        let finish!: (client: LanguageClient) => void;
+        const createClient = sandbox.stub(prototype, 'createClient');
+        createClient.onFirstCall().resolves({ stop: globalStop } as unknown as LanguageClient);
+        createClient.onSecondCall().returns(
+            new Promise((resolve) => {
+                finish = resolve;
+            }),
+        );
+        const service = new LanguageService();
+        const state = service as unknown as {
+            clients: Map<string, LanguageClient>;
+            clientUpdates: Map<string, Promise<void>>;
+        };
+        const until = async (predicate: () => boolean) => {
+            const deadline = Date.now() + 5000;
+            while (!predicate()) {
+                assert.ok(Date.now() < deadline, 'Timed out waiting for the language service');
+                await new Promise((resolve) => setTimeout(resolve, 5));
+            }
+        };
+        await until(() => opened.length === 1 && closed.length === 1);
+        const input = {
+            // A space makes the encoded and unencoded forms of the URI differ.
+            uri: vscode.Uri.parse('vscode-interactive-input:/Interactive%20Input-1'),
+            languageId: 'r',
+            isClosed: false,
+        } as unknown as vscode.TextDocument;
+        let finished = false;
+        try {
+            opened[0](input);
+            await until(() => createClient.calledTwice);
+            (input as { isClosed: boolean }).isClosed = true;
+            closed[0](input);
+            finish({ stop: inputStop } as unknown as LanguageClient);
+            finished = true;
+            await until(() => state.clientUpdates.size === 0);
+            sinon.assert.calledOnce(inputStop);
+            assert.deepStrictEqual([...state.clients.keys()], ['global']);
+        } finally {
+            if (!finished) {
+                finish?.({ stop: inputStop } as unknown as LanguageClient);
+            }
+            await service.dispose();
+        }
+        sinon.assert.calledOnce(globalStop);
+        sinon.assert.calledOnce(inputStop);
+    });
+
+    test('changing the language of a file outside the workspace stops its server', async () => {
+        const opened: ((document: vscode.TextDocument) => unknown)[] = [];
+        const closed: ((document: vscode.TextDocument) => unknown)[] = [];
+        const listen =
+            (listeners: ((document: vscode.TextDocument) => unknown)[]) =>
+            (listener: (document: vscode.TextDocument) => unknown) => {
+                listeners.push(listener);
+                return { dispose: () => {} };
+            };
+        sandbox.stub(vscode.workspace, 'onDidOpenTextDocument').callsFake(listen(opened));
+        sandbox.stub(vscode.workspace, 'onDidCloseTextDocument').callsFake(listen(closed));
+        let documents: vscode.TextDocument[] = [];
+        sandbox.stub(vscode.workspace, 'textDocuments').get(() => documents);
+        // Start one server per file outside the workspace.
+        (vscode.workspace.getConfiguration as sinon.SinonStub).returns({
+            get: (key: string) => key === 'lsp.multiServer',
+        } as unknown as vscode.WorkspaceConfiguration);
+        sandbox.stub(vscode.workspace, 'getWorkspaceFolder').returns(undefined);
+        const stop = sandbox.stub().resolves();
+        sandbox
+            .stub(prototype, 'createClient')
+            .resolves({ stop, needsStop: () => false } as unknown as LanguageClient);
+        const service = new LanguageService();
+        const state = service as unknown as {
+            clients: Map<string, LanguageClient>;
+            clientUpdates: Map<string, Promise<void>>;
+        };
+        const until = async (predicate: () => boolean) => {
+            const deadline = Date.now() + 5000;
+            while (!predicate()) {
+                assert.ok(Date.now() < deadline, 'Timed out waiting for the language service');
+                await new Promise((resolve) => setTimeout(resolve, 5));
+            }
+        };
+        try {
+            await until(() => opened.length === 1 && closed.length === 1);
+            const uri = vscode.Uri.file(path.join(os.tmpdir(), 'outside-workspace.R'));
+            const r = { uri, languageId: 'r', isClosed: false } as unknown as vscode.TextDocument;
+            documents = [r];
+            opened[0](r);
+            await until(() => state.clients.size === 1 && state.clientUpdates.size === 0);
+            // VS Code closes the document and opens it again in the new language.
+            const text = {
+                uri,
+                languageId: 'plaintext',
+                isClosed: false,
+            } as unknown as vscode.TextDocument;
+            documents = [text];
+            closed[0](r);
+            opened[0](text);
+            await until(() => state.clientUpdates.size === 0);
+            sinon.assert.calledOnce(stop);
+            assert.strictEqual(state.clients.size, 0);
+        } finally {
+            await service.dispose();
+        }
+    });
+
     test('a rejected stop after R exits is logged', async () => {
         const child = Object.assign(new EventEmitter(), {
             stdout: new EventEmitter(),

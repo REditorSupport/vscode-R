@@ -407,7 +407,8 @@ export class LanguageService implements Disposable {
             );
 
             if (document.uri.scheme === 'vscode-interactive-input') {
-                const key = document.uri.toString();
+                // The same key as the queue and close use, which skip encoding.
+                const key = this.getKey(document.uri);
                 if (!this.checkClient(key)) {
                     const selector = [
                         {
@@ -522,36 +523,60 @@ export class LanguageService implements Disposable {
             }
         };
 
+        // Starting, restarting, and stopping a key's server run in order, so a
+        // document closed while its server starts stops that server once it is
+        // registered.
+        const enqueue = (key: string, task: () => void | Promise<void>): void => {
+            const update = (this.clientUpdates.get(key) ?? Promise.resolve())
+                .then(task)
+                // A failed task must not stop the tasks queued after it.
+                .catch((error: unknown) => {
+                    this.outputChannel.appendLine(
+                        `Failed to update language server: ${String(error)}`,
+                    );
+                });
+            this.clientUpdates.set(key, update);
+            void update.then(() => {
+                if (this.clientUpdates.get(key) === update) {
+                    this.clientUpdates.delete(key);
+                }
+            });
+        };
+
         const didCloseTextDocument = (document: TextDocument): void => {
-            if (document.uri.scheme === 'untitled') {
-                const result = workspace.textDocuments.find((doc) => doc.uri.scheme === 'untitled');
-                if (result) {
-                    // Stop the language server when all untitled documents are closed.
-                    return;
-                }
-            }
-
-            if (document.uri.scheme === 'vscode-notebook-cell') {
-                const result = workspace.textDocuments.find(
-                    (doc) =>
-                        doc.uri.scheme === document.uri.scheme &&
-                        doc.uri.fsPath === document.uri.fsPath,
-                );
-                if (result) {
-                    // Stop the language server when all cell documents are closed (notebook closed).
-                    return;
-                }
-            }
-
-            // Stop the language server when single file outside workspace is closed, or the above cases.
             const key = this.getKey(document.uri);
-            clientTargets.delete(key);
-            const client = this.clients.get(key);
-            if (client) {
+            enqueue(key, () => {
+                const client = this.clients.get(key);
+                if (!client) {
+                    // Most closes, such as of a file in a workspace folder,
+                    // have no server of their own.
+                    clientTargets.delete(key);
+                    return;
+                }
+                // Keep the server while another document uses it: a cell of the
+                // same notebook, another untitled document, or the same input
+                // or file opened again since it was closed, unless it reopened
+                // in a language without a server, such as after a change of
+                // language mode.
+                const inUse = workspace.textDocuments.some(
+                    (doc) =>
+                        this.getKey(doc.uri) === key &&
+                        (doc.uri.scheme === 'vscode-notebook-cell' ||
+                            doc.uri.scheme === 'untitled' ||
+                            doc.languageId === 'r' ||
+                            doc.languageId === 'rmd'),
+                );
+                if (inUse) {
+                    return;
+                }
+                // Otherwise stop it: the last cell of a notebook, the last
+                // untitled document, an input, or a file outside the workspace
+                // was closed. A workspace folder's server has another key.
+                clientTargets.delete(key);
                 this.clients.delete(key);
                 this.initSet.delete(key);
                 void this.stopClient(client);
-            }
+            });
         };
 
         const updateDocument = (document: TextDocument, restart = false): void => {
@@ -559,8 +584,8 @@ export class LanguageService implements Disposable {
             // A native input may already be R when interactive.open returns,
             // before its owner is bound. Serialize startup and rebinding so its
             // server uses the owner's R, library paths, and working directory.
-            const update = (this.clientUpdates.get(key) ?? Promise.resolve())
-                .then(async () => {
+            enqueue(key, async () => {
+                try {
                     if (this.disposed || document.isClosed) {
                         return;
                     }
@@ -579,17 +604,11 @@ export class LanguageService implements Disposable {
                     if (this.clients.has(key)) {
                         clientTargets.set(key, target);
                     }
-                })
-                .catch((error: unknown) => {
+                } catch (error) {
                     this.initSet.delete(key);
                     this.outputChannel.appendLine(
                         `Failed to start language server: ${String(error)}`,
                     );
-                });
-            this.clientUpdates.set(key, update);
-            void update.then(() => {
-                if (this.clientUpdates.get(key) === update) {
-                    this.clientUpdates.delete(key);
                 }
             });
         };
