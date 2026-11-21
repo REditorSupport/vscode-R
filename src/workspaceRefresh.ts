@@ -1,3 +1,12 @@
+export interface WorkspaceRefreshOptions {
+    /**
+     * Delays before retrying a failed read, one per retry. An owner whose
+     * readers never request a refresh uses these to recover by itself; by
+     * default a failed read waits for the next demand.
+     */
+    retryDelaysMs?: readonly number[];
+}
+
 /** One inspection in flight, with one pending invalidation for the owning session. */
 export class WorkspaceRefreshScheduler<T> {
     private dirty = true;
@@ -5,13 +14,18 @@ export class WorkspaceRefreshScheduler<T> {
     private timer?: NodeJS.Timeout;
     private running?: Promise<void>;
     private disposed = false;
+    private retries = 0;
+    private readonly retryDelaysMs: readonly number[];
 
     constructor(
         private readonly read: () => Promise<T | undefined>,
         private readonly publish: (value: T) => void,
         private readonly canRefresh: () => boolean,
         private readonly report: (error: unknown) => void = () => {},
-    ) {}
+        options: WorkspaceRefreshOptions = {},
+    ) {
+        this.retryDelaysMs = options.retryDelaysMs ?? [];
+    }
 
     invalidate(delayMs?: number): void {
         if (this.disposed) {
@@ -19,6 +33,7 @@ export class WorkspaceRefreshScheduler<T> {
         }
         this.dirty = true;
         this.revision++;
+        this.retries = 0;
         this.defer();
         if (delayMs !== undefined && this.canRefresh()) {
             this.timer = setTimeout(() => {
@@ -28,7 +43,7 @@ export class WorkspaceRefreshScheduler<T> {
         }
     }
 
-    /** Cancel a scheduled read, retaining its invalidation until there is demand. */
+    /** Cancel a scheduled read or retry, retaining its invalidation until there is demand. */
     defer(): void {
         clearTimeout(this.timer);
         this.timer = undefined;
@@ -62,6 +77,7 @@ export class WorkspaceRefreshScheduler<T> {
                             this.dirty = true;
                             return;
                         }
+                        this.retries = 0;
                         if (revision === this.revision) {
                             this.publish(value);
                         }
@@ -75,10 +91,31 @@ export class WorkspaceRefreshScheduler<T> {
             })
             .finally(() => {
                 this.running = undefined;
-                // Failed reads retain the invalidation, but a later caller or
-                // notification must request the retry instead of spinning here.
-                if (!retryOnDemand && !this.disposed && this.dirty && this.canRefresh()) {
-                    void this.ensure();
+                if (this.disposed || !this.dirty) {
+                    return;
+                }
+                if (!retryOnDemand) {
+                    if (this.canRefresh()) {
+                        void this.ensure();
+                    }
+                    return;
+                }
+                // Failed reads retain the invalidation. Retry only as often as
+                // configured instead of spinning here; after that, a later
+                // caller or notification must request the retry.
+                const delayMs = this.retryDelaysMs[this.retries];
+                if (delayMs !== undefined) {
+                    // Replace a read scheduled during the failed one.
+                    this.defer();
+                    this.timer = setTimeout(() => {
+                        this.timer = undefined;
+                        // A retry counts only when it can read; otherwise the
+                        // next demand, such as the end of an execution, reads.
+                        if (!this.disposed && this.dirty && this.canRefresh()) {
+                            this.retries++;
+                            void this.ensure();
+                        }
+                    }, delayMs);
                 }
             });
         return this.running;

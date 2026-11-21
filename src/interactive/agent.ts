@@ -109,6 +109,13 @@ export class SessionAgent {
                 this.backendReady &&
                 !this.current &&
                 this.manifest.capabilities.inspection !== false,
+            undefined,
+            // Unlike a terminal session's, the agent's workspace is not
+            // refreshed when completions or documents read it, only after
+            // executions, on notifications, and on a manual refresh. Retry an
+            // inspection that failed, such as by timing out on a busy machine,
+            // so the cache does not stay stale until one of those.
+            { retryDelaysMs: [500, 2000, 5000] },
         );
         this.manifest = {
             protocol: AGENT_PROTOCOL,

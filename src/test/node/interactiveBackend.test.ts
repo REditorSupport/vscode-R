@@ -309,6 +309,25 @@ suite('Interactive backend contract', function () {
         assert.strictEqual(events.filter((event) => event.type === 'workspace').length, published);
     });
 
+    test('a workspace inspection that fails after an execution is retried without another demand', async () => {
+        const id = await submit();
+        backend.emit({ type: 'started', executionId: id });
+        let calls = 0;
+        backend.inspectResult = () =>
+            ++calls === 1
+                ? Promise.reject(new Error('Inspection timeout'))
+                : Promise.resolve({ revision: 7, globalenv: { after: {} } });
+        backend.emit({ type: 'finished', executionId: id, state: 'success' });
+        await until(() =>
+            events.some((event) => event.type === 'workspace' && event.data.revision === 7),
+        );
+        assert.strictEqual(calls, 2);
+        assert.deepStrictEqual((await client.snapshot()).workspace, {
+            revision: 7,
+            globalenv: { after: {} },
+        });
+    });
+
     test('handles completion before transport acknowledgement and deduplicates submissions', async () => {
         let acknowledge!: () => void;
         backend.dispatchResult = () =>
