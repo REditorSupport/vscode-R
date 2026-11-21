@@ -376,6 +376,11 @@ suite('External Terminal Integration', () => {
             os.hostname(),
         );
         try {
+            // The pending connection is already registered, so wait for the
+            // replacement before reading the reference.
+            await waitForValue(() =>
+                currentSocket._sessionId === 'same-id-discovery-replacement' ? true : undefined,
+            );
             const reference = await waitForValue(() =>
                 session.getSessionReference('same-id-discovery-replacement'),
             );

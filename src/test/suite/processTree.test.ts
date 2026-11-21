@@ -58,7 +58,8 @@ suite('Process ancestry', () => {
         assert.deepStrictEqual(await getProcessAncestors(30), []);
         run.callsArgWith(3, new Error('process query timed out'), '', '');
         sinon.stub(console, 'warn');
-        assert.deepStrictEqual(await getProcessAncestors(30), []);
+        // A failed query is told apart from a process without ancestors.
+        assert.strictEqual(await getProcessAncestors(30), undefined);
     });
 
     test('invalid PIDs do not launch a process query', async () => {
@@ -79,7 +80,7 @@ suite('Process ancestry', () => {
         try {
             await once(child, 'spawn');
             assert.ok(child.pid);
-            assert.strictEqual((await getProcessAncestors(child.pid))[0], process.pid);
+            assert.strictEqual((await getProcessAncestors(child.pid))?.[0], process.pid);
         } finally {
             const exited = once(child, 'exit');
             child.kill();

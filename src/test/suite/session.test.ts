@@ -1470,6 +1470,7 @@ suite('Session Communication', () => {
                         })}\n`,
                     );
                     await waitFor(() => socket._sessionId === id);
+                    await socket._terminalLookup;
                     if (terminalPid === 46241 && order[0] === 46240) {
                         assert.strictEqual(session.activeSession?.sessionId, 'reconnected-46240');
                     }

@@ -82,7 +82,9 @@ export type InspectionFailure =
     | 'interrupted'
     /** The handler is not published, or has been revoked. */
     | 'unpublished'
-    /** arf refused the call for another reason, such as a full queue. */
+    /** arf's queue of handler calls was full, so the request was not queued. */
+    | 'queue_full'
+    /** arf refused the call for another reason. */
     | 'rejected'
     /** More requests are waiting than the client allows. */
     | 'overloaded'
@@ -159,6 +161,10 @@ export function inspectionFailure(error: unknown, method: string, limits: CallLi
                 `R inspection '${method}' is not published by this arf session, or its handlers were revoked`,
             );
         case ARF_HANDLER_QUEUE_FULL:
+            return new InspectionError(
+                'queue_full',
+                `arf's queue was full, so R inspection '${method}' was not queued`,
+            );
         default:
             return new InspectionError(
                 'rejected',

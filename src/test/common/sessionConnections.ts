@@ -46,11 +46,13 @@ export class SessionConnections {
     ): Promise<session.Session['socket']> {
         const socket = await this.startAttach(id, pid, host, metadata);
         await waitForValue(() => (socket._sessionId === id ? socket : undefined));
+        // Also wait for terminal association and the activation decision.
+        await socket._terminalLookup;
         assert.strictEqual(socket.destroyed, false);
         return socket;
     }
 
-    /** Start a handshake without waiting for asynchronous terminal discovery. */
+    /** Start a handshake without waiting for registration or terminal discovery. */
     async startAttach(
         id: string,
         pid: number,

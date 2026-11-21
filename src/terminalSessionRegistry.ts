@@ -78,6 +78,11 @@ export class TerminalSessionRegistry<Session, Terminal extends object> {
         ) {
             return false;
         }
+        // Keep the association, which a queued send checks before each line.
+        const current = this.associationFor(terminal);
+        if (current?.kind === 'native' && current.session === session && this.isCurrent(current)) {
+            return true;
+        }
         this.set(terminal, session, 'native');
         return true;
     }
