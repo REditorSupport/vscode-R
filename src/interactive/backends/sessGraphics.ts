@@ -28,7 +28,6 @@ export class SessGraphics {
     private plotTimer?: NodeJS.Timeout;
     constructor(
         private config: {
-            rPath: string;
             resources: string;
             plotBackend: string;
             historyLimit: number;
@@ -65,34 +64,52 @@ export class SessGraphics {
         }
         this.metricPending.clear();
     }
-    async start(): Promise<void> {
+    async start(
+        getRuntime: () => Promise<{ rPath: string; libraryPaths: string[] }>,
+    ): Promise<void> {
         if (this.config.plotBackend === 'standard') {
             return;
         }
         try {
+            const { rPath, libraryPaths } = await getRuntime();
+            if (this.stopped) {
+                return;
+            }
             const probe = await run(
-                this.config.rPath,
+                rPath,
                 [
                     '--vanilla',
                     '--slave',
                     '-e',
-                    'cat(requireNamespace("jgd",quietly=TRUE) && requireNamespace("systemfonts",quietly=TRUE))',
+                    '.libPaths(commandArgs(TRUE), include.site=FALSE); ' +
+                        'pkgs <- c("jgd", "systemfonts", "jsonlite"); ' +
+                        'cat(pkgs[!vapply(pkgs, requireNamespace, logical(1), quietly=TRUE)], sep=", ")',
+                    '--args',
+                    ...libraryPaths,
                 ],
                 { timeout: 15000 },
             );
-            if (probe.stdout.trim() !== 'TRUE') {
+            if (this.stopped) {
+                return;
+            }
+            const missing = probe.stdout.trim();
+            if (missing) {
                 if (this.config.plotBackend === 'jgd') {
-                    throw new Error('JGD requires the jgd and systemfonts R packages');
+                    throw new Error(
+                        `JGD could not load the following R packages: ${missing}. Install them in a library available to this R session.`,
+                    );
                 }
                 return;
             }
             this.metrics = spawn(
-                this.config.rPath,
+                rPath,
                 [
                     '--vanilla',
                     '--slave',
                     '-f',
                     path.join(this.config.resources, 'interactive-metrics.R'),
+                    '--args',
+                    ...libraryPaths,
                 ],
                 { stdio: ['pipe', 'pipe', 'pipe'] },
             );

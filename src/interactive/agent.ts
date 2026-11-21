@@ -161,6 +161,16 @@ export class SessionAgent {
             Object.assign(this.manifest.capabilities, this.backend.capabilities);
             this.saveManifest();
         } catch (error) {
+            if (!this.stopped) {
+                // The editor may already have opened the control endpoint. Save the
+                // cause before closing its socket so it can diagnose the disconnect.
+                this.manifest.startupError = error instanceof Error ? error.message : String(error);
+                try {
+                    this.saveManifest();
+                } catch {
+                    // A storage failure must still release the backend and report the original error.
+                }
+            }
             await this.close();
             throw error;
         }

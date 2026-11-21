@@ -1,3 +1,4 @@
+import { setTimeout as delay } from 'timers/promises';
 import {
     ARF_METHOD_NOT_FOUND,
     ARF_TIMEOUT,
@@ -69,7 +70,7 @@ export class Arf {
      * `expose` is the R expression that arf evaluates, after the R profiles,
      * to publish handlers. It applies only when this adapter starts arf.
      */
-    async start(bootstrap: string, env: NodeJS.ProcessEnv, expose?: string): Promise<void> {
+    async start(env: NodeJS.ProcessEnv, expose?: string): Promise<void> {
         if (!this.process.adopted) {
             const output = new Map(
                 ['stdout', 'stderr'].map((channel) => [
@@ -159,12 +160,52 @@ export class Arf {
                 policy: metadata.ipc_policy,
             },
         });
+    }
+    /** Read the running R installation and its current library order, including changes before adoption. */
+    async rEnvironment(): Promise<{ libraryPaths: string[]; rHome?: string }> {
+        const deadline = Date.now() + 30000;
+        for (;;) {
+            const timeout = Math.max(1, Math.min(15000, deadline - Date.now()));
+            const session = object(
+                await arfRequest(this.endpoint!, 'session', {}, timeout, this.abort.signal),
+            );
+            const libraries = session.r && object(session.r).lib_paths;
+            if (
+                Array.isArray(libraries) &&
+                libraries.length &&
+                libraries.every((p: unknown): p is string => typeof p === 'string' && p.length > 0)
+            ) {
+                return {
+                    libraryPaths: libraries,
+                    rHome: typeof session.r_home === 'string' ? session.r_home : undefined,
+                };
+            }
+            const reason =
+                typeof session.r_unavailable_reason === 'string'
+                    ? session.r_unavailable_reason
+                    : 'arf returned no library paths';
+            // An adopted R may still be evaluating the user's previous command.
+            // arf then returns a successful response containing only its own metadata.
+            if (
+                !this.process.adopted ||
+                session.r !== null ||
+                !/busy evaluating|pending|timed out collecting R session information/i.test(
+                    reason,
+                ) ||
+                Date.now() + 250 >= deadline
+            ) {
+                throw new Error(`Could not read R library paths for JGD: ${reason}`);
+            }
+            await delay(250, undefined, { signal: this.abort.signal });
+        }
+    }
+    async bootstrap(code: string): Promise<void> {
         // Visible evaluation respects arf's advertised IPC policy, including bootstrap.
         const result = object(
             await arfRequest(
-                this.endpoint,
+                this.endpoint!,
                 'evaluate',
-                { code: bootstrap, visible: true },
+                { code, visible: true },
                 30000,
                 this.abort.signal,
             ),

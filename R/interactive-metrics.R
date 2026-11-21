@@ -1,4 +1,8 @@
 # This independent process supplies metrics even while the analysis R is busy.
+libraries <- commandArgs(trailingOnly = TRUE)
+if (length(libraries)) {
+  .libPaths(libraries, include.site = FALSE)
+}
 if (!requireNamespace("systemfonts", quietly = TRUE)) {
   stop("systemfonts is required for JGD metrics")
 }

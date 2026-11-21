@@ -8,6 +8,7 @@ import * as net from 'net';
 import { localEndpoint } from '../../interactive/transport';
 import { SessionAgent } from '../../interactive/agent';
 import { AgentClient } from '../../interactive/client';
+import { readSessionManifest } from '../../interactive/launcher';
 import { AgentConfig, ExecutionRecord, SessionEvent, Submission } from '../../interactive/protocol';
 import { BackendEvent, ClientReply, SessionBackend } from '../../interactive/backend';
 import {
@@ -425,12 +426,29 @@ suite('Interactive backend contract', function () {
         assert.strictEqual(backend.disposals, 1);
         stale({ type: 'finished', executionId: id, state: 'success' });
         const failing = new FakeBackend();
-        failing.startResult = () => Promise.reject(new Error('Partial start'));
-        const another = new SessionAgent(
-            { ...config, storage: path.join(root, 'failed') },
-            () => failing,
+        let fail: (() => void) | undefined;
+        failing.startResult = () =>
+            new Promise((_, reject) => {
+                fail = () => reject(new Error('Partial start'));
+            });
+        config = { ...config, storage: path.join(root, 'failed') };
+        agent = new SessionAgent(config, () => failing);
+        const startup = assert.rejects(agent.start(), /Partial start/);
+        await until(() => !!fail);
+        const initial = readSessionManifest(config.storage, config.id, config.generation);
+        assert.ok(initial && !initial.startupError);
+        client.close();
+        client = new AgentClient(initial);
+        await client.connect();
+        const disconnected = new Promise<void>((resolve) => client.once('disconnect', resolve));
+        fail!();
+        await disconnected;
+        assert.strictEqual(
+            readSessionManifest(config.storage, config.id, config.generation)?.startupError,
+            'Partial start',
         );
-        await assert.rejects(another.start(), /Partial start/);
+        assert.strictEqual(readSessionManifest(config.storage, config.id, 'other'), undefined);
+        await startup;
         assert.strictEqual(failing.disposals, 1);
     });
     test('disposing an arf adapter cancels its pending HTTP request without another evaluation', async () => {
@@ -498,7 +516,8 @@ suite('Interactive backend contract', function () {
             () => undefined,
         );
         try {
-            await adapter.start('bootstrap', {});
+            await adapter.start({});
+            await adapter.bootstrap('bootstrap');
             const pending = adapter.dispatch({ id: randomUUID(), code: 'side_effect()' });
             const rejected = assert.rejects(pending, /aborted/i);
             await received;
@@ -526,17 +545,25 @@ suite('Interactive backend contract', function () {
      * An arf that serves attach and handler calls on the attach connection and
      * evaluate over HTTP, as the real one does on one endpoint.
      */
-    async function fakeAttachedArf(handlerApi: Record<string, unknown>): Promise<{
+    async function fakeAttachedArf(
+        handlerApi: Record<string, unknown>,
+        sessionMetadata?: () => unknown,
+    ): Promise<{
         endpoint: string;
         calls: Record<string, unknown>[];
         close(): Promise<void>;
     }> {
         const calls: Record<string, unknown>[] = [];
         const http = createServer((request, response) => {
-            request.resume();
-            request.on('end', () =>
-                response.end(JSON.stringify({ jsonrpc: '2.0', id: 1, result: { status: 'ok' } })),
-            );
+            let body = '';
+            request.on('data', (chunk: Buffer) => {
+                body += chunk.toString();
+            });
+            request.on('end', () => {
+                const { id, method } = JSON.parse(body) as { id: number; method: string };
+                const result = method === 'session' ? sessionMetadata?.() : { status: 'ok' };
+                response.end(JSON.stringify({ jsonrpc: '2.0', id, result }));
+            });
         });
         const sockets = new Set<net.Socket>();
         const listener = net.createServer((socket) => {
@@ -613,12 +640,15 @@ suite('Interactive backend contract', function () {
         };
     }
 
-    async function adopt(handlerApi: Record<string, unknown>): Promise<{
+    async function adopt(
+        handlerApi: Record<string, unknown>,
+        sessionMetadata?: () => unknown,
+    ): Promise<{
         adapter: Arf;
         calls: Record<string, unknown>[];
         close(): Promise<void>;
     }> {
-        const arf = await fakeAttachedArf(handlerApi);
+        const arf = await fakeAttachedArf(handlerApi, sessionMetadata);
         const adapter = new Arf(
             'unused',
             root,
@@ -628,7 +658,8 @@ suite('Interactive backend contract', function () {
             'token',
             () => undefined,
         );
-        await adapter.start('bootstrap', {});
+        await adapter.start({});
+        await adapter.bootstrap('bootstrap');
         return {
             adapter,
             calls: arf.calls,
@@ -638,6 +669,37 @@ suite('Interactive backend contract', function () {
             },
         };
     }
+
+    test('reads the active R environment after an adopted arf becomes available', async () => {
+        let requests = 0;
+        const session = await adopt({}, () =>
+            ++requests === 1
+                ? { r: null, r_unavailable_reason: 'R is busy evaluating another expression' }
+                : { r_home: '/target', r: { lib_paths: ['/project', '/personal'] } },
+        );
+        try {
+            assert.deepStrictEqual(await session.adapter.rEnvironment(), {
+                rHome: '/target',
+                libraryPaths: ['/project', '/personal'],
+            });
+            assert.strictEqual(requests, 2);
+        } finally {
+            await session.close();
+        }
+    });
+
+    test('rejects malformed R library metadata without retrying', async () => {
+        let requests = 0;
+        const session = await adopt({}, () => ({
+            r: { lib_paths: ++requests === 1 ? [42] : ['/unexpected'] },
+        }));
+        try {
+            await assert.rejects(session.adapter.rEnvironment(), /library paths/i);
+            assert.strictEqual(requests, 1);
+        } finally {
+            await session.close();
+        }
+    });
 
     test('an adopted arf with every selector locked runs inspection as a handler call', async () => {
         const session = await adopt({ state: 'locked', handlers: [...INSPECTION_SELECTORS] });
@@ -707,7 +769,7 @@ suite('Interactive backend contract', function () {
         );
         try {
             await assert.rejects(
-                adapter.start('bootstrap', {}),
+                adapter.start({}),
                 /did not publish the R Interactive inspection handlers/,
             );
         } finally {

@@ -22,6 +22,18 @@ import { rString } from './rCode';
 import { exposeInspectionExpression } from './arfInspection';
 
 const run = promisify(execFile);
+
+/** Vanilla support libraries for the bridge and graphics, outside the user's project. */
+async function hostLibraries(rPath: string): Promise<{ home: string; libraryPaths: string[] }> {
+    const { stdout } = await run(
+        rPath,
+        ['--vanilla', '--slave', '-e', 'cat(R.home(), .libPaths(), sep="\\n")'],
+        { timeout: 15000 },
+    );
+    const [home, ...libraryPaths] = stdout.trimEnd().split(/\r?\n/);
+    return { home, libraryPaths };
+}
+
 export interface SessOptions {
     frontend: 'r' | 'arf';
     ownership: 'managed' | 'adopted';
@@ -146,20 +158,38 @@ export class SessBackend implements SessionBackend {
         return (this.startup ??= this.startRuntime());
     }
     private async startRuntime(): Promise<void> {
-        const libraries = await run(
-            this.options.rPath,
-            ['--vanilla', '--slave', '-e', 'cat(.libPaths(), sep="\\n")'],
-            { timeout: 15000 },
-        );
+        let rPath = this.options.rPath;
+        let host = await hostLibraries(rPath);
         if (this.closed) {
             throw new Error('Backend disposed during startup');
         }
-        const support = libraries.stdout.trim().split(/\r?\n/).filter(Boolean);
         await this.bridge.start();
         if (this.closed) {
             throw new Error('Backend disposed during startup');
         }
-        await this.graphics.start();
+        // arf runs the project's startup files once. The separate graphics processes
+        // can then use its library order without sourcing those files themselves.
+        await this.frontend.start(
+            { ...process.env, SESS_ENDPOINT: this.bridge.endpoint, JGD_SOCKET: '' },
+            exposeInspectionExpression(this.options.library),
+        );
+        await this.graphics.start(async () => {
+            const { libraryPaths, rHome } = await this.frontend.rEnvironment();
+            // An adopted or project-selected arf may embed a different R installation.
+            // Keep the configured executable (including wrappers) when both use the same R.
+            if (
+                rHome &&
+                path.isAbsolute(rHome) &&
+                path.relative(fs.realpathSync.native(host.home), fs.realpathSync.native(rHome))
+            ) {
+                rPath = path.join(rHome, 'bin', process.platform === 'win32' ? 'R.exe' : 'R');
+                host = await hostLibraries(rPath);
+            }
+            return {
+                rPath,
+                libraryPaths: [...libraryPaths, ...host.libraryPaths, this.options.library],
+            };
+        });
         if (this.closed) {
             this.graphics.dispose();
             throw new Error('Backend disposed during startup');
@@ -175,19 +205,8 @@ export class SessBackend implements SessionBackend {
         });
         const code =
             `base::source(${rString(path.join(this.options.resources, 'interactive-worker.R'))}, local=base::new.env(parent=base::baseenv()))$value(` +
-            `${rString(this.options.library)}, ${rString(bootstrap)}, c(${support.map(rString).join(',')}), managed=${this.ownership === 'managed' ? 'TRUE' : 'FALSE'})`;
-        // arf evaluates this after the R profiles and before the bootstrap loads
-        // sess, so the published handlers find sess when they are called.
-        const expose = exposeInspectionExpression(this.options.library);
-        await this.frontend.start(
-            code,
-            {
-                ...process.env,
-                SESS_ENDPOINT: this.bridge.endpoint,
-                JGD_SOCKET: this.graphics.endpoint,
-            },
-            expose,
-        );
+            `${rString(this.options.library)}, ${rString(bootstrap)}, c(${host.libraryPaths.map(rString).join(',')}), managed=${this.ownership === 'managed' ? 'TRUE' : 'FALSE'})`;
+        await this.frontend.bootstrap(code);
     }
     async dispatch(submission: Submission): Promise<void> {
         await this.startup;

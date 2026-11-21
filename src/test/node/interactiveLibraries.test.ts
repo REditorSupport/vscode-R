@@ -4,8 +4,11 @@ import * as os from 'os';
 import * as path from 'path';
 import * as net from 'net';
 import { randomUUID } from 'crypto';
+import { EventEmitter, once } from 'events';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
+import { SessBackend } from '../../interactive/backends/sessBackend';
+import { BackendEvent } from '../../interactive/backend';
 import { SessionAgent } from '../../interactive/agentMain';
 import { rString } from '../../interactive/backends/rCode';
 import { AgentClient } from '../../interactive/client';
@@ -150,6 +153,165 @@ quit(save="no")
             await new Promise<void>((resolve) => server.close(() => resolve()));
             fs.rmSync(socketRoot, { recursive: true, force: true });
             fs.rmSync(path.join(userLibrary, 'vscrlibprobe'), { recursive: true, force: true });
+        }
+    });
+
+    test('uses the session startup library for JGD plots and font metrics', async function () {
+        const jgd = await run('R', [
+            '--vanilla',
+            '--slave',
+            '-e',
+            'cat(find.package("jgd", quiet=TRUE))',
+        ]);
+        if (!jgd.stdout.trim()) {
+            if (process.env.VSCR_REQUIRE_PLOT_TESTS === '1') {
+                assert.fail('Live plot tests require the jgd R package');
+            }
+            this.skip();
+        }
+        const personal = path.join(root, 'personal plots');
+        const shadow = path.join(root, 'shadow');
+        fs.mkdirSync(personal);
+        fs.cpSync(jgd.stdout.trim(), path.join(personal, 'jgd'), {
+            recursive: true,
+            dereference: true,
+        });
+        // These incomplete packages mask any global installations in a vanilla R process.
+        for (const name of ['jgd', 'systemfonts']) {
+            fs.mkdirSync(path.join(shadow, name), { recursive: true });
+            fs.writeFileSync(
+                path.join(shadow, name, 'DESCRIPTION'),
+                `Package: ${name}\nVersion: 0.0.1\n`,
+            );
+        }
+        const measured = path.join(root, 'measured.txt');
+        const fonts = makePackage('systemfonts');
+        fs.writeFileSync(path.join(fonts, 'NAMESPACE'), 'export(string_width, font_info)\n');
+        fs.writeFileSync(
+            path.join(fonts, 'R', 'answer.R'),
+            `
+string_width <- function(string, ...) {
+    cat(string, "\\n", file=${rString(measured)}, append=TRUE)
+    8 * nchar(string)
+}
+font_info <- function(...) list(max_ascend=9, max_descend=-2)
+`,
+        );
+        await run('R', ['CMD', 'INSTALL', `--library=${personal}`, fonts]);
+        const previous = {
+            R_LIBS: process.env.R_LIBS,
+            R_ENVIRON_USER: process.env.R_ENVIRON_USER,
+            R_PROFILE_USER: process.env.R_PROFILE_USER,
+        };
+        process.env.R_LIBS = [shadow, previous.R_LIBS].filter(Boolean).join(path.delimiter);
+        delete process.env.R_ENVIRON_USER;
+        delete process.env.R_PROFILE_USER;
+        try {
+            for (const [plotBackend, startupFile] of [
+                ['jgd', '.Renviron'],
+                ['auto', '.Rprofile'],
+                ['jgd', ''],
+                ['auto', ''],
+            ] as const) {
+                const title = `Library plot ${plotBackend} ${startupFile || 'missing'}`;
+                const directory = path.join(root, title);
+                fs.mkdirSync(directory);
+                const profileRuns = path.join(directory, 'profiles.txt');
+                fs.writeFileSync(
+                    path.join(directory, '.Renviron'),
+                    startupFile === '.Renviron'
+                        ? `R_LIBS="${personal.split(path.sep).join('/')}${path.delimiter}\${R_LIBS}"\n`
+                        : '',
+                );
+                fs.writeFileSync(
+                    path.join(directory, '.Rprofile'),
+                    `cat("startup\\n", file=${rString(profileRuns)}, append=TRUE)\n` +
+                        (startupFile === '.Rprofile'
+                            ? `.libPaths(c(${rString(personal)}, .libPaths()))\n`
+                            : ''),
+                );
+                const backend = new SessBackend(
+                    {
+                        id: randomUUID(),
+                        generation: randomUUID(),
+                        label: title,
+                        directory,
+                        storage: root,
+                        provider: 'arf',
+                        supervision: 'test',
+                        historyLimit: 10,
+                        maxOutputBytes: 1048576,
+                        maxJournalBytes: 16777216,
+                    },
+                    {
+                        frontend: 'arf',
+                        ownership: 'managed',
+                        rPath: 'R',
+                        arfPath: process.env.ARF_PATH ?? 'arf',
+                        library: runtime.library,
+                        resources: runtime.resources,
+                        plotBackend,
+                    },
+                );
+                const events: BackendEvent[] = [];
+                const completion = new EventEmitter();
+                backend.onEvent((event) => {
+                    events.push(event);
+                    if (event.type === 'finished') {
+                        completion.emit('finished', event.state);
+                    }
+                });
+                try {
+                    if (!startupFile && plotBackend === 'jgd') {
+                        await assert.rejects(backend.start(), /jgd, systemfonts\./);
+                        continue;
+                    }
+                    await backend.start();
+                    assert.strictEqual(backend.capabilities.jgd, !!startupFile, title);
+                    const [state] = await Promise.all([
+                        once(completion, 'finished', { signal: AbortSignal.timeout(20000) }),
+                        backend.dispatch({
+                            id: randomUUID(),
+                            code: `plot(1:3, main=${rString(title)}); strwidth(${rString(title)})`,
+                        }),
+                    ]);
+                    assert.deepStrictEqual(state, ['success']);
+                    if (!startupFile) {
+                        assert.ok(
+                            events.some((e) => e.type === 'display' && e.data.kind === 'image'),
+                            'Expected a static plot when JGD is unavailable',
+                        );
+                        continue;
+                    }
+                    assert.ok(
+                        events.some(
+                            (e) =>
+                                e.type === 'display' &&
+                                e.data.kind === 'plot' &&
+                                String(e.data.svg).includes(title),
+                        ),
+                        'Expected a labelled JGD SVG',
+                    );
+                    assert.ok(
+                        fs.readFileSync(measured, 'utf8').includes(title),
+                        'Expected project font metrics',
+                    );
+                    assert.deepStrictEqual(
+                        fs.readFileSync(profileRuns, 'utf8').trim().split(/\r?\n/),
+                        ['startup'],
+                    );
+                } finally {
+                    await backend.dispose();
+                }
+            }
+        } finally {
+            for (const [key, value] of Object.entries(previous)) {
+                if (value === undefined) {
+                    delete process.env[key];
+                } else {
+                    process.env[key] = value;
+                }
+            }
         }
     });
 
