@@ -104,9 +104,9 @@ export class WorkspaceRefreshScheduler<T> {
                 // configured instead of spinning here; after that, a later
                 // caller or notification must request the retry.
                 const delayMs = this.retryDelaysMs[this.retries];
-                if (delayMs !== undefined) {
-                    // Replace a read scheduled during the failed one.
-                    this.defer();
+                // A read scheduled by an invalidation during the failed one
+                // comes sooner and does not use up a retry.
+                if (delayMs !== undefined && this.timer === undefined) {
                     this.timer = setTimeout(() => {
                         this.timer = undefined;
                         // A retry counts only when it can read; otherwise the

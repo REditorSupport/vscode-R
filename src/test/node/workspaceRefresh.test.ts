@@ -282,4 +282,33 @@ suite('Workspace refresh scheduling', () => {
         assert.strictEqual(calls, 3, 'The skipped retry is still available');
         scheduler.dispose();
     });
+
+    test('a read scheduled during a failed read keeps its delay instead of waiting for a retry', async () => {
+        let fail!: (error: Error) => void;
+        let calls = 0;
+        const published: number[] = [];
+        const scheduler = new WorkspaceRefreshScheduler<number>(
+            () =>
+                ++calls === 1
+                    ? new Promise<number>((_resolve, reject) => {
+                          fail = reject;
+                      })
+                    : Promise.resolve(2),
+            (value) => published.push(value),
+            () => true,
+            undefined,
+            { retryDelaysMs: [5000] },
+        );
+        const running = scheduler.ensure();
+        await Promise.resolve();
+        scheduler.invalidate(5);
+        fail(new Error('timeout'));
+        await running;
+        const deadline = Date.now() + 1000;
+        while (!published.length && Date.now() < deadline) {
+            await new Promise((resolve) => setTimeout(resolve, 5));
+        }
+        assert.deepStrictEqual(published, [2]);
+        scheduler.dispose();
+    });
 });
