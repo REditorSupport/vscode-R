@@ -45,7 +45,8 @@ suite('Failure diagnostics', () => {
     });
 
     test('writes the call timeline and attachments to the report file, then calls that finish after close', async () => {
-        const reportFile = path.join(directory, 'nested', 'report.log');
+        // A backslash, as in Windows paths, must survive the JSON console report.
+        const reportFile = path.join(directory, 'nested\\dir', 'report.log');
         const diagnostics = new FailureDiagnostics('test', () => ({ state: 1 }), {
             reportFile,
             maxCalls: 2,
@@ -87,7 +88,13 @@ suite('Failure diagnostics', () => {
             { kind: 'cleanup', data: { stopped: true } },
         );
         sinon.assert.calledOnce(consoleError);
-        assert.ok(String(consoleError.firstCall.args[0]).includes(reportFile));
+        const consoleReport = String(consoleError.firstCall.args[0]);
+        const prefix = '[test diagnostics] ';
+        assert.ok(consoleReport.startsWith(prefix));
+        assert.strictEqual(
+            (JSON.parse(consoleReport.slice(prefix.length)) as { reportFile?: string }).reportFile,
+            reportFile,
+        );
     });
 
     test('a passing test writes nothing, even when a traced call finishes after close', async () => {
