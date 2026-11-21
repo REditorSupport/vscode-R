@@ -245,8 +245,94 @@ suite('Interactive VS Code integration', function () {
     let workspaceFocusDiagnostics: FailureDiagnostics | undefined;
     let restoreWorkspaceFocusTracing: (() => void) | undefined;
     let stopWorkspaceFocusSampling: ((failed: boolean) => Promise<void>) | undefined;
+    let tabsBeforeTest: Set<vscode.Tab> | undefined;
+    let clientsBeforeTest: Set<LanguageClient> | undefined;
+    const allTabs = () => vscode.window.tabGroups.all.flatMap((group) => group.tabs);
+    // Interactive window tabs have no public input class; like notebook and
+    // text tabs, their input has the document's uri, and an Interactive tab
+    // also has its input box's.
+    const tabInput = (tab: vscode.Tab) => {
+        const input = tab.input as { uri?: unknown; inputBoxUri?: unknown } | undefined;
+        return {
+            uri: input?.uri instanceof vscode.Uri ? input.uri : undefined,
+            inputBoxUri: input?.inputBoxUri instanceof vscode.Uri ? input.inputBoxUri : undefined,
+        };
+    };
+    const settleLanguageService = async (deadline: number): Promise<void> => {
+        const service = languageService();
+        // An update can start a stop, so look again until nothing is pending.
+        while (Date.now() < deadline) {
+            const pending = [...service.clientUpdates.values(), ...service.stoppingClients];
+            if (!pending.length) {
+                return;
+            }
+            await Promise.race([
+                Promise.allSettled(pending),
+                new Promise((resolve) => setTimeout(resolve, Math.max(0, deadline - Date.now()))),
+            ]);
+        }
+    };
+    // Every Interactive notebook, input, and R document can run its own R
+    // language server. Close what a test opened, except the shared sessions'
+    // notebooks, and stop the servers it started, so they do not use the
+    // runner's CPU for the rest of the suite. This never fails the test.
+    const releaseTestResources = async (): Promise<void> => {
+        const tabsBefore = tabsBeforeTest;
+        const clientsBefore = clientsBeforeTest;
+        tabsBeforeTest = undefined;
+        clientsBeforeTest = undefined;
+        if (!tabsBefore || !clientsBefore) {
+            return;
+        }
+        const shared = new Set(manifests?.map((manifest) => manifest.id));
+        const sharedNotebooks = vscode.workspace.notebookDocuments.filter((doc) =>
+            shared.has(doc.metadata.rSessionId as string),
+        );
+        const sharedUris = new Set(sharedNotebooks.map((doc) => doc.uri.toString()));
+        const sharedKeys = new Set(
+            sharedNotebooks.map((doc) => `vscode-notebook:${doc.uri.fsPath}`),
+        );
+        const tabs = allTabs().filter((tab) => {
+            const { uri, inputBoxUri } = tabInput(tab);
+            if (uri && sharedUris.has(uri.toString())) {
+                if (inputBoxUri) {
+                    sharedKeys.add(inputBoxUri.toString());
+                }
+                return false;
+            }
+            return !tabsBefore.has(tab);
+        });
+        const deadline = Date.now() + 10000;
+        if (tabs.length) {
+            const closing = new Set(tabs.map((tab) => tabInput(tab).uri?.toString()));
+            // Extension tests skip the save confirmation and discard changes.
+            await vscode.window.tabGroups.close(tabs, true);
+            while (
+                Date.now() < deadline &&
+                vscode.workspace.notebookDocuments.some((doc) => closing.has(doc.uri.toString()))
+            ) {
+                await new Promise((resolve) => setTimeout(resolve, 50));
+            }
+        }
+        await settleLanguageService(deadline);
+        // Stop servers the test started that closing did not stop, such as one
+        // for a document opened without an editor.
+        const service = languageService();
+        for (const [key, client] of service.clients) {
+            if (!clientsBefore.has(client) && !sharedKeys.has(key)) {
+                service.clients.delete(key);
+                try {
+                    await stopLanguageClient(client);
+                } catch (error) {
+                    console.error(`[test cleanup] Could not stop language client ${key}`, error);
+                }
+            }
+        }
+    };
     setup(function () {
         runningTest = this.currentTest && { test: this.currentTest, started: Date.now() };
+        tabsBeforeTest = new Set(allTabs());
+        clientsBeforeTest = new Set(languageService().clients.values());
     });
     teardown(async function () {
         const failed = this.currentTest?.state === 'failed';
@@ -262,6 +348,7 @@ suite('Interactive VS Code integration', function () {
         stopWorkspaceFocusSampling = undefined;
         runningTest = undefined;
         await stopSampling?.(failed);
+        await releaseTestResources();
     });
     const until = async (
         predicate: () => boolean,
