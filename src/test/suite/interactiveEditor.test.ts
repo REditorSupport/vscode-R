@@ -11,6 +11,8 @@ import { createRequire } from 'module';
 import { randomUUID } from 'crypto';
 import { TestResources } from '../common/testResources';
 import { FailureDiagnostics } from '../common/failureDiagnostics';
+import { startProcessMonitor } from '../common/processMonitor';
+import { StallSampler } from '../common/stallSampler';
 import { SessionAgent } from '../../interactive/agentMain';
 import { AgentClient } from '../../interactive/client';
 import { InteractiveSerializer, DISPLAY_MIME } from '../../interactive/notebook';
@@ -242,17 +244,24 @@ suite('Interactive VS Code integration', function () {
     let runningTest: { test: Mocha.Runnable; started: number } | undefined;
     let workspaceFocusDiagnostics: FailureDiagnostics | undefined;
     let restoreWorkspaceFocusTracing: (() => void) | undefined;
+    let stopWorkspaceFocusSampling: ((failed: boolean) => Promise<void>) | undefined;
     setup(function () {
         runningTest = this.currentTest && { test: this.currentTest, started: Date.now() };
     });
-    teardown(function () {
-        if (this.currentTest?.state === 'failed') {
+    teardown(async function () {
+        const failed = this.currentTest?.state === 'failed';
+        // Close first, so the report records when the test ended.
+        workspaceFocusDiagnostics?.close();
+        if (failed) {
             workspaceFocusDiagnostics?.report();
         }
         workspaceFocusDiagnostics = undefined;
         restoreWorkspaceFocusTracing?.();
         restoreWorkspaceFocusTracing = undefined;
+        const stopSampling = stopWorkspaceFocusSampling;
+        stopWorkspaceFocusSampling = undefined;
         runningTest = undefined;
+        await stopSampling?.(failed);
     });
     const until = async (
         predicate: () => boolean,
@@ -3730,30 +3739,98 @@ par(mfrow=c(1,1))`,
         const workspace = workspaceProvider;
         let inspectedClient: AgentClient | undefined;
         let agentRequestsTraced = false;
-        const diagnostics = new FailureDiagnostics('Workspace focus and displayed owner', () => ({
-            agentRequestsTraced,
-            activeEditor: vscode.window.activeTextEditor?.document.uri.toString() ?? null,
-            activeNotebook: vscode.window.activeNotebookEditor?.notebook.uri.toString() ?? null,
-            notebookSession: vscode.window.activeNotebookEditor?.notebook.metadata
-                .rSessionId as unknown,
-            owner: workspace().owner?.sessionId,
-            markerLength: workspace().data?.globalenv.workspace_marker?.length,
-            sessions: manifests.map(({ id, generation, status, rPid }) => ({
-                id,
-                generation,
-                status,
-                rPid,
-            })),
-            inspectionClient: inspectedClient
-                ? {
-                      connected: inspectedClient.connected,
-                      control: inspectedClient.control,
-                      session: inspectedClient.manifest.id,
-                      generation: inspectedClient.manifest.generation,
-                      status: inspectedClient.manifest.status,
-                  }
-                : null,
-        }));
+        // Failure output also goes to files that the CI uploads only when the
+        // job fails, and passing runs delete them.
+        const diagnosticsBase = path.join(
+            extensionRoot,
+            '.vscode-test',
+            'user-data',
+            'interactive-tests',
+            'logs',
+            'test-diagnostics',
+            `workspace-focus-${new Date().toISOString().replace(/[:.]/g, '-')}`,
+        );
+        const reportFile = `${diagnosticsBase}.diagnostics.log`;
+        const processFile = `${diagnosticsBase}.processes.log`;
+        // This test has timed out on macOS while VS Code commands took seconds
+        // to return. Sample this extension host and, on macOS, a minimal
+        // renderer round trip and the processes from outside VS Code, so a
+        // failure shows which side stalled. The probe uses the original
+        // executeCommand and is not traced with the test's own commands.
+        const executeCommand = vscode.commands.executeCommand.bind(vscode.commands);
+        // Diagnostics are best effort: their own errors are reported with a
+        // failure and never fail the test.
+        const diagnosticsErrors: string[] = [];
+        const bestEffort = async <T>(name: string, action: () => T | Promise<T>) => {
+            try {
+                return await action();
+            } catch (error) {
+                diagnosticsErrors.push(`${name}: ${String(error)}`);
+                return undefined;
+            }
+        };
+        const sampler = new StallSampler({
+            probe:
+                process.platform === 'darwin'
+                    ? // A missing key is removed without a context change event.
+                      () => executeCommand('setContext', 'r.test.rendererProbe', undefined)
+                    : undefined,
+        });
+        const monitor =
+            process.platform === 'darwin'
+                ? await bestEffort('start process monitor', () => startProcessMonitor(processFile))
+                : undefined;
+        await bestEffort('start sampler', () => sampler.start());
+        stopWorkspaceFocusSampling = async (failed) => {
+            sampler.stop();
+            const stopped = await bestEffort('stop process monitor', async () => {
+                await monitor?.stop();
+                return true;
+            });
+            if (failed) {
+                // The report was written before this cleanup.
+                diagnostics.appendAfterReport('cleanup', {
+                    processMonitor: monitor?.status() ?? null,
+                    diagnosticsErrors,
+                });
+            } else if (stopped) {
+                await bestEffort('remove diagnostics', () => {
+                    fs.rmSync(reportFile, { force: true });
+                    fs.rmSync(processFile, { force: true });
+                });
+            }
+        };
+        const diagnostics = new FailureDiagnostics(
+            'Workspace focus and displayed owner',
+            () => ({
+                agentRequestsTraced,
+                activeEditor: vscode.window.activeTextEditor?.document.uri.toString() ?? null,
+                activeNotebook: vscode.window.activeNotebookEditor?.notebook.uri.toString() ?? null,
+                notebookSession: vscode.window.activeNotebookEditor?.notebook.metadata
+                    .rSessionId as unknown,
+                owner: workspace().owner?.sessionId,
+                markerLength: workspace().data?.globalenv.workspace_marker?.length,
+                sessions: manifests.map(({ id, generation, status, rPid }) => ({
+                    id,
+                    generation,
+                    status,
+                    rPid,
+                })),
+                inspectionClient: inspectedClient
+                    ? {
+                          connected: inspectedClient.connected,
+                          control: inspectedClient.control,
+                          session: inspectedClient.manifest.id,
+                          generation: inspectedClient.manifest.generation,
+                          status: inspectedClient.manifest.status,
+                      }
+                    : null,
+            }),
+            { reportFile },
+        );
+        diagnostics.attach('extension host samples', () => sampler.snapshot());
+        diagnostics.attach('process monitor', () => monitor?.status() ?? null);
+        diagnostics.attach('diagnostics errors', () => diagnosticsErrors);
         workspaceFocusDiagnostics = diagnostics;
         const step = <T>(name: string, operation: () => PromiseLike<T>) =>
             diagnostics.trace(name, operation);
