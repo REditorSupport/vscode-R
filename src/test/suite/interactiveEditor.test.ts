@@ -266,16 +266,24 @@ suite('Interactive VS Code integration', function () {
             if (!pending.length) {
                 return;
             }
-            await Promise.race([
-                Promise.allSettled(pending),
-                new Promise((resolve) => setTimeout(resolve, Math.max(0, deadline - Date.now()))),
-            ]);
+            let timer: NodeJS.Timeout | undefined;
+            try {
+                await Promise.race([
+                    Promise.allSettled(pending),
+                    new Promise((resolve) => {
+                        timer = setTimeout(resolve, Math.max(0, deadline - Date.now()));
+                    }),
+                ]);
+            } finally {
+                clearTimeout(timer);
+            }
         }
     };
     // Every Interactive notebook, input, and R document can run its own R
     // language server. Close what a test opened, except the shared sessions'
     // notebooks, and stop the servers it started, so they do not use the
-    // runner's CPU for the rest of the suite. This never fails the test.
+    // runner's CPU for the rest of the suite. This never fails the test: each
+    // step runs even if an earlier one failed, and failures are only logged.
     const releaseTestResources = async (): Promise<void> => {
         const tabsBefore = tabsBeforeTest;
         const clientsBefore = clientsBeforeTest;
@@ -284,50 +292,77 @@ suite('Interactive VS Code integration', function () {
         if (!tabsBefore || !clientsBefore) {
             return;
         }
-        const shared = new Set(manifests?.map((manifest) => manifest.id));
-        const sharedNotebooks = vscode.workspace.notebookDocuments.filter((doc) =>
-            shared.has(doc.metadata.rSessionId as string),
-        );
-        const sharedUris = new Set(sharedNotebooks.map((doc) => doc.uri.toString()));
-        const sharedKeys = new Set(
-            sharedNotebooks.map((doc) => `vscode-notebook:${doc.uri.fsPath}`),
-        );
-        const tabs = allTabs().filter((tab) => {
-            const { uri, inputBoxUri } = tabInput(tab);
-            if (uri && sharedUris.has(uri.toString())) {
-                if (inputBoxUri) {
-                    sharedKeys.add(inputBoxUri.toString());
-                }
-                return false;
+        const attempt = async (step: string, run: () => Promise<void>): Promise<void> => {
+            try {
+                await run();
+            } catch (error) {
+                console.error(`[test cleanup] Could not ${step}`, error);
             }
-            return !tabsBefore.has(tab);
-        });
+        };
+        let tabs: vscode.Tab[];
+        let sharedKeys: Set<string>;
+        try {
+            const shared = new Set(manifests?.map((manifest) => manifest.id));
+            const sharedNotebooks = vscode.workspace.notebookDocuments.filter((doc) =>
+                shared.has(doc.metadata.rSessionId as string),
+            );
+            const sharedUris = new Set(sharedNotebooks.map((doc) => doc.uri.toString()));
+            sharedKeys = new Set(sharedNotebooks.map((doc) => `vscode-notebook:${doc.uri.fsPath}`));
+            tabs = allTabs().filter((tab) => {
+                const { uri, inputBoxUri } = tabInput(tab);
+                if (uri && sharedUris.has(uri.toString())) {
+                    if (inputBoxUri) {
+                        sharedKeys.add(inputBoxUri.toString());
+                    }
+                    return false;
+                }
+                return !tabsBefore.has(tab);
+            });
+        } catch (error) {
+            // Without the shared sessions' resources, nothing can be released safely.
+            console.error('[test cleanup] Could not find the resources the test opened', error);
+            return;
+        }
         const deadline = Date.now() + 10000;
         if (tabs.length) {
-            const closing = new Set(tabs.map((tab) => tabInput(tab).uri?.toString()));
-            // Extension tests skip the save confirmation and discard changes.
-            await vscode.window.tabGroups.close(tabs, true);
-            while (
-                Date.now() < deadline &&
-                vscode.workspace.notebookDocuments.some((doc) => closing.has(doc.uri.toString()))
-            ) {
-                await new Promise((resolve) => setTimeout(resolve, 50));
-            }
-        }
-        await settleLanguageService(deadline);
-        // Stop servers the test started that closing did not stop, such as one
-        // for a document opened without an editor.
-        const service = languageService();
-        for (const [key, client] of service.clients) {
-            if (!clientsBefore.has(client) && !sharedKeys.has(key)) {
-                service.clients.delete(key);
-                try {
-                    await stopLanguageClient(client);
-                } catch (error) {
-                    console.error(`[test cleanup] Could not stop language client ${key}`, error);
+            await attempt('close the tabs the test opened', async () => {
+                const closing = new Set(tabs.map((tab) => tabInput(tab).uri?.toString()));
+                // Extension tests skip the save confirmation and discard changes.
+                await vscode.window.tabGroups.close(tabs, true);
+                while (
+                    Date.now() < deadline &&
+                    vscode.workspace.notebookDocuments.some((doc) =>
+                        closing.has(doc.uri.toString()),
+                    )
+                ) {
+                    await new Promise((resolve) => setTimeout(resolve, 50));
                 }
-            }
+            });
         }
+        await attempt('wait for the language service', () => settleLanguageService(deadline));
+        // Stop servers the test started that closing did not stop, such as one
+        // for a document opened without an editor. Each stop may wait for its
+        // server, so stop them together.
+        await attempt('stop the language clients the test started', async () => {
+            const service = languageService();
+            const leftover = [...service.clients].filter(
+                ([key, client]) => !clientsBefore.has(client) && !sharedKeys.has(key),
+            );
+            const results = await Promise.allSettled(
+                leftover.map(([key, client]) => {
+                    service.clients.delete(key);
+                    return stopLanguageClient(client);
+                }),
+            );
+            results.forEach((result, index) => {
+                if (result.status === 'rejected') {
+                    console.error(
+                        `[test cleanup] Could not stop language client ${leftover[index][0]}`,
+                        result.reason,
+                    );
+                }
+            });
+        });
     };
     setup(function () {
         runningTest = this.currentTest && { test: this.currentTest, started: Date.now() };
