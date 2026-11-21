@@ -78,8 +78,9 @@ export class WorkspaceRefreshScheduler<T> {
                 while (!this.disposed && this.dirty && this.canRefresh()) {
                     const revision = this.revision;
                     this.dirty = false;
-                    // This read serves any notification that came due so far.
-                    this.dueDuringRead = false;
+                    // This read serves any notification so far, including one
+                    // whose read is scheduled but not yet due.
+                    this.defer();
                     try {
                         const value = await this.read();
                         if (this.disposed) {

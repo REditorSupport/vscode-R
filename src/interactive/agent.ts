@@ -26,6 +26,15 @@ import { MessagePages, boundedJson } from './messagePages';
 import { isDeepStrictEqual } from 'node:util';
 import { WorkspaceRefreshScheduler } from '../workspaceRefresh';
 
+/**
+ * Inspection failures that mean R never started the request: it waited too
+ * long to start or was not queued at all.
+ */
+const RETRYABLE_INSPECTION_FAILURES: ReadonlySet<unknown> = new Set([
+    'queue_timeout',
+    'overloaded',
+]);
+
 interface Client {
     socket: net.Socket;
     authenticated: boolean;
@@ -122,13 +131,12 @@ export class SessionAgent {
                     // R keeps running an inspection after it times out, so a
                     // retry could queue another full scan of the workspace.
                     this.backend.capabilities.inspectionDeadline !== false &&
-                    // An R error, such as from forcing a promise in the
-                    // global environment, would only repeat its work.
-                    !(
-                        error instanceof Error &&
-                        error.name === 'InspectionError' &&
-                        (error as { kind?: unknown }).kind === 'r_error'
-                    ),
+                    // Retry only an inspection that never started. One that
+                    // started may have forced a promise in the global
+                    // environment, and a retry would run its code again.
+                    error instanceof Error &&
+                    error.name === 'InspectionError' &&
+                    RETRYABLE_INSPECTION_FAILURES.has((error as { kind?: unknown }).kind),
             },
         );
         this.manifest = {

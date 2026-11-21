@@ -309,37 +309,52 @@ suite('Interactive backend contract', function () {
         assert.strictEqual(events.filter((event) => event.type === 'workspace').length, published);
     });
 
-    test('a workspace inspection that fails after an execution is retried without another demand', async () => {
-        const id = await submit();
-        backend.emit({ type: 'started', executionId: id });
-        let calls = 0;
-        backend.inspectResult = () =>
-            ++calls === 1
-                ? Promise.reject(new Error('Inspection timeout'))
-                : Promise.resolve({ revision: 7, globalenv: { after: {} } });
-        backend.emit({ type: 'finished', executionId: id, state: 'success' });
-        await until(() =>
-            events.some((event) => event.type === 'workspace' && event.data.revision === 7),
-        );
-        assert.strictEqual(calls, 2);
-        assert.deepStrictEqual((await client.snapshot()).workspace, {
-            revision: 7,
-            globalenv: { after: {} },
+    const inspectionError = (kind: string) =>
+        Object.assign(new Error(`Inspection ${kind}`), { name: 'InspectionError', kind });
+
+    // R never started these inspections: one waited too long to start, and
+    // one was not queued.
+    for (const kind of ['queue_timeout', 'overloaded']) {
+        test(`a workspace inspection that did not start (${kind}) after an execution is retried without another demand`, async () => {
+            const id = await submit();
+            backend.emit({ type: 'started', executionId: id });
+            let calls = 0;
+            backend.inspectResult = () =>
+                ++calls === 1
+                    ? Promise.reject(inspectionError(kind))
+                    : Promise.resolve({ revision: 7, globalenv: { after: {} } });
+            backend.emit({ type: 'finished', executionId: id, state: 'success' });
+            await until(() =>
+                events.some((event) => event.type === 'workspace' && event.data.revision === 7),
+            );
+            assert.strictEqual(calls, 2);
+            assert.deepStrictEqual((await client.snapshot()).workspace, {
+                revision: 7,
+                globalenv: { after: {} },
+            });
         });
-    });
+    }
 
     for (const [name, prepare, failure] of [
+        ['an R error from the workspace inspection', () => {}, () => inspectionError('r_error')],
         [
-            'an R error from the workspace inspection',
+            // The inspection may have forced a promise whose code would run again.
+            'a workspace inspection interrupted at its deadline',
             () => {},
-            () => Object.assign(new Error('R error'), { name: 'InspectionError', kind: 'r_error' }),
+            () => inspectionError('deadline'),
+        ],
+        [
+            // arf also uses this for codes it does not name, so R may have run it.
+            'a workspace inspection arf rejected',
+            () => {},
+            () => inspectionError('rejected'),
         ],
         [
             'an inspection that can keep running in R after it times out',
             (backend: FakeBackend) => {
                 (backend.capabilities as Record<string, boolean>).inspectionDeadline = false;
             },
-            () => new Error('Inspection timeout'),
+            () => inspectionError('queue_timeout'),
         ],
     ] as const) {
         test(`${name} is not retried without another demand`, async () => {

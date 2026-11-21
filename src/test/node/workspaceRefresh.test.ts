@@ -419,4 +419,41 @@ suite('Workspace refresh scheduling', () => {
         assert.strictEqual(calls, 2);
         scheduler.dispose();
     });
+
+    test('a read that starts serving a notification cancels its scheduled read', async () => {
+        let first!: (value: number) => void;
+        let second!: (error: Error) => void;
+        let calls = 0;
+        const scheduler = new WorkspaceRefreshScheduler<number>(
+            () => {
+                calls++;
+                return calls === 1
+                    ? new Promise<number>((resolve) => {
+                          first = resolve;
+                      })
+                    : new Promise<number>((_resolve, reject) => {
+                          second = reject;
+                      });
+            },
+            () => {},
+            () => true,
+            undefined,
+            { retryDelaysMs: [1], shouldRetry: () => false },
+        );
+        const running = scheduler.ensure();
+        await Promise.resolve();
+        scheduler.invalidate(20);
+        // The first read ends before the notification is due, so the next read
+        // serves it, and the notification's timer comes due during that read.
+        first(1);
+        while (calls < 2) {
+            await new Promise((resolve) => setImmediate(resolve));
+        }
+        await new Promise((resolve) => setTimeout(resolve, 50));
+        second(new Error('R error'));
+        await running;
+        await new Promise((resolve) => setTimeout(resolve, 30));
+        assert.strictEqual(calls, 2);
+        scheduler.dispose();
+    });
 });
