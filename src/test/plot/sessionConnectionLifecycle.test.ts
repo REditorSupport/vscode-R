@@ -283,7 +283,7 @@ suite('Session Connection Lifecycle API', () => {
         assert.notStrictEqual(newReference.connectionId, oldReference.connectionId);
     });
 
-    test('plot notifications arriving during native terminal discovery wait for attachment', async () => {
+    test('plot notifications arriving during native terminal discovery are shown for the connected session', async () => {
         const processId = deferred<number>();
         const discovering = deferred<void>();
         const terminal = {
@@ -301,6 +301,9 @@ suite('Session Connection Lifecycle API', () => {
         sandbox.stub(extension, 'globalPlotManager').value({ showHttpgdPlot, showStandardPlot });
         const socket = await connections.startAttach('early-plot', 55160, os.hostname());
         await discovering.promise;
+        // The session is connected before its terminal is found, so the plots
+        // R announces right after attaching are shown without waiting.
+        assert.ok(session.getSessionReference('early-plot'));
         socket.emit(
             'data',
             Buffer.from(
@@ -314,11 +317,11 @@ suite('Session Connection Lifecycle API', () => {
                 ].join('\n'),
             ),
         );
-        sinon.assert.notCalled(showHttpgdPlot);
-        sinon.assert.notCalled(showStandardPlot);
+        await waitForValue(() =>
+            showHttpgdPlot.called && showStandardPlot.called ? true : undefined,
+        );
         processId.resolve(55160);
-        await waitForValue(() => session.getSessionReference('early-plot'));
-        await new Promise((resolve) => setImmediate(resolve));
+        await socket._terminalLookup;
         sinon.assert.calledOnce(showHttpgdPlot);
         sinon.assert.calledOnce(showStandardPlot);
         assert.strictEqual(
@@ -332,7 +335,7 @@ suite('Session Connection Lifecycle API', () => {
     });
 
     for (const ending of ['disconnected', 'replaced'] as const) {
-        test(`queued plots are discarded when the pending attachment is ${ending}`, async () => {
+        test(`plots from a connection ${ending} during terminal discovery are discarded`, async () => {
             const processId = deferred<number>();
             const discovering = deferred<void>();
             const terminal = {
@@ -349,6 +352,11 @@ suite('Session Connection Lifecycle API', () => {
                 .value({ showHttpgdPlot, showStandardPlot });
             const socket = await connections.startAttach('queued-plot', 55161, os.hostname());
             await discovering.promise;
+            if (ending === 'disconnected') {
+                socket.destroy();
+            } else {
+                await connections.attach('queued-plot', 55162, 'external-host');
+            }
             socket.emit(
                 'data',
                 Buffer.from(
@@ -362,11 +370,6 @@ suite('Session Connection Lifecycle API', () => {
                     ].join('\n'),
                 ),
             );
-            if (ending === 'disconnected') {
-                socket.destroy();
-            } else {
-                await connections.attach('queued-plot', 55162, 'external-host');
-            }
             processId.resolve(55161);
             await waitForValue(() => (!session.activeConnections.has(socket) ? true : undefined));
             await new Promise((resolve) => setImmediate(resolve));
@@ -1166,14 +1169,21 @@ suite('Session Connection Lifecycle API', () => {
                         event.session.sessionId === 'late-discovery-new',
                 ),
             );
-            assert.ok(
-                !events.some(
-                    (event) =>
-                        event.kind === 'connected' &&
-                        event.session.sessionId === 'late-discovery-old',
-                ),
+            // The old session was connected before its terminal lookup, and the
+            // lookup that completed after redeploy must not connect it again.
+            assert.deepStrictEqual(
+                events
+                    .filter(
+                        (event) =>
+                            event.kind === 'connected' &&
+                            event.session.sessionId === 'late-discovery-old',
+                    )
+                    .map((event) => event.kind),
+                ['connected'],
                 'the old server must reject a discovery result that completed after redeploy',
             );
+            assert.strictEqual(session.getSessionReference('late-discovery-old'), undefined);
+            assert.strictEqual(await session.waitForTerminalReady(terminal, 1), false);
             assert.ok(session.getSessionReference('late-discovery-new'));
         } finally {
             delayedPid.resolve(55025);
