@@ -12,7 +12,7 @@ import { performance } from 'perf_hooks';
  * Run as a script: `processMonitor.js <output> <watched pid> <interval ms> <max lifetime ms>`.
  */
 
-interface ProcessRow {
+export interface ProcessRow {
     pid: number;
     ppid: number;
     cpuMs: number;
@@ -45,6 +45,20 @@ export const parsePs = (output: string): ProcessRow[] =>
             rssKb: Number(rss),
             command,
         }));
+
+/**
+ * CPU time each process used since the previous ps. After the baseline, a
+ * process that was not in it started since then, so all of its CPU time is
+ * new; without a baseline the delta is unknown.
+ */
+export const withCpuDeltas = (
+    rows: ProcessRow[],
+    previous: Map<number, number> | undefined,
+): (ProcessRow & { cpuDeltaMs: number | undefined })[] =>
+    rows.map((row) => ({
+        ...row,
+        cpuDeltaMs: previous ? row.cpuMs - (previous.get(row.pid) ?? 0) : undefined,
+    }));
 
 let runningPs: ChildProcess | undefined;
 
@@ -160,7 +174,8 @@ const runMonitor = async (
         cpus: os.cpus().length,
         totalMemKb: Math.round(os.totalmem() / 1024),
     });
-    let previousCpu = new Map<number, number>();
+    // Undefined until the first successful ps, which only sets the baseline.
+    let previousCpu: Map<number, number> | undefined;
     let previousTimes = cpuTimes();
     let expectedMs = 0;
     for (;;) {
@@ -189,12 +204,7 @@ const runMonitor = async (
         const total = busy + times.idle - previousTimes.idle;
         previousTimes = times;
         const tree = treeOf(rows, watched);
-        const withDelta = rows.map((row) => ({
-            ...row,
-            cpuDeltaMs: previousCpu.has(row.pid)
-                ? row.cpuMs - previousCpu.get(row.pid)!
-                : undefined,
-        }));
+        const withDelta = withCpuDeltas(rows, previousCpu);
         previousCpu = new Map(rows.map((row) => [row.pid, row.cpuMs]));
         const others = withDelta
             .filter((row) => !tree.has(row.pid) && (row.cpuDeltaMs ?? 0) > 0)

@@ -8,8 +8,11 @@ interface Sample {
     /** CPU time this process used during the interval. */
     userCpuMs: number;
     systemCpuMs: number;
-    /** Share of the interval the event loop spent running callbacks. */
-    eventLoopUtilization: number;
+    /**
+     * Share of the interval the event loop spent running callbacks, or null
+     * when this runtime does not measure it (both idle and active time are 0).
+     */
+    eventLoopUtilization: number | null;
 }
 
 interface ProbeRecord {
@@ -91,19 +94,26 @@ export class StallSampler {
         this.timer.unref?.();
     }
 
-    private tick(): void {
-        const atMs = this.now();
+    /** Measure the interval since the last tick without starting a new one. */
+    private measure(atMs: number): Sample {
         const cpu = process.cpuUsage(this.lastCpu);
-        this.lastCpu = process.cpuUsage();
         const elu = performance.eventLoopUtilization(this.lastElu);
-        this.lastElu = performance.eventLoopUtilization();
-        this.push(this.samples, {
+        return {
             atMs: round(atMs),
             timerLagMs: round(atMs - this.expectedMs),
             userCpuMs: round(cpu.user / 1000),
             systemCpuMs: round(cpu.system / 1000),
-            eventLoopUtilization: round(elu.utilization * 1000) / 1000,
-        });
+            eventLoopUtilization:
+                elu.idle + elu.active > 0 ? round(elu.utilization * 1000) / 1000 : null,
+        };
+    }
+
+    private tick(): void {
+        const atMs = this.now();
+        const sample = this.measure(atMs);
+        this.lastCpu = process.cpuUsage();
+        this.lastElu = performance.eventLoopUtilization();
+        this.push(this.samples, sample);
         this.sendProbe(atMs);
         // Do not send catch-up ticks after a stall; the lag above records it.
         this.expectedMs = atMs + this.intervalMs;
@@ -157,6 +167,10 @@ export class StallSampler {
             intervalMs: this.intervalMs,
             samples: this.samples,
             droppedSamples: this.droppedSamples,
+            // A failure can be reported before an overdue tick runs, as when a
+            // poll after a stall fails first. Include the interval in progress;
+            // a positive timerLagMs is how overdue the next tick is.
+            current: this.timer ? this.measure(this.now()) : undefined,
             probes: this.probe
                 ? {
                       completed: this.probes,

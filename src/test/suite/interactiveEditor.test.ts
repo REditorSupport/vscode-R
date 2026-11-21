@@ -3772,8 +3772,9 @@ par(mfrow=c(1,1))`,
         const sampler = new StallSampler({
             probe:
                 process.platform === 'darwin'
-                    ? // A missing key is removed without a context change event.
-                      () => executeCommand('setContext', 'r.test.rendererProbe', undefined)
+                    ? // The renderer's noop command makes the round trip without
+                      // changing state, such as a context key.
+                      () => executeCommand('noop')
                     : undefined,
         });
         const monitor =

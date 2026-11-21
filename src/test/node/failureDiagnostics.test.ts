@@ -5,7 +5,12 @@ import * as os from 'os';
 import * as path from 'path';
 import * as sinon from 'sinon';
 import { FailureDiagnostics } from '../common/failureDiagnostics';
-import { parseCpuTime, parsePs, startProcessMonitor } from '../common/processMonitor';
+import {
+    parseCpuTime,
+    parsePs,
+    startProcessMonitor,
+    withCpuDeltas,
+} from '../common/processMonitor';
 import { StallSampler } from '../common/stallSampler';
 
 const readLines = (file: string): Record<string, unknown>[] =>
@@ -63,7 +68,9 @@ suite('Failure diagnostics', () => {
         await settle();
         diagnostics.appendAfterReport('cleanup', { stopped: true });
 
-        const [report, late, cleanup] = readLines(reportFile);
+        const [report, late, cleanup] = readLines(reportFile).filter(
+            (line) => line.kind !== 'close',
+        );
         assert.strictEqual(report.kind, 'report');
         assert.deepStrictEqual(report.state, { state: 1 });
         assert.deepStrictEqual(report.attachments, { samples: { sampled: true } });
@@ -79,7 +86,7 @@ suite('Failure diagnostics', () => {
             [2, 3],
         );
         assert.strictEqual(report.droppedCalls, 1);
-        assert.strictEqual(late.kind, 'late call');
+        assert.strictEqual(late.kind, 'call after report');
         assert.strictEqual(late.id, 4);
         assert.strictEqual(late.result, 'fulfilled');
         assert.ok((late.endMs as number) >= (report.closedAtMs as number));
@@ -95,6 +102,38 @@ suite('Failure diagnostics', () => {
             (JSON.parse(consoleReport.slice(prefix.length)) as { reportFile?: string }).reportFile,
             reportFile,
         );
+    });
+
+    test('a step that fails before the test ends still records later completions and the end', async () => {
+        const reportFile = path.join(directory, 'report.log');
+        const diagnostics = new FailureDiagnostics('test', () => ({}), { reportFile });
+        const concurrent = deferred();
+        void diagnostics.trace('concurrent', () => concurrent.promise);
+        // A failed step reports at once, before Mocha runs teardown.
+        await diagnostics
+            .trace('failed step', () => Promise.reject(new Error('step failed')))
+            .then(
+                () => undefined,
+                () => undefined,
+            );
+        concurrent.resolve();
+        await settle();
+        diagnostics.close();
+        diagnostics.report();
+
+        const lines = readLines(reportFile);
+        assert.deepStrictEqual(
+            lines.map((line) => line.kind),
+            ['report', 'call after report', 'close'],
+        );
+        assert.deepStrictEqual(
+            (lines[0].pendingCalls as { name: string }[]).map(({ name }) => name),
+            ['concurrent'],
+        );
+        assert.strictEqual(lines[1].name, 'concurrent');
+        assert.strictEqual(lines[1].result, 'fulfilled');
+        assert.ok(typeof lines[2].closedAtMs === 'number');
+        assert.deepStrictEqual(lines[2].pendingCalls, []);
     });
 
     test('a passing test writes nothing, even when a traced call finishes after close', async () => {
@@ -127,9 +166,32 @@ suite('Failure diagnostics', () => {
 });
 
 suite('Stall sampler', () => {
+    test('reports the interval in progress when a stall has not yet been sampled', () => {
+        const sampler = new StallSampler({ intervalMs: 100 });
+        sampler.start();
+        try {
+            // Block past the next tick, then snapshot before that tick can run,
+            // as a failing poll after a stall does.
+            blockFor(250);
+            const snapshot = sampler.snapshot() as {
+                samples: unknown[];
+                current?: { timerLagMs: number; userCpuMs: number; systemCpuMs: number };
+            };
+            assert.strictEqual(snapshot.samples.length, 0);
+            assert.ok(snapshot.current);
+            assert.ok(snapshot.current.timerLagMs >= 100, JSON.stringify(snapshot.current));
+            assert.ok(
+                Number.isFinite(snapshot.current.userCpuMs) && snapshot.current.userCpuMs >= 0,
+            );
+        } finally {
+            sampler.stop();
+        }
+    });
+
     test('records timer lag and keeps at most one probe pending', async () => {
         type Snapshot = {
             samples: { timerLagMs: number; userCpuMs: number }[];
+            current?: { timerLagMs: number; userCpuMs: number };
             probes: {
                 completed: { result: string }[];
                 pending?: { pendingMs: number };
@@ -160,6 +222,7 @@ suite('Stall sampler', () => {
                 'Ticks did not continue while the probe was pending',
             );
             const stalled = sampler.snapshot() as Snapshot;
+            assert.ok(stalled.current, 'The interval in progress must be reported');
             assert.strictEqual(probes.length, 1, 'A pending probe must not be repeated');
             assert.ok(stalled.probes.pending && stalled.probes.pending.pendingMs >= 200);
             assert.ok(stalled.probes.skippedWhilePending >= 2);
@@ -202,6 +265,27 @@ suite('Process monitor', () => {
                     command: '/Applications/Code.app/Contents/MacOS/Electron',
                 },
             ],
+        );
+    });
+
+    test('counts all CPU time of a process first seen after the baseline', () => {
+        const row = (pid: number, cpuMs: number) => ({
+            pid,
+            ppid: 1,
+            cpuMs,
+            rssKb: 1,
+            command: 'R',
+        });
+        assert.deepStrictEqual(
+            withCpuDeltas([row(10, 500)], undefined).map(({ cpuDeltaMs }) => cpuDeltaMs),
+            [undefined],
+        );
+        const previous = new Map([[10, 500]]);
+        assert.deepStrictEqual(
+            withCpuDeltas([row(10, 700), row(11, 900)], previous).map(
+                ({ cpuDeltaMs }) => cpuDeltaMs,
+            ),
+            [200, 900],
         );
     });
 

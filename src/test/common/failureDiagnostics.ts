@@ -31,7 +31,7 @@ export interface FailureDiagnosticsOptions {
     reportFile?: string;
     /** Retain at most this many completed calls; pending calls are always retained. */
     maxCalls?: number;
-    /** Append at most this many calls that complete after `close()` to the report file. */
+    /** Append at most this many calls that complete after the report to the report file. */
     maxLateCalls?: number;
 }
 
@@ -107,9 +107,9 @@ export class FailureDiagnostics {
             if (--stage.pending === 0) {
                 stage.pendingSince = undefined;
             }
-            if (this.closedAtMs !== undefined) {
-                this.recordLateCall(record);
-            } else if (result === 'rejected' && reportOnReject) {
+            if (this.reported) {
+                this.recordCallAfterReport(record);
+            } else if (this.closedAtMs === undefined && result === 'rejected' && reportOnReject) {
                 this.report();
             }
         };
@@ -184,11 +184,23 @@ export class FailureDiagnostics {
 
     /**
      * Mark the end of the test. A traced call that completes later belongs to
-     * a body that outlived its test, so it is appended to the report file
-     * instead of being reported as a new failure.
+     * a body that outlived its test, so it is not reported as a new failure.
+     * A failing step can report before the test ends, so the end is also
+     * appended to a report that was already written.
      */
     close(): void {
-        this.closedAtMs ??= this.now();
+        if (this.closedAtMs !== undefined) {
+            return;
+        }
+        this.closedAtMs = this.now();
+        if (this.reported) {
+            this.writeLine({
+                kind: 'close',
+                capturedAtUtc: new Date().toISOString(),
+                closedAtMs: this.closedAtMs,
+                pendingCalls: [...this.pendingCalls.values()],
+            });
+        }
     }
 
     /** Append to the report file after a report, such as how cleanup ended. */
@@ -198,13 +210,14 @@ export class FailureDiagnostics {
         }
     }
 
-    private recordLateCall(record: CallRecord): void {
-        if (!this.reported || this.lateCalls >= this.maxLateCalls) {
+    /** A call that completes after the report, before or after the test ended. */
+    private recordCallAfterReport(record: CallRecord): void {
+        if (this.lateCalls >= this.maxLateCalls) {
             return;
         }
         this.lateCalls++;
         this.writeLine({
-            kind: 'late call',
+            kind: 'call after report',
             capturedAtUtc: new Date().toISOString(),
             ...record,
         });
