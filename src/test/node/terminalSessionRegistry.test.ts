@@ -165,6 +165,17 @@ suite('Terminal session registry', () => {
         assert.strictEqual(registry.isCurrent(queued), true);
     });
 
+    test('repeating the same native attach preserves its existing association', () => {
+        registry.attachNative(terminal, first);
+        const queued = registry.forSession(first);
+        assert.ok(queued);
+        let changes = 0;
+        registry.onDidChange(() => changes++);
+        assert.strictEqual(registry.attachNative(terminal, first), true);
+        assert.strictEqual(registry.isCurrent(queued), true);
+        assert.strictEqual(changes, 0);
+    });
+
     test('late cleanup from an old connection cannot delete its replacement', () => {
         registry.bindExplicit(terminal, first);
         const old = registry.forSession(first);

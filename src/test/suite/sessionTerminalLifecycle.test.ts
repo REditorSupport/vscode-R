@@ -639,6 +639,52 @@ suite('Session Terminal Lifecycle', () => {
         assert.strictEqual(session.activeSession, owner);
     });
 
+    for (const reconnect of [
+        'without auto-activation',
+        'whose lookup rules it out',
+        'whose process query fails',
+    ] as const) {
+        const keeps = reconnect === 'whose process query fails';
+        test(`a same-process reconnect ${reconnect} ${keeps ? 'keeps' : 'does not keep'} its terminal`, async () => {
+            const rPid =
+                reconnect === 'without auto-activation'
+                    ? 46321
+                    : reconnect === 'whose lookup rules it out'
+                      ? 46331
+                      : 46341;
+            const terminalPid = rPid - 1;
+            const consoleError = sandbox.stub(console, 'error').callThrough();
+            ancestors.withArgs(rPid).onFirstCall().resolves([terminalPid]);
+            // The reconnect's lookup finds no terminal among the ancestors, or
+            // cannot read the process table.
+            ancestors
+                .withArgs(rPid)
+                .onSecondCall()
+                .resolves(keeps ? undefined : []);
+            const terminal = {
+                processId: Promise.resolve(terminalPid),
+                sendText: sandbox.stub(),
+                show: sandbox.stub(),
+            } as unknown as vscode.Terminal;
+            sandbox.stub(vscode.window, 'terminals').value([terminal]);
+            sandbox.stub(vscode.window, 'activeTerminal').value(terminal);
+            const id = `inherited-${rPid}`;
+            await connections.attach(id, rPid);
+            assert.strictEqual(await session.waitForTerminalReady(terminal, 100), true);
+            const replacement = await connections.attach(
+                id,
+                rPid,
+                undefined,
+                reconnect === 'without auto-activation' ? { autoActivate: false } : undefined,
+            );
+            if (keeps) {
+                sinon.assert.calledWithMatch(consoleError, 'terminal lookup');
+            }
+            assert.strictEqual(replacement._terminalPid, keeps ? terminalPid : undefined);
+            assert.strictEqual(await session.waitForTerminalReady(terminal, 1), keeps);
+        });
+    }
+
     // Selection belongs to a logical session; execution still belongs to a connection.
     for (const selection of [
         'unchanged',

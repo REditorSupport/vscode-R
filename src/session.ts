@@ -3731,6 +3731,10 @@ async function findLocalTerminal(
     }
     // Prefer the nearest terminal ancestor; never associate a sibling process.
     const ancestors = await getProcessAncestors(Number(rPid));
+    if (!ancestors) {
+        // Not knowing the ancestors does not rule out any terminal.
+        throw new Error('Could not read the process table');
+    }
     const attachedRPids = new Set(
         [...sessions.values()]
             .filter((session) => isLocalHost(session.host) && !session.socket.destroyed)
@@ -3918,11 +3922,18 @@ async function handleNotification(message: Record<string, unknown>, socket: IpcS
             if (previous && previous.socket !== socket) {
                 previous.socket.destroy();
             }
-            if (
+            // Only an attach that would look up its terminal inherits it, and
+            // only while the terminal is still eligible: one that gained a
+            // terminal integration since must go through that integration.
+            // The lookup below confirms or releases this provisional binding.
+            const provisional =
+                autoActivate &&
                 inherited?.kind === 'native' &&
-                terminalRegistry.attachNative(inherited.terminal, session) &&
-                inheritedTerminalPid
-            ) {
+                isNativeTerminalEligible(inherited.terminal) &&
+                terminalRegistry.attachNative(inherited.terminal, session)
+                    ? terminalRegistry.forSession(session)
+                    : undefined;
+            if (provisional && inheritedTerminalPid) {
                 socket._terminalPid = inheritedTerminalPid;
             }
             // Replacing the selected connection keeps the user's logical choice.
@@ -3941,10 +3952,12 @@ async function handleNotification(message: Record<string, unknown>, socket: IpcS
                 !pendingAttachment.controller.signal.aborted;
             // Start the lookup before notifying listeners, so its ownership snapshot
             // detects a terminal a listener binds explicitly.
+            let lookupFailed = false;
             const discovery =
                 autoActivate && rPid && isLocalHost(host)
                     ? findLocalTerminal(rPid, pendingAttachment.controller.signal).catch(
                           (error: unknown) => {
+                              lookupFailed = true;
                               console.error(
                                   `[startSessionWatcher] terminal lookup for session ${sessionId} failed`,
                                   error,
@@ -3976,6 +3989,16 @@ async function handleNotification(message: Record<string, unknown>, socket: IpcS
             const native = candidate?.isCurrent() ? candidate : undefined;
             if (native && terminalRegistry.attachNative(native.terminal, session)) {
                 socket._terminalPid = Number(native.pid);
+            } else if (
+                provisional &&
+                !lookupFailed &&
+                terminalRegistry.forSession(session) === provisional
+            ) {
+                // The lookup ruled out the inherited terminal, for example
+                // because a connected R process is between it and this one.
+                // A binding made during the lookup is kept.
+                terminalRegistry.releaseSession(session);
+                socket._terminalPid = undefined;
             }
             const terminalPid =
                 terminalRegistry.forSession(session)?.kind === 'native'
