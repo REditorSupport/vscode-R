@@ -494,16 +494,19 @@ stopifnot(vscrlibprobe::answer() == 42, identical(.libPaths(), startup_library_p
             recursive: true,
             filter: (source) => source !== path.join(runtime.library, 'ps'),
         });
+        const setup = path.join(root, 'prepare-renv.R');
+        fs.writeFileSync(
+            setup,
+            `libs <- commandArgs(trailingOnly = TRUE)
+ps <- find.package("ps", lib.loc = c(libs[[1L]], .libPaths()))
+stopifnot(file.copy(ps, libs[[2L]], recursive = TRUE))
+options(renv.consent = TRUE)
+renv::init(bare = TRUE, force = TRUE)
+`,
+        );
         await run(
             'R',
-            [
-                '--vanilla',
-                '--slave',
-                '-e',
-                `stopifnot(file.copy(find.package("ps", lib.loc=c(${rString(runtime.library)}, .libPaths())),
-  ${rString(userLibrary)}, recursive=TRUE))
-options(renv.consent=TRUE); renv::init(bare=TRUE, force=TRUE)`,
-            ],
+            ['--vanilla', '--slave', '-f', setup, '--args', runtime.library, userLibrary],
             {
                 cwd: directory,
                 env: { ...process.env, ...renvEnvironment() },
