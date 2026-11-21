@@ -546,22 +546,36 @@ export class LanguageService implements Disposable {
         const didCloseTextDocument = (document: TextDocument): void => {
             const key = this.getKey(document.uri);
             enqueue(key, () => {
+                const client = this.clients.get(key);
+                if (!client) {
+                    // Most closes, such as of a file in a workspace folder,
+                    // have no server of their own.
+                    clientTargets.delete(key);
+                    return;
+                }
                 // Keep the server while another document uses it: a cell of the
-                // same notebook, another untitled document, or the same
-                // document opened again since it was closed.
-                if (workspace.textDocuments.some((doc) => this.getKey(doc.uri) === key)) {
+                // same notebook, another untitled document, or the same input
+                // or file opened again since it was closed, unless it reopened
+                // in a language without a server, such as after a change of
+                // language mode.
+                const inUse = workspace.textDocuments.some(
+                    (doc) =>
+                        this.getKey(doc.uri) === key &&
+                        (doc.uri.scheme === 'vscode-notebook-cell' ||
+                            doc.uri.scheme === 'untitled' ||
+                            doc.languageId === 'r' ||
+                            doc.languageId === 'rmd'),
+                );
+                if (inUse) {
                     return;
                 }
                 // Otherwise stop it: the last cell of a notebook, the last
                 // untitled document, an input, or a file outside the workspace
                 // was closed. A workspace folder's server has another key.
                 clientTargets.delete(key);
-                const client = this.clients.get(key);
-                if (client) {
-                    this.clients.delete(key);
-                    this.initSet.delete(key);
-                    void this.stopClient(client);
-                }
+                this.clients.delete(key);
+                this.initSet.delete(key);
+                void this.stopClient(client);
             });
         };
 

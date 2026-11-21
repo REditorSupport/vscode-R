@@ -181,6 +181,64 @@ suite('Language service startup lifecycle', () => {
         sinon.assert.calledOnce(inputStop);
     });
 
+    test('changing the language of a file outside the workspace stops its server', async () => {
+        const opened: ((document: vscode.TextDocument) => unknown)[] = [];
+        const closed: ((document: vscode.TextDocument) => unknown)[] = [];
+        const listen =
+            (listeners: ((document: vscode.TextDocument) => unknown)[]) =>
+            (listener: (document: vscode.TextDocument) => unknown) => {
+                listeners.push(listener);
+                return { dispose: () => {} };
+            };
+        sandbox.stub(vscode.workspace, 'onDidOpenTextDocument').callsFake(listen(opened));
+        sandbox.stub(vscode.workspace, 'onDidCloseTextDocument').callsFake(listen(closed));
+        let documents: vscode.TextDocument[] = [];
+        sandbox.stub(vscode.workspace, 'textDocuments').get(() => documents);
+        // Start one server per file outside the workspace.
+        (vscode.workspace.getConfiguration as sinon.SinonStub).returns({
+            get: (key: string) => key === 'lsp.multiServer',
+        } as unknown as vscode.WorkspaceConfiguration);
+        sandbox.stub(vscode.workspace, 'getWorkspaceFolder').returns(undefined);
+        const stop = sandbox.stub().resolves();
+        sandbox
+            .stub(prototype, 'createClient')
+            .resolves({ stop, needsStop: () => false } as unknown as LanguageClient);
+        const service = new LanguageService();
+        const state = service as unknown as {
+            clients: Map<string, LanguageClient>;
+            clientUpdates: Map<string, Promise<void>>;
+        };
+        const until = async (predicate: () => boolean) => {
+            const deadline = Date.now() + 5000;
+            while (!predicate()) {
+                assert.ok(Date.now() < deadline, 'Timed out waiting for the language service');
+                await new Promise((resolve) => setTimeout(resolve, 5));
+            }
+        };
+        try {
+            await until(() => opened.length === 1 && closed.length === 1);
+            const uri = vscode.Uri.file(path.join(os.tmpdir(), 'outside-workspace.R'));
+            const r = { uri, languageId: 'r', isClosed: false } as unknown as vscode.TextDocument;
+            documents = [r];
+            opened[0](r);
+            await until(() => state.clients.size === 1 && state.clientUpdates.size === 0);
+            // VS Code closes the document and opens it again in the new language.
+            const text = {
+                uri,
+                languageId: 'plaintext',
+                isClosed: false,
+            } as unknown as vscode.TextDocument;
+            documents = [text];
+            closed[0](r);
+            opened[0](text);
+            await until(() => state.clientUpdates.size === 0);
+            sinon.assert.calledOnce(stop);
+            assert.strictEqual(state.clients.size, 0);
+        } finally {
+            await service.dispose();
+        }
+    });
+
     test('a rejected stop after R exits is logged', async () => {
         const child = Object.assign(new EventEmitter(), {
             stdout: new EventEmitter(),
