@@ -280,8 +280,7 @@ suite('Interactive VS Code integration', function () {
      * which one is new is unknown, since group positions change when a group
      * opens. Keep both rather than close the earlier tab.
      */
-    const tabsOpenedSince = (before: TabSnapshot): vscode.Tab[] => {
-        const tabs = allTabs();
+    const tabsOpenedSince = (before: TabSnapshot, tabs = allTabs()): vscode.Tab[] => {
         const current = new Set(tabs);
         const recreatable = new Set(
             [...before].filter(([tab]) => !current.has(tab)).map(([, key]) => key),
@@ -598,29 +597,53 @@ suite('Interactive VS Code integration', function () {
         });
         await vscode.window.showTextDocument(source, { viewColumn: vscode.ViewColumn.One });
         const before = snapshotTabs();
+        const inGroup = (uri: vscode.Uri, column: vscode.ViewColumn) => {
+            const found = allTabs().find(
+                (tab) =>
+                    tab.group.viewColumn === column &&
+                    tabInput(tab).uri?.toString() === uri.toString(),
+            );
+            assert.ok(found, `A tab for ${uri.toString()} is open in column ${column}`);
+            return found;
+        };
+        const sourceBefore = inGroup(source.uri, vscode.ViewColumn.One);
         const beside = await vscode.workspace.openTextDocument({
             language: 'r',
             content: 'beside <- 1',
         });
-        // Opening a new group makes VS Code rebuild its tab model.
+        // Opening a group makes some VS Code versions, such as 1.101,
+        // recreate every Tab object; later versions keep them.
         await vscode.commands.executeCommand('workbench.action.newGroupRight');
         const group = vscode.window.tabGroups.activeTabGroup.viewColumn;
         await vscode.window.showTextDocument(beside, { viewColumn: group });
-        // The existing document opened again in the new group is a new tab,
-        // but cleanup cannot tell it from the recreated earlier tab.
         await vscode.window.showTextDocument(source, { viewColumn: group });
-        const sourceTabs = allTabs().filter(
-            (tab) => tabInput(tab).uri?.toString() === source.uri.toString(),
-        );
-        assert.strictEqual(sourceTabs.length, 2);
-        assert.ok(
-            sourceTabs.every((tab) => !before.has(tab)),
-            'The earlier source tab is a new Tab object',
-        );
-        assert.deepStrictEqual(
-            tabsOpenedSince(before).map((tab) => tabInput(tab).uri?.toString()),
-            [beside.uri.toString()],
-        );
+        const sourceAfter = inGroup(source.uri, vscode.ViewColumn.One);
+        const recreated = sourceAfter !== sourceBefore;
+        const opened = tabsOpenedSince(before);
+        assert.ok(!opened.includes(sourceAfter), 'The earlier source tab is kept');
+        assert.ok(opened.includes(inGroup(beside.uri, group)), 'The new tab is closed');
+        // A recreated earlier tab cannot be told from the same document opened
+        // again in the new group, so then both are kept.
+        assert.strictEqual(opened.includes(inGroup(source.uri, group)), !recreated);
+    });
+
+    test('test cleanup tells recreated earlier tabs from new ones', () => {
+        const tab = (path: string) =>
+            ({ input: { uri: vscode.Uri.file(path) }, label: path }) as unknown as vscode.Tab;
+        const earlier = tab('/earlier.R');
+        const before: TabSnapshot = new Map([[earlier, vscode.Uri.file('/earlier.R').toString()]]);
+        const recreated = tab('/earlier.R');
+        const duplicate = tab('/earlier.R');
+        const added = tab('/added.R');
+        // The earlier tab object remains: an extra tab with its input is new.
+        assert.deepStrictEqual(tabsOpenedSince(before, [earlier, duplicate, added]), [
+            duplicate,
+            added,
+        ]);
+        // The earlier tab was recreated, as VS Code 1.101 does when a group opens.
+        assert.deepStrictEqual(tabsOpenedSince(before, [recreated, added]), [added]);
+        // Which of two tabs with the recreated tab's input is new is unknown.
+        assert.deepStrictEqual(tabsOpenedSince(before, [recreated, duplicate, added]), [added]);
     });
 
     test('test cleanup stops a language client that finishes starting after its deadline', async () => {
