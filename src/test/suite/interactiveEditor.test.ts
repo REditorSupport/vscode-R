@@ -73,18 +73,13 @@ suite('Interactive VS Code integration', function () {
     let agents: SessionAgent[];
     let manifests: SessionManifest[];
     let controller: vscode.NotebookController;
-    let originalTabs: Set<vscode.Tab>;
+    let originalTabs: TabSnapshot;
     let originalLanguageClients: Set<LanguageClient>;
     suiteSetup(async () => {
-        originalTabs = new Set(vscode.window.tabGroups.all.flatMap((group) => group.tabs));
+        originalTabs = snapshotTabs();
         // Close the suite's tabs in one call rather than with concurrent tab-group edits.
         resources.add('tabs', 'suite tabs', () =>
-            vscode.window.tabGroups.close(
-                vscode.window.tabGroups.all
-                    .flatMap((group) => group.tabs)
-                    .filter((tab) => !originalTabs.has(tab)),
-                true,
-            ),
+            vscode.window.tabGroups.close(tabsOpenedSince(originalTabs), true),
         );
         resources.add('agents', 'suite agents', () => {
             agents?.forEach((agent, index) =>
@@ -168,6 +163,9 @@ suite('Interactive VS Code integration', function () {
             [...service.stoppingClients].forEach((pending, index) =>
                 resources.add(phase, `stopping client ${index}`, () => pending),
             );
+            [...deferredStops].forEach((pending, index) =>
+                resources.add(phase, `deferred client stop ${index}`, () => pending),
+            );
         };
         const stopClients = (phase: 'clients' | 'final-clients', remove: boolean) => {
             for (const [key, client] of service.clients) {
@@ -246,8 +244,228 @@ suite('Interactive VS Code integration', function () {
     let workspaceFocusDiagnostics: FailureDiagnostics | undefined;
     let restoreWorkspaceFocusTracing: (() => void) | undefined;
     let stopWorkspaceFocusSampling: ((failed: boolean) => Promise<void>) | undefined;
+    let tabsBeforeTest: TabSnapshot | undefined;
+    // Stops of clients that finished starting after a test's cleanup, which
+    // later cleanups wait for before the servers' directories are removed.
+    const deferredStops = new Set<Promise<void>>();
+    let clientsBeforeTest: Set<LanguageClient> | undefined;
+    const allTabs = () => vscode.window.tabGroups.all.flatMap((group) => group.tabs);
+    // Interactive window tabs have no public input class; like notebook and
+    // text tabs, their input has the document's uri, and an Interactive tab
+    // also has its input box's.
+    const tabInput = (tab: vscode.Tab) => {
+        const input = tab.input as { uri?: unknown; inputBoxUri?: unknown } | undefined;
+        return {
+            uri: input?.uri instanceof vscode.Uri ? input.uri : undefined,
+            inputBoxUri: input?.inputBoxUri instanceof vscode.Uri ? input.inputBoxUri : undefined,
+        };
+    };
+    // VS Code creates new Tab objects whenever a group opens or closes, so
+    // also recognize the tabs that existed before a test by their inputs.
+    // Tabs without a document are told apart by their label.
+    type TabSnapshot = Map<vscode.Tab, string>;
+    const tabKey = (tab: vscode.Tab): string => {
+        const input = tab.input as
+            | { uri?: unknown; original?: unknown; modified?: unknown; viewType?: unknown }
+            | undefined;
+        const uris = [input?.uri, input?.original, input?.modified].filter(
+            (uri): uri is vscode.Uri => uri instanceof vscode.Uri,
+        );
+        return uris.length
+            ? uris.map((uri) => uri.toString()).join(' ')
+            : `${input?.constructor?.name ?? 'none'} ${typeof input?.viewType === 'string' ? input.viewType : ''} ${tab.label}`;
+    };
+    const snapshotTabs = (): TabSnapshot => new Map(allTabs().map((tab) => [tab, tabKey(tab)]));
+    /**
+     * Tabs that are neither an earlier tab nor one recreated for it. When an
+     * earlier tab was recreated and another tab with its input was opened,
+     * which one is new is unknown, since group positions change when a group
+     * opens. Keep both rather than close the earlier tab.
+     */
+    const tabsOpenedSince = (before: TabSnapshot, tabs = allTabs()): vscode.Tab[] => {
+        const current = new Set(tabs);
+        const recreatable = new Set(
+            [...before].filter(([tab]) => !current.has(tab)).map(([, key]) => key),
+        );
+        return tabs.filter((tab) => !before.has(tab) && !recreatable.has(tabKey(tab)));
+    };
+    const settleLanguageService = async (deadline: number): Promise<void> => {
+        const service = languageService();
+        // An update can start a stop, so look again until nothing is pending.
+        while (Date.now() < deadline) {
+            const pending = [
+                ...service.clientUpdates.values(),
+                ...service.stoppingClients,
+                ...deferredStops,
+            ];
+            if (!pending.length) {
+                return;
+            }
+            let timer: NodeJS.Timeout | undefined;
+            try {
+                await Promise.race([
+                    Promise.allSettled(pending),
+                    new Promise((resolve) => {
+                        timer = setTimeout(resolve, Math.max(0, deadline - Date.now()));
+                    }),
+                ]);
+            } finally {
+                clearTimeout(timer);
+            }
+        }
+    };
+    // Every Interactive notebook, input, and R document can run its own R
+    // language server. Close what a test opened, except the shared sessions'
+    // notebooks, and stop the servers it started, so they do not use the
+    // runner's CPU for the rest of the suite. This never fails the test: each
+    // step runs even if an earlier one failed, and failures are only logged.
+    const releaseTestResources = async (): Promise<void> => {
+        const tabsBefore = tabsBeforeTest;
+        const clientsBefore = clientsBeforeTest;
+        tabsBeforeTest = undefined;
+        clientsBeforeTest = undefined;
+        if (!tabsBefore || !clientsBefore) {
+            return;
+        }
+        const attempt = async (step: string, run: () => Promise<void>): Promise<void> => {
+            try {
+                await run();
+            } catch (error) {
+                console.error(`[test cleanup] Could not ${step}`, error);
+            }
+        };
+        let tabs: vscode.Tab[];
+        let sharedKeys: Set<string>;
+        try {
+            const shared = new Set(manifests?.map((manifest) => manifest.id));
+            const sharedNotebooks = vscode.workspace.notebookDocuments.filter((doc) =>
+                shared.has(doc.metadata.rSessionId as string),
+            );
+            const sharedUris = new Set(sharedNotebooks.map((doc) => doc.uri.toString()));
+            sharedKeys = new Set(sharedNotebooks.map((doc) => `vscode-notebook:${doc.uri.fsPath}`));
+            tabs = allTabs().filter((tab) => {
+                const { uri, inputBoxUri } = tabInput(tab);
+                if (uri && sharedUris.has(uri.toString())) {
+                    if (inputBoxUri) {
+                        sharedKeys.add(inputBoxUri.toString());
+                    }
+                    return false;
+                }
+                return true;
+            });
+            const opened = new Set(tabsOpenedSince(tabsBefore));
+            tabs = tabs.filter((tab) => opened.has(tab));
+        } catch (error) {
+            // Without the shared sessions' resources, nothing can be released safely.
+            console.error('[test cleanup] Could not find the resources the test opened', error);
+            return;
+        }
+        const deadline = Date.now() + 10000;
+        if (tabs.length) {
+            await attempt('close the tabs the test opened', async () => {
+                const closingUris = new Set(tabs.map((tab) => tabInput(tab).uri?.toString()));
+                // Extension tests skip the save confirmation and discard changes.
+                // A stalled renderer can leave closing pending, so stop
+                // waiting at the deadline and still stop the clients.
+                const closing = Promise.resolve(vscode.window.tabGroups.close(tabs, true));
+                closing.catch((error: unknown) =>
+                    console.error('[test cleanup] Could not close the tabs the test opened', error),
+                );
+                let timer: NodeJS.Timeout | undefined;
+                const closed = await Promise.race([
+                    closing.then(
+                        () => true,
+                        () => true,
+                    ),
+                    new Promise<boolean>((resolve) => {
+                        timer = setTimeout(
+                            () => resolve(false),
+                            Math.max(0, deadline - Date.now()),
+                        );
+                    }),
+                ]).finally(() => clearTimeout(timer));
+                if (!closed) {
+                    console.error('[test cleanup] Closing the tabs the test opened did not finish');
+                    return;
+                }
+                while (
+                    Date.now() < deadline &&
+                    vscode.workspace.notebookDocuments.some((doc) =>
+                        closingUris.has(doc.uri.toString()),
+                    )
+                ) {
+                    await new Promise((resolve) => setTimeout(resolve, 50));
+                }
+            });
+        }
+        await attempt('wait for the language service', () => settleLanguageService(deadline));
+        // A server still starting at the deadline is registered only once it
+        // has started. Stop it then, before any later work queued for its key
+        // runs, so a later test that needs that key starts its own server.
+        await attempt('follow the language clients still starting', () => {
+            stopClientsWhenStarted(clientsBefore, sharedKeys);
+            return Promise.resolve();
+        });
+        // Stop servers the test started that closing did not stop, such as one
+        // for a document opened without an editor.
+        await attempt('stop the language clients the test started', () =>
+            stopClientsStartedSince(clientsBefore, sharedKeys),
+        );
+    };
+    const stopClientsWhenStarted = (
+        clientsBefore: Set<LanguageClient>,
+        sharedKeys: Set<string>,
+    ): void => {
+        const service = languageService();
+        for (const [key, update] of service.clientUpdates) {
+            if (sharedKeys.has(key)) {
+                continue;
+            }
+            void update.then(() => {
+                const client = service.clients.get(key);
+                if (client && !clientsBefore.has(client)) {
+                    service.clients.delete(key);
+                    const stopping = stopLanguageClient(client)
+                        .catch((error: unknown) =>
+                            console.error(
+                                `[test cleanup] Could not stop language client ${key}`,
+                                error,
+                            ),
+                        )
+                        .finally(() => deferredStops.delete(stopping));
+                    deferredStops.add(stopping);
+                }
+            });
+        }
+    };
+    // Each stop may wait for its server, so stop them together.
+    const stopClientsStartedSince = async (
+        clientsBefore: Set<LanguageClient>,
+        sharedKeys: Set<string>,
+    ): Promise<void> => {
+        const service = languageService();
+        const leftover = [...service.clients].filter(
+            ([key, client]) => !clientsBefore.has(client) && !sharedKeys.has(key),
+        );
+        const results = await Promise.allSettled(
+            leftover.map(([key, client]) => {
+                service.clients.delete(key);
+                return stopLanguageClient(client);
+            }),
+        );
+        results.forEach((result, index) => {
+            if (result.status === 'rejected') {
+                console.error(
+                    `[test cleanup] Could not stop language client ${leftover[index][0]}`,
+                    result.reason,
+                );
+            }
+        });
+    };
     setup(function () {
         runningTest = this.currentTest && { test: this.currentTest, started: Date.now() };
+        tabsBeforeTest = snapshotTabs();
+        clientsBeforeTest = new Set(languageService().clients.values());
     });
     teardown(async function () {
         const failed = this.currentTest?.state === 'failed';
@@ -263,6 +481,7 @@ suite('Interactive VS Code integration', function () {
         stopWorkspaceFocusSampling = undefined;
         runningTest = undefined;
         await stopSampling?.(failed);
+        await releaseTestResources();
     });
     const until = async (
         predicate: () => boolean,
@@ -380,6 +599,126 @@ suite('Interactive VS Code integration', function () {
             'The configured Node must launch the session',
         );
     }
+    test('test cleanup keeps tabs that existed before the test when a group opens', async () => {
+        const source = await vscode.workspace.openTextDocument({
+            language: 'r',
+            content: 'existing <- 1',
+        });
+        await vscode.window.showTextDocument(source, { viewColumn: vscode.ViewColumn.One });
+        const before = snapshotTabs();
+        const inGroup = (uri: vscode.Uri, column: vscode.ViewColumn) => {
+            const found = allTabs().find(
+                (tab) =>
+                    tab.group.viewColumn === column &&
+                    tabInput(tab).uri?.toString() === uri.toString(),
+            );
+            assert.ok(found, `A tab for ${uri.toString()} is open in column ${column}`);
+            return found;
+        };
+        const sourceBefore = inGroup(source.uri, vscode.ViewColumn.One);
+        const beside = await vscode.workspace.openTextDocument({
+            language: 'r',
+            content: 'beside <- 1',
+        });
+        // Opening a group makes some VS Code versions, such as 1.101,
+        // recreate every Tab object; later versions keep them.
+        await vscode.commands.executeCommand('workbench.action.newGroupRight');
+        const group = vscode.window.tabGroups.activeTabGroup.viewColumn;
+        await vscode.window.showTextDocument(beside, { viewColumn: group });
+        await vscode.window.showTextDocument(source, { viewColumn: group });
+        const sourceAfter = inGroup(source.uri, vscode.ViewColumn.One);
+        const recreated = sourceAfter !== sourceBefore;
+        const opened = tabsOpenedSince(before);
+        assert.ok(!opened.includes(sourceAfter), 'The earlier source tab is kept');
+        assert.ok(opened.includes(inGroup(beside.uri, group)), 'The new tab is closed');
+        // A recreated earlier tab cannot be told from the same document opened
+        // again in the new group, so then both are kept.
+        assert.strictEqual(opened.includes(inGroup(source.uri, group)), !recreated);
+    });
+
+    test('test cleanup tells recreated earlier tabs from new ones', () => {
+        const tab = (path: string) =>
+            ({ input: { uri: vscode.Uri.file(path) }, label: path }) as unknown as vscode.Tab;
+        const earlier = tab('/earlier.R');
+        const before: TabSnapshot = new Map([[earlier, vscode.Uri.file('/earlier.R').toString()]]);
+        const recreated = tab('/earlier.R');
+        const duplicate = tab('/earlier.R');
+        const added = tab('/added.R');
+        // The earlier tab object remains: an extra tab with its input is new.
+        assert.deepStrictEqual(tabsOpenedSince(before, [earlier, duplicate, added]), [
+            duplicate,
+            added,
+        ]);
+        // The earlier tab was recreated, as VS Code 1.101 does when a group opens.
+        assert.deepStrictEqual(tabsOpenedSince(before, [recreated, added]), [added]);
+        // Which of two tabs with the recreated tab's input is new is unknown.
+        assert.deepStrictEqual(tabsOpenedSince(before, [recreated, duplicate, added]), [added]);
+    });
+
+    test('test cleanup stops a language client that finishes starting after its deadline', async () => {
+        const service = languageService();
+        const key = 'test-cleanup-overdue-startup';
+        let finish!: () => void;
+        const update = new Promise<void>((resolve) => {
+            finish = resolve;
+        });
+        const stop = sinon.stub().resolves();
+        const client = { stop, state: State.Running } as unknown as LanguageClient;
+        service.clientUpdates.set(key, update);
+        try {
+            stopClientsWhenStarted(new Set(service.clients.values()), new Set());
+            // The startup registers its client after cleanup has looked.
+            service.clients.set(key, client);
+            service.clientUpdates.delete(key);
+            finish();
+            await until(() => stop.called, 'The late client was not stopped', 5000);
+            assert.ok(!service.clients.has(key));
+        } finally {
+            service.clientUpdates.delete(key);
+            if (service.clients.get(key) === client) {
+                service.clients.delete(key);
+            }
+        }
+    });
+
+    test('test cleanup waits for a late client stop that is still pending', async () => {
+        const service = languageService();
+        const key = 'test-cleanup-pending-late-stop';
+        let finish!: () => void;
+        const update = new Promise<void>((resolve) => {
+            finish = resolve;
+        });
+        let stopped!: () => void;
+        const stop = sinon.stub().returns(
+            new Promise<void>((resolve) => {
+                stopped = resolve;
+            }),
+        );
+        const client = { stop, state: State.Running } as unknown as LanguageClient;
+        service.clientUpdates.set(key, update);
+        try {
+            stopClientsWhenStarted(new Set(service.clients.values()), new Set());
+            service.clients.set(key, client);
+            service.clientUpdates.delete(key);
+            finish();
+            await until(() => stop.called, 'The late client was not stopped', 5000);
+            let settled = false;
+            const settling = settleLanguageService(Date.now() + 5000).then(() => {
+                settled = true;
+            });
+            await new Promise((resolve) => setTimeout(resolve, 100));
+            assert.ok(!settled, 'Cleanup waits for the pending stop');
+            stopped();
+            await settling;
+        } finally {
+            stopped();
+            service.clientUpdates.delete(key);
+            if (service.clients.get(key) === client) {
+                service.clients.delete(key);
+            }
+        }
+    });
+
     test('missing arf offers setup, with no failed session or runtime installation', async () => {
         const config = vscode.workspace.getConfiguration('r');
         const previous = config.inspect<string>('interactive.arfPath')?.globalValue;
@@ -5095,7 +5434,7 @@ par(mfrow=c(1,1))`,
             }
         ).savedConnections;
         const temporary: { agent: SessionAgent; manifest: SessionManifest }[] = [];
-        const before = new Set(vscode.window.tabGroups.all.flatMap((group) => group.tabs));
+        const before = snapshotTabs();
         try {
             for (let i = 0; i < 2; i++) {
                 const id = randomUUID();
@@ -5149,12 +5488,7 @@ par(mfrow=c(1,1))`,
                 await vscode.commands.executeCommand('r.interactive.detach', manifest);
                 await agent.close();
             }
-            await vscode.window.tabGroups.close(
-                vscode.window.tabGroups.all
-                    .flatMap((group) => group.tabs)
-                    .filter((tab) => !before.has(tab)),
-                true,
-            );
+            await vscode.window.tabGroups.close(tabsOpenedSince(before), true);
         }
     });
     test('exports portable notebook output without transient connection URLs', () => {
