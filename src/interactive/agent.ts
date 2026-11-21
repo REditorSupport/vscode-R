@@ -26,6 +26,16 @@ import { MessagePages, boundedJson } from './messagePages';
 import { isDeepStrictEqual } from 'node:util';
 import { WorkspaceRefreshScheduler } from '../workspaceRefresh';
 
+/**
+ * Inspection failures that mean R never started the request: it waited too
+ * long to start, or the client or arf did not queue it.
+ */
+const RETRYABLE_INSPECTION_FAILURES: ReadonlySet<unknown> = new Set([
+    'queue_timeout',
+    'overloaded',
+    'queue_full',
+]);
+
 interface Client {
     socket: net.Socket;
     authenticated: boolean;
@@ -109,6 +119,26 @@ export class SessionAgent {
                 this.backendReady &&
                 !this.current &&
                 this.manifest.capabilities.inspection !== false,
+            undefined,
+            // Unlike a terminal session's, the agent's workspace is not
+            // refreshed when completions or documents read it, only after
+            // executions, on notifications, and on a manual refresh. Retry an
+            // inspection that failed, such as by timing out on a busy machine,
+            // so the cache does not stay stale until one of those.
+            {
+                retryDelaysMs: [500, 2000, 5000],
+                shouldRetry: (error) =>
+                    // Without a deadline, as for an adopted session's socket,
+                    // R keeps running an inspection after it times out, so a
+                    // retry could queue another full scan of the workspace.
+                    this.backend.capabilities.inspectionDeadline !== false &&
+                    // Retry only an inspection that never started. One that
+                    // started may have forced a promise in the global
+                    // environment, and a retry would run its code again.
+                    error instanceof Error &&
+                    error.name === 'InspectionError' &&
+                    RETRYABLE_INSPECTION_FAILURES.has((error as { kind?: unknown }).kind),
+            },
         );
         this.manifest = {
             protocol: AGENT_PROTOCOL,

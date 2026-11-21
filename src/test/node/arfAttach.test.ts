@@ -376,7 +376,7 @@ suite('arf inspection calls', () => {
         assert.throws(() => decodeInspectionResult(callReply({}, 2)), /unsupported version/);
     });
 
-    test('distinguishes queue timeout, deadline, R error, interrupt and unpublished handler', async () => {
+    test('distinguishes queue timeout, deadline, R error, interrupt, unpublished handler and full queue', async () => {
         const cases: [number, string, unknown, InspectionFailure, RegExp][] = [
             [-32012, 'Handler call expired', { timeout_ms: 7 }, 'queue_timeout', /did not start/],
             [
@@ -395,7 +395,8 @@ suite('arf inspection calls', () => {
             ],
             [-32016, 'Interrupted', { class: ['interrupt'] }, 'interrupted', /was interrupted/],
             [-32010, 'No such handler', undefined, 'unpublished', /not published/],
-            [-32011, 'Queue full', undefined, 'rejected', /rejected.*Queue full/],
+            [-32011, 'Queue full', undefined, 'queue_full', /queue was full.*not queued/],
+            [-32099, 'Something else', undefined, 'rejected', /rejected.*Something else/],
         ];
         let index = 0;
         await withInspection(
