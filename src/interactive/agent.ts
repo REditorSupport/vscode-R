@@ -97,8 +97,12 @@ export class SessionAgent {
             },
             (workspace) => {
                 if (!isDeepStrictEqual(workspace, this.workspace)) {
-                    this.workspace = workspace;
+                    // Cache only a published workspace. If publishing fails,
+                    // such as when the journal cannot be written, the next
+                    // read asks for the last published revision and gets the
+                    // whole workspace again instead of an unchanged reply.
                     this.event('workspace', workspace);
+                    this.workspace = workspace;
                 } else {
                     this.event('workspaceInvalidated', {});
                 }

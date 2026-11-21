@@ -10,7 +10,12 @@ import { SessionAgent } from '../../interactive/agent';
 import { AgentClient } from '../../interactive/client';
 import { readSessionManifest } from '../../interactive/launcher';
 import { AgentConfig, ExecutionRecord, SessionEvent, Submission } from '../../interactive/protocol';
-import { BackendEvent, ClientReply, SessionBackend } from '../../interactive/backend';
+import {
+    BackendEvent,
+    ClientReply,
+    InspectionRequest,
+    SessionBackend,
+} from '../../interactive/backend';
 import {
     backendDescriptor,
     backendDefinition,
@@ -32,7 +37,8 @@ class FakeBackend implements SessionBackend {
     interrupts = 0;
     disposals = 0;
     dispatchResult: () => Promise<void> = () => Promise.resolve();
-    inspectResult: () => Promise<unknown> = () => Promise.resolve({ marker: 42 });
+    inspectResult: (request: InspectionRequest) => Promise<unknown> = () =>
+        Promise.resolve({ marker: 42 });
     startResult: () => Promise<void> = () => Promise.resolve();
     onEvent(listener: (event: BackendEvent) => void): () => void {
         this.listener = listener;
@@ -55,8 +61,8 @@ class FakeBackend implements SessionBackend {
         this.submissions.push(submission);
         return this.dispatchResult();
     }
-    inspect(): Promise<unknown> {
-        return this.inspectResult();
+    inspect(request: InspectionRequest): Promise<unknown> {
+        return this.inspectResult(request);
     }
     replyInput(reply: { value: string }): Promise<void> {
         this.inputs.push(reply.value);
@@ -308,6 +314,39 @@ suite('Interactive backend contract', function () {
         );
         assert.strictEqual(calls, 1);
         assert.strictEqual(events.filter((event) => event.type === 'workspace').length, published);
+    });
+
+    test('a workspace that could not be written to the journal is published again by the next read', async () => {
+        const latest = { revision: 2, globalenv: { after: {} } };
+        let calls = 0;
+        // Like R, reply unchanged when asked about the revision it has.
+        backend.inspectResult = (request) => {
+            calls++;
+            return Promise.resolve(request.params?.revision === 2 ? { unchanged: true } : latest);
+        };
+        const journal = (agent as unknown as { journal: { append: (type: string) => unknown } })
+            .journal;
+        const append = journal.append.bind(journal);
+        let failures = 0;
+        journal.append = (type: string, ...rest: unknown[]) => {
+            if (type === 'workspace' && failures++ === 0) {
+                throw new Error('journal write failed');
+            }
+            return (append as (...args: unknown[]) => unknown)(type, ...rest);
+        };
+        const before = events.length;
+        const published = () => events.slice(before).filter((event) => event.type === 'workspace');
+        const previous = (await client.snapshot()).workspace;
+        backend.emit({ type: 'workspaceChanged' });
+        await until(() => calls === 1);
+        // The cache keeps the last workspace that was published.
+        assert.deepStrictEqual((await client.snapshot()).workspace, previous);
+        assert.strictEqual(published().length, 0);
+        backend.emit({ type: 'workspaceChanged' });
+        await until(() => published().length > 0);
+        assert.strictEqual(calls, 2);
+        assert.deepStrictEqual(published()[0].data, latest);
+        assert.deepStrictEqual((await client.snapshot()).workspace, latest);
     });
 
     test('handles completion before transport acknowledgement and deduplicates submissions', async () => {
