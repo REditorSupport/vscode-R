@@ -180,7 +180,7 @@ quit(save="no")
             dereference: true,
         });
         // These incomplete packages mask any global installations in a vanilla R process.
-        for (const name of ['jgd', 'systemfonts']) {
+        for (const name of ['jgd', 'systemfonts', 'svglite']) {
             fs.mkdirSync(path.join(shadow, name), { recursive: true });
             fs.writeFileSync(
                 path.join(shadow, name, 'DESCRIPTION'),
@@ -221,6 +221,21 @@ font_info <- function(...) list(max_ascend=9, max_descend=-2)
                 const directory = path.join(root, title);
                 fs.mkdirSync(directory);
                 const profileRuns = path.join(directory, 'profiles.txt');
+                const hostProbe = path.join(directory, 'host-probe');
+                const resources = plotBackend === 'standard' ? directory : runtime.resources;
+                if (plotBackend === 'standard') {
+                    // The worker can start R itself, outside Node's child_process diagnostics.
+                    fs.writeFileSync(
+                        path.join(resources, 'interactive-worker.R'),
+                        `
+system2 <- function(...) {
+    file.create(${rString(hostProbe)})
+    base::system2(...)
+}
+source(${rString(path.join(runtime.resources, 'interactive-worker.R'))}, local=environment())$value
+`,
+                    );
+                }
                 fs.writeFileSync(
                     path.join(directory, '.Renviron'),
                     startupFile === '.Renviron'
@@ -254,7 +269,7 @@ font_info <- function(...) list(max_ascend=9, max_descend=-2)
                         rPath: path.join(root, 'unavailable-configured-R'),
                         arfPath: process.env.ARF_PATH ?? 'arf',
                         library: runtime.library,
-                        resources: runtime.resources,
+                        resources,
                         plotBackend,
                     },
                 );
@@ -286,6 +301,10 @@ font_info <- function(...) list(max_ascend=9, max_descend=-2)
                     );
                     if (plotBackend === 'standard') {
                         assert.strictEqual(helpers.length, 0);
+                        assert.ok(
+                            !fs.existsSync(hostProbe),
+                            'Optional svglite triggered host library discovery',
+                        );
                     } else if (startupFile) {
                         const activeR = fs.realpathSync.native(
                             path.join(homes[0], 'bin', executable),
@@ -307,8 +326,14 @@ font_info <- function(...) list(max_ascend=9, max_descend=-2)
                     assert.deepStrictEqual(state, ['success']);
                     if (!startupFile) {
                         assert.ok(
-                            events.some((e) => e.type === 'display' && e.data.kind === 'image'),
-                            'Expected a static plot',
+                            events.some(
+                                (e) =>
+                                    e.type === 'display' &&
+                                    e.data.kind === 'image' &&
+                                    e.data.mime === 'image/png' &&
+                                    String(e.data.data).startsWith('iVBORw0KGgo'),
+                            ),
+                            'Expected a PNG when svglite is unavailable',
                         );
                         continue;
                     }

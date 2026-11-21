@@ -81,9 +81,11 @@ function(
   }
   loadNamespace("sess", lib.loc = c(library, support_paths))
   cfg <- jsonlite::fromJSON(config)
-  # Prefer project versions of support packages. Libraries outside an isolated
-  # project are available only for loading the IDE bridge and its plot device.
-  device <- if (isTRUE(cfg$useJgd)) "jgd" else "svglite"
-  tryCatch(load_support(device), error = function(e) if (isTRUE(cfg$useJgd)) stop(e))
+  if (isTRUE(cfg$useJgd)) {
+    load_support("jgd")
+  } else {
+    # Static plots use PNG if svglite is unavailable in the known libraries.
+    requireNamespace("svglite", lib.loc = support_paths, quietly = TRUE)
+  }
   sess:::interactive_start(config, managed = managed)
 }
