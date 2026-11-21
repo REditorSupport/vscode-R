@@ -653,7 +653,6 @@ suite('Session Terminal Lifecycle', () => {
                       ? 46331
                       : 46341;
             const terminalPid = rPid - 1;
-            const consoleError = sandbox.stub(console, 'error').callThrough();
             ancestors.withArgs(rPid).onFirstCall().resolves([terminalPid]);
             // The reconnect's lookup finds no terminal among the ancestors, or
             // cannot read the process table.
@@ -675,11 +674,16 @@ suite('Session Terminal Lifecycle', () => {
                 id,
                 rPid,
                 undefined,
-                reconnect === 'without auto-activation' ? { autoActivate: false } : undefined,
+                // Without auto-activation, sess requires an attachment ID.
+                reconnect === 'without auto-activation'
+                    ? { attachmentId: 'reconnect-without-activation', autoActivate: false }
+                    : undefined,
             );
-            if (keeps) {
-                sinon.assert.calledWithMatch(consoleError, 'terminal lookup');
-            }
+            // Only a reconnect that looks up its terminal queries the ancestors again.
+            assert.strictEqual(
+                ancestors.withArgs(rPid).callCount,
+                reconnect === 'without auto-activation' ? 1 : 2,
+            );
             assert.strictEqual(replacement._terminalPid, keeps ? terminalPid : undefined);
             assert.strictEqual(await session.waitForTerminalReady(terminal, 1), keeps);
         });
