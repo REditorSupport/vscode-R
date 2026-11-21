@@ -1699,6 +1699,12 @@ suite('Standalone plot restoration', () => {
         assert.strictEqual(render.getCalls().filter((call) => call.args[0].id === '3').length, 1);
     });
 
+    /** How long one live httpgd evaluation may take, and when to log its timeline. */
+    const evaluationTimeoutMs = 25000;
+    const slowEvaluationMs = 5000;
+    /** Room for a slow first evaluation and the steps after it. */
+    const liveHttpgdTestTimeoutMs = 60000;
+
     async function startHttpgdR(context: Mocha.Context) {
         try {
             const probe = await promisify(execFile)('Rscript', [
@@ -1737,8 +1743,21 @@ suite('Standalone plot restoration', () => {
         const exited = new Promise<void>((resolve) => r.once('exit', () => resolve()));
         let output = '';
         let errors = '';
+        let recordedLines = 0;
         r.stdout.on('data', (data: Buffer) => {
             output += data.toString();
+            // Record when each stage and result line arrives, so a slow
+            // evaluation shows which expression took the time.
+            const lines = output.split('\n').slice(0, -1);
+            for (const line of lines.slice(recordedLines)) {
+                if (line.startsWith('HTTPGD_STAGE_')) {
+                    record(`stdout ${line.trim()}`);
+                } else if (line.startsWith('HTTPGD_RESULT_')) {
+                    // The result itself can be long; it is in the stdout tail.
+                    record(`stdout ${line.slice(0, line.indexOf(':') + 1)}`);
+                }
+            }
+            recordedLines = lines.length;
         });
         r.stderr.on('data', (data: Buffer) => {
             errors += data.toString();
@@ -1776,6 +1795,9 @@ suite('Standalone plot restoration', () => {
                 });
             let line: string;
             try {
+                // R's first httpgd device and plot in a process can take
+                // several seconds on Windows, far longer than a transition
+                // inside the extension host, so allow more than the default.
                 line = await waitForValue(() => {
                     if (r.exitCode !== null || r.signalCode !== null) {
                         throw new Error(`R exited: ${errors}`);
@@ -1785,11 +1807,14 @@ suite('Standalone plot restoration', () => {
                     return start >= 0 && end >= 0
                         ? output.slice(start + marker.length, end)
                         : undefined;
-                });
+                }, evaluationTimeoutMs);
             } catch (error) {
                 throw new Error(`${(error as Error).message}\nDiagnostics: ${describe()}`, {
                     cause: error,
                 });
+            }
+            if (Date.now() - evaluationStarted > slowEvaluationMs) {
+                console.warn(`[httpgd test] Slow evaluation: ${describe()}`);
             }
             const result: unknown = JSON.parse(line);
             assert.strictEqual(typeof result, 'string', line);
@@ -1809,7 +1834,7 @@ suite('Standalone plot restoration', () => {
     }
 
     test('live httpgd dev.new shares navigation, resize, export, reload and exit cleanup', async function () {
-        this.timeout(30000);
+        this.timeout(liveHttpgdTestTimeoutMs);
         connect.callThrough();
         const process = await startHttpgdR(this);
         const { r, evaluate, exited } = process;
@@ -1930,7 +1955,7 @@ suite('Standalone plot restoration', () => {
     });
 
     test('live httpgd retains selection and navigation after every device closes', async function () {
-        this.timeout(30000);
+        this.timeout(liveHttpgdTestTimeoutMs);
         connect.callThrough();
         (vscode.window.createWebviewPanel as sinon.SinonStub).callsFake(
             (...args: Parameters<typeof createRealWebviewPanel>) => createRealWebviewPanel(...args),
@@ -3078,7 +3103,7 @@ suite('Standalone plot restoration', () => {
     }
 
     test('live httpgd retains closed-device content, selection and hidden plots across reload', async function () {
-        this.timeout(30000);
+        this.timeout(liveHttpgdTestTimeoutMs);
         connect.callThrough();
         const process = await startHttpgdR(this);
         const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'retained-httpgd-'));
