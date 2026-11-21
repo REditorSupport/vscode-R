@@ -3991,11 +3991,12 @@ async function handleNotification(message: Record<string, unknown>, socket: IpcS
                 socket._terminalPid = Number(native.pid);
             } else if (
                 provisional &&
-                !lookupFailed &&
+                (!lookupFailed || !isNativeTerminalEligible(provisional.terminal)) &&
                 terminalRegistry.forSession(session) === provisional
             ) {
                 // The lookup ruled out the inherited terminal, for example
-                // because a connected R process is between it and this one.
+                // because a connected R process is between it and this one, or
+                // the terminal gained an integration while the lookup failed.
                 // A binding made during the lookup is kept.
                 terminalRegistry.releaseSession(session);
                 socket._terminalPid = undefined;

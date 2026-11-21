@@ -689,6 +689,44 @@ suite('Session Terminal Lifecycle', () => {
         });
     }
 
+    test('a same-process reconnect whose process query fails releases a terminal that gained an integration', async () => {
+        const rPid = 46351;
+        const terminalPid = rPid - 1;
+        const entered = deferred<void>();
+        const lookup = deferred<number[] | undefined>();
+        ancestors.withArgs(rPid).onFirstCall().resolves([terminalPid]);
+        ancestors
+            .withArgs(rPid)
+            .onSecondCall()
+            .callsFake(() => {
+                entered.resolve();
+                return lookup.promise;
+            });
+        const terminal = {
+            processId: Promise.resolve(terminalPid),
+            sendText: sandbox.stub(),
+            show: sandbox.stub(),
+        } as unknown as vscode.Terminal;
+        sandbox.stub(vscode.window, 'terminals').value([terminal]);
+        sandbox.stub(vscode.window, 'activeTerminal').value(terminal);
+        const id = `inherited-integration-${rPid}`;
+        await connections.attach(id, rPid);
+        const replacement = await connections.startAttach(id, rPid);
+        await entered.promise;
+        const attach = sandbox.stub().resolves(false);
+        const registration = session.registerTerminalIntegration(terminal, { attach });
+        try {
+            lookup.resolve(undefined);
+            await replacement._terminalLookup;
+            assert.strictEqual(replacement._terminalPid, undefined);
+            // Activation goes through the integration instead of the inherited owner.
+            await session.activateRSession();
+            sinon.assert.calledOnce(attach);
+        } finally {
+            registration.dispose();
+        }
+    });
+
     // Selection belongs to a logical session; execution still belongs to a connection.
     for (const selection of [
         'unchanged',
