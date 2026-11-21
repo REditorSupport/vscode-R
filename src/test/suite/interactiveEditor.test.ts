@@ -72,18 +72,13 @@ suite('Interactive VS Code integration', function () {
     let agents: SessionAgent[];
     let manifests: SessionManifest[];
     let controller: vscode.NotebookController;
-    let originalTabs: Set<vscode.Tab>;
+    let originalTabs: TabSnapshot;
     let originalLanguageClients: Set<LanguageClient>;
     suiteSetup(async () => {
-        originalTabs = new Set(vscode.window.tabGroups.all.flatMap((group) => group.tabs));
+        originalTabs = snapshotTabs();
         // Close the suite's tabs in one call rather than with concurrent tab-group edits.
         resources.add('tabs', 'suite tabs', () =>
-            vscode.window.tabGroups.close(
-                vscode.window.tabGroups.all
-                    .flatMap((group) => group.tabs)
-                    .filter((tab) => !originalTabs.has(tab)),
-                true,
-            ),
+            vscode.window.tabGroups.close(tabsOpenedSince(originalTabs), true),
         );
         resources.add('agents', 'suite agents', () => {
             agents?.forEach((agent, index) =>
@@ -167,6 +162,9 @@ suite('Interactive VS Code integration', function () {
             [...service.stoppingClients].forEach((pending, index) =>
                 resources.add(phase, `stopping client ${index}`, () => pending),
             );
+            [...deferredStops].forEach((pending, index) =>
+                resources.add(phase, `deferred client stop ${index}`, () => pending),
+            );
         };
         const stopClients = (phase: 'clients' | 'final-clients', remove: boolean) => {
             for (const [key, client] of service.clients) {
@@ -246,6 +244,9 @@ suite('Interactive VS Code integration', function () {
     let restoreWorkspaceFocusTracing: (() => void) | undefined;
     let stopWorkspaceFocusSampling: ((failed: boolean) => Promise<void>) | undefined;
     let tabsBeforeTest: TabSnapshot | undefined;
+    // Stops of clients that finished starting after a test's cleanup, which
+    // later cleanups wait for before the servers' directories are removed.
+    const deferredStops = new Set<Promise<void>>();
     let clientsBeforeTest: Set<LanguageClient> | undefined;
     const allTabs = () => vscode.window.tabGroups.all.flatMap((group) => group.tabs);
     // Interactive window tabs have no public input class; like notebook and
@@ -291,7 +292,11 @@ suite('Interactive VS Code integration', function () {
         const service = languageService();
         // An update can start a stop, so look again until nothing is pending.
         while (Date.now() < deadline) {
-            const pending = [...service.clientUpdates.values(), ...service.stoppingClients];
+            const pending = [
+                ...service.clientUpdates.values(),
+                ...service.stoppingClients,
+                ...deferredStops,
+            ];
             if (!pending.length) {
                 return;
             }
@@ -419,12 +424,15 @@ suite('Interactive VS Code integration', function () {
                 const client = service.clients.get(key);
                 if (client && !clientsBefore.has(client)) {
                     service.clients.delete(key);
-                    stopLanguageClient(client).catch((error: unknown) =>
-                        console.error(
-                            `[test cleanup] Could not stop language client ${key}`,
-                            error,
-                        ),
-                    );
+                    const stopping = stopLanguageClient(client)
+                        .catch((error: unknown) =>
+                            console.error(
+                                `[test cleanup] Could not stop language client ${key}`,
+                                error,
+                            ),
+                        )
+                        .finally(() => deferredStops.delete(stopping));
+                    deferredStops.add(stopping);
                 }
             });
         }
@@ -665,6 +673,44 @@ suite('Interactive VS Code integration', function () {
             await until(() => stop.called, 'The late client was not stopped', 5000);
             assert.ok(!service.clients.has(key));
         } finally {
+            service.clientUpdates.delete(key);
+            if (service.clients.get(key) === client) {
+                service.clients.delete(key);
+            }
+        }
+    });
+
+    test('test cleanup waits for a late client stop that is still pending', async () => {
+        const service = languageService();
+        const key = 'test-cleanup-pending-late-stop';
+        let finish!: () => void;
+        const update = new Promise<void>((resolve) => {
+            finish = resolve;
+        });
+        let stopped!: () => void;
+        const stop = sinon.stub().returns(
+            new Promise<void>((resolve) => {
+                stopped = resolve;
+            }),
+        );
+        const client = { stop, state: State.Running } as unknown as LanguageClient;
+        service.clientUpdates.set(key, update);
+        try {
+            stopClientsWhenStarted(new Set(service.clients.values()), new Set());
+            service.clients.set(key, client);
+            service.clientUpdates.delete(key);
+            finish();
+            await until(() => stop.called, 'The late client was not stopped', 5000);
+            let settled = false;
+            const settling = settleLanguageService(Date.now() + 5000).then(() => {
+                settled = true;
+            });
+            await new Promise((resolve) => setTimeout(resolve, 100));
+            assert.ok(!settled, 'Cleanup waits for the pending stop');
+            stopped();
+            await settling;
+        } finally {
+            stopped();
             service.clientUpdates.delete(key);
             if (service.clients.get(key) === client) {
                 service.clients.delete(key);
@@ -5362,7 +5408,7 @@ par(mfrow=c(1,1))`,
             }
         ).savedConnections;
         const temporary: { agent: SessionAgent; manifest: SessionManifest }[] = [];
-        const before = new Set(vscode.window.tabGroups.all.flatMap((group) => group.tabs));
+        const before = snapshotTabs();
         try {
             for (let i = 0; i < 2; i++) {
                 const id = randomUUID();
@@ -5416,12 +5462,7 @@ par(mfrow=c(1,1))`,
                 await vscode.commands.executeCommand('r.interactive.detach', manifest);
                 await agent.close();
             }
-            await vscode.window.tabGroups.close(
-                vscode.window.tabGroups.all
-                    .flatMap((group) => group.tabs)
-                    .filter((tab) => !before.has(tab)),
-                true,
-            );
+            await vscode.window.tabGroups.close(tabsOpenedSince(before), true);
         }
     });
     test('exports portable notebook output without transient connection URLs', () => {
