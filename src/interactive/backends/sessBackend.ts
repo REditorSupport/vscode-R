@@ -1,8 +1,6 @@
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { execFile } from 'child_process';
-import { promisify } from 'util';
 import { randomBytes } from 'crypto';
 import { atomicJson } from '../journal';
 import { AgentSettings, object, Submission } from '../protocol';
@@ -21,7 +19,6 @@ import { Arf } from './arf';
 import { rString } from './rCode';
 import { exposeInspectionExpression } from './arfInspection';
 
-const run = promisify(execFile);
 export interface SessOptions {
     frontend: 'r' | 'arf';
     ownership: 'managed' | 'adopted';
@@ -146,20 +143,26 @@ export class SessBackend implements SessionBackend {
         return (this.startup ??= this.startRuntime());
     }
     private async startRuntime(): Promise<void> {
-        const libraries = await run(
-            this.options.rPath,
-            ['--vanilla', '--slave', '-e', 'cat(.libPaths(), sep="\\n")'],
-            { timeout: 15000 },
-        );
-        if (this.closed) {
-            throw new Error('Backend disposed during startup');
-        }
-        const support = libraries.stdout.trim().split(/\r?\n/).filter(Boolean);
         await this.bridge.start();
         if (this.closed) {
             throw new Error('Backend disposed during startup');
         }
-        await this.graphics.start();
+        // arf runs the project's startup files once. The separate graphics processes
+        // can then use its library order without sourcing those files themselves.
+        await this.frontend.start(
+            { ...process.env, SESS_ENDPOINT: this.bridge.endpoint, JGD_SOCKET: '' },
+            exposeInspectionExpression(this.options.library),
+        );
+        const hostLibraries = await this.graphics.start(async () => {
+            const { libraryPaths, rHome } = await this.frontend.rEnvironment();
+            return {
+                rPath:
+                    rHome && path.isAbsolute(rHome)
+                        ? path.join(rHome, 'bin', process.platform === 'win32' ? 'R.exe' : 'R')
+                        : this.options.rPath,
+                libraryPaths: [...libraryPaths, this.options.library],
+            };
+        });
         if (this.closed) {
             this.graphics.dispose();
             throw new Error('Backend disposed during startup');
@@ -173,21 +176,19 @@ export class SessBackend implements SessionBackend {
             token: this.token,
             useJgd: this.graphics.enabled,
         });
+        // renv can overwrite these variables in arf. Its host-only support packages
+        // remain reachable with the library environment inherited by the agent.
+        const libraryEnv = ['R_LIBS', 'R_LIBS_USER', 'R_LIBS_SITE'].map((name) => {
+            const value = process.env[name];
+            return `${name}=${value === undefined ? 'NA_character_' : rString(value)}`;
+        });
+        const support = hostLibraries
+            ? `support_libraries=c(${hostLibraries.map(rString).join(',')})`
+            : `host_library_env=c(${libraryEnv.join(',')})`;
         const code =
             `base::source(${rString(path.join(this.options.resources, 'interactive-worker.R'))}, local=base::new.env(parent=base::baseenv()))$value(` +
-            `${rString(this.options.library)}, ${rString(bootstrap)}, c(${support.map(rString).join(',')}), managed=${this.ownership === 'managed' ? 'TRUE' : 'FALSE'})`;
-        // arf evaluates this after the R profiles and before the bootstrap loads
-        // sess, so the published handlers find sess when they are called.
-        const expose = exposeInspectionExpression(this.options.library);
-        await this.frontend.start(
-            code,
-            {
-                ...process.env,
-                SESS_ENDPOINT: this.bridge.endpoint,
-                JGD_SOCKET: this.graphics.endpoint,
-            },
-            expose,
-        );
+            `${rString(this.options.library)}, ${rString(bootstrap)}, ${support}, managed=${this.ownership === 'managed' ? 'TRUE' : 'FALSE'})`;
+        await this.frontend.bootstrap(code);
     }
     async dispatch(submission: Submission): Promise<void> {
         await this.startup;

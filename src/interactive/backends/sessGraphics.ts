@@ -28,7 +28,6 @@ export class SessGraphics {
     private plotTimer?: NodeJS.Timeout;
     constructor(
         private config: {
-            rPath: string;
             resources: string;
             plotBackend: string;
             historyLimit: number;
@@ -65,34 +64,56 @@ export class SessGraphics {
         }
         this.metricPending.clear();
     }
-    async start(): Promise<void> {
+    /** Return host paths already observed by the vanilla probe for the bridge's fallback. */
+    async start(
+        getRuntime: () => Promise<{ rPath: string; libraryPaths: string[] }>,
+    ): Promise<string[] | undefined> {
         if (this.config.plotBackend === 'standard') {
             return;
         }
         try {
+            const { rPath, libraryPaths } = await getRuntime();
+            if (this.stopped) {
+                return;
+            }
             const probe = await run(
-                this.config.rPath,
+                rPath,
                 [
                     '--vanilla',
                     '--slave',
                     '-e',
-                    'cat(requireNamespace("jgd",quietly=TRUE) && requireNamespace("systemfonts",quietly=TRUE))',
+                    'host <- .libPaths(); .libPaths(c(commandArgs(TRUE), host), include.site=FALSE); ' +
+                        'pkgs <- c("jgd", "systemfonts", "jsonlite"); ' +
+                        'missing <- pkgs[!vapply(pkgs, requireNamespace, logical(1), quietly=TRUE)]; ' +
+                        'writeLines(paste(missing, collapse=", ")); ' +
+                        'if (!"jsonlite" %in% missing) cat(jsonlite::toJSON(host))',
+                    '--args',
+                    ...libraryPaths,
                 ],
                 { timeout: 15000 },
             );
-            if (probe.stdout.trim() !== 'TRUE') {
-                if (this.config.plotBackend === 'jgd') {
-                    throw new Error('JGD requires the jgd and systemfonts R packages');
-                }
+            if (this.stopped) {
                 return;
             }
+            const [missing, paths] = probe.stdout.trimEnd().split(/\r?\n/);
+            const hostLibraries = paths ? (JSON.parse(paths) as string[]) : undefined;
+            if (missing) {
+                if (this.config.plotBackend === 'jgd') {
+                    throw new Error(
+                        `The jgd backend could not load the following R packages: ${missing}. Install them in a library available to this R session.`,
+                    );
+                }
+                return hostLibraries;
+            }
             this.metrics = spawn(
-                this.config.rPath,
+                rPath,
                 [
                     '--vanilla',
                     '--slave',
                     '-f',
                     path.join(this.config.resources, 'interactive-metrics.R'),
+                    '--args',
+                    ...libraryPaths,
                 ],
                 { stdio: ['pipe', 'pipe', 'pipe'] },
             );
@@ -135,6 +156,7 @@ export class SessGraphics {
                 this.jgd.start();
             });
             this.enabled = true;
+            return hostLibraries;
         } catch (error) {
             if (this.config.plotBackend === 'jgd') {
                 throw error;
@@ -142,7 +164,7 @@ export class SessGraphics {
             this.dispose();
             this.emit({
                 type: 'warning',
-                message: `JGD unavailable: ${String(error)}. Using static graphics.`,
+                message: `The jgd backend is unavailable: ${String(error)}. Using static graphics.`,
             });
         }
     }

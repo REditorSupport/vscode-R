@@ -23,6 +23,7 @@ import type { NotebookOutputState } from '../../interactive/notebookOutput';
 import { AssetStorageStats, exportedAssetName, readAsset } from '../../interactive/assets';
 import { resolveExecutable } from '../../interactive/executable';
 import { shellQuote } from '../../interactive/launcher';
+import { localEndpoint } from '../../interactive/transport';
 import type { InteractiveManager } from '../../interactive/manager';
 import type { GlobalEnvItem, WorkspaceDataProvider } from '../../workspaceViewer';
 import type { WorkspaceData } from '../../session';
@@ -831,6 +832,31 @@ suite('Interactive VS Code integration', function () {
         } finally {
             listener.dispose();
             affinity.restore();
+        }
+    });
+
+    test('opening the early manifest reports the backend failure after the agent disconnects', async () => {
+        const initial: SessionManifest = {
+            ...manifests[0],
+            id: randomUUID(),
+            generation: randomUUID(),
+            status: 'starting',
+            endpoint: localEndpoint(root, 'failed-start.sock'),
+        };
+        const storage = path.join(root, initial.id);
+        fs.mkdirSync(storage);
+        const failure =
+            'The jgd backend could not load the following R packages: systemfonts. Install them in a library available to this R session.';
+        fs.writeFileSync(
+            path.join(storage, 'manifest.json'),
+            JSON.stringify({ ...initial, startupError: failure }),
+        );
+        const errors = sinon.stub(vscode.window, 'showErrorMessage').resolves(undefined);
+        try {
+            await vscode.commands.executeCommand('r.interactive.open', initial);
+            assert.deepStrictEqual(errors.firstCall.args, [`R Interactive: ${failure}`]);
+        } finally {
+            errors.restore();
         }
     });
 

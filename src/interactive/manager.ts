@@ -31,6 +31,7 @@ import {
     launchAgent,
     newIdentity,
     prepareNodeRuntime,
+    readSessionManifest,
 } from './launcher';
 import { NodeRuntime, resolveNodeRuntime } from './nodeExecutable';
 import { backendDescriptor, prepareBackendRuntime } from './backendRegistry';
@@ -1638,6 +1639,14 @@ export class InteractiveManager
                     item.dispose();
                 });
             }
+            const failure = readSessionManifest(
+                path.join(this.root, manifest.id),
+                manifest.id,
+                manifest.generation,
+            )?.startupError;
+            if (failure) {
+                throw new Error(failure, { cause: error });
+            }
             throw error;
         }
     }
@@ -2877,6 +2886,10 @@ export class InteractiveManager
                     }
                     if (latest) {
                         view.client.manifest = latest;
+                        if (latest.startupError) {
+                            this.report(new Error(latest.startupError));
+                            return;
+                        }
                     }
                     await view.client.connect();
                     if (view.client.manifest.assetBase) {

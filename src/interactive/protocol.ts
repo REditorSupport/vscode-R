@@ -34,6 +34,7 @@ export interface SessionManifest extends SessionIdentity {
     provider: ProviderKind;
     created: number;
     ended?: number;
+    startupError?: string;
     status: 'starting' | 'idle' | 'busy' | 'input' | 'stopping' | 'exited' | 'unknown';
     capabilities: Record<string, boolean>;
     supervision: string;

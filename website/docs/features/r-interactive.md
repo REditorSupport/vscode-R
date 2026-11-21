@@ -17,7 +17,7 @@ The R host needs:
 - R. The bundled sess package is pure R and needs no compiler; its missing Imports are installed from the configured R repository and may need build tools when installed from source.
 - The session agent automatically uses the extension host's bundled runtime: VS Code's Electron runtime in Node mode on desktop, or VS Code Server's Node runtime remotely. A separate Node.js installation is optional.
 - `tmux` is optional. On Linux, the default supervisor uses tmux when available and otherwise starts an independent detached process. `systemd --user` is another configurable option.
-- R packages processx, later, jsonlite, and rstudioapi. Install languageserver for language features, jgd and systemfonts for jgd graphics, svglite for the static fallback, and htmlwidgets/htmltools for HTML output.
+- R packages processx, later, jsonlite, and rstudioapi. Install languageserver for language features, jgd and systemfonts for jgd graphics, and htmlwidgets/htmltools for HTML output. Static plots use SVG when `svglite` is available and PNG otherwise.
 - arf. Creating a new Interactive session requires an arf executable on the R host. Connecting to an already-running arf uses its socket and does not require arf on the extension host's PATH. R Interactive requires arf 0.7.2-rc.1 or later.
 
 For example, run in the R installation used on the server:
@@ -41,7 +41,9 @@ The extension installs its bundled pure R sess into a private, content-addressed
 
 That private library is used only to load the bridge; it is not added to your session's `.libPaths()` or `R_LIBS`. Package installation follows ordinary R behavior: `install.packages()` defaults to the first library in `.libPaths()`, usually your user library. Startup files can customize that order, and an explicit `lib=` still takes precedence. The extension does not force a user-library destination over a project library.
 
-Start the session in the renv project directory to load its `.Rprofile` normally. An activated renv project keeps its project library, installation destination, and package isolation; the private `sess` is not added to `renv::snapshot()` lockfiles. IDE support namespaces and the plot device load explicitly, preferring available project versions of their dependencies and using normal host libraries as a fallback. This does not make unrelated packages from those host libraries visible to the project. Install analysis packages in the project as usual, and record them with renv. As in any R process, an already-loaded dependency keeps its loaded version until restart.
+The `jgd` backend uses the R installation and library paths reported by arf for package discovery and font metrics. You can install `jgd` and `systemfonts` in a personal library configured through `.Renviron` or `.Rprofile` on the R host.
+
+Start the session in the renv project directory to load its `.Rprofile` normally. The bridge first looks for IDE support packages and the plot device in the session and private libraries. A bare renv project can hide a dependency that was already installed on the host when vscode-R prepared the bridge. The bridge reuses host paths reported by the `jgd` check when available. Otherwise, it queries the running R installation's default libraries only if a required namespace fails to load. Static graphics looks for optional `svglite` in the paths already available. The project keeps its library order, package installation destination, and `renv::snapshot()` behavior. Already-loaded namespaces keep their versions until restart.
 
 Sessions created by older extension builds retain their original library order. Start a new session after updating to use this behavior. Restarting also applies it, but clears in-memory R objects; switching directories in an existing R session does not itself activate a different renv project.
 

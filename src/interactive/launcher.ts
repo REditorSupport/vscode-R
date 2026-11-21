@@ -51,6 +51,31 @@ export function defaultSessionDirectory(workspace: string | undefined): string {
     return workspace ?? os.homedir();
 }
 
+export function readSessionManifest(
+    storage: string,
+    id: string,
+    generation?: string,
+): SessionManifest | undefined {
+    try {
+        identifier(id);
+        const file = path.join(storage, 'manifest.json');
+        const stat = fs.lstatSync(file);
+        if (stat.isSymbolicLink() || (process.getuid && stat.uid !== process.getuid())) {
+            return;
+        }
+        const manifest = JSON.parse(fs.readFileSync(file, 'utf8')) as SessionManifest;
+        if (
+            manifest.id === id &&
+            manifest.host === os.hostname() &&
+            (generation === undefined || manifest.generation === generation)
+        ) {
+            return manifest;
+        }
+    } catch {
+        // Ignore partial, foreign, and unrecognized registry entries.
+    }
+}
+
 export function discoverSessions(root: string): SessionManifest[] {
     let names: string[];
     try {
@@ -66,20 +91,9 @@ export function discoverSessions(root: string): SessionManifest[] {
         if (name === 'runtimes') {
             continue;
         }
-        try {
-            identifier(name);
-            const file = path.join(root, name, 'manifest.json');
-            const stat = fs.lstatSync(file);
-            if (stat.isSymbolicLink() || (process.getuid && stat.uid !== process.getuid())) {
-                continue;
-            }
-            const manifest = JSON.parse(fs.readFileSync(file, 'utf8')) as SessionManifest;
-            if (manifest.id !== name || manifest.host !== os.hostname()) {
-                continue;
-            }
+        const manifest = readSessionManifest(path.join(root, name), name);
+        if (manifest) {
             sessions.push(manifest);
-        } catch {
-            /* Ignore partial, foreign, and unrecognized registry entries. */
         }
     }
     return sessions.sort((a, b) => b.created - a.created);
@@ -286,18 +300,15 @@ export async function launchAgent(
     }
     const deadline = Date.now() + 30000;
     while (Date.now() < deadline) {
-        try {
-            const manifest = JSON.parse(
-                fs.readFileSync(path.join(config.storage, 'manifest.json'), 'utf8'),
-            ) as SessionManifest;
-            if (manifest.id === config.id && manifest.generation === config.generation) {
-                const live = await probeSession(manifest);
-                if (live) {
-                    return live;
-                }
+        const manifest = readSessionManifest(config.storage, config.id, config.generation);
+        if (manifest) {
+            if (manifest.startupError) {
+                throw new Error(manifest.startupError);
             }
-        } catch {
-            /* Atomic manifest is published after the endpoints are ready. */
+            const live = await probeSession(manifest);
+            if (live) {
+                return live;
+            }
         }
         await new Promise((resolve) => setTimeout(resolve, 100));
     }

@@ -15,7 +15,7 @@ R Interactive keeps R execution independent of the VS Code extension host. Each 
 | [renderer.ts](renderer.ts) | Browser-side rich output and controls; live requests return through the editor to the owning session |
 | [inputFeatures.ts](inputFeatures.ts) | Automatic formatting omitted by VS Code's native Interactive input editor |
 
-`SessionAgent` receives a backend factory. It does not import sess, arf, R-process launch helpers, or JGD wire types. Backend definitions are internal; there is no public plugin registration API.
+`SessionAgent` receives a backend factory. It does not import sess, arf, R-process launch helpers, or jgd wire types. Backend definitions are internal; there is no public plugin registration API.
 
 ## Input formatting
 
@@ -116,7 +116,7 @@ experimental; the integration requires arf 0.7.2-rc.1 or later and is tested wit
 the version pinned in `src/test/node/mise.toml`. Managed sessions also support
 Windows with detached supervision; existing-arf discovery/adoption remains Unix-only.
 
-[SessGraphics](backends/sessGraphics.ts) owns JGD negotiation, its font-metrics worker, plot attribution/coalescing, SVG production, and resize transport. It emits display payloads with stable identities. The agent stores assets and journals references. Static graphics remains available without JGD; another backend can supply SVG/PNG directly.
+[SessGraphics](backends/sessGraphics.ts) owns jgd negotiation, its font-metrics worker, plot attribution/coalescing, SVG production, and resize transport. It emits display payloads with stable identities. The agent stores assets and journals references. Static graphics remains available without jgd; another backend can supply SVG/PNG directly.
 
 Backend-specific preflight and private package installation live behind the registry and [sessPreparation.ts](backends/sessPreparation.ts). vscode-R installs the `sess` snapshot bundled with the extension; missing Imports use the configured repository. Common agent settings do not require a sess library or R path. The agent bundle cache is separate from the sess runtime cache. Existing flat launch configurations are normalized by `backendDescriptor()`; `withBackend()` derives compatibility fields for older readers. The [sess README](../../sess/README.md) documents its R hooks and wire protocol.
 
