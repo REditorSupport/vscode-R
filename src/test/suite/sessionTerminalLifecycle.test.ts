@@ -254,12 +254,11 @@ suite('Session Terminal Lifecycle', () => {
             const clock = sandbox.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
             try {
                 await entered.promise;
-                assert.strictEqual(socket._sessionId, undefined);
+                // The connection is registered while terminal PIDs are still pending.
+                assert.strictEqual(socket._sessionId, 'bounded-native-pids');
+                assert.ok(session.getSessionReference('bounded-native-pids'));
                 await clock.tickAsync(1000);
-                await settleWithFakeTime(
-                    waitFor(() => (socket._sessionId ? true : undefined)),
-                    clock,
-                );
+                await settleWithFakeTime(socket._terminalLookup!, clock);
                 assert.strictEqual(socket._terminalPid, hasAncestor ? 46291 : undefined);
             } finally {
                 clock.restore();
@@ -281,6 +280,47 @@ suite('Session Terminal Lifecycle', () => {
             }
         });
     }
+
+    test('a session is connected while its terminal ancestor query is still pending', async () => {
+        // On Windows the ancestor query starts PowerShell and can take seconds.
+        const queried = deferred<void>();
+        const parents = deferred<number[]>();
+        ancestors.withArgs(46281).callsFake(() => {
+            queried.resolve();
+            return parents.promise;
+        });
+        const sendText = sandbox.stub();
+        const terminal = {
+            processId: Promise.resolve(46280),
+            sendText,
+            show: sandbox.stub(),
+        } as unknown as vscode.Terminal;
+        sandbox.stub(vscode.window, 'terminals').value([terminal]);
+        sandbox.stub(vscode.window, 'activeTerminal').value(terminal);
+        const connected: string[] = [];
+        const listener = session.onDidChangeSessionConnection((change) => {
+            connected.push(`${change.kind}:${change.session.sessionId}`);
+        });
+        try {
+            const socket = await connections.startAttach('pending-ancestors', 46281);
+            await queried.promise;
+            assert.ok(session.getSessionReference('pending-ancestors'));
+            assert.deepStrictEqual(connected, ['connected:pending-ancestors']);
+            assert.strictEqual(await session.waitForTerminalReady(terminal, 1), false);
+
+            parents.resolve([46280]);
+            await socket._terminalLookup;
+            assert.strictEqual(socket._terminalPid, 46280);
+            assert.strictEqual(await session.waitForTerminalReady(terminal, 100), true);
+            const owner = session.activeSession;
+            assert.strictEqual(owner?.sessionId, 'pending-ancestors');
+            await session.executeSessionCode(owner, 'View(iris)');
+            sinon.assert.calledOnceWithExactly(sendText, 'View(iris)');
+        } finally {
+            parents.resolve([]);
+            listener.dispose();
+        }
+    });
 
     for (const { delayedPid, parents } of [
         { delayedPid: false, parents: [] },
@@ -591,12 +631,63 @@ suite('Session Terminal Lifecycle', () => {
         const owner = session.activeSession;
         assert.strictEqual(owner?.socket, newer);
         ancestorsResolved.resolve([46271]);
-        await waitFor(() => (old.destroyed || old._sessionId ? true : undefined));
+        await waitFor(() => (old.destroyed ? true : undefined));
+        await old._terminalLookup;
         assert.strictEqual(session.activeSession, owner);
         assert.strictEqual(newer.destroyed, false);
         await session.cleanupSession('overlapping-reconnect', old);
         assert.strictEqual(session.activeSession, owner);
     });
+
+    for (const reconnect of [
+        'without auto-activation',
+        'whose lookup rules it out',
+        'whose process query fails',
+    ] as const) {
+        const keeps = reconnect === 'whose process query fails';
+        test(`a same-process reconnect ${reconnect} ${keeps ? 'keeps' : 'does not keep'} its terminal`, async () => {
+            const rPid =
+                reconnect === 'without auto-activation'
+                    ? 46321
+                    : reconnect === 'whose lookup rules it out'
+                      ? 46331
+                      : 46341;
+            const terminalPid = rPid - 1;
+            ancestors.withArgs(rPid).onFirstCall().resolves([terminalPid]);
+            // The reconnect's lookup finds no terminal among the ancestors, or
+            // cannot read the process table.
+            ancestors
+                .withArgs(rPid)
+                .onSecondCall()
+                .resolves(keeps ? undefined : []);
+            const terminal = {
+                processId: Promise.resolve(terminalPid),
+                sendText: sandbox.stub(),
+                show: sandbox.stub(),
+            } as unknown as vscode.Terminal;
+            sandbox.stub(vscode.window, 'terminals').value([terminal]);
+            sandbox.stub(vscode.window, 'activeTerminal').value(terminal);
+            const id = `inherited-${rPid}`;
+            await connections.attach(id, rPid);
+            assert.strictEqual(await session.waitForTerminalReady(terminal, 100), true);
+            const replacement = await connections.attach(
+                id,
+                rPid,
+                undefined,
+                // Without auto-activation, sess requires an attachment ID.
+                reconnect === 'without auto-activation'
+                    ? { attachmentId: 'reconnect-without-activation', autoActivate: false }
+                    : undefined,
+            );
+            // Only a reconnect that looks up its terminal queries the ancestors again.
+            assert.strictEqual(
+                ancestors.withArgs(rPid).callCount,
+                reconnect === 'without auto-activation' ? 1 : 2,
+            );
+            assert.strictEqual(replacement._terminalPid, keeps ? terminalPid : undefined);
+            assert.strictEqual(await session.waitForTerminalReady(terminal, 1), keeps);
+        });
+    }
 
     // Selection belongs to a logical session; execution still belongs to a connection.
     for (const selection of [
@@ -671,13 +762,14 @@ suite('Session Terminal Lifecycle', () => {
                 const preserveOther =
                     selection === 'different terminal' ||
                     selection === 'different public activation';
+                // The replacement is registered and keeps the same process's terminal
+                // before the lookup finishes, so selecting the session selects it.
                 const selected = session.activeSession;
                 assert.ok(selected);
-                assert.strictEqual(selected.socket, preserveOther ? otherSocket : old);
+                assert.strictEqual(selected.socket, preserveOther ? otherSocket : replacement);
+                assert.strictEqual(old.destroyed, true);
                 proceed.resolve([46300]);
-                await waitFor(() =>
-                    replacement._sessionId === previous.sessionId ? true : undefined,
-                );
+                await replacement._terminalLookup;
 
                 assert.strictEqual(old.destroyed, true);
                 assert.strictEqual(replacement.destroyed, false);
@@ -746,6 +838,7 @@ suite('Session Terminal Lifecycle', () => {
             await waitFor(() =>
                 socket._sessionId === 'pending-native-discovery' ? true : undefined,
             );
+            await socket._terminalLookup;
             assert.strictEqual(socket._terminalPid, undefined);
             assert.strictEqual(session.activeSession, owner);
             assert.strictEqual(await session.waitForTerminalReady(terminal, 1), false);

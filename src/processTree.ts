@@ -20,8 +20,11 @@ export function getProcessQuerySpec(platform: NodeJS.Platform = process.platform
         : { executable: 'ps', args: ['-A', '-o', 'pid=', '-o', 'ppid='], timeout: 5000 };
 }
 
-/** Return nearest ancestors first, using one bounded process-table snapshot. */
-export async function getProcessAncestors(pid: number): Promise<number[]> {
+/**
+ * Return nearest ancestors first, using one bounded process-table snapshot,
+ * or undefined if the process table could not be read.
+ */
+export async function getProcessAncestors(pid: number): Promise<number[] | undefined> {
     if (!Number.isSafeInteger(pid) || pid <= 0) {
         return [];
     }
@@ -59,6 +62,6 @@ export async function getProcessAncestors(pid: number): Promise<number[]> {
         return ancestors;
     } catch (error) {
         console.warn('Could not resolve R process ancestors for terminal association', error);
-        return [];
+        return undefined;
     }
 }
