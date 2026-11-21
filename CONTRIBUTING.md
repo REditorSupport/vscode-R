@@ -147,7 +147,8 @@ selected configuration, with the same files, Mocha options and launch arguments
 as `pnpm run test:extension`. Unlike the CLI, it runs in the current VS Code and
 does not install extension dependencies, so the **R Syntax** extension must
 already be installed. `interactive-integration` also needs the R and arf setup
-described above.
+described above, and stops at its first failure, because its tests share R
+sessions that a failed or timed-out test may leave changed.
 
 Alternatively, the optional
 [Extension Test Runner](https://marketplace.visualstudio.com/items?itemName=ms-vscode.extension-test-runner)
@@ -168,7 +169,7 @@ For just the Interactive editor suite, compile the tests and run:
 
 ```sh
 pnpm run pretest
-pnpm exec vscode-test --run out/test/suite/interactiveEditor.test.js
+pnpm exec vscode-test --label interactive-integration
 ```
 
 On headless Linux, run the editor command under `xvfb-run -a`. When run from the CLI, the test configuration installs R Syntax in the test profile. [runtime-lifecycle.cjs](src/test/examples/README.md#editor-runtime-lifecycle) separately checks persistence across full application exit and different editor versions. Use it with the minimum VS Code version from `package.json` and current stable when changing runtime launch or reconnection.
