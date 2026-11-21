@@ -311,4 +311,112 @@ suite('Workspace refresh scheduling', () => {
         assert.deepStrictEqual(published, [2]);
         scheduler.dispose();
     });
+
+    test('a notification that comes due during a failed read is served when it settles, with its full retries', async () => {
+        let fail!: (error: Error) => void;
+        let calls = 0;
+        const published: number[] = [];
+        const scheduler = new WorkspaceRefreshScheduler<number>(
+            () => {
+                calls++;
+                if (calls === 1) {
+                    return new Promise<number>((_resolve, reject) => {
+                        fail = reject;
+                    });
+                }
+                return calls === 2 ? Promise.reject(new Error('timeout')) : Promise.resolve(calls);
+            },
+            (value) => published.push(value),
+            () => true,
+            undefined,
+            { retryDelaysMs: [1] },
+        );
+        const running = scheduler.ensure();
+        await Promise.resolve();
+        scheduler.invalidate(1);
+        // The notification's read comes due while the first read is running.
+        await new Promise((resolve) => setTimeout(resolve, 20));
+        fail(new Error('timeout'));
+        await running;
+        const deadline = Date.now() + 1000;
+        while (!published.length && Date.now() < deadline) {
+            await new Promise((resolve) => setTimeout(resolve, 5));
+        }
+        assert.deepStrictEqual(published, [3]);
+        scheduler.dispose();
+    });
+
+    test('a publisher that keeps failing uses up the retries', async () => {
+        let calls = 0;
+        const scheduler = new WorkspaceRefreshScheduler<number>(
+            () => Promise.resolve(++calls),
+            () => {
+                throw new Error('journal write failed');
+            },
+            () => true,
+            undefined,
+            { retryDelaysMs: [1, 1] },
+        );
+        await scheduler.ensure();
+        await new Promise((resolve) => setTimeout(resolve, 100));
+        assert.strictEqual(calls, 3, 'One read and two retries');
+        scheduler.dispose();
+    });
+
+    test('a failure that should not be retried waits for the next demand', async () => {
+        let calls = 0;
+        const failures: unknown[] = [];
+        const scheduler = new WorkspaceRefreshScheduler<number>(
+            () => {
+                calls++;
+                return Promise.reject(new Error('R error'));
+            },
+            () => {},
+            () => true,
+            undefined,
+            {
+                retryDelaysMs: [1],
+                shouldRetry: (error) => {
+                    failures.push(error);
+                    return false;
+                },
+            },
+        );
+        await scheduler.ensure();
+        await new Promise((resolve) => setTimeout(resolve, 30));
+        assert.strictEqual(calls, 1);
+        assert.strictEqual((failures[0] as Error).message, 'R error');
+        await scheduler.ensure();
+        assert.strictEqual(calls, 2);
+        scheduler.dispose();
+    });
+
+    test('a notification served by a later read does not bypass the retry rules', async () => {
+        let first!: (value: number) => void;
+        let calls = 0;
+        const scheduler = new WorkspaceRefreshScheduler<number>(
+            () => {
+                calls++;
+                return calls === 1
+                    ? new Promise<number>((resolve) => {
+                          first = resolve;
+                      })
+                    : Promise.reject(new Error('R error'));
+            },
+            () => {},
+            () => true,
+            undefined,
+            { retryDelaysMs: [1], shouldRetry: () => false },
+        );
+        const running = scheduler.ensure();
+        await Promise.resolve();
+        scheduler.invalidate(1);
+        await new Promise((resolve) => setTimeout(resolve, 20));
+        // The next read serves the notification and fails in a way not retried.
+        first(1);
+        await running;
+        await new Promise((resolve) => setTimeout(resolve, 30));
+        assert.strictEqual(calls, 2);
+        scheduler.dispose();
+    });
 });

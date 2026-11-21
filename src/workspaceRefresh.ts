@@ -5,6 +5,12 @@ export interface WorkspaceRefreshOptions {
      * default a failed read waits for the next demand.
      */
     retryDelaysMs?: readonly number[];
+    /**
+     * Whether a failure may be retried after a delay, such as not for an
+     * error from the inspected code itself. Without a failure, a read that
+     * returned nothing is asked about.
+     */
+    shouldRetry?: (error?: unknown) => boolean;
 }
 
 /** One inspection in flight, with one pending invalidation for the owning session. */
@@ -15,7 +21,10 @@ export class WorkspaceRefreshScheduler<T> {
     private running?: Promise<void>;
     private disposed = false;
     private retries = 0;
+    /** An invalidation's scheduled read came due while another read ran. */
+    private dueDuringRead = false;
     private readonly retryDelaysMs: readonly number[];
+    private readonly shouldRetry: (error?: unknown) => boolean;
 
     constructor(
         private readonly read: () => Promise<T | undefined>,
@@ -25,6 +34,7 @@ export class WorkspaceRefreshScheduler<T> {
         options: WorkspaceRefreshOptions = {},
     ) {
         this.retryDelaysMs = options.retryDelaysMs ?? [];
+        this.shouldRetry = options.shouldRetry ?? (() => true);
     }
 
     invalidate(delayMs?: number): void {
@@ -38,6 +48,9 @@ export class WorkspaceRefreshScheduler<T> {
         if (delayMs !== undefined && this.canRefresh()) {
             this.timer = setTimeout(() => {
                 this.timer = undefined;
+                if (this.running) {
+                    this.dueDuringRead = true;
+                }
                 void this.ensure();
             }, delayMs);
         }
@@ -47,6 +60,7 @@ export class WorkspaceRefreshScheduler<T> {
     defer(): void {
         clearTimeout(this.timer);
         this.timer = undefined;
+        this.dueDuringRead = false;
     }
 
     ensure(): Promise<void> {
@@ -58,11 +72,14 @@ export class WorkspaceRefreshScheduler<T> {
         }
         this.defer();
         let retryOnDemand = false;
+        let failure: unknown;
         this.running = Promise.resolve()
             .then(async () => {
                 while (!this.disposed && this.dirty && this.canRefresh()) {
                     const revision = this.revision;
                     this.dirty = false;
+                    // This read serves any notification that came due so far.
+                    this.dueDuringRead = false;
                     try {
                         const value = await this.read();
                         if (this.disposed) {
@@ -77,13 +94,16 @@ export class WorkspaceRefreshScheduler<T> {
                             this.dirty = true;
                             return;
                         }
-                        this.retries = 0;
                         if (revision === this.revision) {
                             this.publish(value);
                         }
+                        // After publishing, so a publisher that keeps failing
+                        // uses up the retries.
+                        this.retries = 0;
                     } catch (error) {
                         this.dirty = true;
                         retryOnDemand = true;
+                        failure = error;
                         this.report(error);
                         return;
                     }
@@ -91,7 +111,17 @@ export class WorkspaceRefreshScheduler<T> {
             })
             .finally(() => {
                 this.running = undefined;
+                const due = this.dueDuringRead;
+                this.dueDuringRead = false;
                 if (this.disposed || !this.dirty) {
+                    return;
+                }
+                // A notification that came due during a failed read is served
+                // now, with the retries its invalidation restored.
+                if (retryOnDemand && due) {
+                    if (this.canRefresh()) {
+                        void this.ensure();
+                    }
                     return;
                 }
                 if (!retryOnDemand) {
@@ -103,7 +133,9 @@ export class WorkspaceRefreshScheduler<T> {
                 // Failed reads retain the invalidation. Retry only as often as
                 // configured instead of spinning here; after that, a later
                 // caller or notification must request the retry.
-                const delayMs = this.retryDelaysMs[this.retries];
+                const delayMs = this.shouldRetry(failure)
+                    ? this.retryDelaysMs[this.retries]
+                    : undefined;
                 // A read scheduled by an invalidation during the failed one
                 // comes sooner and does not use up a retry.
                 if (delayMs !== undefined && this.timer === undefined) {
