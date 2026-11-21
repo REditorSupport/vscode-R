@@ -4,8 +4,9 @@ import * as os from 'os';
 import * as path from 'path';
 import * as net from 'net';
 import { randomUUID } from 'crypto';
+import { channel } from 'diagnostics_channel';
 import { EventEmitter, once } from 'events';
-import { execFile } from 'child_process';
+import { ChildProcess, execFile } from 'child_process';
 import { promisify } from 'util';
 import { SessBackend } from '../../interactive/backends/sessBackend';
 import { BackendEvent } from '../../interactive/backend';
@@ -75,6 +76,8 @@ suite('Interactive library isolation', function () {
             socket.on('close', () => sockets.delete(socket));
         });
         const script = path.join(root, 'private-dependencies.R');
+        const privateLibrary = path.join(root, 'private-dependencies-library');
+        fs.cpSync(runtime.library, privateLibrary, { recursive: true });
         const config = path.join(root, 'private-dependencies.json');
         fs.writeFileSync(
             config,
@@ -83,7 +86,7 @@ suite('Interactive library isolation', function () {
         fs.writeFileSync(
             script,
             `
-private <- ${rString(runtime.library)}
+private <- ${rString(privateLibrary)}
 user <- ${rString(userLibrary)}
 database <- installed.packages(lib.loc=unique(c(private,.libPaths())))
 # The Interactive setup installs rstudioapi beside sess although sess only suggests it.
@@ -156,7 +159,7 @@ quit(save="no")
         }
     });
 
-    test('uses the session startup library for JGD plots and font metrics', async function () {
+    test('uses the active R for jgd plots and starts standard graphics without an R helper', async function () {
         const jgd = await run('R', [
             '--vanilla',
             '--slave',
@@ -212,6 +215,7 @@ font_info <- function(...) list(max_ascend=9, max_descend=-2)
                 ['auto', '.Rprofile'],
                 ['jgd', ''],
                 ['auto', ''],
+                ['standard', ''],
             ] as const) {
                 const title = `Library plot ${plotBackend} ${startupFile || 'missing'}`;
                 const directory = path.join(root, title);
@@ -225,7 +229,7 @@ font_info <- function(...) list(max_ascend=9, max_descend=-2)
                 );
                 fs.writeFileSync(
                     path.join(directory, '.Rprofile'),
-                    `cat("startup\\n", file=${rString(profileRuns)}, append=TRUE)\n` +
+                    `cat(R.home(), "\\n", sep="", file=${rString(profileRuns)}, append=TRUE)\n` +
                         (startupFile === '.Rprofile'
                             ? `.libPaths(c(${rString(personal)}, .libPaths()))\n`
                             : ''),
@@ -246,7 +250,8 @@ font_info <- function(...) list(max_ascend=9, max_descend=-2)
                     {
                         frontend: 'arf',
                         ownership: 'managed',
-                        rPath: 'R',
+                        // Preparation succeeded earlier. arf now supplies its own R installation.
+                        rPath: path.join(root, 'unavailable-configured-R'),
                         arfPath: process.env.ARF_PATH ?? 'arf',
                         library: runtime.library,
                         resources: runtime.resources,
@@ -255,18 +260,42 @@ font_info <- function(...) list(max_ascend=9, max_descend=-2)
                 );
                 const events: BackendEvent[] = [];
                 const completion = new EventEmitter();
+                const children: ChildProcess[] = [];
+                const launches = channel('child_process');
+                const observeLaunch = (message: unknown): void => {
+                    children.push((message as { process: ChildProcess }).process);
+                };
                 backend.onEvent((event) => {
                     events.push(event);
                     if (event.type === 'finished') {
                         completion.emit('finished', event.state);
                     }
                 });
+                launches.subscribe(observeLaunch);
                 try {
                     if (!startupFile && plotBackend === 'jgd') {
                         await assert.rejects(backend.start(), /jgd, systemfonts\./);
                         continue;
                     }
                     await backend.start();
+                    const homes = fs.readFileSync(profileRuns, 'utf8').trim().split(/\r?\n/);
+                    assert.strictEqual(homes.length, 1, 'Expected one R profile evaluation');
+                    const executable = process.platform === 'win32' ? 'R.exe' : 'R';
+                    const helpers = children.filter(
+                        (child) => path.basename(child.spawnfile) === executable,
+                    );
+                    if (plotBackend === 'standard') {
+                        assert.strictEqual(helpers.length, 0);
+                    } else if (startupFile) {
+                        const activeR = fs.realpathSync.native(
+                            path.join(homes[0], 'bin', executable),
+                        );
+                        assert.deepStrictEqual(
+                            helpers.map((child) => fs.realpathSync.native(child.spawnfile)),
+                            [activeR, activeR],
+                            'Expected only the package check and font metrics helper',
+                        );
+                    }
                     assert.strictEqual(backend.capabilities.jgd, !!startupFile, title);
                     const [state] = await Promise.all([
                         once(completion, 'finished', { signal: AbortSignal.timeout(20000) }),
@@ -279,7 +308,7 @@ font_info <- function(...) list(max_ascend=9, max_descend=-2)
                     if (!startupFile) {
                         assert.ok(
                             events.some((e) => e.type === 'display' && e.data.kind === 'image'),
-                            'Expected a static plot when JGD is unavailable',
+                            'Expected a static plot',
                         );
                         continue;
                     }
@@ -290,17 +319,14 @@ font_info <- function(...) list(max_ascend=9, max_descend=-2)
                                 e.data.kind === 'plot' &&
                                 String(e.data.svg).includes(title),
                         ),
-                        'Expected a labelled JGD SVG',
+                        'Expected a labelled jgd SVG',
                     );
                     assert.ok(
                         fs.readFileSync(measured, 'utf8').includes(title),
                         'Expected project font metrics',
                     );
-                    assert.deepStrictEqual(
-                        fs.readFileSync(profileRuns, 'utf8').trim().split(/\r?\n/),
-                        ['startup'],
-                    );
                 } finally {
+                    launches.unsubscribe(observeLaunch);
                     await backend.dispose();
                 }
             }
@@ -315,17 +341,33 @@ font_info <- function(...) list(max_ascend=9, max_descend=-2)
         }
     });
 
-    async function check(directory: string, renv: boolean): Promise<void> {
+    function renvEnvironment(): NodeJS.ProcessEnv {
+        return {
+            RENV_PATHS_ROOT: path.join(root, 'renv-state'),
+            RENV_PATHS_SANDBOX: path.join(root, 'renv-sandbox'),
+            RENV_CONFIG_SANDBOX_ENABLED: 'TRUE',
+            // Keep the temporary sandbox writable for suite teardown.
+            RENV_SANDBOX_LOCKING_ENABLED: 'FALSE',
+        };
+    }
+
+    async function check(
+        directory: string,
+        renv: boolean,
+        bridgeLibrary = runtime.library,
+    ): Promise<void> {
         const previous = {
             R_PROFILE_USER: process.env.R_PROFILE_USER,
             R_LIBS: process.env.R_LIBS,
-            RENV_PATHS_ROOT: process.env.RENV_PATHS_ROOT,
+            ...Object.fromEntries(
+                Object.keys(renvEnvironment()).map((key) => [key, process.env[key]]),
+            ),
         };
         // Let R discover this project's profile normally. Forcing R_PROFILE_USER
         // into R CMD INSTALL children makes renv recursively source that profile.
         delete process.env.R_PROFILE_USER;
         process.env.R_LIBS = [userLibrary, previous.R_LIBS].filter(Boolean).join(path.delimiter);
-        process.env.RENV_PATHS_ROOT = path.join(root, 'renv-state');
+        Object.assign(process.env, renvEnvironment());
         const id = randomUUID();
         const agent = new SessionAgent({
             id,
@@ -334,12 +376,14 @@ font_info <- function(...) list(max_ascend=9, max_descend=-2)
             directory,
             storage: path.join(root, id),
             rPath: 'R',
-            library: runtime.library,
+            library: bridgeLibrary,
             resources: runtime.resources,
             provider: 'arf',
             arfPath: process.env.ARF_PATH ?? 'arf',
             supervision: 'test',
-            plotBackend: 'auto',
+            // An isolated project with standard graphics has no graphics probe
+            // to supply host paths for the bridge's missing dependencies.
+            plotBackend: renv ? 'standard' : 'auto',
             historyLimit: 10,
             maxOutputBytes: 1048576,
             maxJournalBytes: 16777216,
@@ -386,10 +430,10 @@ font_info <- function(...) list(max_ascend=9, max_descend=-2)
             };
             const libraries = (await client.snapshot()).manifest.libraryPaths;
             assert.ok(libraries?.length);
-            assert.ok(!libraries.includes(runtime.library));
+            assert.ok(!libraries.includes(bridgeLibrary));
             await execute(`stopifnot(identical(.libPaths(), startup_library_paths),
   identical(Sys.getenv(c("R_LIBS", "R_LIBS_USER", "R_LIBS_SITE")), startup_library_env),
-  normalizePath(getNamespaceInfo("sess", "path")) == normalizePath(${rString(path.join(runtime.library, 'sess'))}))
+  normalizePath(getNamespaceInfo("sess", "path")) == normalizePath(${rString(path.join(bridgeLibrary, 'sess'))}))
 stopifnot(${renv ? '!' : ''}requireNamespace("vscrglobalprobe", quietly = TRUE))
 install.packages(${rString(probe)}, repos = NULL, type = "source")
 stopifnot(file.exists(file.path(startup_library_paths[[1L]], "vscrlibprobe", "DESCRIPTION")),
@@ -399,11 +443,11 @@ plot(1:3, main = "Libraries preserved")`);
                 events.some((event) => event.data.kind === 'plot' || event.data.kind === 'image'),
             );
             if (renv) {
-                // The bridge must be able to use dependencies loaded lazily by
-                // processx on Linux without exposing the whole host library.
-                await execute(
-                    'stopifnot(ps::ps_pid() == Sys.getpid(), identical(.libPaths(), startup_library_paths))',
-                );
+                // ps is available only to the bridge via the original host environment.
+                await execute(`stopifnot(
+  !length(find.package("ps", lib.loc=.libPaths(), quiet=TRUE)),
+  normalizePath(getNamespaceInfo("ps", "path")) == normalizePath(${rString(path.join(userLibrary, 'ps'))}),
+  ps::ps_pid() == Sys.getpid(), identical(.libPaths(), startup_library_paths))`);
                 // Record the local fixture's source so this also tests a real
                 // offline restore, rather than forcing an unreproducible lockfile.
                 await execute(`renv::install(${rString(probe)}, rebuild = TRUE, prompt = FALSE)
@@ -416,7 +460,7 @@ renv::restore(prompt = FALSE)
 stopifnot(vscrlibprobe::answer() == 42, identical(.libPaths(), startup_library_paths))`);
             }
             await execute('stopifnot(vscrlibprobe::answer() == 42); cat("still usable")');
-            assert.ok(!fs.existsSync(path.join(runtime.library, 'vscrlibprobe')));
+            assert.ok(!fs.existsSync(path.join(bridgeLibrary, 'vscrlibprobe')));
         } finally {
             client?.close();
             await agent.close();
@@ -445,21 +489,32 @@ stopifnot(vscrlibprobe::answer() == 42, identical(.libPaths(), startup_library_p
     test('preserves renv isolation, project installs and snapshots without adding the bridge', async () => {
         const directory = path.join(root, 'project');
         fs.mkdirSync(directory);
+        const bridgeLibrary = path.join(root, 'renv-bridge');
+        fs.cpSync(runtime.library, bridgeLibrary, {
+            recursive: true,
+            filter: (source) => source !== path.join(runtime.library, 'ps'),
+        });
         await run(
             'R',
             [
                 '--vanilla',
                 '--slave',
                 '-e',
-                'options(renv.consent=TRUE); renv::init(bare=TRUE, force=TRUE)',
+                `stopifnot(file.copy(find.package("ps", lib.loc=c(${rString(runtime.library)}, .libPaths())),
+  ${rString(userLibrary)}, recursive=TRUE))
+options(renv.consent=TRUE); renv::init(bare=TRUE, force=TRUE)`,
             ],
             {
                 cwd: directory,
-                env: { ...process.env, RENV_PATHS_ROOT: path.join(root, 'renv-state') },
+                env: { ...process.env, ...renvEnvironment() },
                 timeout: 30000,
             },
         );
-        fs.appendFileSync(path.join(directory, '.Rprofile'), startup);
-        await check(directory, true);
+        fs.appendFileSync(
+            path.join(directory, '.Rprofile'),
+            '\nSys.setenv(R_LIBS=.libPaths()[1L], R_LIBS_USER=.libPaths()[1L], R_LIBS_SITE=.Library)\n' +
+                startup,
+        );
+        await check(directory, true, bridgeLibrary);
     });
 });

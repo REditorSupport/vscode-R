@@ -194,7 +194,7 @@ export class Arf {
                 ) ||
                 Date.now() + 250 >= deadline
             ) {
-                throw new Error(`Could not read R library paths for JGD: ${reason}`);
+                throw new Error(`Could not read R library paths for jgd: ${reason}`);
             }
             await delay(250, undefined, { signal: this.abort.signal });
         }

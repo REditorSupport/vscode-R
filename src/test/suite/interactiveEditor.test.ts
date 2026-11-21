@@ -836,7 +836,8 @@ suite('Interactive VS Code integration', function () {
         };
         const storage = path.join(root, initial.id);
         fs.mkdirSync(storage);
-        const failure = 'JGD requires the jgd and systemfonts R packages';
+        const failure =
+            'The jgd backend could not load the following R packages: systemfonts. Install them in a library available to this R session.';
         fs.writeFileSync(
             path.join(storage, 'manifest.json'),
             JSON.stringify({ ...initial, startupError: failure }),

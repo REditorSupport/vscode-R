@@ -1,8 +1,6 @@
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { execFile } from 'child_process';
-import { promisify } from 'util';
 import { randomBytes } from 'crypto';
 import { atomicJson } from '../journal';
 import { AgentSettings, object, Submission } from '../protocol';
@@ -20,19 +18,6 @@ import { SessGraphics } from './sessGraphics';
 import { Arf } from './arf';
 import { rString } from './rCode';
 import { exposeInspectionExpression } from './arfInspection';
-
-const run = promisify(execFile);
-
-/** Vanilla support libraries for the bridge and graphics, outside the user's project. */
-async function hostLibraries(rPath: string): Promise<{ home: string; libraryPaths: string[] }> {
-    const { stdout } = await run(
-        rPath,
-        ['--vanilla', '--slave', '-e', 'cat(R.home(), .libPaths(), sep="\\n")'],
-        { timeout: 15000 },
-    );
-    const [home, ...libraryPaths] = stdout.trimEnd().split(/\r?\n/);
-    return { home, libraryPaths };
-}
 
 export interface SessOptions {
     frontend: 'r' | 'arf';
@@ -158,11 +143,6 @@ export class SessBackend implements SessionBackend {
         return (this.startup ??= this.startRuntime());
     }
     private async startRuntime(): Promise<void> {
-        let rPath = this.options.rPath;
-        let host = await hostLibraries(rPath);
-        if (this.closed) {
-            throw new Error('Backend disposed during startup');
-        }
         await this.bridge.start();
         if (this.closed) {
             throw new Error('Backend disposed during startup');
@@ -173,21 +153,14 @@ export class SessBackend implements SessionBackend {
             { ...process.env, SESS_ENDPOINT: this.bridge.endpoint, JGD_SOCKET: '' },
             exposeInspectionExpression(this.options.library),
         );
-        await this.graphics.start(async () => {
+        const hostLibraries = await this.graphics.start(async () => {
             const { libraryPaths, rHome } = await this.frontend.rEnvironment();
-            // An adopted or project-selected arf may embed a different R installation.
-            // Keep the configured executable (including wrappers) when both use the same R.
-            if (
-                rHome &&
-                path.isAbsolute(rHome) &&
-                path.relative(fs.realpathSync.native(host.home), fs.realpathSync.native(rHome))
-            ) {
-                rPath = path.join(rHome, 'bin', process.platform === 'win32' ? 'R.exe' : 'R');
-                host = await hostLibraries(rPath);
-            }
             return {
-                rPath,
-                libraryPaths: [...libraryPaths, ...host.libraryPaths, this.options.library],
+                rPath:
+                    rHome && path.isAbsolute(rHome)
+                        ? path.join(rHome, 'bin', process.platform === 'win32' ? 'R.exe' : 'R')
+                        : this.options.rPath,
+                libraryPaths: [...libraryPaths, this.options.library],
             };
         });
         if (this.closed) {
@@ -203,9 +176,18 @@ export class SessBackend implements SessionBackend {
             token: this.token,
             useJgd: this.graphics.enabled,
         });
+        // renv can overwrite these variables in arf. Its host-only support packages
+        // remain reachable with the library environment inherited by the agent.
+        const libraryEnv = ['R_LIBS', 'R_LIBS_USER', 'R_LIBS_SITE'].map((name) => {
+            const value = process.env[name];
+            return `${name}=${value === undefined ? 'NA_character_' : rString(value)}`;
+        });
+        const support = hostLibraries
+            ? `support_libraries=c(${hostLibraries.map(rString).join(',')})`
+            : `host_library_env=c(${libraryEnv.join(',')})`;
         const code =
             `base::source(${rString(path.join(this.options.resources, 'interactive-worker.R'))}, local=base::new.env(parent=base::baseenv()))$value(` +
-            `${rString(this.options.library)}, ${rString(bootstrap)}, c(${host.libraryPaths.map(rString).join(',')}), managed=${this.ownership === 'managed' ? 'TRUE' : 'FALSE'})`;
+            `${rString(this.options.library)}, ${rString(bootstrap)}, ${support}, managed=${this.ownership === 'managed' ? 'TRUE' : 'FALSE'})`;
         await this.frontend.bootstrap(code);
     }
     async dispatch(submission: Submission): Promise<void> {

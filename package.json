@@ -2441,7 +2441,7 @@
             "standard"
           ],
           "default": "auto",
-          "description": "Interactive graphics provider. JGD uses a separate systemfonts R process for font metrics while the editor is disconnected."
+          "description": "Interactive graphics provider. The jgd backend uses a separate R process with systemfonts to measure text while the editor is disconnected."
         },
         "r.interactive.tableView": {
           "tags": ["experimental"],

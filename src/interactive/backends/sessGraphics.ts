@@ -64,9 +64,10 @@ export class SessGraphics {
         }
         this.metricPending.clear();
     }
+    /** Return host paths already observed by the vanilla probe for the bridge's fallback. */
     async start(
         getRuntime: () => Promise<{ rPath: string; libraryPaths: string[] }>,
-    ): Promise<void> {
+    ): Promise<string[] | undefined> {
         if (this.config.plotBackend === 'standard') {
             return;
         }
@@ -81,9 +82,11 @@ export class SessGraphics {
                     '--vanilla',
                     '--slave',
                     '-e',
-                    '.libPaths(commandArgs(TRUE), include.site=FALSE); ' +
+                    'host <- .libPaths(); .libPaths(c(commandArgs(TRUE), host), include.site=FALSE); ' +
                         'pkgs <- c("jgd", "systemfonts", "jsonlite"); ' +
-                        'cat(pkgs[!vapply(pkgs, requireNamespace, logical(1), quietly=TRUE)], sep=", ")',
+                        'missing <- pkgs[!vapply(pkgs, requireNamespace, logical(1), quietly=TRUE)]; ' +
+                        'writeLines(paste(missing, collapse=", ")); ' +
+                        'if (!"jsonlite" %in% missing) cat(jsonlite::toJSON(host))',
                     '--args',
                     ...libraryPaths,
                 ],
@@ -92,14 +95,15 @@ export class SessGraphics {
             if (this.stopped) {
                 return;
             }
-            const missing = probe.stdout.trim();
+            const [missing, paths] = probe.stdout.trimEnd().split(/\r?\n/);
+            const hostLibraries = paths ? (JSON.parse(paths) as string[]) : undefined;
             if (missing) {
                 if (this.config.plotBackend === 'jgd') {
                     throw new Error(
-                        `JGD could not load the following R packages: ${missing}. Install them in a library available to this R session.`,
+                        `The jgd backend could not load the following R packages: ${missing}. Install them in a library available to this R session.`,
                     );
                 }
-                return;
+                return hostLibraries;
             }
             this.metrics = spawn(
                 rPath,
@@ -152,6 +156,7 @@ export class SessGraphics {
                 this.jgd.start();
             });
             this.enabled = true;
+            return hostLibraries;
         } catch (error) {
             if (this.config.plotBackend === 'jgd') {
                 throw error;
@@ -159,7 +164,7 @@ export class SessGraphics {
             this.dispose();
             this.emit({
                 type: 'warning',
-                message: `JGD unavailable: ${String(error)}. Using static graphics.`,
+                message: `The jgd backend is unavailable: ${String(error)}. Using static graphics.`,
             });
         }
     }
