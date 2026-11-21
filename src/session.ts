@@ -1410,9 +1410,9 @@ function startGlobalSessionServer(generation: number): Promise<string> {
                             return;
                         }
                         // R announces retained devices immediately after attach.
-                        // Native terminal discovery is asynchronous: wait for it
-                        // instead of dropping those first notifications. Once the
-                        // socket is bound, RPC responses must remain independent
+                        // An accepted attach binds the socket before its terminal
+                        // lookup, so those notifications do not wait for it. Once
+                        // the socket is bound, RPC responses must remain independent
                         // of any UI work still completing in the attach handler.
                         if (!socket._sessionId && attachment) {
                             await attachment;
