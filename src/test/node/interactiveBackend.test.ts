@@ -18,7 +18,8 @@ import {
     withBackend,
 } from '../../interactive/backendRegistry';
 import { Arf } from '../../interactive/backends/arf';
-import { INSPECTION_SELECTORS } from '../../interactive/backends/arfInspection';
+import { ArfRpcError } from '../../interactive/arf';
+import { INSPECTION_SELECTORS, inspectionFailure } from '../../interactive/backends/arfInspection';
 import { SessBackend } from '../../interactive/backends/sessBackend';
 
 class FakeBackend implements SessionBackend {
@@ -311,17 +312,28 @@ suite('Interactive backend contract', function () {
 
     const inspectionError = (kind: string) =>
         Object.assign(new Error(`Inspection ${kind}`), { name: 'InspectionError', kind });
+    // A failure as the arf backend reports an error response with this code.
+    const arfFailure = (code: number) =>
+        inspectionFailure(new ArfRpcError(code, 'failed', undefined, {}), 'workspace', {
+            queue: 2000,
+            execution: 2000,
+            transport: 9000,
+        });
 
     // R never started these inspections: one waited too long to start, and
-    // one was not queued.
-    for (const kind of ['queue_timeout', 'overloaded']) {
-        test(`a workspace inspection that did not start (${kind}) after an execution is retried without another demand`, async () => {
+    // the others were not queued by the client or by arf.
+    for (const [name, failure] of [
+        ['timed out waiting to start', () => arfFailure(-32012)],
+        ['not queued by the client', () => inspectionError('overloaded')],
+        ['not queued by arf', () => arfFailure(-32011)],
+    ] as const) {
+        test(`a workspace inspection ${name} after an execution is retried without another demand`, async () => {
             const id = await submit();
             backend.emit({ type: 'started', executionId: id });
             let calls = 0;
             backend.inspectResult = () =>
                 ++calls === 1
-                    ? Promise.reject(inspectionError(kind))
+                    ? Promise.reject(failure())
                     : Promise.resolve({ revision: 7, globalenv: { after: {} } });
             backend.emit({ type: 'finished', executionId: id, state: 'success' });
             await until(() =>
@@ -336,18 +348,18 @@ suite('Interactive backend contract', function () {
     }
 
     for (const [name, prepare, failure] of [
-        ['an R error from the workspace inspection', () => {}, () => inspectionError('r_error')],
+        ['an R error from the workspace inspection', () => {}, () => arfFailure(-32014)],
         [
             // The inspection may have forced a promise whose code would run again.
             'a workspace inspection interrupted at its deadline',
             () => {},
-            () => inspectionError('deadline'),
+            () => arfFailure(-32019),
         ],
         [
-            // arf also uses this for codes it does not name, so R may have run it.
-            'a workspace inspection arf rejected',
+            // An error arf does not name may come after R ran the inspection.
+            'a workspace inspection arf rejected for another reason',
             () => {},
-            () => inspectionError('rejected'),
+            () => arfFailure(-32099),
         ],
         [
             'an inspection that can keep running in R after it times out',

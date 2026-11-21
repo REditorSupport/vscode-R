@@ -28,11 +28,12 @@ import { WorkspaceRefreshScheduler } from '../workspaceRefresh';
 
 /**
  * Inspection failures that mean R never started the request: it waited too
- * long to start or was not queued at all.
+ * long to start, or the client or arf did not queue it.
  */
 const RETRYABLE_INSPECTION_FAILURES: ReadonlySet<unknown> = new Set([
     'queue_timeout',
     'overloaded',
+    'queue_full',
 ]);
 
 interface Client {
