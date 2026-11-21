@@ -309,6 +309,56 @@ suite('Interactive backend contract', function () {
         assert.strictEqual(events.filter((event) => event.type === 'workspace').length, published);
     });
 
+    test('a workspace inspection that fails after an execution is retried without another demand', async () => {
+        const id = await submit();
+        backend.emit({ type: 'started', executionId: id });
+        let calls = 0;
+        backend.inspectResult = () =>
+            ++calls === 1
+                ? Promise.reject(new Error('Inspection timeout'))
+                : Promise.resolve({ revision: 7, globalenv: { after: {} } });
+        backend.emit({ type: 'finished', executionId: id, state: 'success' });
+        await until(() =>
+            events.some((event) => event.type === 'workspace' && event.data.revision === 7),
+        );
+        assert.strictEqual(calls, 2);
+        assert.deepStrictEqual((await client.snapshot()).workspace, {
+            revision: 7,
+            globalenv: { after: {} },
+        });
+    });
+
+    for (const [name, prepare, failure] of [
+        [
+            'an R error from the workspace inspection',
+            () => {},
+            () => Object.assign(new Error('R error'), { name: 'InspectionError', kind: 'r_error' }),
+        ],
+        [
+            'an inspection that can keep running in R after it times out',
+            (backend: FakeBackend) => {
+                (backend.capabilities as Record<string, boolean>).inspectionDeadline = false;
+            },
+            () => new Error('Inspection timeout'),
+        ],
+    ] as const) {
+        test(`${name} is not retried without another demand`, async () => {
+            prepare(backend);
+            const id = await submit();
+            backend.emit({ type: 'started', executionId: id });
+            let calls = 0;
+            backend.inspectResult = () => {
+                calls++;
+                return Promise.reject(failure());
+            };
+            backend.emit({ type: 'finished', executionId: id, state: 'success' });
+            await until(() => calls === 1);
+            // Longer than the first retry delay.
+            await new Promise((resolve) => setTimeout(resolve, 800));
+            assert.strictEqual(calls, 1);
+        });
+    }
+
     test('handles completion before transport acknowledgement and deduplicates submissions', async () => {
         let acknowledge!: () => void;
         backend.dispatchResult = () =>
