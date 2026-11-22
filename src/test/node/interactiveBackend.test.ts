@@ -21,6 +21,7 @@ import {
 import {
     BackendEvent,
     ClientReply,
+    DispatchNotSentError,
     InspectionRequest,
     SessionBackend,
     StopRefusedError,
@@ -632,6 +633,55 @@ suite('Interactive backend contract', function () {
         assert.strictEqual((await client.snapshot()).manifest.status, 'exited');
         assert.strictEqual(backend.submissions.length, 1);
     });
+    test('a later Stop reports that an accepted shutdown has not finished yet', async () => {
+        let stops = 0;
+        backend.stopResult = () => {
+            stops++;
+            return Promise.reject(new Error('accepted but has not exited yet'));
+        };
+        await assert.rejects(client.request('stop'), /has not exited yet/);
+        await assert.rejects(client.request('stop'), /has not exited yet/);
+        assert.strictEqual(stops, 1);
+        backend.emit({ type: 'exit', code: 0 });
+        await client.request('stop');
+        assert.strictEqual(stops, 1);
+    });
+    test('a cell whose dispatch could not reach R stays queued and is sent once R is reached', async () => {
+        let attempts = 0;
+        backend.dispatchResult = () =>
+            ++attempts === 1
+                ? Promise.reject(new DispatchNotSentError('arf could not be reached'))
+                : Promise.resolve();
+        const id = await submit();
+        await until(() => attempts === 1);
+        assert.strictEqual((await record(id)).state, 'queued');
+        assert.notStrictEqual((await client.snapshot()).manifest.status, 'unknown');
+        await until(() => attempts === 2);
+        assert.deepStrictEqual(
+            backend.submissions.map((item) => item.id),
+            [id, id],
+        );
+        backend.emit({ type: 'started', executionId: id });
+        backend.emit({ type: 'finished', executionId: id, state: 'success' });
+        assert.strictEqual((await record(id)).state, 'success');
+    });
+    test('a cell found unsent after Stop cancelled the queue is cancelled, not queued again', async () => {
+        let fail!: () => void;
+        backend.dispatchResult = () =>
+            new Promise<void>((_resolve, reject) => {
+                fail = () => reject(new DispatchNotSentError('arf could not be reached'));
+            });
+        const id = await submit();
+        await until(() => fail !== undefined);
+        backend.stopResult = () => Promise.reject(new Error('accepted but has not exited yet'));
+        await assert.rejects(client.request('stop'), /has not exited yet/);
+        fail();
+        await until(() =>
+            events.some((event) => event.executionId === id && event.type === 'finished'),
+        );
+        assert.strictEqual((await record(id)).state, 'cancelled');
+        assert.strictEqual(backend.submissions.length, 1);
+    });
     test('observer requests and stale generations cannot invoke the backend', async () => {
         const observer = new AgentClient(client.manifest);
         await observer.connect();
@@ -817,8 +867,13 @@ suite('Interactive backend contract', function () {
         calls: Record<string, unknown>[];
         /** Methods requested over HTTP and, prefixed with `attach:`, over attach connections. */
         methods: string[];
-        /** Serve another arf from now on, as a socket path reused by a new session would. */
-        replace(sessionId: string): void;
+        /**
+         * Serve another arf from now on, as a socket path reused by a new
+         * session would. Open connections close unless `keepConnections`.
+         */
+        replace(sessionId: string, keepConnections?: boolean): void;
+        /** Stop or resume accepting connections; open ones stay open. */
+        listening(listen: boolean): Promise<void>;
         close(): Promise<void>;
     }> {
         const calls: Record<string, unknown>[] = [];
@@ -916,10 +971,22 @@ suite('Interactive backend contract', function () {
             endpoint,
             calls,
             methods,
-            replace: (id) => {
+            replace: (id, keepConnections = false) => {
                 sessionId = id;
-                sockets.forEach((socket) => socket.destroy());
+                if (!keepConnections) {
+                    sockets.forEach((socket) => socket.destroy());
+                }
             },
+            listening: (listen) =>
+                new Promise<void>((resolve) => {
+                    if (listen) {
+                        listener.listen(endpoint, resolve);
+                    } else {
+                        // close() calls back only once open connections end.
+                        listener.close();
+                        resolve();
+                    }
+                }),
             close: async () => {
                 sockets.forEach((socket) => socket.destroy());
                 http.closeAllConnections();
@@ -1191,9 +1258,78 @@ suite('Interactive backend contract', function () {
             );
             assert.ok(!session.methods.includes('attach:shutdown'));
             assert.ok(runtime.alive());
+            // Code queued behind the refused Stop is not sent to the other arf,
+            // so the agent keeps it queued.
+            const evaluations = session.methods.filter((method) => method === 'evaluate').length;
+            await assert.rejects(
+                session.adapter.dispatch({ id: randomUUID(), code: 'queued()' }),
+                (error: unknown) =>
+                    error instanceof DispatchNotSentError &&
+                    /different session/.test(error.message),
+            );
+            assert.strictEqual(
+                session.methods.filter((method) => method === 'evaluate').length,
+                evaluations,
+            );
         } finally {
             runtime.end();
             await session?.close();
+        }
+    });
+    test('code is sent after a Stop refused for another session only once arf is verified again', async () => {
+        const runtime = await standIn();
+        let session: Awaited<ReturnType<typeof adopt>> | undefined;
+        try {
+            session = await adopt({});
+            session.adapter.process.setPid(runtime.pid);
+            const evaluations = (): number =>
+                session!.methods.filter((method) => method === 'evaluate').length;
+            // The attach connection to the adopted arf stays open.
+            session.arf.replace('another arf', true);
+            await assert.rejects(session.adapter.stop(), StopRefusedError);
+            const before = evaluations();
+            await assert.rejects(
+                session.adapter.dispatch({ id: randomUUID(), code: 'queued()' }),
+                (error: unknown) =>
+                    error instanceof DispatchNotSentError &&
+                    /different session/.test(error.message),
+            );
+            assert.strictEqual(evaluations(), before);
+            session.arf.replace('fake', true);
+            await session.adapter.dispatch({ id: randomUUID(), code: 'queued()' });
+            assert.strictEqual(evaluations(), before + 1);
+        } finally {
+            runtime.end();
+            await session?.close();
+        }
+    });
+    test('code is not sent to an arf that took over the endpoint after a failed send', async function () {
+        if (process.platform === 'win32') {
+            // A named pipe cannot be closed while one of its connections stays open.
+            this.skip();
+        }
+        const session = await adopt({});
+        try {
+            const evaluations = (): number =>
+                session.methods.filter((method) => method === 'evaluate').length;
+            const before = evaluations();
+            // The endpoint goes away while the attach connection stays open.
+            await session.arf.listening(false);
+            await assert.rejects(
+                session.adapter.dispatch({ id: randomUUID(), code: 'queued()' }),
+                DispatchNotSentError,
+            );
+            session.arf.replace('another arf', true);
+            await session.arf.listening(true);
+            await assert.rejects(
+                session.adapter.dispatch({ id: randomUUID(), code: 'queued()' }),
+                (error: unknown) =>
+                    error instanceof DispatchNotSentError &&
+                    /different session/.test(error.message),
+            );
+            assert.strictEqual(evaluations(), before);
+        } finally {
+            await session.close();
         }
     });
     test('Stop that cannot reach arf is refused, as nothing was sent', async () => {

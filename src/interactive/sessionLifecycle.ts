@@ -35,6 +35,14 @@ export function stopUnavailable(manifest: SessionManifest): string | undefined {
         : undefined;
 }
 
+/**
+ * How long a client waits for the agent to answer Stop. The agent answers once
+ * the runtime has exited or declined: an adopted arf takes up to 5 s to verify
+ * a new attach connection, 5 s to answer shutdown and 5 s more to exit, and a
+ * managed one up to 12 s to exit after shutdown or signals.
+ */
+export const STOP_REQUEST_TIMEOUT_MS = 20000;
+
 /** Stop the confirmed generation without opening a notebook or taking control from another window. */
 export async function stopSession(manifest: SessionManifest, clientId: string): Promise<void> {
     const client = new AgentClient({ ...manifest }, clientId);
@@ -52,9 +60,7 @@ export async function stopSession(manifest: SessionManifest, clientId: string): 
                 'Controlled by another window. Use Take Control of Interactive Session before retrying.',
             );
         }
-        // The agent answers once the runtime has exited or declined. An adopted
-        // arf can take up to 5 s to answer shutdown and 5 s more to exit.
-        await client.request('stop', {}, 15000);
+        await client.request('stop', {}, STOP_REQUEST_TIMEOUT_MS);
         // A stop reply acknowledges the request; wait for process exit before reporting success.
         const deadline = Date.now() + 8000;
         do {

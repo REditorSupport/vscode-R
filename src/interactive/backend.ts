@@ -96,6 +96,14 @@ export class StopRefusedError extends Error {
     }
 }
 
+/** A dispatch failed before the code was sent, so R has not received it. */
+export class DispatchNotSentError extends Error {
+    constructor(message: string) {
+        super(message);
+        this.name = 'DispatchNotSentError';
+    }
+}
+
 export function inspectionMethod(value: unknown): InspectionMethod {
     if (!(INSPECTION_METHODS as readonly string[]).includes(String(value))) {
         throw new Error('Unsupported inspection method');

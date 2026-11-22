@@ -8,6 +8,7 @@ import {
     BackendCapabilities,
     BackendEvent,
     ClientReply,
+    DispatchNotSentError,
     InputReply,
     InspectionRequest,
     ResizePlotRequest,
@@ -199,7 +200,14 @@ export class SessBackend implements SessionBackend {
         this.completion = undefined;
         this.stderrFlushed = false;
         this.outputDrained = false;
-        await this.frontend.dispatch(submission);
+        try {
+            await this.frontend.dispatch(submission);
+        } catch (error) {
+            if (error instanceof DispatchNotSentError) {
+                this.current = undefined;
+            }
+            throw error;
+        }
         this.outputDrained = true;
         if (this.ownership === 'adopted' && this.completion) {
             this.finish(this.completion);

@@ -57,7 +57,12 @@ import { tableColumnAlignment, tableDisplayValue, tableSnapshotSummary } from '.
 import { HistoryPage, searchHistory } from './history';
 import { readExecutionRecordsAsync, readPreviousJournalAsync } from './journal';
 import { sessionAge, sessionPresentation } from './sessionPresentation';
-import { runningSessions, stopSession, stopUnavailable } from './sessionLifecycle';
+import {
+    STOP_REQUEST_TIMEOUT_MS,
+    runningSessions,
+    stopSession,
+    stopUnavailable,
+} from './sessionLifecycle';
 import { InteractiveInputFeatures } from './inputFeatures';
 
 interface InteractiveView {
@@ -2934,7 +2939,7 @@ export class InteractiveManager
             'Stop Session',
         );
         if (answer === 'Stop Session') {
-            await view.client.request('stop');
+            await view.client.request('stop', {}, STOP_REQUEST_TIMEOUT_MS);
         }
     }
 
@@ -3244,7 +3249,7 @@ export class InteractiveManager
             announced = true;
             await this.queueNotice(view, 'restarting');
             if (view.client.connected) {
-                await view.client.request('stop');
+                await view.client.request('stop', {}, STOP_REQUEST_TIMEOUT_MS);
                 // Wait for the old runtime to publish its final state before its successor.
                 for (let i = 0; i < 100; i++) {
                     const state = await view.client.request<{ status: string }>('heartbeat');

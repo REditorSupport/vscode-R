@@ -11,6 +11,7 @@ import { AssetStore } from './assets';
 import {
     BackendEvent,
     BackendFactory,
+    DispatchNotSentError,
     SessionBackend,
     StopRefusedError,
     inspectionMethod,
@@ -79,6 +80,9 @@ export class SessionAgent {
     /** The status that `stopping` masks, which a refused Stop restores. */
     private runtimeStatus: SessionManifest['status'] = 'starting';
     private dispatching = false;
+    /** Retries a dispatch that could not reach R, without sending a cell twice. */
+    private redispatchTimer?: NodeJS.Timeout;
+    private redispatchDelay = 0;
     private externalOutput: Record<string, unknown>[] = [];
     private externalBytes = 0;
     private externalTimer?: NodeJS.Timeout;
@@ -989,6 +993,7 @@ export class SessionAgent {
             this.stopping ||
             !this.backendReady ||
             this.dispatching ||
+            this.redispatchTimer ||
             this.current ||
             !this.queue.length ||
             this.manifest.status === 'exited' ||
@@ -1006,8 +1011,22 @@ export class SessionAgent {
         this.dispatching = true;
         try {
             await this.backend.dispatch(record);
+            this.redispatchDelay = 0;
         } catch (error) {
             if (this.stopped || this.current !== id) {
+                return;
+            }
+            if (error instanceof DispatchNotSentError) {
+                if (this.stopping && !this.stopRequest) {
+                    // Stop has cancelled the queue this cell was taken from.
+                    this.finish(record, 'cancelled');
+                    return;
+                }
+                // R has not received the cell, so it stays first in the queue
+                // until the session can be reached again.
+                this.current = undefined;
+                this.queue.unshift(id);
+                this.scheduleRedispatch(error.message);
                 return;
             }
             this.uncertain(id, String(error));
@@ -1021,6 +1040,19 @@ export class SessionAgent {
         }
     }
 
+    private scheduleRedispatch(message: string): void {
+        if (!this.redispatchDelay) {
+            this.event('agentWarning', {
+                message: `${message}. Queued code will run once R can be reached again.`,
+            });
+        }
+        this.redispatchDelay = Math.min(Math.max(this.redispatchDelay * 2, 500), 30000);
+        this.redispatchTimer = setTimeout(() => {
+            this.redispatchTimer = undefined;
+            void this.pump();
+        }, this.redispatchDelay);
+    }
+
     private uncertain(id: string, message: string): void {
         this.event('condition', { kind: 'error', message }, id);
         this.journal.update({ ...this.journal.executions.get(id)!, state: 'unknown' });
@@ -1032,8 +1064,13 @@ export class SessionAgent {
         if (this.stopRequest) {
             return this.stopRequest;
         }
-        if (this.stopping || this.manifest.status === 'exited') {
+        if (this.manifest.status === 'exited') {
             return Promise.resolve();
+        }
+        if (this.stopping) {
+            // An accepted shutdown has outlived its exit deadline; the process
+            // monitor reports the exit once it happens.
+            return Promise.reject(new Error('Stop was requested, but R has not exited yet'));
         }
         return (this.stopRequest = this.runStop().finally(() => {
             this.stopRequest = undefined;
@@ -1070,6 +1107,7 @@ export class SessionAgent {
         this.workspaceRefresh.dispose();
         this.unsubscribe();
         clearTimeout(this.externalTimer);
+        clearTimeout(this.redispatchTimer);
         this.assets.close();
         for (const client of this.clients) {
             client.socket.destroy();

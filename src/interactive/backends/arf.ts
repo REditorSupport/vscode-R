@@ -7,7 +7,12 @@ import {
     checkArfSession,
 } from '../arf';
 import { ArfAttachConnection, ArfEvent } from '../arfAttach';
-import { BackendEvent, InspectionRequest, StopRefusedError } from '../backend';
+import {
+    BackendEvent,
+    DispatchNotSentError,
+    InspectionRequest,
+    StopRefusedError,
+} from '../backend';
 import { MAX_MESSAGE_BYTES, object, Submission } from '../protocol';
 import { RuntimeProcess } from './process';
 import { rString } from './rCode';
@@ -52,6 +57,11 @@ export class Arf {
     private execution?: Execution;
     private failure?: Error;
     private stopping?: Promise<void>;
+    /**
+     * Set when a Stop found that the endpoint no longer reaches this session:
+     * code is then sent only after a new connection reaches it again.
+     */
+    private reverify = false;
     constructor(
         private command: string,
         private directory: string,
@@ -421,6 +431,7 @@ export class Arf {
         try {
             connection = await this.verifiedConnection();
         } catch (error) {
+            this.reverify = true;
             throw new StopRefusedError(
                 `arf could not receive the shutdown request: ${error instanceof Error ? error.message : String(error)}`,
             );
@@ -468,7 +479,17 @@ export class Arf {
         }
         // The previous execution has finished, so attaching again loses no
         // state; the session must still be the same arf process.
-        await this.attached();
+        try {
+            await this.attached();
+            if (this.reverify) {
+                (await this.verifiedConnection()).close();
+                this.reverify = false;
+            }
+        } catch (error) {
+            throw new DispatchNotSentError(
+                `arf could not be reached: ${error instanceof Error ? error.message : String(error)}`,
+            );
+        }
         const code = `sess:::interactive_execute(${rString(submission.id)}, ${rString(submission.code)}, jsonlite::fromJSON(${rString(JSON.stringify(submission.source ?? null))}, simplifyVector=FALSE))`;
         this.started = false;
         this.execution = { submission: submission.id, interruptRequested: false };
@@ -498,6 +519,13 @@ export class Arf {
             }
             if (!this.started) {
                 this.finished(submission.id);
+            }
+            const errno = (error as NodeJS.ErrnoException).code;
+            if (errno === 'ENOENT' || errno === 'ECONNREFUSED') {
+                // The connection was never opened, so nothing was sent. The
+                // endpoint was gone, so another session may serve it next.
+                this.reverify = true;
+                throw new DispatchNotSentError(`arf could not be reached: ${String(error)}`);
             }
             throw error;
         }
