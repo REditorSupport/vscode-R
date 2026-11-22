@@ -61,6 +61,13 @@ export class Arf {
     private execution?: Execution;
     private failure?: Error;
     private stopping?: Promise<void>;
+    private disposing?: Promise<void>;
+    private readiness?: Promise<string>;
+    /**
+     * Set when the configured executable launched arf as another process,
+     * whose exit closing therefore cannot confirm.
+     */
+    private launchedElsewhere?: Error;
     /**
      * Set when a Stop found that the endpoint no longer reaches this session:
      * code is then sent only after a new connection reaches it again.
@@ -111,7 +118,7 @@ export class Arf {
                     ),
                 ]),
             );
-            this.endpoint = await new Promise<string>((resolve, reject) => {
+            this.readiness = new Promise<string>((resolve, reject) => {
                 let readiness = '';
                 const timer = setTimeout(
                     () => reject(new Error('arf did not report its IPC endpoint')),
@@ -136,8 +143,27 @@ export class Arf {
                                     /* Profiles can print before readiness. */
                                 }
                                 if (typeof info?.socket_path === 'string') {
-                                    this.endpoint = info.socket_path;
                                     clearTimeout(timer);
+                                    const pid = info.pid;
+                                    if (
+                                        typeof pid !== 'number' ||
+                                        !Number.isSafeInteger(pid) ||
+                                        pid <= 0
+                                    ) {
+                                        reject(new Error('arf did not report its PID'));
+                                        break;
+                                    }
+                                    if (!this.process.ownsPid(pid)) {
+                                        // Signals and the exit that closing waits for
+                                        // must concern arf itself.
+                                        this.launchedElsewhere = new Error(
+                                            `${this.command} started arf as another process (PID ${pid}), which may still be running. ` +
+                                                'Set r.interactive.arfPath to arf itself, or to a script that replaces itself with arf using exec.',
+                                        );
+                                        reject(this.launchedElsewhere);
+                                        break;
+                                    }
+                                    this.endpoint = info.socket_path;
                                     resolve(this.endpoint);
                                 } else {
                                     this.emit({ type: 'stream', text: line + '\n', channel });
@@ -167,7 +193,9 @@ export class Arf {
                     reject(new Error('arf exited during startup'));
                 });
             });
+            this.endpoint = await this.readiness;
         }
+        this.abort.signal.throwIfAborted();
         if (!this.endpoint) {
             throw new Error('Missing arf endpoint');
         }
@@ -333,7 +361,7 @@ export class Arf {
             maxLineBytes: MAX_ATTACH_LINE_BYTES,
             onEvent: (event) => this.arfEvent(event),
         });
-        if (!this.sameSession(result)) {
+        if (!this.sameSession(result) || !this.startedArf(result)) {
             connection.close();
             throw new Error('The arf endpoint now belongs to a different session');
         }
@@ -352,6 +380,14 @@ export class Arf {
             (this.sessionId === undefined || result.sessionId === this.sessionId) &&
             (this.expected.pid === undefined || result.session.pid === this.expected.pid)
         );
+    }
+    /**
+     * Whether an attach reply comes from the arf that was started. The first
+     * attach records the session ID, so it must not accept a session that has
+     * taken over the socket path.
+     */
+    private startedArf(result: { session: Record<string, unknown> }): boolean {
+        return this.process.adopted || this.process.ownsPid(result.session.pid);
     }
     /** A separate attach connection that reaches the same arf session as before. */
     /**
@@ -389,7 +425,7 @@ export class Arf {
             maxLineBytes: MAX_ATTACH_LINE_BYTES,
             onEvent: () => undefined,
         });
-        if (!this.sameSession(result)) {
+        if (!this.sameSession(result) || !this.startedArf(result)) {
             connection.close();
             throw new Error('The arf endpoint now belongs to a different session');
         }
@@ -432,11 +468,24 @@ export class Arf {
             { timeout: limits.transport, signal: this.abort.signal },
         );
     }
-    dispose(): void {
+    dispose(): Promise<void> {
+        return (this.disposing ??= this.disposeRuntime());
+    }
+
+    private async disposeRuntime(): Promise<void> {
         this.abort.abort();
         this.inspections.close(new Error('R session was disposed'));
         this.attach?.close();
-        this.process.dispose();
+        try {
+            if (!this.process.adopted) {
+                await (this.stopping ?? this.stopManaged(false, 1000, 3000));
+            }
+        } finally {
+            this.process.dispose();
+        }
+        if (this.launchedElsewhere) {
+            throw this.launchedElsewhere;
+        }
     }
     /** Called once sess reports that a submission finished. */
     finished(submission: string): void {
@@ -514,7 +563,7 @@ export class Arf {
         this.emit({ type: 'unavailable', message: error.message });
     }
     stop(force = false): Promise<void> {
-        return (this.stopping ??= this.stopRuntime(force).finally(() => {
+        return (this.stopping ??= (this.disposing ?? this.stopRuntime(force)).finally(() => {
             this.stopping = undefined;
         }));
     }
@@ -527,23 +576,67 @@ export class Arf {
             await this.stopAdopted(force);
             return;
         }
+        await this.stopManaged(force, 5000, 5000);
+    }
+
+    private async stopManaged(
+        force: boolean,
+        requestTimeout: number,
+        grace: number,
+    ): Promise<void> {
+        if (!this.process.alive()) {
+            this.process.markExited();
+            return;
+        }
         if (force) {
             await this.kill(undefined, 0);
             return;
         }
-        if (!this.endpoint) {
-            await this.kill('SIGTERM', 3000);
-            return;
+        // Readiness comes after arf has installed its signal handler and started IPC.
+        // Allow a closing agent a brief chance to reach a child still starting up.
+        const deadline = Date.now() + requestTimeout;
+        if (!this.endpoint && this.readiness) {
+            const timer = new AbortController();
+            try {
+                await Promise.race([
+                    this.readiness.catch(() => undefined),
+                    delay(Math.min(1000, requestTimeout), undefined, { signal: timer.signal }),
+                ]);
+            } finally {
+                timer.abort();
+            }
         }
-        try {
-            await arfRequest(this.endpoint, 'shutdown', {}, 5000);
-        } catch {
-            // The managed process is ours even if its IPC no longer answers.
-            await this.kill('SIGTERM', 3000);
-            return;
+        let accepted = false;
+        if (this.endpoint && this.process.alive()) {
+            let connection: ArfAttachConnection | undefined;
+            try {
+                // Verify the child even if the original attachment is gone or startup failed.
+                connection = await this.openVerified(this.endpoint, deadline);
+                const result = object(
+                    await connection.request(
+                        'shutdown',
+                        {},
+                        {
+                            timeout: Math.max(1, deadline - Date.now()),
+                        },
+                    ),
+                );
+                accepted = result.accepted === true;
+            } catch {
+                // A missing or unresponsive endpoint is handled below.
+            } finally {
+                connection?.close();
+            }
         }
-        // Acceptance only starts shutdown, and running R code may delay it.
-        await this.kill(undefined, 5000);
+        if (accepted) {
+            await this.kill(undefined, grace);
+        } else if (process.platform !== 'win32') {
+            await this.kill('SIGTERM', 3000);
+        } else {
+            // Windows signals forcibly terminate. A lost IPC response may still
+            // mean shutdown was accepted, so allow the child time to exit.
+            await this.kill(undefined, this.endpoint ? grace : 0);
+        }
     }
     /**
      * An adopted arf is only asked to shut down. Its process is never
@@ -604,7 +697,7 @@ export class Arf {
         }
         this.process.send('SIGKILL');
         if (!(await this.process.waitForExit(2000))) {
-            throw new Error('R has not exited after Stop');
+            throw new Error('Managed arf has not exited after forced termination');
         }
     }
     async dispatch(submission: Submission, signal?: AbortSignal): Promise<void> {

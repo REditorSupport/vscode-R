@@ -1087,11 +1087,11 @@ suite('Interactive backend contract', function () {
             const pending = adapter.dispatch({ id: randomUUID(), code: 'side_effect()' });
             const rejected = assert.rejects(pending, /aborted/i);
             await received;
-            adapter.dispose();
+            await adapter.dispose();
             await rejected;
             assert.strictEqual(evaluations, 2);
         } finally {
-            adapter.dispose();
+            await adapter.dispose();
             server.closeAllConnections();
             await new Promise<void>((resolve) => listener.close(() => resolve()));
         }
@@ -1115,6 +1115,8 @@ suite('Interactive backend contract', function () {
         handlerApi: Record<string, unknown>,
         sessionMetadata?: () => unknown,
         answer?: (method: string) => Record<string, unknown> | undefined,
+        /** The PID that attach reports, as the arf process serving the socket. */
+        pid: () => number | undefined = () => process.pid,
     ): Promise<{
         endpoint: string;
         calls: Record<string, unknown>[];
@@ -1180,7 +1182,7 @@ suite('Interactive backend contract', function () {
                                         arf_version: '0.7.2',
                                         capabilities: ['call_execution_timeout'],
                                         handler_api: handlerApi,
-                                        pid: process.pid,
+                                        pid: pid(),
                                     },
                                 },
                             }) + '\n',
@@ -1285,7 +1287,7 @@ suite('Interactive backend contract', function () {
             calls: arf.calls,
             methods: arf.methods,
             close: async () => {
-                adapter.dispose();
+                await adapter.dispose();
                 await arf.close();
             },
         };
@@ -1368,18 +1370,44 @@ suite('Interactive backend contract', function () {
     });
 
     test('a managed arf that does not publish every selector fails to start', async () => {
-        const arf = await fakeAttachedArf({
-            state: 'locked',
-            handlers: INSPECTION_SELECTORS.slice(1),
-        });
+        let adapter: Arf | undefined;
+        const arf = await fakeAttachedArf(
+            { state: 'locked', handlers: INSPECTION_SELECTORS.slice(1) },
+            undefined,
+            undefined,
+            () => adapter && childPid(adapter),
+        );
         // Stands in for `arf headless --json`: it reports the fake's endpoint.
         const command = path.join(root, 'arf');
         fs.writeFileSync(
             command,
-            `#!/bin/sh\necho '${JSON.stringify({ socket_path: arf.endpoint })}'\nexec sleep 30\n`,
+            `#!/bin/sh\necho '{"pid":'$$',"socket_path":${JSON.stringify(arf.endpoint)}}'\nexec sleep 30\n`,
             { mode: 0o755 },
         );
-        const adapter = new Arf(
+        adapter = managedArf(command);
+        try {
+            await assert.rejects(
+                adapter.start({}),
+                /did not publish the R Interactive inspection handlers/,
+            );
+        } finally {
+            await adapter.dispose();
+            await arf.close();
+        }
+    });
+
+    /** Stands in for `arf headless --json`, reporting `endpoint` after `delay` seconds. */
+    function managedArfScript(trap: string, endpoint: string, delay = 0): string {
+        const command = path.join(root, 'arf');
+        fs.writeFileSync(
+            command,
+            `#!/bin/sh\n${trap}\nsleep ${delay}\necho '{"pid":'$$',"socket_path":${JSON.stringify(endpoint)}}'\nwhile :; do sleep 0.1; done\n`,
+            { mode: 0o755 },
+        );
+        return command;
+    }
+    const managedArf = (command: string): Arf =>
+        new Arf(
             command,
             root,
             undefined,
@@ -1388,14 +1416,143 @@ suite('Interactive backend contract', function () {
             'token',
             () => undefined,
         );
-        try {
-            await assert.rejects(
-                adapter.start({}),
-                /did not publish the R Interactive inspection handlers/,
+    const childPid = (adapter: Arf): number | undefined =>
+        (adapter.process as unknown as { pid?: number }).pid;
+
+    for (const [name, exits] of [
+        ['ends on SIGTERM', true],
+        ['is killed after the grace period when it ignores SIGTERM', false],
+    ] as const) {
+        test(`disposing a managed arf whose IPC cannot be reached ${name}`, async function () {
+            if (process.platform === 'win32') {
+                this.skip();
+            }
+            const marker = path.join(root, 'terminated');
+            const command = managedArfScript(
+                `trap 'echo > ${JSON.stringify(marker)}${exits ? '; exit 0' : ''}' TERM`,
+                path.join(root, 'gone.sock'),
             );
+            const adapter = managedArf(command);
+            try {
+                await assert.rejects(adapter.start({}));
+                const pid = childPid(adapter);
+                assert.ok(pid);
+                const started = Date.now();
+                await adapter.dispose();
+                const elapsed = Date.now() - started;
+                assert.throws(() => process.kill(pid, 0), { code: 'ESRCH' });
+                assert.ok(fs.existsSync(marker), 'SIGTERM was not sent');
+                if (exits) {
+                    assert.ok(elapsed < 2000, `took ${elapsed} ms`);
+                } else {
+                    assert.ok(elapsed >= 2500, `killed after only ${elapsed} ms`);
+                }
+            } finally {
+                await adapter.dispose();
+            }
+        });
+    }
+    test('disposing a managed arf that is still starting asks its IPC once it is ready', async function () {
+        if (process.platform === 'win32') {
+            this.skip();
+        }
+        const endpoint = path.join(root, 'late.sock');
+        let connections = 0;
+        const server = net.createServer((socket) => {
+            connections++;
+            socket.destroy();
+        });
+        await new Promise<void>((resolve) => server.listen(endpoint, resolve));
+        const adapter = managedArf(managedArfScript(`trap 'exit 0' TERM`, endpoint, 0.3));
+        try {
+            const starting = adapter.start({});
+            void starting.catch(() => undefined);
+            assert.ok(childPid(adapter));
+            await adapter.dispose();
+            await assert.rejects(starting);
+            assert.ok(connections > 0, 'the endpoint reported during dispose was not tried');
         } finally {
-            adapter.dispose();
+            await adapter.dispose();
+            await new Promise((resolve) => server.close(resolve));
+        }
+    });
+
+    test('a managed arf is not attached through a socket that another arf serves', async function () {
+        if (process.platform === 'win32') {
+            this.skip();
+        }
+        // The fake reports the test's PID, not that of the started process.
+        const arf = await fakeAttachedArf({ state: 'locked', handlers: [...INSPECTION_SELECTORS] });
+        const adapter = managedArf(managedArfScript(`trap 'exit 0' TERM`, arf.endpoint));
+        try {
+            await assert.rejects(adapter.start({}), /belongs to a different session/);
+            await adapter.dispose();
+            assert.strictEqual((adapter as unknown as { sessionId?: string }).sessionId, undefined);
+            assert.ok(!arf.methods.includes('attach:shutdown'), arf.methods.join(', '));
+        } finally {
+            await adapter.dispose();
             await arf.close();
+        }
+    });
+    /**
+     * A configured executable that runs the arf stand-in `inner` as its child
+     * and waits for it; the stand-in records its PID in `inner.pid`.
+     */
+    function launcherScript(inner: string): { command: string; pidFile: string } {
+        const command = path.join(root, 'launcher');
+        const pidFile = path.join(root, 'inner.pid');
+        fs.writeFileSync(command, `#!/bin/sh\n${JSON.stringify(inner)} &\nwait\n`, {
+            mode: 0o755,
+        });
+        return { command, pidFile };
+    }
+    const innerPid = (pidFile: string): number | undefined =>
+        fs.existsSync(pidFile) ? Number(fs.readFileSync(pidFile, 'utf8')) : undefined;
+    function killStandIn(pidFile: string): void {
+        const pid = innerPid(pidFile);
+        try {
+            if (pid) {
+                process.kill(pid, 'SIGKILL');
+            }
+        } catch {
+            // It has already exited.
+        }
+    }
+    test('an executable that starts arf as another process is refused, and its disposal is unconfirmed', async function () {
+        if (process.platform === 'win32') {
+            this.skip();
+        }
+        const inner = path.join(root, 'inner');
+        const { command, pidFile } = launcherScript(inner);
+        fs.writeFileSync(
+            inner,
+            `#!/bin/sh\necho $$ > ${JSON.stringify(pidFile)}\necho '{"pid":'$$',"socket_path":${JSON.stringify(path.join(root, 'gone.sock'))}}'\nwhile :; do sleep 0.1; done\n`,
+            { mode: 0o755 },
+        );
+        const adapter = managedArf(command);
+        try {
+            await assert.rejects(adapter.start({}), /replaces itself with arf using exec/);
+            // Its exit cannot be confirmed, so the backend keeps its runtime files.
+            await assert.rejects(adapter.dispose(), /may still be running/);
+        } finally {
+            killStandIn(pidFile);
+        }
+    });
+    test('a managed backend keeps its runtime files while the exit of R is unconfirmed', async () => {
+        const backend = sessBackend('managed');
+        const internals = backend as unknown as {
+            runtime: string;
+            frontend: { dispose(): Promise<void> };
+        };
+        const marker = path.join(internals.runtime, 'in-use');
+        fs.writeFileSync(marker, '');
+        internals.frontend.dispose = () =>
+            Promise.reject(new Error('Managed arf has not exited after forced termination'));
+        try {
+            await assert.rejects(backend.dispose(), /has not exited/);
+            assert.ok(fs.existsSync(marker), 'the runtime files were removed');
+        } finally {
+            fs.rmSync(internals.runtime, { recursive: true, force: true });
         }
     });
 
@@ -1642,7 +1799,7 @@ suite('Interactive backend contract', function () {
             await adapter.dispatch({ id: randomUUID(), code: 'after_restart()' });
             assert.strictEqual(arf.methods.at(-1), 'attach:evaluate');
         } finally {
-            adapter.dispose();
+            await adapter.dispose();
             await arf.close();
         }
     });
@@ -1723,7 +1880,7 @@ console.log(JSON.stringify({ sessions: listed ? [{ pid: ${process.pid}, socket_p
                         process.env[variable] = value;
                     }
                 });
-                adapter.dispose();
+                await adapter.dispose();
                 await arf.close();
             }
         });
@@ -1769,7 +1926,7 @@ console.log(JSON.stringify({ sessions: listed ? [{ pid: ${process.pid}, socket_p
             assert.ok(runtime.alive());
         } finally {
             runtime.end();
-            adapter.dispose();
+            await adapter.dispose();
             await arf.close();
         }
     });
@@ -1810,7 +1967,7 @@ console.log(JSON.stringify({ sessions: listed ? [{ pid: ${process.pid}, socket_p
             assert.ok(elapsed < STOP_REQUEST_TIMEOUT_MS - 10000, `took ${elapsed} ms`);
         } finally {
             runtime.end();
-            adapter.dispose();
+            await adapter.dispose();
             held.forEach((socket) => socket.destroy());
             await new Promise<void>((resolve) => silent.close(() => resolve()));
             await arf.close();
@@ -1906,7 +2063,7 @@ console.log(JSON.stringify({ sessions: listed ? [{ pid: ${process.pid}, socket_p
             assert.strictEqual(exits.length, 1);
         } finally {
             runtime.end();
-            adapter.dispose();
+            await adapter.dispose();
             await arf.close();
         }
     });
@@ -1931,7 +2088,7 @@ console.log(JSON.stringify({ sessions: listed ? [{ pid: ${process.pid}, socket_p
             assert.ok(!arf.methods.includes('evaluate'));
             assert.ok(!arf.methods.includes('attach:evaluate'));
         } finally {
-            adapter.dispose();
+            await adapter.dispose();
             await arf.close();
         }
     });
@@ -1956,7 +2113,7 @@ console.log(JSON.stringify({ sessions: listed ? [{ pid: ${process.pid}, socket_p
                 try {
                     await assert.rejects(adapter.start({}), /belongs to a different session/);
                 } finally {
-                    adapter.dispose();
+                    await adapter.dispose();
                 }
             }
             const adapter = new Arf(
@@ -1972,7 +2129,7 @@ console.log(JSON.stringify({ sessions: listed ? [{ pid: ${process.pid}, socket_p
             try {
                 await adapter.start({});
             } finally {
-                adapter.dispose();
+                await adapter.dispose();
             }
         } finally {
             await arf.close();

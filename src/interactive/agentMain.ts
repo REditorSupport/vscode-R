@@ -16,14 +16,28 @@ if (require.main === module) {
     delete process.env.ELECTRON_RUN_AS_NODE;
     const config = JSON.parse(fs.readFileSync(process.argv[2], 'utf8')) as AgentConfig;
     const agent = new SessionAgent(config);
-    process.once('SIGTERM', () => {
-        void agent.close().finally(() => process.exit(0));
-    });
-    process.once('SIGINT', () => {
-        void agent.close().finally(() => process.exit(0));
-    });
+    let exiting = false;
+    let exitCode = 0;
+    function shutdown(): void {
+        if (exiting) {
+            return;
+        }
+        exiting = true;
+        void agent.close().then(
+            () => process.exit(exitCode),
+            (error) => {
+                process.stderr.write(String(error) + '\n');
+                process.exit(1);
+            },
+        );
+    }
+    process.on('SIGTERM', shutdown);
+    process.on('SIGINT', shutdown);
     void agent.start().catch((error) => {
-        process.stderr.write(String(error) + '\n');
-        void agent.close().finally(() => process.exit(1));
+        if (!exiting) {
+            process.stderr.write(String(error) + '\n');
+            exitCode = 1;
+            shutdown();
+        }
     });
 }

@@ -259,16 +259,21 @@ export class SessBackend implements SessionBackend {
         this.orderedEvents.clear();
         this.bufferedBytes = 0;
         this.bufferedEventBytes = 0;
+        let released = false;
         try {
             if (this.ownership === 'adopted') {
                 // Best effort through the existing bridge, without evaluating user code or interrupting R.
                 await this.bridge.request('interactive_stop', {}, 500).catch(() => undefined);
             }
+            await this.frontend.dispose();
+            released = true;
         } finally {
-            this.frontend.dispose();
             this.graphics.dispose();
             this.bridge.dispose();
-            fs.rmSync(this.runtime, { recursive: true, force: true });
+            // A managed R whose exit is unconfirmed may still use these files.
+            if (released) {
+                fs.rmSync(this.runtime, { recursive: true, force: true });
+            }
         }
     }
     private runtimeEvent(message: Record<string, unknown>, channel?: string): void {

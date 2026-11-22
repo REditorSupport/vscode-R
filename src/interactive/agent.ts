@@ -209,6 +209,9 @@ export class SessionAgent {
             }
             this.manifest.assetBase = this.assets.base;
             await this.listen(this.manifest.endpoint, (socket) => this.connectClient(socket));
+            if (this.stopped) {
+                throw new Error('Agent stopped during startup');
+            }
             this.saveManifest();
             await this.backend.start();
             if (this.stopped) {
@@ -1158,18 +1161,20 @@ export class SessionAgent {
      */
     private closeAfterExit(unattended: boolean): void {
         const deadline = new Promise((resolve) => setTimeout(resolve, 5000).unref());
-        void Promise.race([this.dispatchAttempt, deadline]).then(() => {
-            if (unattended && this.clients.size) {
-                // The agent stays open, so a dispatch in flight still records
-                // whether its cell was sent.
-                return;
-            }
-            const current = this.current && this.journal.executions.get(this.current);
-            if (current && !this.stopped) {
-                this.finish(current, 'unknown');
-            }
-            return this.close();
-        });
+        void Promise.race([this.dispatchAttempt, deadline])
+            .then(() => {
+                if (unattended && this.clients.size) {
+                    // The agent stays open, so a dispatch in flight still records
+                    // whether its cell was sent.
+                    return;
+                }
+                const current = this.current && this.journal.executions.get(this.current);
+                if (current && !this.stopped) {
+                    this.finish(current, 'unknown');
+                }
+                return this.close();
+            })
+            .catch((error) => process.stderr.write(String(error) + '\n'));
     }
 
     close(): Promise<void> {
