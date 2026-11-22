@@ -8,7 +8,7 @@ R Interactive was introduced in vscode-R 3.2.0 ([PR #1805](https://github.com/RE
 
 ## Requirements and setup
 
-Use **VS Code 1.101.0 or newer**. R Interactive supports Linux, macOS, and Windows. On Windows, [connecting to an existing arf session](#connect-to-an-existing-arf-session) is not yet supported. Existing R terminal workflows remain available.
+Use **VS Code 1.101.0 or newer**. R Interactive supports Linux, macOS, and Windows, including [connecting to an existing arf session](#connect-to-an-existing-arf-session). Existing R terminal workflows remain available.
 
 For Remote SSH, install this extension **on the remote host**. R, its packages, optional executables, and session storage must be available on that host. For local use, the same requirements apply to your computer.
 
@@ -76,7 +76,7 @@ Run **R: New Persistent Interactive Session**, choose **arf**, and name the sess
 
 Adoption lists running sessions with `arf ipc list` and connects to their IPC sockets on the R host. It does not depend on a particular terminal multiplexer or session manager. Listing needs the arf CLI on the R host, found through `r.interactive.arfPath`, and runs with the extension host's environment. If you start arf with a custom `ARF_IPC_SESSIONS_DIR`, set the same absolute path for the VS Code server or extension host; only that directory is listed, not the default one as well. As arf requires, make that directory private to your user, particularly on a shared R host: arf keeps the permissions of a directory that already exists, and the extension connects to the sessions it lists. If the sessions cannot be listed, the session picker says so and offers to configure arf, and the R Interactive output shows the details.
 
-1. Start arf in your preferred terminal or session manager as usual.
+1. Enable IPC in arf, in your preferred terminal or session manager. In an arf that is already running, type `:ipc start` at its prompt, which keeps the objects you have created there. To start a new arf with IPC, run `arf --with-ipc`.
 2. Run **R: Connect Interactive to Session** and select the discovered arf PID and working directory.
 3. Arf controls permission to execute visible IPC requests. Approve its prompt, or explicitly choose `:ipc send-policy allow` in that arf process if you want unattended editor submissions. The extension does not bypass this policy using silent evaluation.
 4. Name the session. Its independent agent adopts the existing R process and preserves `.GlobalEnv`. An incompatible loaded `sess` is disconnected and unloaded before loading the private bridge; if another package prevents unloading, resolve that dependency in the terminal and reconnect.

@@ -160,8 +160,8 @@ PR CI, main pushes and manual runs execute the full supported suites on every
 OS. Linux and macOS run the same Node and Interactive editor tests, including
 the actual VS Code Electron runtime check with no Node executable on PATH and
 successful session creation using the default VS Code runtime.
-Windows also runs managed Interactive runtime/editor tests; individual Unix shell
-fixtures and existing-arf adoption tests remain excluded. Linux additionally runs the tmux launcher survival case
+Windows also runs managed Interactive runtime/editor tests and the tests that
+discover and adopt existing arf sessions; individual Unix shell fixtures remain excluded. Linux additionally runs the tmux launcher survival case
 once with tmux enabled and uses Xvfb for extension-host tests. Source/bootstrap
 checks, installed identity verification and sess package tests run on every OS.
 

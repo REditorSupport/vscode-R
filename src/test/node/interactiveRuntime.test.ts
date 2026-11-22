@@ -2057,10 +2057,246 @@ ggplot(diamonds, aes(x = carat, y = price, color = cut)) +
             }
         }
     });
-    test('adopts an existing arf process without losing its objects', async function () {
-        if (process.platform === 'win32') {
+    // An arf that runs in a terminal, driven through a pseudo-terminal on
+    // every platform: it is discovered and adopted, evaluates and interrupts
+    // through IPC, refuses Stop, and keeps its terminal after the agent closes.
+    test('adopts an interactive arf, which refuses Stop and keeps its terminal', async function () {
+        this.timeout(180000);
+        if (process.platform === 'win32' && process.arch !== 'x64') {
+            // The pseudo-terminal package is published for x64 Node only on
+            // Windows. The headless adoption test still runs.
             this.skip();
         }
+        const arf = process.env.ARF_PATH ?? 'arf';
+        try {
+            await run(arf, ['--version']);
+        } catch (error) {
+            if (process.env.ARF_PATH) {
+                throw error;
+            }
+            this.skip();
+        }
+        const { TuiTest } = await import('@microsoft/tui-test');
+        const directory = path.join(temporary, `interactive-arf-${randomUUID()}`);
+        const pidFile = path.join(directory, 'arf.pid');
+        // An empty configuration keeps the user's arf settings, such as the
+        // prompt, out of the test.
+        const config = path.join(directory, 'arf.toml');
+        fs.mkdirSync(path.join(directory, 'history'), { recursive: true });
+        fs.writeFileSync(config, '');
+        const env: Record<string, string> = Object.fromEntries(
+            Object.entries({
+                ...process.env,
+                ARF_IPC_SESSIONS_DIR: path.join(directory, 'sessions'),
+            }).filter((entry): entry is [string, string] => entry[1] !== undefined),
+        );
+        const terminal = TuiTest.ephemeral('vscode-r-interactive-arf');
+        let adopted: SessionAgent | undefined;
+        let connection: AgentClient | undefined;
+        const facts: Record<string, unknown> = {};
+        // Each read has its own deadline: a Mocha timeout would not cancel it.
+        const screen = async (): Promise<string> => {
+            let timer: NodeJS.Timeout | undefined;
+            try {
+                return await Promise.race([
+                    terminal.text({ full: true }),
+                    new Promise<string>((resolve) => {
+                        timer = setTimeout(() => resolve('(terminal text timed out)'), 5000);
+                    }),
+                ]);
+            } catch (error) {
+                return `(terminal text unavailable: ${String(error)})`;
+            } finally {
+                clearTimeout(timer);
+            }
+        };
+        const prompt = /R [\d.]+>/;
+        const shown = async (text: string, timeout = 20000): Promise<void> => {
+            const deadline = Date.now() + timeout;
+            while (!(await screen()).includes(text)) {
+                if (Date.now() >= deadline) {
+                    throw new Error(`The terminal did not show ${JSON.stringify(text)}`);
+                }
+                await delay(100);
+            }
+        };
+        try {
+            await terminal.run(
+                arf,
+                [
+                    '--with-ipc',
+                    '--ipc-pid-file',
+                    pidFile,
+                    '--history-dir',
+                    path.join(directory, 'history'),
+                    '--config',
+                    config,
+                    '--no-banner',
+                    '--vanilla',
+                ],
+                {
+                    cwd: directory,
+                    env,
+                    cols: 120,
+                    rows: 30,
+                    timeouts: {
+                        text: 20000,
+                        idle: 20000,
+                        command: 30000,
+                        exit: 30000,
+                        ready: 60000,
+                    },
+                },
+            );
+            // The prompt shows the R version, such as `R 4.5.2>`.
+            const deadline = Date.now() + 60000;
+            while (!prompt.test(await screen())) {
+                if (Date.now() >= deadline) {
+                    throw new Error('arf did not show its prompt');
+                }
+                await delay(100);
+            }
+            // arf creates the PID file before writing it, so read until it holds a PID.
+            let pid = 0;
+            await until(() => {
+                try {
+                    pid = Number(fs.readFileSync(pidFile, 'utf8').trim());
+                } catch {
+                    pid = 0;
+                }
+                return Number.isSafeInteger(pid) && pid > 0;
+            }, 30000);
+            facts.pid = pid;
+            // arf asks before running visible IPC evaluations unless allowed.
+            await terminal.submit(':ipc send-policy allow');
+            await shown('IPC send policy: allow');
+
+            const discovery = await discoverArf(arf, directory, env);
+            facts.discovery = discovery;
+            assert.ok(discovery.available);
+            const listed = discovery.sessions.filter((session) => session.pid === pid);
+            assert.strictEqual(listed.length, 1);
+            assert.strictEqual(listed[0].session_type, 'interactive');
+            const probed = await probeArfSession(listed[0], 5000);
+            assert.ok(probed);
+            facts.sessionId = probed.session_id;
+
+            const id = randomUUID();
+            adopted = new SessionAgent({
+                id,
+                generation: randomUUID(),
+                label: 'Interactive arf',
+                directory,
+                storage: path.join(root, id),
+                rPath: 'R',
+                library,
+                resources,
+                provider: 'arf-existing',
+                arfEndpoint: probed.socket_path,
+                arfSessionId: probed.session_id,
+                arfPid: probed.pid,
+                arfPath: path.join(root, 'missing-arf'),
+                supervision: 'test',
+                plotBackend: 'standard',
+                historyLimit: 50,
+                maxOutputBytes: 1048576,
+                maxJournalBytes: 16777216,
+            });
+            connection = new AgentClient(await adopted.start());
+            await connection.connect();
+            const observed: SessionEvent[] = [];
+            connection.on('event', (event) => observed.push(event as SessionEvent));
+            await connection.subscribe(0);
+            const active = connection;
+            const evaluate = async (code: string): Promise<ExecutionRecord> => {
+                const execution = randomUUID();
+                await active.request('submit', { submission: { id: execution, code } });
+                await until(
+                    () =>
+                        observed.some(
+                            (event) => event.executionId === execution && event.type === 'finished',
+                        ),
+                    30000,
+                    observed,
+                );
+                return active.request<ExecutionRecord>('execution', { id: execution });
+            };
+            assert.strictEqual((await evaluate('adopted_value <- 17')).state, 'success');
+            assert.strictEqual((await evaluate('stopifnot(adopted_value == 17)')).state, 'success');
+
+            // Wait until R runs the code before interrupting it through IPC.
+            const running = randomUUID();
+            await connection.request('submit', {
+                submission: {
+                    id: running,
+                    code: '{ sess::display("interrupt ready", "text/plain"); for (i in seq_len(300)) Sys.sleep(0.1) }',
+                },
+            });
+            await until(
+                () =>
+                    observed.some(
+                        (event) =>
+                            event.executionId === running &&
+                            event.type === 'display' &&
+                            event.data.text === 'interrupt ready',
+                    ),
+                30000,
+                observed,
+            );
+            await connection.request('interrupt', { id: running });
+            await until(
+                () =>
+                    observed.some(
+                        (event) => event.executionId === running && event.type === 'finished',
+                    ),
+                30000,
+                observed,
+            );
+            assert.strictEqual(
+                (await connection.request<ExecutionRecord>('execution', { id: running })).state,
+                'interrupted',
+            );
+
+            await assert.rejects(connection.request('stop'), /terminal that started arf/);
+            process.kill(pid, 0);
+            assert.notStrictEqual((await connection.snapshot()).manifest.status, 'stopping');
+            assert.strictEqual((await evaluate('stopifnot(adopted_value == 17)')).state, 'success');
+
+            connection.close();
+            connection = undefined;
+            await adopted.close();
+            adopted = undefined;
+            process.kill(pid, 0);
+            await terminal.submit('cat("after agent", adopted_value + 1, "\\n")');
+            await shown('after agent 18');
+            // The echoed command does not contain the output, and a prompt
+            // after the output shows that the REPL takes input again.
+            const ready = Date.now() + 20000;
+            while (!prompt.test((await screen()).split('after agent 18').at(-1)!)) {
+                if (Date.now() >= ready) {
+                    throw new Error('arf did not show a prompt after the terminal evaluation');
+                }
+                await delay(100);
+            }
+            // Quitting R lets arf remove its socket and session registration,
+            // which are outside the suite's temporary directory.
+            await terminal.submit("q('no')");
+            await terminal.waitExit({ timeout: 10000 });
+        } catch (error) {
+            facts.terminal = await screen();
+            throw new Error(
+                `${error instanceof Error ? error.stack : String(error)}\n${JSON.stringify(facts, null, 2)}`,
+            );
+        } finally {
+            try {
+                connection?.close();
+                await adopted?.close();
+            } finally {
+                await terminal.closeQuiet();
+            }
+        }
+    });
+    test('adopts an existing arf process without losing its objects', async function () {
         const arf = process.env.ARF_PATH ?? 'arf';
         try {
             await run(arf, ['--version']);
