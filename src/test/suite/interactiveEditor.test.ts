@@ -241,7 +241,9 @@ suite('Interactive VS Code integration', function () {
     // the cleanup to finish before Mocha advances.
     const cleanupReserveMs = 5000;
     let runningTest: { test: Mocha.Runnable; started: number } | undefined;
-    let workspaceFocusDiagnostics: FailureDiagnostics | undefined;
+    // The stage diagnostics of the running test, which teardown reports when
+    // the test fails, including by a Mocha timeout.
+    let testDiagnostics: FailureDiagnostics | undefined;
     let restoreWorkspaceFocusTracing: (() => void) | undefined;
     let stopWorkspaceFocusSampling: ((failed: boolean) => Promise<void>) | undefined;
     let tabsBeforeTest: TabSnapshot | undefined;
@@ -470,11 +472,11 @@ suite('Interactive VS Code integration', function () {
     teardown(async function () {
         const failed = this.currentTest?.state === 'failed';
         // Close first, so the report records when the test ended.
-        workspaceFocusDiagnostics?.close();
+        testDiagnostics?.close();
         if (failed) {
-            workspaceFocusDiagnostics?.report();
+            testDiagnostics?.report();
         }
-        workspaceFocusDiagnostics = undefined;
+        testDiagnostics = undefined;
         restoreWorkspaceFocusTracing?.();
         restoreWorkspaceFocusTracing = undefined;
         const stopSampling = stopWorkspaceFocusSampling;
@@ -4197,7 +4199,7 @@ par(mfrow=c(1,1))`,
         diagnostics.attach('extension host samples', () => sampler.snapshot());
         diagnostics.attach('process monitor', () => monitor?.status() ?? null);
         diagnostics.attach('diagnostics errors', () => diagnosticsErrors);
-        workspaceFocusDiagnostics = diagnostics;
+        testDiagnostics = diagnostics;
         const step = <T>(name: string, operation: () => PromiseLike<T>) =>
             diagnostics.trace(name, operation);
         // Time the VS Code commands, notebook edits, and agent requests made
@@ -5434,10 +5436,46 @@ par(mfrow=c(1,1))`,
             }
         ).savedConnections;
         const temporary: { agent: SessionAgent; manifest: SessionManifest }[] = [];
+        // This test has timed out on macOS without showing which step stalled.
+        // The IDs are recorded before each agent starts, and the notebooks
+        // once found, since the first one's metadata is reset later.
+        const ids: string[] = [];
+        const notebooks: vscode.NotebookDocument[] = [];
+        const sessionState = () => ({
+            sessions: ids.map((id) => ({
+                id,
+                status: temporary.find(({ manifest }) => manifest.id === id)?.manifest.status,
+                notebooks: vscode.workspace.notebookDocuments
+                    .filter((doc) => doc.metadata.rSessionId === id)
+                    .map((doc) => doc.uri.toString()),
+                saved: saved.get(id)?.notebookUri ?? null,
+            })),
+            foundNotebooks: notebooks.map((doc) => ({
+                uri: doc.uri.toString(),
+                session: (doc.metadata.rSessionId as string | undefined) ?? null,
+            })),
+            activeNotebook: vscode.window.activeNotebookEditor?.notebook.uri.toString() ?? null,
+        });
+        // The cleanup detaches the sessions, which deletes their saved URIs,
+        // and closes their notebooks, so the state is also saved when the body
+        // throws, before the cleanup. After a Mocha timeout, which does not
+        // reject the pending step, only the state at the report is available.
+        // The stages show where the test or its cleanup stopped.
+        let stateAtFailure: ReturnType<typeof sessionState> | undefined;
+        const diagnostics = new FailureDiagnostics('Stale saved URI', () => ({
+            atFailure: stateAtFailure ?? null,
+            atReport: sessionState(),
+        }));
+        testDiagnostics = diagnostics;
+        // Teardown reports the latest stages once, so that a cleanup step that
+        // stalls after an earlier rejection is still recorded.
+        const step = <T>(name: string, operation: () => PromiseLike<T>) =>
+            diagnostics.trace(name, operation, { reportOnReject: false });
         const before = snapshotTabs();
         try {
             for (let i = 0; i < 2; i++) {
                 const id = randomUUID();
+                ids.push(id);
                 const agent = new SessionAgent({
                     id,
                     generation: randomUUID(),
@@ -5455,9 +5493,9 @@ par(mfrow=c(1,1))`,
                     maxOutputBytes: 1048576,
                     maxJournalBytes: 16777216,
                 });
-                const manifest = await agent.start();
+                const manifest = await step(`session ${i}: agent start`, () => agent.start());
                 temporary.push({ agent, manifest });
-                await manager.open(manifest);
+                await step(`session ${i}: open`, () => manager.open(manifest));
             }
             const [first, second] = temporary.map(({ manifest }) =>
                 vscode.workspace.notebookDocuments.find(
@@ -5465,15 +5503,18 @@ par(mfrow=c(1,1))`,
                 ),
             );
             assert.ok(first && second);
-            await vscode.commands.executeCommand('r.interactive.detach', first.uri);
+            notebooks.push(first, second);
+            await step('detach first session', () =>
+                vscode.commands.executeCommand('r.interactive.detach', first.uri),
+            );
             const reset = new vscode.WorkspaceEdit();
             reset.set(first.uri, [vscode.NotebookEdit.updateNotebookMetadata({})]);
-            await vscode.workspace.applyEdit(reset);
+            await step('reset first notebook metadata', () => vscode.workspace.applyEdit(reset));
             saved.set(temporary[0].manifest.id, {
                 id: temporary[0].manifest.id,
                 notebookUri: second.uri.toString(),
             });
-            await manager.open(temporary[0].manifest);
+            await step('reopen first session', () => manager.open(temporary[0].manifest));
             assert.strictEqual(second.metadata.rSessionId, temporary[1].manifest.id);
             const reopened = vscode.workspace.notebookDocuments.find(
                 (doc) => doc.metadata.rSessionId === temporary[0].manifest.id,
@@ -5483,12 +5524,23 @@ par(mfrow=c(1,1))`,
                 saved.get(temporary[0].manifest.id)?.notebookUri,
                 saved.get(temporary[1].manifest.id)?.notebookUri,
             );
-        } finally {
-            for (const { agent, manifest } of temporary) {
-                await vscode.commands.executeCommand('r.interactive.detach', manifest);
-                await agent.close();
+        } catch (error) {
+            try {
+                stateAtFailure = sessionState();
+            } catch {
+                // The diagnostics must not replace the failure.
             }
-            await vscode.window.tabGroups.close(tabsOpenedSince(before), true);
+            throw error;
+        } finally {
+            for (const [i, { agent, manifest }] of temporary.entries()) {
+                await step(`cleanup ${i}: detach`, () =>
+                    vscode.commands.executeCommand('r.interactive.detach', manifest),
+                );
+                await step(`cleanup ${i}: agent close`, () => agent.close());
+            }
+            await step('cleanup: close tabs', () =>
+                vscode.window.tabGroups.close(tabsOpenedSince(before), true),
+            );
         }
     });
     test('exports portable notebook output without transient connection URLs', () => {
