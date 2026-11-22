@@ -40,13 +40,14 @@ let diagnosticPanelDetails: Map<vscode.WebviewPanel, unknown>;
 /**
  * A fixture script expression for the report of what the page received: the
  * generation of the injected script, the theme colors of VS Code's default
- * styles for text and code, and, for each stylesheet link, the HTTP status of
- * its request, whether it produced a stylesheet, and the colors its body and
+ * styles for text and code, and, for each stylesheet link, the response status
+ * of its request, whether it produced a stylesheet, and the colors its body and
  * code rules declare. Chromium creates a stylesheet even for a failed request,
- * so only the status tells a missing file from one whose rules cannot be read.
- * The status comes from the page's resource timing and does not issue another
- * request. A stylesheet from another origin cannot be read, so only its
- * presence is known.
+ * so a stylesheet does not mean the request succeeded. The status comes from
+ * the page's resource timing, which issues no new request; it is the response
+ * the page received, and is null or 0 when resource timing does not expose it.
+ * A stylesheet from another origin cannot be read, so only its presence is
+ * known.
  */
 const pageStylesheetReport = `JSON.stringify({
     generation: document.querySelector('script[data-generation]')?.dataset.generation ?? null,
