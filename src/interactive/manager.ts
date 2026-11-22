@@ -1250,6 +1250,15 @@ export class InteractiveManager
     }
 
     /**
+     * The resource that a picker lists and creates sessions for: `resource`,
+     * or else the folder that {@link sessionFolder} falls back to, resolved
+     * when the picker opens rather than once a choice is made.
+     */
+    private pickerResource(resource?: vscode.Uri): vscode.Uri | undefined {
+        return resource ?? this.sessionFolder();
+    }
+
+    /**
      * The workspace folder that a session is created or listed for: the
      * resource's, or else the first folder. Its arf setting applies, as its
      * directory does.
@@ -1400,8 +1409,9 @@ export class InteractiveManager
     }
 
     private async chooseExecutionTarget(
-        resource?: vscode.Uri,
+        code?: vscode.Uri,
     ): Promise<InteractiveView | 'createTerminal' | undefined> {
+        const resource = this.pickerResource(code);
         const choices = this.sessionChoices(resource).then(
             (items) =>
                 [
@@ -1451,8 +1461,9 @@ export class InteractiveManager
     }
 
     private async pick(): Promise<void> {
-        // Listing and creating use the same folder even if the editor changes meanwhile.
-        const resource = vscode.window.activeTextEditor?.document.uri;
+        // Listing and creating use the same folder even if the editor changes
+        // meanwhile, including the first folder when no editor is active.
+        const resource = this.pickerResource(vscode.window.activeTextEditor?.document.uri);
         // Passing a promise keeps the picker responsive while local agents are checked.
         const selected = await vscode.window.showQuickPick(this.sessionChoices(resource), {
             title: 'Connect to a persistent R session',

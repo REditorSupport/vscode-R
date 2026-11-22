@@ -807,6 +807,85 @@ suite('Interactive VS Code integration', function () {
             stubs.forEach((stub) => stub.restore());
         }
     });
+    test('a session created from Connect uses the folder that the picker listed for', async () => {
+        const folders = ['first', 'second'].map((name, index) => {
+            fs.mkdirSync(path.join(root, name), { recursive: true });
+            return { uri: vscode.Uri.file(path.join(root, name)), name, index };
+        });
+        // Each folder sets an arf that does not exist, so creation offers to configure it.
+        const missing = folders.map((folder) => path.join(root, `${folder.name}-folder-arf`));
+        const getConfiguration = vscode.workspace.getConfiguration.bind(vscode.workspace);
+        let active: vscode.TextEditor | undefined;
+        const sandbox = sinon.createSandbox();
+        try {
+            sandbox.stub(vscode.workspace, 'workspaceFolders').value(folders);
+            sandbox
+                .stub(vscode.workspace, 'getWorkspaceFolder')
+                .callsFake((uri: vscode.Uri) =>
+                    folders.find(
+                        (folder) =>
+                            uri.fsPath === folder.uri.fsPath ||
+                            uri.fsPath.startsWith(folder.uri.fsPath + path.sep),
+                    ),
+                );
+            sandbox
+                .stub(vscode.workspace, 'getConfiguration')
+                .callsFake((section?: string, scope?: vscode.ConfigurationScope | null) => {
+                    const config = getConfiguration(section, scope);
+                    const index =
+                        section === 'r' && scope instanceof vscode.Uri
+                            ? folders.findIndex(
+                                  (folder) => folder.uri.toString() === scope.toString(),
+                              )
+                            : -1;
+                    if (index < 0) {
+                        return config;
+                    }
+                    // The configuration object is frozen, so a copy replaces `get`.
+                    return {
+                        ...config,
+                        get: (key: string, fallback?: unknown) =>
+                            key === 'interactive.arfPath'
+                                ? missing[index]
+                                : config.get(key, fallback),
+                    } as vscode.WorkspaceConfiguration;
+                });
+            // No editor is active when the picker opens.
+            sandbox.stub(vscode.window, 'activeTextEditor').get(() => active);
+            const picker = sandbox.stub(vscode.window, 'showQuickPick');
+            let listing: string | undefined;
+            picker.onFirstCall().callsFake((async (items: unknown) => {
+                const choices = (await items) as (vscode.QuickPickItem & {
+                    create?: boolean;
+                    configureArf?: boolean;
+                })[];
+                // Listing reports the arf it checked, as creation offers it.
+                listing = choices.find((choice) => choice.configureArf)?.detail;
+                // While the picker is open, a file in the second folder becomes active.
+                active = {
+                    document: { uri: vscode.Uri.file(path.join(folders[1].uri.fsPath, 'a.R')) },
+                } as vscode.TextEditor;
+                return choices.find((choice) => choice.create);
+            }) as never);
+            picker.onSecondCall().resolves(undefined);
+            await vscode.commands.executeCommand('r.interactive.connect');
+            sinon.assert.calledTwice(picker);
+            assert.ok(listing?.includes(missing[0]), listing);
+            const providers = picker.secondCall.args[0] as (vscode.QuickPickItem & {
+                value: string;
+            })[];
+            assert.deepStrictEqual(
+                providers.map((item) => item.value),
+                ['configure'],
+            );
+            assert.ok(providers[0].detail?.includes(missing[0]), providers[0].detail);
+        } finally {
+            sandbox.restore();
+            folders.forEach((folder) =>
+                fs.rmSync(folder.uri.fsPath, { recursive: true, force: true }),
+            );
+        }
+    });
     test('usable custom arf is offered, but removal while naming a session prevents launch', async function () {
         if (process.platform === 'win32') {
             this.skip();
