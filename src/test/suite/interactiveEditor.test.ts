@@ -853,8 +853,14 @@ suite('Interactive VS Code integration', function () {
             // No editor is active when the picker opens.
             sandbox.stub(vscode.window, 'activeTextEditor').get(() => active);
             const picker = sandbox.stub(vscode.window, 'showQuickPick');
+            let listing: string | undefined;
             picker.onFirstCall().callsFake((async (items: unknown) => {
-                const choices = (await items) as (vscode.QuickPickItem & { create?: boolean })[];
+                const choices = (await items) as (vscode.QuickPickItem & {
+                    create?: boolean;
+                    configureArf?: boolean;
+                })[];
+                // Listing reports the arf it checked, as creation offers it.
+                listing = choices.find((choice) => choice.configureArf)?.detail;
                 // While the picker is open, a file in the second folder becomes active.
                 active = {
                     document: { uri: vscode.Uri.file(path.join(folders[1].uri.fsPath, 'a.R')) },
@@ -864,6 +870,7 @@ suite('Interactive VS Code integration', function () {
             picker.onSecondCall().resolves(undefined);
             await vscode.commands.executeCommand('r.interactive.connect');
             sinon.assert.calledTwice(picker);
+            assert.ok(listing?.includes(missing[0]), listing);
             const providers = picker.secondCall.args[0] as (vscode.QuickPickItem & {
                 value: string;
             })[];

@@ -1250,11 +1250,6 @@ export class InteractiveManager
     }
 
     /**
-     * The workspace folder that a session is created or listed for: the
-     * resource's, or else the first folder. Its arf setting applies, as its
-     * directory does.
-     */
-    /**
      * The resource that a picker lists and creates sessions for: `resource`,
      * or else the folder that {@link sessionFolder} falls back to, resolved
      * when the picker opens rather than once a choice is made.
@@ -1263,6 +1258,11 @@ export class InteractiveManager
         return resource ?? this.sessionFolder();
     }
 
+    /**
+     * The workspace folder that a session is created or listed for: the
+     * resource's, or else the first folder. Its arf setting applies, as its
+     * directory does.
+     */
     private sessionFolder(resource?: vscode.Uri): vscode.Uri | undefined {
         return (
             (resource && vscode.workspace.getWorkspaceFolder(resource)) ??
