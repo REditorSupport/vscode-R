@@ -345,3 +345,19 @@ suite('arf session probe', function () {
         }
     });
 });
+
+suite('arf session settings', () => {
+    test('the arf path can differ between workspace folders', () => {
+        // Without a scope, VS Code reads the setting per window, so every
+        // folder would use one value for discovery and for new sessions.
+        const manifest = JSON.parse(
+            fs.readFileSync(path.join(__dirname, '..', '..', '..', 'package.json'), 'utf8'),
+        ) as {
+            contributes: { configuration: { properties: Record<string, { scope?: string }> } };
+        };
+        assert.strictEqual(
+            manifest.contributes.configuration.properties['r.interactive.arfPath'].scope,
+            'machine-overridable',
+        );
+    });
+});

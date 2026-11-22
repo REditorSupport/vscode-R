@@ -759,6 +759,54 @@ suite('Interactive VS Code integration', function () {
             await config.update('interactive.arfPath', previous, vscode.ConfigurationTarget.Global);
         }
     });
+    test('without a folder resource, the first folder’s arf setting applies, as its directory does', async () => {
+        const folders = ['first', 'second'].map((name, index) => {
+            fs.mkdirSync(path.join(root, name), { recursive: true });
+            return { uri: vscode.Uri.file(path.join(root, name)), name, index };
+        });
+        const missing = path.join(root, 'first-folder-arf');
+        const getConfiguration = vscode.workspace.getConfiguration.bind(vscode.workspace);
+        const stubs = [
+            sinon.stub(vscode.workspace, 'workspaceFolders').value(folders),
+            sinon.stub(vscode.workspace, 'getWorkspaceFolder').returns(undefined),
+            // Only the first folder sets arf; other scopes keep their settings.
+            sinon
+                .stub(vscode.workspace, 'getConfiguration')
+                .callsFake((section?: string, scope?: vscode.ConfigurationScope | null) => {
+                    const config = getConfiguration(section, scope);
+                    if (
+                        section !== 'r' ||
+                        !(scope instanceof vscode.Uri) ||
+                        scope.toString() !== folders[0].uri.toString()
+                    ) {
+                        return config;
+                    }
+                    // The configuration object is frozen, so a copy replaces `get`.
+                    return {
+                        ...config,
+                        get: (key: string, fallback?: unknown) =>
+                            key === 'interactive.arfPath' ? missing : config.get(key, fallback),
+                    } as vscode.WorkspaceConfiguration;
+                }),
+        ];
+        const picker = sinon.stub(vscode.window, 'showQuickPick').resolves(undefined);
+        try {
+            // No editor is active, as when Connect runs from an empty window.
+            await vscode.commands.executeCommand('workbench.action.closeAllEditors');
+            await vscode.commands.executeCommand('r.interactive.new');
+            const choices = picker.firstCall.args[0] as (vscode.QuickPickItem & {
+                value: string;
+            })[];
+            assert.deepStrictEqual(
+                choices.map((item) => item.value),
+                ['configure'],
+            );
+            assert.ok(choices[0].detail?.includes(missing), choices[0].detail);
+        } finally {
+            picker.restore();
+            stubs.forEach((stub) => stub.restore());
+        }
+    });
     test('usable custom arf is offered, but removal while naming a session prevents launch', async function () {
         if (process.platform === 'win32') {
             this.skip();
