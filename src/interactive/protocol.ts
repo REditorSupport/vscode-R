@@ -104,6 +104,17 @@ export interface BackendDescriptor {
     options: Record<string, unknown>;
 }
 
+/**
+ * The environment variables that select the arf session registry: an
+ * explicit `ARF_IPC_SESSIONS_DIR`, or else the user cache directory, which
+ * comes from `XDG_CACHE_HOME` or `HOME` on Linux and from `HOME` on macOS. A
+ * variable that is absent was unset.
+ */
+export const ARF_REGISTRY_VARIABLES = ['ARF_IPC_SESSIONS_DIR', 'XDG_CACHE_HOME', 'HOME'] as const;
+export type ArfRegistryEnvironment = Partial<
+    Record<(typeof ARF_REGISTRY_VARIABLES)[number], string>
+>;
+
 export interface AgentConfig extends AgentSettings {
     backend?: BackendDescriptor;
     /** Legacy sess projection, derived from backend.options when writing new configs. */
@@ -112,6 +123,13 @@ export interface AgentConfig extends AgentSettings {
     resources?: string;
     arfPath?: string;
     arfEndpoint?: string;
+    /** The arf process that discovery confirmed, which an adopted endpoint must still serve. */
+    arfSessionId?: string;
+    arfPid?: number;
+    /** Where the arf CLI listed an adopted session, which lists it again there. */
+    arfDiscoveryDirectory?: string;
+    /** The registry selection that listed an adopted session; see {@link ArfRegistryEnvironment}. */
+    arfRegistryEnvironment?: ArfRegistryEnvironment;
     plotBackend?: 'auto' | 'jgd' | 'standard';
 }
 

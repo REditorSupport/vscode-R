@@ -5,10 +5,17 @@ import {
     ArfRpcError,
     arfRequest,
     checkArfSession,
+    discoverArf,
+    withRegistryEnvironment,
 } from '../arf';
 import { ArfAttachConnection, ArfEvent } from '../arfAttach';
-import { BackendEvent, InspectionRequest } from '../backend';
-import { MAX_MESSAGE_BYTES, object, Submission } from '../protocol';
+import {
+    BackendEvent,
+    DispatchNotSentError,
+    InspectionRequest,
+    StopRefusedError,
+} from '../backend';
+import { ArfRegistryEnvironment, MAX_MESSAGE_BYTES, object, Submission } from '../protocol';
 import { RuntimeProcess } from './process';
 import { rString } from './rCode';
 import { ArfOutput } from './arfOutput';
@@ -35,6 +42,8 @@ interface Execution {
     submission: string;
     id?: number;
     interruptRequested: boolean;
+    /** For an adopted session, the attach connection that sent the code. */
+    connection?: ArfAttachConnection;
 }
 
 export class Arf {
@@ -52,6 +61,11 @@ export class Arf {
     private execution?: Execution;
     private failure?: Error;
     private stopping?: Promise<void>;
+    /**
+     * Set when a Stop found that the endpoint no longer reaches this session:
+     * code is then sent only after a new connection reaches it again.
+     */
+    private reverify = false;
     constructor(
         private command: string,
         private directory: string,
@@ -60,8 +74,19 @@ export class Arf {
         private emit: (event: BackendEvent) => void,
         private token: string,
         private event: (message: Record<string, unknown>, channel: string) => void,
+        /** The adopted arf process that discovery confirmed. */
+        private expected: { sessionId?: string; pid?: number } = {},
+        /** Where the arf CLI lists an adopted session again, if not `directory`. */
+        private discoveryDirectory = directory,
+        /**
+         * The registry selection that listed the adopted session. The agent's
+         * own environment, as under tmux, need not select the same registry.
+         */
+        private registry?: ArfRegistryEnvironment,
     ) {
         this.process = new RuntimeProcess(adopted, emit);
+        // The first attach must then reach the same arf as the probe did.
+        this.sessionId = expected.sessionId;
     }
     markStarted(): void {
         this.started = true;
@@ -166,8 +191,11 @@ export class Arf {
         const deadline = Date.now() + 30000;
         for (;;) {
             const timeout = Math.max(1, Math.min(15000, deadline - Date.now()));
+            // The attach connection reached the verified session; a new
+            // connection to its socket path could reach another arf.
+            const attach = await this.attached();
             const session = object(
-                await arfRequest(this.endpoint!, 'session', {}, timeout, this.abort.signal),
+                await attach.request('session', {}, { timeout, signal: this.abort.signal }),
             );
             const libraries = session.r && object(session.r).lib_paths;
             if (
@@ -200,14 +228,16 @@ export class Arf {
         }
     }
     async bootstrap(code: string): Promise<void> {
-        // Visible evaluation respects arf's advertised IPC policy, including bootstrap.
+        // Visible evaluation respects arf's advertised IPC policy, including
+        // bootstrap. It goes over the attach connection, which reached the
+        // verified arf, rather than a new connection to its socket path, which
+        // a restarted arf can serve by then.
+        const attach = await this.attached();
         const result = object(
-            await arfRequest(
-                this.endpoint!,
+            await attach.request(
                 'evaluate',
                 { code, visible: true },
-                30000,
-                this.abort.signal,
+                { timeout: 30000, signal: this.abort.signal },
             ),
         );
         // A missing or unknown status is not a successful bootstrap.
@@ -228,13 +258,82 @@ export class Arf {
         }));
     }
     private async attachOnce(): Promise<Record<string, unknown>> {
-        const { connection, result } = await ArfAttachConnection.open(this.endpoint!, {
+        try {
+            return await this.attachTo(this.endpoint!);
+        } catch (error) {
+            const session = await this.relocated();
+            if (!session) {
+                throw error;
+            }
+            return session;
+        }
+    }
+    /**
+     * Attaches to the adopted session at the socket path it now lists. arf
+     * registers a new path when IPC restarts in the same process, as after
+     * `:ipc stop` and `:ipc start`, and keeps its PID and session ID.
+     */
+    private async relocated(): Promise<Record<string, unknown> | undefined> {
+        return this.atListedPath(async (endpoint, timeout) => {
+            // The attach checks the session ID before the path is used.
+            const session = await this.attachTo(endpoint, timeout);
+            this.endpoint = endpoint;
+            return session;
+        });
+    }
+    /**
+     * Lists the adopted session again and returns what `open` returns for the
+     * first other socket path listed for its PID, within `deadline` if given.
+     * `open` must verify the session at that path.
+     */
+    private async atListedPath<T>(
+        open: (endpoint: string, timeout: number | undefined) => Promise<T>,
+        deadline?: number,
+    ): Promise<T | undefined> {
+        const pid = this.expected.pid;
+        if (!this.process.adopted || this.sessionId === undefined || pid === undefined) {
+            return undefined;
+        }
+        const remaining = (): number | undefined =>
+            deadline === undefined ? undefined : deadline - Date.now();
+        if ((remaining() ?? 1) <= 0) {
+            return undefined;
+        }
+        const discovery = await discoverArf(
+            this.command,
+            this.discoveryDirectory,
+            this.registry ? withRegistryEnvironment(process.env, this.registry) : process.env,
+            undefined,
+            Math.min(remaining() ?? Infinity, 5000),
+        );
+        if (!discovery.available) {
+            return undefined;
+        }
+        for (const listed of discovery.sessions) {
+            if (listed.pid !== pid || listed.socket_path === this.endpoint) {
+                continue;
+            }
+            const timeout = remaining();
+            if (timeout !== undefined && timeout <= 0) {
+                break;
+            }
+            try {
+                return await open(listed.socket_path, timeout);
+            } catch {
+                // Another listed path may reach the session.
+            }
+        }
+        return undefined;
+    }
+    private async attachTo(endpoint: string, timeout?: number): Promise<Record<string, unknown>> {
+        const { connection, result } = await ArfAttachConnection.open(endpoint, {
+            timeout,
             subscribe: [STARTED_TOPIC],
             client: { name: 'vscode-R Interactive' },
             maxLineBytes: MAX_ATTACH_LINE_BYTES,
             onEvent: (event) => this.arfEvent(event),
         });
-        if (this.sessionId !== undefined && result.sessionId !== this.sessionId) {
+        if (!this.sameSession(result)) {
             connection.close();
             throw new Error('The arf endpoint now belongs to a different session');
         }
@@ -246,6 +345,55 @@ export class Arf {
         this.attach = connection;
         this.handlerApi = parseHandlerApi(result.session);
         return result.session;
+    }
+    /** Whether an attach reached the arf session that this adapter serves, as far as it is known. */
+    private sameSession(result: { sessionId: string; session: Record<string, unknown> }): boolean {
+        return (
+            (this.sessionId === undefined || result.sessionId === this.sessionId) &&
+            (this.expected.pid === undefined || result.session.pid === this.expected.pid)
+        );
+    }
+    /** A separate attach connection that reaches the same arf session as before. */
+    /**
+     * Reaching the session, including finding it at another socket path,
+     * takes at most 5 s, which Stop's client timeout allows for.
+     */
+    private async verifiedConnection(): Promise<ArfAttachConnection> {
+        const deadline = Date.now() + 5000;
+        try {
+            return await this.openVerified(this.endpoint!, deadline);
+        } catch (error) {
+            // After IPC restarts, the attach connection has closed and the
+            // session may listen at another socket path, which listing finds.
+            // A live attach connection means the session did not move. The
+            // connection found there is Stop's own; the attach connection
+            // stays with dispatch, which finds the path again itself.
+            const moved =
+                this.process.adopted && (!this.attach || this.attach.closed)
+                    ? await this.atListedPath(
+                          (endpoint) => this.openVerified(endpoint, deadline),
+                          deadline,
+                      )
+                    : undefined;
+            if (!moved) {
+                throw error;
+            }
+            return moved;
+        }
+    }
+    private async openVerified(endpoint: string, deadline: number): Promise<ArfAttachConnection> {
+        const { connection, result } = await ArfAttachConnection.open(endpoint, {
+            subscribe: [],
+            client: { name: 'vscode-R Interactive' },
+            timeout: Math.max(1, deadline - Date.now()),
+            maxLineBytes: MAX_ATTACH_LINE_BYTES,
+            onEvent: () => undefined,
+        });
+        if (!this.sameSession(result)) {
+            connection.close();
+            throw new Error('The arf endpoint now belongs to a different session');
+        }
+        return connection;
     }
     /** The attach connection, reattaching to the same session if it was lost. */
     private async attached(): Promise<ArfAttachConnection> {
@@ -305,7 +453,7 @@ export class Arf {
         execution.interruptRequested = true;
         if (execution.id !== undefined) {
             await this.sendInterrupt(execution);
-        } else if (this.attach?.closed) {
+        } else if ((execution.connection ?? this.attach)?.closed) {
             throw new Error(
                 'Cannot interrupt: the connection to arf was lost before the execution started',
             );
@@ -318,7 +466,18 @@ export class Arf {
         }
         // Acceptance only registers the request; sess reports the outcome. A
         // rejection means the execution already ended, which races with Stop.
-        await arfRequest(this.endpoint!, 'interrupt', { execution_id: execution.id }, 5000);
+        // An adopted execution is interrupted on the connection that started
+        // it: its ID belongs to that arf, which the socket path may no longer
+        // reach.
+        const params = { execution_id: execution.id };
+        if (!execution.connection) {
+            await arfRequest(this.endpoint!, 'interrupt', params, 5000);
+            return;
+        }
+        if (execution.connection.closed) {
+            throw new Error('Cannot interrupt: the connection to arf that runs the code was lost');
+        }
+        await execution.connection.request('interrupt', params, { timeout: 5000 });
     }
     /** Records arf's execution ID for a submission, from its reply or its started event. */
     private register(submission: unknown, id: unknown): void {
@@ -364,38 +523,76 @@ export class Arf {
             this.process.markExited();
             return;
         }
+        if (this.process.adopted) {
+            await this.stopAdopted(force);
+            return;
+        }
         if (force) {
             await this.kill(undefined, 0);
             return;
         }
         if (!this.endpoint) {
-            if (this.process.adopted) {
-                throw new Error('The arf endpoint is unknown');
-            }
             await this.kill('SIGTERM', 3000);
             return;
         }
         try {
             await arfRequest(this.endpoint, 'shutdown', {}, 5000);
-        } catch (error) {
-            if (
-                this.process.adopted &&
-                error instanceof ArfRpcError &&
-                error.code === ARF_METHOD_NOT_FOUND
-            ) {
-                // An interactive arf rejects shutdown; stop it as a terminal would.
-                await this.kill('SIGTERM', 3000);
-                return;
-            }
-            if (!this.process.adopted) {
-                // The managed process is ours even if its IPC no longer answers.
-                await this.kill('SIGTERM', 3000);
-                return;
-            }
-            throw error;
+        } catch {
+            // The managed process is ours even if its IPC no longer answers.
+            await this.kill('SIGTERM', 3000);
+            return;
         }
         // Acceptance only starts shutdown, and running R code may delay it.
         await this.kill(undefined, 5000);
+    }
+    /**
+     * An adopted arf is only asked to shut down. Its process is never
+     * terminated: an interactive arf would not restore its terminal or finish
+     * R's exit, and its PID may have been reused.
+     */
+    private async stopAdopted(force: boolean): Promise<void> {
+        if (force) {
+            throw new StopRefusedError('An attached arf session cannot be stopped forcibly');
+        }
+        if (!this.endpoint) {
+            throw new StopRefusedError('The arf endpoint is unknown');
+        }
+        // Shut down only the adopted arf: a socket path can be bound by another
+        // session while the adopted R is still alive. A new connection is
+        // verified first, so that a failure to reach arf is known to have
+        // sent nothing, as when IPC is stopped while R keeps running.
+        let connection: ArfAttachConnection;
+        try {
+            connection = await this.verifiedConnection();
+        } catch (error) {
+            this.reverify = true;
+            throw new StopRefusedError(
+                `arf could not receive the shutdown request: ${error instanceof Error ? error.message : String(error)}`,
+            );
+        }
+        try {
+            await connection.request('shutdown', {}, { timeout: 5000 });
+        } catch (error) {
+            if (error instanceof ArfRpcError && error.code === ARF_METHOD_NOT_FOUND) {
+                throw new StopRefusedError(
+                    'This arf session runs in a terminal and cannot be stopped from VS Code. End R in the terminal that started arf.',
+                );
+            }
+            if (error instanceof ArfRpcError) {
+                throw new StopRefusedError(
+                    `arf did not accept the shutdown request: ${error.message}`,
+                );
+            }
+            // Without an answer, arf may or may not have accepted it.
+            throw error;
+        } finally {
+            connection.close();
+        }
+        // Acceptance only starts shutdown, and running R code may delay it.
+        // The process monitor reports a later exit.
+        if (!(await this.process.waitForExit(5000))) {
+            throw new Error('arf accepted the shutdown request but has not exited yet');
+        }
     }
     /** Sends `first`, waits up to `grace` ms, then kills; resolves after a confirmed exit. */
     private async kill(first: NodeJS.Signals | undefined, grace: number): Promise<void> {
@@ -410,28 +607,53 @@ export class Arf {
             throw new Error('R has not exited after Stop');
         }
     }
-    async dispatch(submission: Submission): Promise<void> {
+    async dispatch(submission: Submission, signal?: AbortSignal): Promise<void> {
         if (this.failure) {
             throw this.failure;
         }
         // The previous execution has finished, so attaching again loses no
         // state; the session must still be the same arf process.
-        await this.attached();
+        let connection: ArfAttachConnection;
+        try {
+            if (this.reverify) {
+                // The next attach verifies the session again.
+                this.attach?.close();
+            }
+            connection = await this.attached();
+            this.reverify = false;
+        } catch (error) {
+            throw new DispatchNotSentError(
+                `arf could not be reached: ${error instanceof Error ? error.message : String(error)}`,
+            );
+        }
+        if (this.process.adopted && connection.closed) {
+            // The request would be rejected before it is written.
+            throw new DispatchNotSentError(
+                `arf could not be reached: ${connection.closed.message}`,
+            );
+        }
         const code = `sess:::interactive_execute(${rString(submission.id)}, ${rString(submission.code)}, jsonlite::fromJSON(${rString(JSON.stringify(submission.source ?? null))}, simplifyVector=FALSE))`;
+        // Nothing awaits from here until the request is written.
+        if (signal?.aborted) {
+            throw new DispatchNotSentError('The code was cancelled before it was sent');
+        }
         this.started = false;
-        this.execution = { submission: submission.id, interruptRequested: false };
+        this.execution = {
+            submission: submission.id,
+            interruptRequested: false,
+            connection: this.process.adopted ? connection : undefined,
+        };
         // Managed sessions use send to avoid arf's unbounded evaluation capture.
         // R's ordered events establish the outcome even if arf's reply times out.
+        // An adopted session is evaluated on the attach connection that reached
+        // it, as a new connection to its socket path can reach another arf.
+        const params = { code, visible: true, timeout_ms: 86400000 };
         let result: Record<string, unknown>;
         try {
             result = object(
-                await arfRequest(
-                    this.endpoint!,
-                    this.process.adopted ? 'evaluate' : 'user_input',
-                    { code, visible: true, timeout_ms: 86400000 },
-                    0,
-                    this.abort.signal,
-                ),
+                this.process.adopted
+                    ? await connection.request('evaluate', params, { signal: this.abort.signal })
+                    : await arfRequest(this.endpoint!, 'user_input', params, 0, this.abort.signal),
             );
         } catch (error) {
             // A server timeout does not cancel R. Keep accepting its event stream.
@@ -446,6 +668,13 @@ export class Arf {
             }
             if (!this.started) {
                 this.finished(submission.id);
+            }
+            const errno = (error as NodeJS.ErrnoException).code;
+            if (errno === 'ENOENT' || errno === 'ECONNREFUSED') {
+                // The connection was never opened, so nothing was sent. The
+                // endpoint was gone, so another session may serve it next.
+                this.reverify = true;
+                throw new DispatchNotSentError(`arf could not be reached: ${String(error)}`);
             }
             throw error;
         }

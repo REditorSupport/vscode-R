@@ -69,13 +69,21 @@ export interface SessionBackend {
     readonly capabilities: BackendCapabilities;
     onEvent(listener: (event: BackendEvent) => void): () => void;
     start(): Promise<void>;
-    /** Acknowledges transport only. Started/finished events establish evaluation outcome. */
-    dispatch(submission: Submission): Promise<void>;
+    /**
+     * Acknowledges transport only. Started/finished events establish evaluation
+     * outcome. `signal` cancels the dispatch until the code is written, which
+     * then rejects with {@link DispatchNotSentError}; it has no effect after.
+     */
+    dispatch(submission: Submission, options?: { signal?: AbortSignal }): Promise<void>;
     inspect(request: InspectionRequest): Promise<unknown>;
     replyInput(reply: InputReply): Promise<void>;
     replyClientRequest(id: string, reply: ClientReply): Promise<void>;
     interrupt(): Promise<void>;
-    /** Explicit user Stop, including for an adopted runtime. Resolves after confirmed exit. */
+    /**
+     * Explicit user Stop. Resolves after confirmed exit. An adopted runtime is
+     * only asked to end and its process is never terminated; a runtime that
+     * declines throws {@link StopRefusedError}.
+     */
     stop(options?: { force?: boolean }): Promise<void>;
     resizePlot?(request: ResizePlotRequest): Promise<void>;
     /** Bounded, idempotent cleanup. Must not kill an adopted runtime. */
@@ -83,6 +91,22 @@ export interface SessionBackend {
 }
 
 export type BackendFactory = (settings: AgentSettings) => SessionBackend;
+
+/** Stop was declined before it had any effect, so the session keeps running. */
+export class StopRefusedError extends Error {
+    constructor(message: string) {
+        super(message);
+        this.name = 'StopRefusedError';
+    }
+}
+
+/** A dispatch failed before the code was sent, so R has not received it. */
+export class DispatchNotSentError extends Error {
+    constructor(message: string) {
+        super(message);
+        this.name = 'DispatchNotSentError';
+    }
+}
 
 export function inspectionMethod(value: unknown): InspectionMethod {
     if (!(INSPECTION_METHODS as readonly string[]).includes(String(value))) {

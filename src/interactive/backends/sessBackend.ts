@@ -3,11 +3,12 @@ import * as os from 'os';
 import * as path from 'path';
 import { randomBytes } from 'crypto';
 import { atomicJson } from '../journal';
-import { AgentSettings, object, Submission } from '../protocol';
+import { AgentSettings, ArfRegistryEnvironment, object, Submission } from '../protocol';
 import {
     BackendCapabilities,
     BackendEvent,
     ClientReply,
+    DispatchNotSentError,
     InputReply,
     InspectionRequest,
     ResizePlotRequest,
@@ -27,6 +28,10 @@ export interface SessOptions {
     resources: string;
     arfPath?: string;
     arfEndpoint?: string;
+    arfSessionId?: string;
+    arfPid?: number;
+    arfDiscoveryDirectory?: string;
+    arfRegistryEnvironment?: ArfRegistryEnvironment;
     plotBackend: 'auto' | 'jgd' | 'standard';
 }
 
@@ -115,6 +120,9 @@ export class SessBackend implements SessionBackend {
             output,
             this.token,
             (message, channel) => this.runtimeEvent(message, channel),
+            { sessionId: options.arfSessionId, pid: options.arfPid },
+            options.arfDiscoveryDirectory,
+            options.arfRegistryEnvironment,
         );
     }
     onEvent(listener: (event: BackendEvent) => void): () => void {
@@ -190,7 +198,7 @@ export class SessBackend implements SessionBackend {
             `${rString(this.options.library)}, ${rString(bootstrap)}, ${support}, managed=${this.ownership === 'managed' ? 'TRUE' : 'FALSE'})`;
         await this.frontend.bootstrap(code);
     }
-    async dispatch(submission: Submission): Promise<void> {
+    async dispatch(submission: Submission, options?: { signal?: AbortSignal }): Promise<void> {
         await this.startup;
         if (this.closed) {
             throw new Error('Backend is disposed');
@@ -199,7 +207,14 @@ export class SessBackend implements SessionBackend {
         this.completion = undefined;
         this.stderrFlushed = false;
         this.outputDrained = false;
-        await this.frontend.dispatch(submission);
+        try {
+            await this.frontend.dispatch(submission, options?.signal);
+        } catch (error) {
+            if (error instanceof DispatchNotSentError) {
+                this.current = undefined;
+            }
+            throw error;
+        }
         this.outputDrained = true;
         if (this.ownership === 'adopted' && this.completion) {
             this.finish(this.completion);

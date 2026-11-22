@@ -18,7 +18,7 @@ The R host needs:
 - The session agent automatically uses the extension host's bundled runtime: VS Code's Electron runtime in Node mode on desktop, or VS Code Server's Node runtime remotely. A separate Node.js installation is optional.
 - `tmux` is optional. On Linux, the default supervisor uses tmux when available and otherwise starts an independent detached process. `systemd --user` is another configurable option.
 - R packages processx, later, jsonlite, and rstudioapi. Install languageserver for language features, jgd and systemfonts for jgd graphics, and htmlwidgets/htmltools for HTML output. Static plots use SVG when `svglite` is available and PNG otherwise.
-- arf. Creating a new Interactive session requires an arf executable on the R host. Connecting to an already-running arf uses its socket and does not require arf on the extension host's PATH. R Interactive requires arf 0.7.2-rc.1 or later.
+- arf. Creating a new Interactive session requires an arf executable on the R host. Listing already-running arf sessions to connect to uses the arf CLI on the R host, found through `r.interactive.arfPath`; the connection itself then uses the session's socket. R Interactive requires arf 0.7.2-rc.1 or later.
 
 For example, run in the R installation used on the server:
 
@@ -74,7 +74,7 @@ Run **R: New Persistent Interactive Session**, choose **arf**, and name the sess
 
 ### Connect to an existing arf session
 
-Adoption uses arf's session discovery and IPC socket on the R host. It does not depend on a particular terminal multiplexer or session manager.
+Adoption lists running sessions with `arf ipc list` and connects to their IPC sockets on the R host. It does not depend on a particular terminal multiplexer or session manager. Listing needs the arf CLI on the R host, found through `r.interactive.arfPath`, and runs with the extension host's environment. If you start arf with a custom `ARF_IPC_SESSIONS_DIR`, set the same absolute path for the VS Code server or extension host; only that directory is listed, not the default one as well. As arf requires, make that directory private to your user, particularly on a shared R host: arf keeps the permissions of a directory that already exists, and the extension connects to the sessions it lists. If the sessions cannot be listed, the session picker says so and offers to configure arf, and the R Interactive output shows the details.
 
 1. Start arf in your preferred terminal or session manager as usual.
 2. Run **R: Connect Interactive to Session** and select the discovered arf PID and working directory.
@@ -82,7 +82,7 @@ Adoption uses arf's session discovery and IPC socket on the R host. It does not 
 4. Name the session. Its independent agent adopts the existing R process and preserves `.GlobalEnv`. An incompatible loaded `sess` is disconnected and unloaded before loading the private bridge; if another package prevents unloading, resolve that dependency in the terminal and reconnect.
 5. Repeat for other arf sessions. Select an entry in **R → Interactive Sessions** to switch the active Interactive window and workspace viewer.
 
-The agent itself runs under the separately selected supervisor (`tmux`, `systemd`, or a detached process). Stopping your original arf process ends its R session. Stopping the agent interrupts editor integration; it is not a checkpoint of the R heap. If an adopted arf outlives a failed agent, `sess::interactive_stop()` restores its terminal callbacks so that it can be adopted again.
+The agent itself runs under the separately selected supervisor (`tmux`, `systemd`, or a detached process). Stopping your original arf process ends its R session. **Stop Session** asks a headless arf to shut down and is refused by an arf that runs in a terminal; end R in that terminal instead. The extension never kills an attached arf process. Stopping the agent interrupts editor integration; it is not a checkpoint of the R heap. If an adopted arf outlives a failed agent, `sess::interactive_stop()` restores its terminal callbacks so that it can be adopted again.
 
 ### Configure managed arf sessions
 

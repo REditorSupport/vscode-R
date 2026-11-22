@@ -86,6 +86,11 @@ export class RuntimeProcess {
      * instead: headless arf ends the whole session on SIGINT.
      */
     send(signal: NodeJS.Signals): void {
+        if (this.adopted) {
+            // The process belongs to whoever started it, and its PID may have
+            // been reused since it was adopted.
+            throw new Error('An adopted R process is never sent a signal');
+        }
         if (!this.alive()) {
             this.exit();
             return;

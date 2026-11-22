@@ -35,7 +35,13 @@ import {
 } from './launcher';
 import { NodeRuntime, resolveNodeRuntime } from './nodeExecutable';
 import { backendDescriptor, prepareBackendRuntime } from './backendRegistry';
-import { discoverArf, probeArfSession, ArfSession } from './arf';
+import {
+    ArfListing,
+    discoverArf,
+    probeArfSession,
+    ProbedArfSession,
+    registryEnvironmentOf,
+} from './arf';
 import { resolveArfExecutable } from './arfExecutable';
 import { prepareSupervisor } from './supervisor';
 import { Transcript, TranscriptCell } from './transcript';
@@ -57,7 +63,12 @@ import { tableColumnAlignment, tableDisplayValue, tableSnapshotSummary } from '.
 import { HistoryPage, searchHistory } from './history';
 import { readExecutionRecordsAsync, readPreviousJournalAsync } from './journal';
 import { sessionAge, sessionPresentation } from './sessionPresentation';
-import { runningSessions, stopSession } from './sessionLifecycle';
+import {
+    STOP_REQUEST_TIMEOUT_MS,
+    runningSessions,
+    stopSession,
+    stopUnavailable,
+} from './sessionLifecycle';
 import { InteractiveInputFeatures } from './inputFeatures';
 
 interface InteractiveView {
@@ -87,9 +98,15 @@ interface InteractiveView {
 
 interface SessionChoice extends vscode.QuickPickItem {
     manifest?: SessionManifest;
-    arf?: ArfSession;
+    arf?: AdoptableArf;
     create?: boolean;
     terminal?: boolean;
+    configureArf?: boolean;
+}
+/** A running arf session, and how it was listed so that it is found again. */
+interface AdoptableArf {
+    session: ProbedArfSession;
+    listing: ArfListing;
 }
 interface SavedConnection {
     id: string;
@@ -1103,24 +1120,25 @@ export class InteractiveManager
     }
 
     private async create(
-        adopt?: ArfSession,
+        adoptable?: AdoptableArf,
         resource = vscode.window.activeTextEditor?.document.uri,
     ): Promise<InteractiveView | undefined> {
         if (!vscode.workspace.isTrusted) {
             throw new Error('Trust this workspace before starting or controlling R');
         }
-        const directory =
-            adopt?.cwd ??
-            defaultSessionDirectory(
-                vscode.workspace.getWorkspaceFolder(resource ?? vscode.Uri.file(this.root))?.uri
-                    .fsPath ?? vscode.workspace.workspaceFolders?.[0]?.uri.fsPath,
-            );
+        const adopt = adoptable?.session;
+        const folder = this.sessionFolder(resource);
+        const directory = adopt?.cwd ?? defaultSessionDirectory(folder?.fsPath);
         const rPath = await util.getRpath(false, resource);
         if (!rPath) {
             throw new Error('Configure an R executable before starting Interactive');
         }
-        const arfCommand = this.arfCommand(resource);
-        let arfPath = adopt ? undefined : resolveArfExecutable(arfCommand, directory);
+        const arfCommand = this.arfCommand(folder ?? resource);
+        // An adopted session keeps the listing that found it, which finds the
+        // session again if its IPC restarts at another socket path, even if
+        // another folder has become active since.
+        const listing = adoptable?.listing;
+        let arfPath = listing ? listing.command : resolveArfExecutable(arfCommand, directory);
         const provider = adopt
             ? 'arf-existing'
             : await vscode.window.showQuickPick(
@@ -1183,6 +1201,10 @@ export class InteractiveManager
                     provider: kind,
                     arfPath,
                     arfEndpoint: adopt?.socket_path,
+                    arfSessionId: adopt?.session_id,
+                    arfPid: adopt?.pid,
+                    arfDiscoveryDirectory: listing?.directory,
+                    arfRegistryEnvironment: listing?.registry,
                     supervision,
                     plotBackend: util
                         .config()
@@ -1225,6 +1247,18 @@ export class InteractiveManager
                 settings.get<number>('interactive.maxJournalSizeMiB', 128) * mib,
             ),
         };
+    }
+
+    /**
+     * The workspace folder that a session is created or listed for: the
+     * resource's, or else the first folder. Its arf setting applies, as its
+     * directory does.
+     */
+    private sessionFolder(resource?: vscode.Uri): vscode.Uri | undefined {
+        return (
+            (resource && vscode.workspace.getWorkspaceFolder(resource)) ??
+            vscode.workspace.workspaceFolders?.[0]
+        )?.uri;
     }
 
     private arfCommand(resource?: vscode.Uri): string {
@@ -1283,22 +1317,59 @@ export class InteractiveManager
             .catch((error) => this.report(error));
     }
 
-    private async sessionChoices(): Promise<SessionChoice[]> {
+    /**
+     * `resource` selects the workspace folder whose arf setting and directory
+     * list the sessions, as when a session is then created for it.
+     */
+    private async sessionChoices(
+        resource = vscode.window.activeTextEditor?.document.uri,
+    ): Promise<SessionChoice[]> {
         this.refresh();
         const live = await runningSessions(
             this.manifests.filter((manifest) => hasSessionEndpoint(manifest)),
         );
-        const terminals: ArfSession[] = [];
-        const arfCandidates = discoverArf().filter(
-            (arf) => fs.existsSync(arf.socket_path) && !live.some((item) => item.rPid === arf.pid),
-        );
+        const terminals: AdoptableArf[] = [];
+        // Where `arf ipc list` runs and the configured arf path is resolved.
+        const folder = this.sessionFolder(resource);
+        const directory = defaultSessionDirectory(folder?.fsPath);
+        const arfCommand = this.arfCommand(folder ?? resource);
+        // The registry that this listing reads, recorded for an adopted session.
+        const registry = registryEnvironmentOf(process.env);
+        // Listing runs the configured arf CLI, which an untrusted workspace
+        // must not start; adopting a session needs trust as well.
+        const discovery: Awaited<ReturnType<typeof discoverArf>> = vscode.workspace.isTrusted
+            ? await discoverArf(arfCommand, directory)
+            : { available: true, command: arfCommand, sessions: [] };
+        if (!discovery.available) {
+            this.output.appendLine(
+                [
+                    `Could not list running arf sessions: ${discovery.reason}.`,
+                    `arf CLI: ${discovery.command ?? arfCommand}`,
+                    `Working directory: ${directory}`,
+                    `ARF_IPC_SESSIONS_DIR: ${process.env.ARF_IPC_SESSIONS_DIR ?? '(not set)'}`,
+                ].join('\n'),
+            );
+        }
+        // An adopted session is listed again as it was listed here.
+        const listing: ArfListing | undefined = discovery.available
+            ? {
+                  command: discovery.command,
+                  directory,
+                  registry,
+              }
+            : undefined;
+        // Listing does not prove that an endpoint still belongs to the listed
+        // process; the probe checks that before a session is offered.
+        const arfCandidates = discovery.available
+            ? discovery.sessions.filter((arf) => !live.some((item) => item.rPid === arf.pid))
+            : [];
         for (let i = 0; i < arfCandidates.length; i += 8) {
             const batch = await Promise.all(
                 arfCandidates.slice(i, i + 8).map((arf) => probeArfSession(arf)),
             );
             for (const arf of batch) {
-                if (arf) {
-                    terminals.push(arf);
+                if (arf && listing) {
+                    terminals.push({ session: arf, listing });
                 }
             }
         }
@@ -1310,10 +1381,20 @@ export class InteractiveManager
                 manifest,
             })),
             ...terminals.map((arf) => ({
-                label: `arf ${arf.pid}`,
-                description: `${arf.r_version ?? ''} · ${arf.cwd ?? ''}`,
+                label: `arf ${arf.session.pid}`,
+                description: `${arf.session.r_version ?? ''} · ${arf.session.cwd ?? ''}`,
                 arf,
             })),
+            ...(discovery.available
+                ? []
+                : [
+                      {
+                          label: '$(warning) Running arf sessions could not be listed',
+                          description: 'Configure arf…',
+                          detail: `${discovery.reason}. Connecting to an arf session needs the arf CLI on this host. See the R Interactive output for details.`,
+                          configureArf: true,
+                      },
+                  ]),
             { label: '$(add) New persistent R session', create: true },
         ];
     }
@@ -1321,7 +1402,7 @@ export class InteractiveManager
     private async chooseExecutionTarget(
         resource?: vscode.Uri,
     ): Promise<InteractiveView | 'createTerminal' | undefined> {
-        const choices = this.sessionChoices().then(
+        const choices = this.sessionChoices(resource).then(
             (items) =>
                 [
                     {
@@ -1351,6 +1432,10 @@ export class InteractiveManager
         if (selected?.terminal) {
             return 'createTerminal';
         }
+        if (selected?.configureArf) {
+            await this.configureArf();
+            return;
+        }
         if (selected?.create || selected?.arf) {
             return this.create(selected.arf, resource);
         }
@@ -1366,19 +1451,23 @@ export class InteractiveManager
     }
 
     private async pick(): Promise<void> {
+        // Listing and creating use the same folder even if the editor changes meanwhile.
+        const resource = vscode.window.activeTextEditor?.document.uri;
         // Passing a promise keeps the picker responsive while local agents are checked.
-        const selected = await vscode.window.showQuickPick(this.sessionChoices(), {
+        const selected = await vscode.window.showQuickPick(this.sessionChoices(resource), {
             title: 'Connect to a persistent R session',
             placeHolder: 'Select a running session or create a new one',
             matchOnDescription: true,
             matchOnDetail: true,
         });
-        if (selected?.manifest) {
+        if (selected?.configureArf) {
+            await this.configureArf();
+        } else if (selected?.manifest) {
             await this.open(selected.manifest);
         } else if (selected?.arf) {
-            await this.create(selected.arf);
+            await this.create(selected.arf, resource);
         } else if (selected?.create) {
-            await this.create();
+            await this.create(undefined, resource);
         }
     }
 
@@ -2924,13 +3013,17 @@ export class InteractiveManager
     }
 
     private async stop(view: InteractiveView): Promise<void> {
+        const unavailable = stopUnavailable(view.client.manifest);
+        if (unavailable) {
+            throw new Error(unavailable);
+        }
         const answer = await vscode.window.showWarningMessage(
             `Stop R session “${view.client.manifest.label}”? Its in-memory objects will be lost.`,
             { modal: true },
             'Stop Session',
         );
         if (answer === 'Stop Session') {
-            await view.client.request('stop');
+            await view.client.request('stop', {}, STOP_REQUEST_TIMEOUT_MS);
         }
     }
 
@@ -2997,7 +3090,9 @@ export class InteractiveManager
                     manifest.ownership === 'adopted' ||
                     (!manifest.ownership && manifest.provider === 'arf-existing'),
             )
-                ? ['Stopping an attached arf session also ends its R process.']
+                ? [
+                      'An attached arf session is asked to end its R process. One that runs in a terminal refuses; end R in that terminal instead.',
+                  ]
                 : []),
             'Sessions controlled by another VS Code window will be skipped. Take Control of those sessions before retrying.',
         ].join('\n\n');
@@ -3238,7 +3333,7 @@ export class InteractiveManager
             announced = true;
             await this.queueNotice(view, 'restarting');
             if (view.client.connected) {
-                await view.client.request('stop');
+                await view.client.request('stop', {}, STOP_REQUEST_TIMEOUT_MS);
                 // Wait for the old runtime to publish its final state before its successor.
                 for (let i = 0; i < 100; i++) {
                     const state = await view.client.request<{ status: string }>('heartbeat');

@@ -22,6 +22,27 @@ export async function runningSessions(candidates: SessionManifest[]): Promise<Se
     return live;
 }
 
+/**
+ * Why Stop must not be asked of this session, if it must not: an agent from
+ * an earlier extension version terminates an adopted arf process on Stop.
+ */
+export function stopUnavailable(manifest: SessionManifest): string | undefined {
+    const adopted =
+        manifest.ownership === 'adopted' ||
+        (!manifest.ownership && manifest.provider === 'arf-existing');
+    return adopted && !manifest.capabilities.adoptedStop
+        ? 'This session is served by an agent from an earlier version of the extension, whose Stop could end arf forcibly, so it is not asked to stop. End R in the terminal or session manager that started arf.'
+        : undefined;
+}
+
+/**
+ * How long a client waits for the agent to answer Stop. The agent answers once
+ * the runtime has exited or declined: an adopted arf takes up to 5 s to verify
+ * a new attach connection, 5 s to answer shutdown and 5 s more to exit, and a
+ * managed one up to 12 s to exit after shutdown or signals.
+ */
+export const STOP_REQUEST_TIMEOUT_MS = 20000;
+
 /** Stop the confirmed generation without opening a notebook or taking control from another window. */
 export async function stopSession(manifest: SessionManifest, clientId: string): Promise<void> {
     const client = new AgentClient({ ...manifest }, clientId);
@@ -30,12 +51,16 @@ export async function stopSession(manifest: SessionManifest, clientId: string): 
         if (client.manifest.status === 'exited') {
             return;
         }
+        const unavailable = stopUnavailable(client.manifest);
+        if (unavailable) {
+            throw new Error(unavailable);
+        }
         if (!(await client.request<boolean>('claim', {}, 1500))) {
             throw new Error(
                 'Controlled by another window. Use Take Control of Interactive Session before retrying.',
             );
         }
-        await client.request('stop', {}, 5000);
+        await client.request('stop', {}, STOP_REQUEST_TIMEOUT_MS);
         // A stop reply acknowledges the request; wait for process exit before reporting success.
         const deadline = Date.now() + 8000;
         do {

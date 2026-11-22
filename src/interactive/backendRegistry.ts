@@ -1,4 +1,10 @@
-import { AgentConfig, AgentSettings, BackendDescriptor, object } from './protocol';
+import {
+    AgentConfig,
+    AgentSettings,
+    ARF_REGISTRY_VARIABLES,
+    BackendDescriptor,
+    object,
+} from './protocol';
 import { SessionBackend } from './backend';
 import { SessBackend, SessOptions } from './backends/sessBackend';
 import { installAgentBundle } from './launcher';
@@ -14,6 +20,17 @@ export interface BackendDefinition {
     preflight(descriptor: BackendDescriptor, settings: AgentSettings): BackendDescriptor;
     prepare(descriptor: BackendDescriptor, context: PreparationContext): Promise<BackendDescriptor>;
     create(descriptor: BackendDescriptor, settings: AgentSettings): SessionBackend;
+}
+
+/** Whether `value` names only registry variables, each with a value. */
+function registryEnvironment(value: unknown): boolean {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+        return false;
+    }
+    const names: readonly string[] = ARF_REGISTRY_VARIABLES;
+    return Object.entries(value).every(
+        ([name, variable]) => names.includes(name) && typeof variable === 'string' && !!variable,
+    );
 }
 
 function sessOptions(descriptor: BackendDescriptor, prepared = true): SessOptions {
@@ -40,6 +57,21 @@ function sessOptions(descriptor: BackendDescriptor, prepared = true): SessOption
         (typeof options.arfEndpoint !== 'string' || !options.arfEndpoint)
     ) {
         throw new Error('Missing arf endpoint');
+    }
+    if (
+        (options.arfSessionId !== undefined &&
+            (typeof options.arfSessionId !== 'string' || !options.arfSessionId)) ||
+        (options.arfDiscoveryDirectory !== undefined &&
+            (typeof options.arfDiscoveryDirectory !== 'string' ||
+                !options.arfDiscoveryDirectory)) ||
+        (options.arfRegistryEnvironment !== undefined &&
+            !registryEnvironment(options.arfRegistryEnvironment)) ||
+        (options.arfPid !== undefined &&
+            (typeof options.arfPid !== 'number' ||
+                !Number.isSafeInteger(options.arfPid) ||
+                options.arfPid <= 0))
+    ) {
+        throw new Error('Invalid arf session identity');
     }
     return options as unknown as SessOptions;
 }
@@ -101,6 +133,10 @@ export function backendDescriptor(config: AgentConfig): BackendDescriptor {
             resources: config.resources,
             arfPath: config.arfPath,
             arfEndpoint: config.arfEndpoint,
+            arfSessionId: config.arfSessionId,
+            arfPid: config.arfPid,
+            arfDiscoveryDirectory: config.arfDiscoveryDirectory,
+            arfRegistryEnvironment: config.arfRegistryEnvironment,
             plotBackend: config.plotBackend ?? 'auto',
         },
     };
@@ -115,6 +151,10 @@ export function withBackend(config: AgentConfig, backend: BackendDescriptor): Ag
         'resources',
         'arfPath',
         'arfEndpoint',
+        'arfSessionId',
+        'arfPid',
+        'arfDiscoveryDirectory',
+        'arfRegistryEnvironment',
         'plotBackend',
     ] as const) {
         delete common[key];
@@ -131,6 +171,10 @@ export function withBackend(config: AgentConfig, backend: BackendDescriptor): Ag
         resources: options.resources,
         arfPath: options.arfPath,
         arfEndpoint: options.arfEndpoint,
+        arfSessionId: options.arfSessionId,
+        arfPid: options.arfPid,
+        arfDiscoveryDirectory: options.arfDiscoveryDirectory,
+        arfRegistryEnvironment: options.arfRegistryEnvironment,
         plotBackend: options.plotBackend,
         provider:
             options.frontend === 'r'
