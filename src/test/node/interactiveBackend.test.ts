@@ -1115,6 +1115,8 @@ suite('Interactive backend contract', function () {
         handlerApi: Record<string, unknown>,
         sessionMetadata?: () => unknown,
         answer?: (method: string) => Record<string, unknown> | undefined,
+        /** The PID that attach reports, as the arf process serving the socket. */
+        pid: () => number | undefined = () => process.pid,
     ): Promise<{
         endpoint: string;
         calls: Record<string, unknown>[];
@@ -1180,7 +1182,7 @@ suite('Interactive backend contract', function () {
                                         arf_version: '0.7.2',
                                         capabilities: ['call_execution_timeout'],
                                         handler_api: handlerApi,
-                                        pid: process.pid,
+                                        pid: pid(),
                                     },
                                 },
                             }) + '\n',
@@ -1368,26 +1370,21 @@ suite('Interactive backend contract', function () {
     });
 
     test('a managed arf that does not publish every selector fails to start', async () => {
-        const arf = await fakeAttachedArf({
-            state: 'locked',
-            handlers: INSPECTION_SELECTORS.slice(1),
-        });
+        let adapter: Arf | undefined;
+        const arf = await fakeAttachedArf(
+            { state: 'locked', handlers: INSPECTION_SELECTORS.slice(1) },
+            undefined,
+            undefined,
+            () => adapter && childPid(adapter),
+        );
         // Stands in for `arf headless --json`: it reports the fake's endpoint.
         const command = path.join(root, 'arf');
         fs.writeFileSync(
             command,
-            `#!/bin/sh\necho '${JSON.stringify({ socket_path: arf.endpoint })}'\nexec sleep 30\n`,
+            `#!/bin/sh\necho '{"pid":'$$',"socket_path":${JSON.stringify(arf.endpoint)}}'\nexec sleep 30\n`,
             { mode: 0o755 },
         );
-        const adapter = new Arf(
-            command,
-            root,
-            undefined,
-            false,
-            () => undefined,
-            'token',
-            () => undefined,
-        );
+        adapter = managedArf(command);
         try {
             await assert.rejects(
                 adapter.start({}),
@@ -1404,7 +1401,7 @@ suite('Interactive backend contract', function () {
         const command = path.join(root, 'arf');
         fs.writeFileSync(
             command,
-            `#!/bin/sh\n${trap}\nsleep ${delay}\necho '${JSON.stringify({ socket_path: endpoint })}'\nwhile :; do sleep 0.1; done\n`,
+            `#!/bin/sh\n${trap}\nsleep ${delay}\necho '{"pid":'$$',"socket_path":${JSON.stringify(endpoint)}}'\nwhile :; do sleep 0.1; done\n`,
             { mode: 0o755 },
         );
         return command;
@@ -1477,6 +1474,171 @@ suite('Interactive backend contract', function () {
         } finally {
             await adapter.dispose();
             await new Promise((resolve) => server.close(resolve));
+        }
+    });
+
+    test('a managed arf is not attached through a socket that another arf serves', async function () {
+        if (process.platform === 'win32') {
+            this.skip();
+        }
+        // The fake reports the test's PID, not that of the started process.
+        const arf = await fakeAttachedArf({ state: 'locked', handlers: [...INSPECTION_SELECTORS] });
+        const adapter = managedArf(managedArfScript(`trap 'exit 0' TERM`, arf.endpoint));
+        try {
+            await assert.rejects(adapter.start({}), /belongs to a different session/);
+            await adapter.dispose();
+            assert.strictEqual((adapter as unknown as { sessionId?: string }).sessionId, undefined);
+            assert.ok(!arf.methods.includes('attach:shutdown'), arf.methods.join(', '));
+        } finally {
+            await adapter.dispose();
+            await arf.close();
+        }
+    });
+    /**
+     * A configured executable that runs the arf stand-in `inner` as its child
+     * and waits for it; the stand-in records its PID in `inner.pid`.
+     */
+    function launcherScript(inner: string): { command: string; pidFile: string } {
+        const command = path.join(root, 'launcher');
+        const pidFile = path.join(root, 'inner.pid');
+        fs.writeFileSync(command, `#!/bin/sh\n${JSON.stringify(inner)} &\nwait\n`, {
+            mode: 0o755,
+        });
+        return { command, pidFile };
+    }
+    const innerPid = (pidFile: string): number | undefined =>
+        fs.existsSync(pidFile) ? Number(fs.readFileSync(pidFile, 'utf8')) : undefined;
+    function killStandIn(pidFile: string): void {
+        const pid = innerPid(pidFile);
+        try {
+            if (pid) {
+                process.kill(pid, 'SIGKILL');
+            }
+        } catch {
+            // It has already exited.
+        }
+    }
+    test('a managed arf that a launcher is still starting is shut down over IPC, and disposal waits for it', async function () {
+        if (process.platform === 'win32') {
+            this.skip();
+        }
+        const pidFile = path.join(root, 'inner.pid');
+        const arf = await fakeAttachedArf(
+            { state: 'locked', handlers: [...INSPECTION_SELECTORS] },
+            undefined,
+            (method) => {
+                if (method !== 'shutdown') {
+                    return undefined;
+                }
+                // As arf does, the stand-in exits once it accepts shutdown.
+                process.kill(innerPid(pidFile)!, 'SIGTERM');
+                return { result: { accepted: true } };
+            },
+            () => innerPid(pidFile),
+        );
+        const inner = path.join(root, 'inner');
+        fs.writeFileSync(
+            inner,
+            `#!/bin/sh\necho $$ > ${JSON.stringify(pidFile)}\nsleep 0.3\necho '{"pid":'$$',"socket_path":${JSON.stringify(arf.endpoint)}}'\nwhile :; do sleep 0.1; done\n`,
+            { mode: 0o755 },
+        );
+        const adapter = managedArf(launcherScript(inner).command);
+        try {
+            const starting = adapter.start({});
+            void starting.catch(() => undefined);
+            for (let i = 0; !innerPid(pidFile); i++) {
+                assert.ok(i < 200, 'the launcher did not start arf');
+                await new Promise((resolve) => setTimeout(resolve, 5));
+            }
+            const pid = innerPid(pidFile)!;
+            // arf reports its endpoint only after disposal has started.
+            await adapter.dispose();
+            await assert.rejects(starting);
+            assert.ok(arf.methods.includes('attach:shutdown'), arf.methods.join(', '));
+            assert.throws(() => process.kill(pid, 0), { code: 'ESRCH' });
+        } finally {
+            await adapter.dispose().catch(() => undefined);
+            await arf.close();
+            killStandIn(pidFile);
+        }
+    });
+    test('a launcher that exits does not end the session while the arf it started runs', async function () {
+        if (process.platform === 'win32') {
+            this.skip();
+        }
+        const inner = path.join(root, 'inner');
+        const { command, pidFile } = launcherScript(inner);
+        fs.writeFileSync(
+            inner,
+            `#!/bin/sh\necho $$ > ${JSON.stringify(pidFile)}\necho '{"pid":'$$',"socket_path":${JSON.stringify(path.join(root, 'gone.sock'))}}'\nwhile :; do sleep 0.1; done\n`,
+            { mode: 0o755 },
+        );
+        const events: BackendEvent[] = [];
+        const adapter = new Arf(
+            command,
+            root,
+            undefined,
+            false,
+            (event) => events.push(event),
+            'token',
+            () => undefined,
+        );
+        try {
+            await assert.rejects(adapter.start({}));
+            const launcher = childPid(adapter);
+            assert.ok(launcher);
+            process.kill(launcher, 'SIGKILL');
+            // Longer than the interval at which the arf is checked.
+            await new Promise((resolve) => setTimeout(resolve, 800));
+            assert.ok(!events.some((event) => event.type === 'exit'), JSON.stringify(events));
+            killStandIn(pidFile);
+            for (let i = 0; !events.some((event) => event.type === 'exit'); i++) {
+                assert.ok(i < 200, 'the exit of arf was not reported');
+                await new Promise((resolve) => setTimeout(resolve, 10));
+            }
+        } finally {
+            killStandIn(pidFile);
+            await adapter.dispose().catch(() => undefined);
+        }
+    });
+    test('disposing a managed arf whose launcher exits does not succeed while arf runs', async function () {
+        if (process.platform === 'win32') {
+            this.skip();
+        }
+        const inner = path.join(root, 'inner');
+        const { command, pidFile } = launcherScript(inner);
+        // The stand-in ignores SIGTERM, and its IPC cannot be reached.
+        fs.writeFileSync(
+            inner,
+            `#!/bin/sh\ntrap '' TERM\necho $$ > ${JSON.stringify(pidFile)}\necho '{"pid":'$$',"socket_path":${JSON.stringify(path.join(root, 'gone.sock'))}}'\nwhile :; do sleep 0.1; done\n`,
+            { mode: 0o755 },
+        );
+        const adapter = managedArf(command);
+        try {
+            await assert.rejects(adapter.start({}));
+            await assert.rejects(adapter.dispose(), /has not exited/);
+            const pid = innerPid(pidFile);
+            assert.ok(pid);
+            process.kill(pid, 0);
+        } finally {
+            killStandIn(pidFile);
+        }
+    });
+    test('a managed backend keeps its runtime files while the exit of R is unconfirmed', async () => {
+        const backend = sessBackend('managed');
+        const internals = backend as unknown as {
+            runtime: string;
+            frontend: { dispose(): Promise<void> };
+        };
+        const marker = path.join(internals.runtime, 'in-use');
+        fs.writeFileSync(marker, '');
+        internals.frontend.dispose = () =>
+            Promise.reject(new Error('Managed arf has not exited after forced termination'));
+        try {
+            await assert.rejects(backend.dispose(), /has not exited/);
+            assert.ok(fs.existsSync(marker), 'the runtime files were removed');
+        } finally {
+            fs.rmSync(internals.runtime, { recursive: true, force: true });
         }
     });
 

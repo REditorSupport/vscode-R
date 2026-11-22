@@ -63,6 +63,8 @@ export class Arf {
     private stopping?: Promise<void>;
     private disposing?: Promise<void>;
     private readiness?: Promise<string>;
+    /** The PID in the readiness record of a managed arf. */
+    private runtimePid?: number;
     /**
      * Set when a Stop found that the endpoint no longer reaches this session:
      * code is then sent only after a new connection reaches it again.
@@ -138,8 +140,21 @@ export class Arf {
                                     /* Profiles can print before readiness. */
                                 }
                                 if (typeof info?.socket_path === 'string') {
-                                    this.endpoint = info.socket_path;
                                     clearTimeout(timer);
+                                    const pid = info.pid;
+                                    if (
+                                        typeof pid !== 'number' ||
+                                        !Number.isSafeInteger(pid) ||
+                                        pid <= 0
+                                    ) {
+                                        reject(new Error('arf did not report its PID'));
+                                        break;
+                                    }
+                                    // Every connection must reach this arf, which can be a
+                                    // child of the configured executable.
+                                    this.runtimePid = pid;
+                                    this.process.setRuntimePid(pid);
+                                    this.endpoint = info.socket_path;
                                     resolve(this.endpoint);
                                 } else {
                                     this.emit({ type: 'stream', text: line + '\n', channel });
@@ -337,7 +352,7 @@ export class Arf {
             maxLineBytes: MAX_ATTACH_LINE_BYTES,
             onEvent: (event) => this.arfEvent(event),
         });
-        if (!this.sameSession(result)) {
+        if (!this.sameSession(result) || !this.startedArf(result)) {
             connection.close();
             throw new Error('The arf endpoint now belongs to a different session');
         }
@@ -355,6 +370,17 @@ export class Arf {
         return (
             (this.sessionId === undefined || result.sessionId === this.sessionId) &&
             (this.expected.pid === undefined || result.session.pid === this.expected.pid)
+        );
+    }
+    /**
+     * Whether an attach reply comes from the arf that was started, as its
+     * readiness record identified it. The first attach records the session
+     * ID, so it must not accept a session that has taken over the socket path.
+     */
+    private startedArf(result: { session: Record<string, unknown> }): boolean {
+        return (
+            this.process.adopted ||
+            (this.runtimePid !== undefined && result.session.pid === this.runtimePid)
         );
     }
     /** A separate attach connection that reaches the same arf session as before. */
@@ -393,16 +419,7 @@ export class Arf {
             maxLineBytes: MAX_ATTACH_LINE_BYTES,
             onEvent: () => undefined,
         });
-        if (
-            !this.sameSession(result) ||
-            // Before the first attach has recorded its session ID, a managed
-            // endpoint must be served by the process that was started. Once
-            // it is recorded, the ID identifies the session, also when arf
-            // runs as a child of the configured executable.
-            (!this.process.adopted &&
-                this.sessionId === undefined &&
-                !this.process.ownsPid(result.session.pid))
-        ) {
+        if (!this.sameSession(result) || !this.startedArf(result)) {
             connection.close();
             throw new Error('The arf endpoint now belongs to a different session');
         }
@@ -542,7 +559,7 @@ export class Arf {
         }));
     }
     private async stopRuntime(force: boolean): Promise<void> {
-        if (!this.process.alive()) {
+        if (!this.process.running()) {
             this.process.markExited();
             return;
         }
@@ -558,7 +575,7 @@ export class Arf {
         requestTimeout: number,
         grace: number,
     ): Promise<void> {
-        if (!this.process.alive()) {
+        if (!this.process.running()) {
             this.process.markExited();
             return;
         }
@@ -581,7 +598,7 @@ export class Arf {
             }
         }
         let accepted = false;
-        if (this.endpoint && this.process.alive()) {
+        if (this.endpoint && this.process.running()) {
             let connection: ArfAttachConnection | undefined;
             try {
                 // Verify the child even if the original attachment is gone or startup failed.

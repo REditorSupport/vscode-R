@@ -350,18 +350,31 @@ sess::display("display-${cell}", "text/plain"); cat("stderr-${cell}\\n", file=st
         };
     }
 
-    async function expectArfCleanup(
-        registry: string,
-        pid: number | undefined,
-        close: () => Promise<unknown>,
-    ): Promise<void> {
+    interface LiveArf {
+        pid: number;
+        registration: string;
+        endpoint: string;
+    }
+    /** The registration and endpoint of a running arf, which answers on it. */
+    async function liveArf(registry: string, pid: number | undefined): Promise<LiveArf> {
         assert.ok(pid);
         const registration = path.join(registry, `${pid}.json`);
         const { socket_path: endpoint } = JSON.parse(fs.readFileSync(registration, 'utf8')) as {
             socket_path: string;
         };
         await arfRequest(endpoint, 'session');
+        return { pid, registration, endpoint };
+    }
+    async function expectArfCleanup(
+        registry: string,
+        pid: number | undefined,
+        close: () => Promise<unknown>,
+    ): Promise<void> {
+        const live = await liveArf(registry, pid);
         await close();
+        await expectArfGone(live);
+    }
+    async function expectArfGone({ pid, registration, endpoint }: LiveArf): Promise<void> {
         assert.ok(!fs.existsSync(registration), 'arf left its session registration behind');
         if (process.platform !== 'win32') {
             assert.ok(!fs.existsSync(endpoint), 'arf left its IPC socket behind');
@@ -416,6 +429,7 @@ sess::display("display-${cell}", "text/plain"); cat("stderr-${cell}\\n", file=st
         );
         void exited.catch(() => undefined);
         const file = path.join(config.storage, 'manifest.json');
+        const gate = path.join(temporary, `${config.id}.gate`);
         let connected: AgentClient | undefined;
         try {
             await until(() => child.exitCode !== null || fs.existsSync(file));
@@ -430,27 +444,35 @@ sess::display("display-${cell}", "text/plain"); cat("stderr-${cell}\\n", file=st
                 pid = saved.status === 'idle' ? saved.rPid : undefined;
                 return pid !== undefined || saved.startupError !== undefined;
             });
-            // Keep R occupied briefly so the second signal lands while close is waiting.
-            const code = 'Sys.sleep(1.5)';
+            // Probe arf before R is busy, so that the probe does not wait for R.
+            const live = await liveArf(registry, pid);
+            // R stays busy until the gate opens, after both signals were sent.
+            const code = `while (!file.exists(${JSON.stringify(gate)})) Sys.sleep(0.05)`;
             const id = randomUUID();
             let started = false;
+            let disconnected = false;
             connected.on('event', (event: SessionEvent) => {
                 if (event.type === 'started' && event.executionId === id) {
                     started = true;
                 }
             });
+            connected.on('disconnect', () => (disconnected = true));
             await connected.subscribe(0);
             await connected.request('submit', { submission: { id, code } });
             await until(() => started);
-            await expectArfCleanup(registry, pid, async () => {
-                assert.ok(child.kill('SIGTERM'));
-                await delay(100);
-                if (child.exitCode === null && child.signalCode === null) {
-                    assert.ok(child.kill('SIGTERM'));
-                }
-                assert.deepStrictEqual(await exited, { code: 0, signal: null }, stderr);
-            });
+            assert.ok(child.kill('SIGTERM'));
+            // The agent drops its clients as it starts to close.
+            await until(() => disconnected);
+            assert.strictEqual(child.exitCode, null, stderr);
+            assert.ok(child.kill('SIGTERM'));
+            await delay(200);
+            assert.strictEqual(child.signalCode, null, 'the second SIGTERM ended the agent');
+            assert.strictEqual(child.exitCode, null, 'the agent exited before R did');
+            fs.writeFileSync(gate, '');
+            assert.deepStrictEqual(await exited, { code: 0, signal: null }, stderr);
+            await expectArfGone(live);
         } finally {
+            fs.writeFileSync(gate, '');
             connected?.close();
             if (child.exitCode === null && child.signalCode === null) {
                 child.kill('SIGTERM');
