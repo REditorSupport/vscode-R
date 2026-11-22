@@ -88,6 +88,8 @@ The agent itself runs under the separately selected supervisor (`tmux`, `systemd
 
 The provider picker shows **R** and **arf**, each with its resolved executable path on a second line. **arf** appears only when `r.interactive.arfPath` resolves to an executable file on this host (the remote server with Remote SSH). Otherwise, **Configure arf…** opens its setting without creating a session. Install arf separately and configure its path, or choose **R** with the same persistence and multi-session controls. The setting accepts names on PATH, absolute or workspace-relative paths, `~/`, `${userHome}`, and `${workspaceFolder}`. Configured paths containing spaces do not need quotes. Changing the setting takes effect the next time the picker opens; shell aliases are not executables.
 
+The setting must name arf itself, or a script that replaces itself with arf using `exec` (for example, `exec arf "$@"`). A launcher that starts arf as another process and waits for it is not supported: the extension signals, and waits for the exit of, only the process it started. A managed session refuses such a launcher when arf reports a different PID, and asks you to change the setting. The arf it started may then still be running and need to be ended by hand.
+
 New arf sessions save their resolved absolute executable path, so a later PATH change does not break restart. Restart checks that saved path, then the current setting if the executable moved, before stopping R. If neither is usable, it explains how to configure arf and leaves the current session running.
 
 ## Execution and editor behavior

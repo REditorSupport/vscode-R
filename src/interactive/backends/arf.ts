@@ -63,8 +63,11 @@ export class Arf {
     private stopping?: Promise<void>;
     private disposing?: Promise<void>;
     private readiness?: Promise<string>;
-    /** The PID in the readiness record of a managed arf. */
-    private runtimePid?: number;
+    /**
+     * Set when the configured executable launched arf as another process,
+     * whose exit closing therefore cannot confirm.
+     */
+    private launchedElsewhere?: Error;
     /**
      * Set when a Stop found that the endpoint no longer reaches this session:
      * code is then sent only after a new connection reaches it again.
@@ -150,10 +153,16 @@ export class Arf {
                                         reject(new Error('arf did not report its PID'));
                                         break;
                                     }
-                                    // Every connection must reach this arf, which can be a
-                                    // child of the configured executable.
-                                    this.runtimePid = pid;
-                                    this.process.setRuntimePid(pid);
+                                    if (!this.process.ownsPid(pid)) {
+                                        // Signals and the exit that closing waits for
+                                        // must concern arf itself.
+                                        this.launchedElsewhere = new Error(
+                                            `${this.command} started arf as another process (PID ${pid}), which may still be running. ` +
+                                                'Set r.interactive.arfPath to arf itself, or to a script that replaces itself with arf using exec.',
+                                        );
+                                        reject(this.launchedElsewhere);
+                                        break;
+                                    }
                                     this.endpoint = info.socket_path;
                                     resolve(this.endpoint);
                                 } else {
@@ -373,15 +382,12 @@ export class Arf {
         );
     }
     /**
-     * Whether an attach reply comes from the arf that was started, as its
-     * readiness record identified it. The first attach records the session
-     * ID, so it must not accept a session that has taken over the socket path.
+     * Whether an attach reply comes from the arf that was started. The first
+     * attach records the session ID, so it must not accept a session that has
+     * taken over the socket path.
      */
     private startedArf(result: { session: Record<string, unknown> }): boolean {
-        return (
-            this.process.adopted ||
-            (this.runtimePid !== undefined && result.session.pid === this.runtimePid)
-        );
+        return this.process.adopted || this.process.ownsPid(result.session.pid);
     }
     /** A separate attach connection that reaches the same arf session as before. */
     /**
@@ -477,6 +483,9 @@ export class Arf {
         } finally {
             this.process.dispose();
         }
+        if (this.launchedElsewhere) {
+            throw this.launchedElsewhere;
+        }
     }
     /** Called once sess reports that a submission finished. */
     finished(submission: string): void {
@@ -559,7 +568,7 @@ export class Arf {
         }));
     }
     private async stopRuntime(force: boolean): Promise<void> {
-        if (!this.process.running()) {
+        if (!this.process.alive()) {
             this.process.markExited();
             return;
         }
@@ -575,7 +584,7 @@ export class Arf {
         requestTimeout: number,
         grace: number,
     ): Promise<void> {
-        if (!this.process.running()) {
+        if (!this.process.alive()) {
             this.process.markExited();
             return;
         }
@@ -598,7 +607,7 @@ export class Arf {
             }
         }
         let accepted = false;
-        if (this.endpoint && this.process.running()) {
+        if (this.endpoint && this.process.alive()) {
             let connection: ArfAttachConnection | undefined;
             try {
                 // Verify the child even if the original attachment is gone or startup failed.
