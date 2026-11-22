@@ -40,9 +40,13 @@ let diagnosticPanelDetails: Map<vscode.WebviewPanel, unknown>;
 /**
  * A fixture script expression for the report of what the page received: the
  * generation of the injected script, the theme colors of VS Code's default
- * styles for text and code, and, for each stylesheet link, whether it produced
- * a stylesheet and the colors its body and code rules declare. A stylesheet
- * from another origin cannot be read, so only its presence is known.
+ * styles for text and code, and, for each stylesheet link, the HTTP status of
+ * its request, whether it produced a stylesheet, and the colors its body and
+ * code rules declare. Chromium creates a stylesheet even for a failed request,
+ * so only the status tells a missing file from one whose rules cannot be read.
+ * The status comes from the page's resource timing and does not issue another
+ * request. A stylesheet from another origin cannot be read, so only its
+ * presence is known.
  */
 const pageStylesheetReport = `JSON.stringify({
     generation: document.querySelector('script[data-generation]')?.dataset.generation ?? null,
@@ -55,7 +59,8 @@ const pageStylesheetReport = `JSON.stringify({
                 .filter((rule) => rule.selectorText === 'body' || rule.selectorText === 'code')
                 .map((rule) => [rule.selectorText, rule.style.color]));
         } catch { colors = 'unreadable'; }
-        return { file: (link.getAttribute('href') ?? '').split(/[?#]/)[0].split('/').pop(), sheet: !!link.sheet, colors };
+        return { file: (link.getAttribute('href') ?? '').split(/[?#]/)[0].split('/').pop(),
+            status: performance.getEntriesByName(link.href).at(-1)?.responseStatus ?? null, sheet: !!link.sheet, colors };
     }),
 })`;
 
