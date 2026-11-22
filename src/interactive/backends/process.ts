@@ -29,7 +29,9 @@ export class RuntimeProcess {
         this.pid = this.child.pid;
         this.child.on('error', (error) => {
             this.emit({ type: 'error', message: error.message });
-            this.exit();
+            if (this.child?.pid === undefined) {
+                this.exit();
+            }
         });
         this.child.on('exit', (code, signal) => this.exit(code, signal));
         for (const channel of ['stdout', 'stderr'] as const) {
@@ -52,6 +54,9 @@ export class RuntimeProcess {
             }, 500);
             this.monitor.unref();
         }
+    }
+    ownsPid(pid: unknown): boolean {
+        return this.child?.pid !== undefined && this.child.pid === pid;
     }
     alive(): boolean {
         if (this.exited || !this.pid) {
@@ -97,7 +102,7 @@ export class RuntimeProcess {
         }
         try {
             // Node's Windows signals forcibly terminate; never use them for interrupt.
-            process.kill(this.pid!, process.platform === 'win32' ? 'SIGKILL' : signal);
+            this.child!.kill(process.platform === 'win32' ? 'SIGKILL' : signal);
         } catch (error) {
             if ((error as NodeJS.ErrnoException).code === 'ESRCH') {
                 this.exit();
@@ -110,9 +115,6 @@ export class RuntimeProcess {
     async waitForExit(timeout: number): Promise<boolean> {
         const start = Date.now();
         while (this.alive()) {
-            if (this.closed) {
-                return true;
-            }
             if (Date.now() - start >= timeout) {
                 return false;
             }
@@ -124,9 +126,6 @@ export class RuntimeProcess {
     dispose(): void {
         if (this.closed) {
             return;
-        }
-        if (!this.adopted) {
-            this.send('SIGKILL');
         }
         this.closed = true;
         clearInterval(this.monitor);

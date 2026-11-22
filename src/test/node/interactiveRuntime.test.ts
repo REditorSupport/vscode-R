@@ -329,6 +329,137 @@ sess::display("display-${cell}", "text/plain"); cat("stderr-${cell}\\n", file=st
         );
     });
 
+    function closeTestConfig(): AgentConfig {
+        const id = randomUUID();
+        return {
+            id,
+            generation: randomUUID(),
+            label: 'Managed close',
+            directory: root,
+            storage: path.join(root, id),
+            rPath: 'R',
+            library,
+            resources,
+            provider: 'arf',
+            arfPath: process.env.ARF_PATH ?? 'arf',
+            supervision: 'test',
+            plotBackend: 'standard',
+            historyLimit: 50,
+            maxOutputBytes: 1048576,
+            maxJournalBytes: 16777216,
+        };
+    }
+
+    async function expectArfCleanup(
+        registry: string,
+        pid: number | undefined,
+        close: () => Promise<unknown>,
+    ): Promise<void> {
+        assert.ok(pid);
+        const registration = path.join(registry, `${pid}.json`);
+        const { socket_path: endpoint } = JSON.parse(fs.readFileSync(registration, 'utf8')) as {
+            socket_path: string;
+        };
+        await arfRequest(endpoint, 'session');
+        await close();
+        assert.ok(!fs.existsSync(registration), 'arf left its session registration behind');
+        if (process.platform !== 'win32') {
+            assert.ok(!fs.existsSync(endpoint), 'arf left its IPC socket behind');
+        }
+        assert.throws(() => process.kill(pid, 0), { code: 'ESRCH' });
+        await assert.rejects(arfRequest(endpoint, 'session', {}, 1000));
+    }
+
+    test('closing a managed agent removes arf IPC artifacts before returning', async () => {
+        const registry = fs.mkdtempSync(path.join(temporary, 'close-registry-'));
+        const previous = process.env.ARF_IPC_SESSIONS_DIR;
+        const closing = new SessionAgent(closeTestConfig());
+        try {
+            process.env.ARF_IPC_SESSIONS_DIR = registry;
+            const { rPid } = await closing.start();
+            await expectArfCleanup(registry, rPid, async () => {
+                const first = closing.close();
+                assert.strictEqual(closing.close(), first);
+                await first;
+            });
+        } finally {
+            if (previous === undefined) {
+                delete process.env.ARF_IPC_SESSIONS_DIR;
+            } else {
+                process.env.ARF_IPC_SESSIONS_DIR = previous;
+            }
+            await closing.close();
+            fs.rmSync(registry, { recursive: true, force: true });
+        }
+    });
+
+    test('an agent signalled during R shutdown waits for managed arf cleanup', async function () {
+        if (process.platform === 'win32') {
+            this.skip();
+        }
+        const registry = fs.mkdtempSync(path.join(temporary, 'signal-registry-'));
+        const config = closeTestConfig();
+        const configFile = path.join(temporary, `${config.id}.json`);
+        fs.writeFileSync(configFile, JSON.stringify(config), { mode: 0o600 });
+        const runtime = hostNodeRuntime();
+        const child = spawn(runtime.executable, [agentBundle, configFile], {
+            env: { ...nodeEnvironment(runtime), ARF_IPC_SESSIONS_DIR: registry },
+            stdio: ['ignore', 'ignore', 'pipe'],
+        });
+        let stderr = '';
+        child.stderr!.on('data', (chunk: Buffer) => (stderr += chunk.toString()));
+        const exited = new Promise<{ code: number | null; signal: string | null }>(
+            (resolve, reject) => {
+                child.once('error', reject);
+                child.once('exit', (code, signal) => resolve({ code, signal }));
+            },
+        );
+        void exited.catch(() => undefined);
+        const file = path.join(config.storage, 'manifest.json');
+        let connected: AgentClient | undefined;
+        try {
+            await until(() => child.exitCode !== null || fs.existsSync(file));
+            assert.strictEqual(child.exitCode, null, stderr);
+            connected = new AgentClient(
+                JSON.parse(fs.readFileSync(file, 'utf8')) as SessionManifest,
+            );
+            await connected.connect();
+            let pid: number | undefined;
+            await until(() => {
+                const saved = JSON.parse(fs.readFileSync(file, 'utf8')) as SessionManifest;
+                pid = saved.status === 'idle' ? saved.rPid : undefined;
+                return pid !== undefined || saved.startupError !== undefined;
+            });
+            // Keep R occupied briefly so the second signal lands while close is waiting.
+            const code = 'Sys.sleep(1.5)';
+            const id = randomUUID();
+            let started = false;
+            connected.on('event', (event: SessionEvent) => {
+                if (event.type === 'started' && event.executionId === id) {
+                    started = true;
+                }
+            });
+            await connected.subscribe(0);
+            await connected.request('submit', { submission: { id, code } });
+            await until(() => started);
+            await expectArfCleanup(registry, pid, async () => {
+                assert.ok(child.kill('SIGTERM'));
+                await delay(100);
+                if (child.exitCode === null && child.signalCode === null) {
+                    assert.ok(child.kill('SIGTERM'));
+                }
+                assert.deepStrictEqual(await exited, { code: 0, signal: null }, stderr);
+            });
+        } finally {
+            connected?.close();
+            if (child.exitCode === null && child.signalCode === null) {
+                child.kill('SIGTERM');
+            }
+            await exited;
+            fs.rmSync(registry, { recursive: true, force: true });
+        }
+    });
+
     test('closing a busy agent prevents late callbacks from writing its closed journal', async () => {
         const id = await submit('Sys.sleep(30)');
         await until(() =>

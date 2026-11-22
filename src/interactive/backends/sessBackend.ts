@@ -264,8 +264,8 @@ export class SessBackend implements SessionBackend {
                 // Best effort through the existing bridge, without evaluating user code or interrupting R.
                 await this.bridge.request('interactive_stop', {}, 500).catch(() => undefined);
             }
+            await this.frontend.dispose();
         } finally {
-            this.frontend.dispose();
             this.graphics.dispose();
             this.bridge.dispose();
             fs.rmSync(this.runtime, { recursive: true, force: true });
