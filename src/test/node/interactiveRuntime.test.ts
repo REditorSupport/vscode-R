@@ -2062,6 +2062,11 @@ ggplot(diamonds, aes(x = carat, y = price, color = cut)) +
     // through IPC, refuses Stop, and keeps its terminal after the agent closes.
     test('adopts an interactive arf, which refuses Stop and keeps its terminal', async function () {
         this.timeout(180000);
+        if (process.platform === 'win32' && process.arch !== 'x64') {
+            // The pseudo-terminal package is published for x64 Node only on
+            // Windows. The headless adoption test still runs.
+            this.skip();
+        }
         const arf = process.env.ARF_PATH ?? 'arf';
         try {
             await run(arf, ['--version']);
@@ -2120,7 +2125,6 @@ ggplot(diamonds, aes(x = carat, y = price, color = cut)) +
                 arf,
                 [
                     '--with-ipc',
-                    '--ipc-eval-unrestricted',
                     '--ipc-pid-file',
                     pidFile,
                     '--history-dir',
@@ -2274,6 +2278,10 @@ ggplot(diamonds, aes(x = carat, y = price, color = cut)) +
                 }
                 await delay(100);
             }
+            // Quitting R lets arf remove its socket and session registration,
+            // which are outside the suite's temporary directory.
+            await terminal.submit("q('no')");
+            await terminal.waitExit({ timeout: 10000 });
         } catch (error) {
             facts.terminal = await screen();
             throw new Error(
