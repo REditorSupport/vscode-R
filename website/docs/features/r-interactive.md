@@ -82,7 +82,7 @@ Adoption uses arf's session discovery and IPC socket on the R host. It does not 
 4. Name the session. Its independent agent adopts the existing R process and preserves `.GlobalEnv`. An incompatible loaded `sess` is disconnected and unloaded before loading the private bridge; if another package prevents unloading, resolve that dependency in the terminal and reconnect.
 5. Repeat for other arf sessions. Select an entry in **R → Interactive Sessions** to switch the active Interactive window and workspace viewer.
 
-The agent itself runs under the separately selected supervisor (`tmux`, `systemd`, or a detached process). Stopping your original arf process ends its R session. Stopping the agent interrupts editor integration; it is not a checkpoint of the R heap. If an adopted arf outlives a failed agent, `sess::interactive_stop()` restores its terminal callbacks so that it can be adopted again.
+The agent itself runs under the separately selected supervisor (`tmux`, `systemd`, or a detached process). Stopping your original arf process ends its R session. **Stop Session** asks a headless arf to shut down and is refused by an arf that runs in a terminal; end R in that terminal instead. The extension never kills an attached arf process. Stopping the agent interrupts editor integration; it is not a checkpoint of the R heap. If an adopted arf outlives a failed agent, `sess::interactive_stop()` restores its terminal callbacks so that it can be adopted again.
 
 ### Configure managed arf sessions
 

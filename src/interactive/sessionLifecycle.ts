@@ -35,7 +35,9 @@ export async function stopSession(manifest: SessionManifest, clientId: string): 
                 'Controlled by another window. Use Take Control of Interactive Session before retrying.',
             );
         }
-        await client.request('stop', {}, 5000);
+        // The agent answers once the runtime has exited or declined. An adopted
+        // arf can take up to 5 s to answer shutdown and 5 s more to exit.
+        await client.request('stop', {}, 15000);
         // A stop reply acknowledges the request; wait for process exit before reporting success.
         const deadline = Date.now() + 8000;
         do {

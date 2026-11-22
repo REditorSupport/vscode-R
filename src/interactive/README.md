@@ -63,9 +63,13 @@ same ID. Interruption is an arf IPC `interrupt` for that execution ID, held unti
 the ID is known and dropped once sess reports completion. It is never a signal:
 headless arf ends the whole session on SIGINT when R is idle, so a signal that
 races with completion would end the session. sess reports the outcome; arf's
-acceptance does not. Stop sends arf `shutdown` and waits for the process to exit,
-killing it after a deadline. An interactive arf rejects `shutdown` as an unknown
-method; only that answer makes Stop fall back to SIGTERM and then SIGKILL.
+acceptance does not. Stop sends arf `shutdown` and waits for the process to exit.
+A managed process is killed after a deadline, and when its IPC does not answer.
+An adopted process is never signaled or killed, because it belongs to whoever
+started it and its PID may have been reused: if arf rejects `shutdown`, as an
+interactive arf does, Stop is refused and the session keeps running; if arf
+accepts it but does not exit within the deadline, Stop reports that and the
+process monitor records the exit later.
 
 Inspection (workspace, hover/completion, and data-viewer requests) is an arf
 handler `call` with an execution deadline, not a sess socket request. Under arf
@@ -164,7 +168,7 @@ Use the types in [backend.ts](backend.ts) as the source of truth. The essential 
 | Action | Contract |
 | --- | --- |
 | Close a view or disconnect the editor | Release the editor connection; keep the independent agent and R alive |
-| Explicit Stop | Authorize through the agent, cancel queued work, and wait for confirmed runtime exit; this can stop an adopted process |
+| Explicit Stop | Authorize through the agent and wait for confirmed runtime exit; queued work is cancelled unless the runtime refuses. An adopted process is only asked to shut down, and a refusal leaves the session and its queue unchanged |
 | Restart | Validate and prepare the replacement before stopping R, retain the transcript, and create a fresh generation; adopted arf is restarted externally |
 | Dispose the backend | Perform bounded, idempotent cleanup, reject pending calls, and suppress late callbacks; clean up managed processes, but leave adopted R alive and restore its hooks where possible |
 

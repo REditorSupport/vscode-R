@@ -8,7 +8,13 @@ import { localEndpoint, listenLocal } from './transport';
 import { JsonLines } from './framing';
 import { SessionJournal, atomicJson, retainedAssetIds } from './journal';
 import { AssetStore } from './assets';
-import { BackendEvent, BackendFactory, SessionBackend, inspectionMethod } from './backend';
+import {
+    BackendEvent,
+    BackendFactory,
+    SessionBackend,
+    StopRefusedError,
+    inspectionMethod,
+} from './backend';
 import {
     AGENT_PROTOCOL,
     MAX_MESSAGE_BYTES,
@@ -69,6 +75,8 @@ export class SessionAgent {
     private closing?: Promise<void>;
     private stopped = false;
     private stopping = false;
+    /** The status that `stopping` masks, which a refused Stop restores. */
+    private runtimeStatus: SessionManifest['status'] = 'starting';
     private dispatching = false;
     private externalOutput: Record<string, unknown>[] = [];
     private externalBytes = 0;
@@ -249,6 +257,9 @@ export class SessionAgent {
     private state(status: SessionManifest['status']): void {
         if (this.stopped) {
             return;
+        }
+        if (status !== 'stopping') {
+            this.runtimeStatus = status;
         }
         if (this.stopping && status !== 'exited') {
             status = 'stopping';
@@ -712,7 +723,7 @@ export class SessionAgent {
                     event.executionId,
                 );
             } catch {
-                this.manifest.status = 'unknown';
+                this.runtimeStatus = this.manifest.status = 'unknown';
             }
         }
     }
@@ -1012,9 +1023,23 @@ export class SessionAgent {
             return;
         }
         this.stopping = true;
-        this.cancelQueued();
         this.state('stopping');
-        await this.backend.stop();
+        try {
+            await this.backend.stop();
+        } catch (error) {
+            if (error instanceof StopRefusedError) {
+                // Nothing was stopped: keep the queue and continue as before,
+                // including a workspace refresh deferred while stopping.
+                this.stopping = false;
+                this.state(this.runtimeStatus);
+                void this.workspaceRefresh.ensure();
+                void this.pump();
+                throw error;
+            }
+            this.cancelQueued();
+            throw error;
+        }
+        this.cancelQueued();
     }
 
     close(): Promise<void> {

@@ -7,7 +7,7 @@ import {
     checkArfSession,
 } from '../arf';
 import { ArfAttachConnection, ArfEvent } from '../arfAttach';
-import { BackendEvent, InspectionRequest } from '../backend';
+import { BackendEvent, InspectionRequest, StopRefusedError } from '../backend';
 import { MAX_MESSAGE_BYTES, object, Submission } from '../protocol';
 import { RuntimeProcess } from './process';
 import { rString } from './rCode';
@@ -364,38 +364,61 @@ export class Arf {
             this.process.markExited();
             return;
         }
+        if (this.process.adopted) {
+            await this.stopAdopted(force);
+            return;
+        }
         if (force) {
             await this.kill(undefined, 0);
             return;
         }
         if (!this.endpoint) {
-            if (this.process.adopted) {
-                throw new Error('The arf endpoint is unknown');
-            }
             await this.kill('SIGTERM', 3000);
             return;
         }
         try {
             await arfRequest(this.endpoint, 'shutdown', {}, 5000);
-        } catch (error) {
-            if (
-                this.process.adopted &&
-                error instanceof ArfRpcError &&
-                error.code === ARF_METHOD_NOT_FOUND
-            ) {
-                // An interactive arf rejects shutdown; stop it as a terminal would.
-                await this.kill('SIGTERM', 3000);
-                return;
-            }
-            if (!this.process.adopted) {
-                // The managed process is ours even if its IPC no longer answers.
-                await this.kill('SIGTERM', 3000);
-                return;
-            }
-            throw error;
+        } catch {
+            // The managed process is ours even if its IPC no longer answers.
+            await this.kill('SIGTERM', 3000);
+            return;
         }
         // Acceptance only starts shutdown, and running R code may delay it.
         await this.kill(undefined, 5000);
+    }
+    /**
+     * An adopted arf is only asked to shut down. Its process is never
+     * terminated: an interactive arf would not restore its terminal or finish
+     * R's exit, and its PID may have been reused.
+     */
+    private async stopAdopted(force: boolean): Promise<void> {
+        if (force) {
+            throw new StopRefusedError('An attached arf session cannot be stopped forcibly');
+        }
+        if (!this.endpoint) {
+            throw new StopRefusedError('The arf endpoint is unknown');
+        }
+        try {
+            await arfRequest(this.endpoint, 'shutdown', {}, 5000);
+        } catch (error) {
+            if (error instanceof ArfRpcError && error.code === ARF_METHOD_NOT_FOUND) {
+                throw new StopRefusedError(
+                    'This arf session runs in a terminal and cannot be stopped from VS Code. End R in the terminal that started arf.',
+                );
+            }
+            if (error instanceof ArfRpcError) {
+                throw new StopRefusedError(
+                    `arf did not accept the shutdown request: ${error.message}`,
+                );
+            }
+            // Without an answer, arf may or may not have accepted it.
+            throw error;
+        }
+        // Acceptance only starts shutdown, and running R code may delay it.
+        // The process monitor reports a later exit.
+        if (!(await this.process.waitForExit(5000))) {
+            throw new Error('arf accepted the shutdown request but has not exited yet');
+        }
     }
     /** Sends `first`, waits up to `grace` ms, then kills; resolves after a confirmed exit. */
     private async kill(first: NodeJS.Signals | undefined, grace: number): Promise<void> {

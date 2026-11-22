@@ -2997,7 +2997,9 @@ export class InteractiveManager
                     manifest.ownership === 'adopted' ||
                     (!manifest.ownership && manifest.provider === 'arf-existing'),
             )
-                ? ['Stopping an attached arf session also ends its R process.']
+                ? [
+                      'An attached arf session is asked to end its R process. One that runs in a terminal refuses; end R in that terminal instead.',
+                  ]
                 : []),
             'Sessions controlled by another VS Code window will be skipped. Take Control of those sessions before retrying.',
         ].join('\n\n');

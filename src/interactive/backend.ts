@@ -75,7 +75,11 @@ export interface SessionBackend {
     replyInput(reply: InputReply): Promise<void>;
     replyClientRequest(id: string, reply: ClientReply): Promise<void>;
     interrupt(): Promise<void>;
-    /** Explicit user Stop, including for an adopted runtime. Resolves after confirmed exit. */
+    /**
+     * Explicit user Stop. Resolves after confirmed exit. An adopted runtime is
+     * only asked to end and its process is never terminated; a runtime that
+     * declines throws {@link StopRefusedError}.
+     */
     stop(options?: { force?: boolean }): Promise<void>;
     resizePlot?(request: ResizePlotRequest): Promise<void>;
     /** Bounded, idempotent cleanup. Must not kill an adopted runtime. */
@@ -83,6 +87,14 @@ export interface SessionBackend {
 }
 
 export type BackendFactory = (settings: AgentSettings) => SessionBackend;
+
+/** Stop was declined before it had any effect, so the session keeps running. */
+export class StopRefusedError extends Error {
+    constructor(message: string) {
+        super(message);
+        this.name = 'StopRefusedError';
+    }
+}
 
 export function inspectionMethod(value: unknown): InspectionMethod {
     if (!(INSPECTION_METHODS as readonly string[]).includes(String(value))) {
