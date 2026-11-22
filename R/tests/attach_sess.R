@@ -807,8 +807,8 @@ start_consent_agent <- function(
   list(log = log, identity_log = identity_log, status = status, stdout = stdout, stderr = stderr)
 }
 
-# `requesters` are the children whose requests the agent answers; their output
-# tells an explicit answer from a request that timed out without one.
+# `requesters` are the children whose requests the agent answers. Their output
+# is included because it can show where a request failed or stalled.
 wait_for_agent <- function(paths, count = 1L, requesters = list()) {
   output <- function() {
     logs <- c(
@@ -922,7 +922,9 @@ writeLines(
     "  base::readLines(con, ...)",
     "}",
     paste0("source(", r_literal(agent), ")"),
-    paste0("writeLines(c(as.character(reads), last_read_error), ", r_literal(retry_reads), ")")
+    paste0("result <- tempfile(tmpdir=", r_literal(retry_read_root), ")"),
+    "writeLines(c(as.character(reads), last_read_error), result)",
+    paste0("file.rename(result, ", r_literal(retry_reads), ")")
   ),
   retry_read_agent
 )
