@@ -5,7 +5,7 @@ import * as path from 'path';
 import { execFile, spawn } from 'child_process';
 import { promisify, stripVTControlCharacters } from 'util';
 import { randomUUID } from 'crypto';
-import { arfRequest, probeArfSession } from '../../interactive/arf';
+import { arfRequest, discoverArf, probeArfSession } from '../../interactive/arf';
 import { SessionAgent } from '../../interactive/agentMain';
 import { AgentClient } from '../../interactive/client';
 import {
@@ -1926,6 +1926,137 @@ ggplot(diamonds, aes(x = carat, y = price, color = cut)) +
         });
     }
 
+    // The minimal path on every platform, including Windows named pipes:
+    // list, probe, attach, evaluate, and leave arf running after the agent.
+    test('discovers and attaches to a running arf, which outlives the agent', async function () {
+        const arf = process.env.ARF_PATH ?? 'arf';
+        try {
+            await run(arf, ['--version']);
+        } catch (error) {
+            if (process.env.ARF_PATH) {
+                throw error;
+            }
+            this.skip();
+        }
+        const env = {
+            ...process.env,
+            ARF_IPC_SESSIONS_DIR: path.join(temporary, `arf-sessions-${randomUUID()}`),
+        };
+        const child = spawn(arf, ['headless', '--json'], {
+            stdio: ['ignore', 'pipe', 'pipe'],
+            env,
+            windowsHide: true,
+        });
+        let adopted: SessionAgent | undefined;
+        let connection: AgentClient | undefined;
+        let stderr = '';
+        child.stderr.on('data', (chunk: Buffer) => {
+            stderr += chunk.toString();
+        });
+        try {
+            // arf prints its session as JSON once IPC and R are ready.
+            await new Promise<void>((resolve, reject) => {
+                let stdout = '';
+                const timer = setTimeout(
+                    () => reject(new Error(`arf did not report readiness: ${stdout}${stderr}`)),
+                    30000,
+                );
+                child.stdout.on('data', (chunk: Buffer) => {
+                    stdout += chunk.toString();
+                    for (const line of stdout.split('\n')) {
+                        try {
+                            if ((JSON.parse(line) as { socket_path?: unknown }).socket_path) {
+                                clearTimeout(timer);
+                                resolve();
+                            }
+                        } catch {
+                            // Other startup output.
+                        }
+                    }
+                });
+                child.once('error', reject);
+                child.once('exit', () =>
+                    reject(new Error(`arf exited before readiness: ${stderr}`)),
+                );
+            });
+            const discovery = await discoverArf(arf, temporary, env);
+            assert.ok(discovery.available, JSON.stringify(discovery));
+            const listed = discovery.sessions.filter((session) => session.pid === child.pid);
+            assert.strictEqual(listed.length, 1, JSON.stringify(discovery.sessions));
+            const probed = await probeArfSession(listed[0], 5000);
+            assert.ok(probed, `probe failed for ${JSON.stringify(listed[0])}`);
+            const assigned = (await arfRequest(probed.socket_path, 'evaluate', {
+                code: 'kept_before_discovery <- 91',
+                visible: true,
+            })) as { status?: unknown };
+            assert.strictEqual(assigned.status, 'ok', JSON.stringify(assigned));
+            const id = randomUUID();
+            adopted = new SessionAgent({
+                id,
+                generation: randomUUID(),
+                label: 'Discovered arf',
+                directory: root,
+                storage: path.join(root, id),
+                rPath: 'R',
+                library,
+                resources,
+                provider: 'arf-existing',
+                arfEndpoint: probed.socket_path,
+                arfSessionId: probed.session_id,
+                arfPid: probed.pid,
+                arfPath: path.join(root, 'missing-arf'),
+                supervision: 'test',
+                plotBackend: 'standard',
+                historyLimit: 50,
+                maxOutputBytes: 1048576,
+                maxJournalBytes: 16777216,
+            });
+            connection = new AgentClient(await adopted.start());
+            await connection.connect();
+            const observed: SessionEvent[] = [];
+            connection.on('event', (event) => observed.push(event as SessionEvent));
+            await connection.subscribe(0);
+            const execution = randomUUID();
+            await connection.request('submit', {
+                submission: { id: execution, code: 'stopifnot(kept_before_discovery == 91)' },
+            });
+            await until(
+                () =>
+                    observed.some(
+                        (event) => event.executionId === execution && event.type === 'finished',
+                    ),
+                20000,
+                observed,
+            );
+            assert.strictEqual(
+                (await connection.request<ExecutionRecord>('execution', { id: execution })).state,
+                'success',
+            );
+            connection.close();
+            connection = undefined;
+            await adopted.close();
+            adopted = undefined;
+            assert.strictEqual(child.exitCode, null);
+            const check = (await arfRequest(probed.socket_path, 'evaluate', {
+                code: 'stopifnot(kept_before_discovery == 91)',
+                visible: true,
+            })) as { status?: unknown };
+            assert.strictEqual(check.status, 'ok', JSON.stringify(check));
+        } finally {
+            try {
+                connection?.close();
+                await adopted?.close();
+            } finally {
+                // The test started this arf, so it ends it, and waits so that
+                // Windows does not still hold its files during teardown.
+                if (child.exitCode === null && child.signalCode === null) {
+                    const exited = new Promise((resolve) => child.once('exit', resolve));
+                    child.kill();
+                    await exited;
+                }
+            }
+        }
+    });
     test('adopts an existing arf process without losing its objects', async function () {
         if (process.platform === 'win32') {
             this.skip();
@@ -1933,10 +2064,22 @@ ggplot(diamonds, aes(x = carat, y = price, color = cut)) +
         const arf = process.env.ARF_PATH ?? 'arf';
         try {
             await run(arf, ['--version']);
-        } catch {
+        } catch (error) {
+            // An arf that CI specified must run; only a missing default is skipped.
+            if (process.env.ARF_PATH) {
+                throw error;
+            }
             this.skip();
         }
-        const child = spawn(arf, ['headless', '--json'], { stdio: ['ignore', 'pipe', 'pipe'] });
+        // Discovery lists only this arf, and the CLI lists it from the same directory.
+        const discoveryEnv = {
+            ...process.env,
+            ARF_IPC_SESSIONS_DIR: path.join(temporary, `arf-sessions-${randomUUID()}`),
+        };
+        const child = spawn(arf, ['headless', '--json'], {
+            stdio: ['ignore', 'pipe', 'pipe'],
+            env: discoveryEnv,
+        });
         let adopted: SessionAgent | undefined;
         let connection: AgentClient | undefined;
         try {
@@ -1960,7 +2103,18 @@ ggplot(diamonds, aes(x = carat, y = price, color = cut)) +
                 code: 'kept_before_adoption <- 73',
                 visible: true,
             });
-            assert.ok(await probeArfSession({ pid: Number(child.pid), socket_path: endpoint }));
+            const discovery = await discoverArf(arf, temporary, discoveryEnv);
+            assert.ok(discovery.available, JSON.stringify(discovery));
+            assert.deepStrictEqual(
+                discovery.sessions.map((session) => [session.pid, session.socket_path]),
+                [[child.pid, endpoint]],
+            );
+            const probed = await probeArfSession(discovery.sessions[0]);
+            assert.ok(probed);
+            assert.strictEqual(
+                await probeArfSession({ ...discovery.sessions[0], pid: Number(child.pid) + 1 }),
+                undefined,
+            );
             assert.strictEqual(
                 await probeArfSession({
                     pid: Number(child.pid),
@@ -1979,7 +2133,9 @@ ggplot(diamonds, aes(x = carat, y = price, color = cut)) +
                 library,
                 resources,
                 provider: 'arf-existing',
-                arfEndpoint: endpoint,
+                arfEndpoint: probed.socket_path,
+                arfSessionId: probed.session_id,
+                arfPid: probed.pid,
                 arfPath: path.join(root, 'missing-arf'),
                 supervision: 'test',
                 plotBackend: 'standard',

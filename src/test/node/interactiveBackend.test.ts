@@ -10,7 +10,7 @@ import { localEndpoint } from '../../interactive/transport';
 import { SessionAgent } from '../../interactive/agent';
 import { AgentClient } from '../../interactive/client';
 import { readSessionManifest } from '../../interactive/launcher';
-import { stopSession } from '../../interactive/sessionLifecycle';
+import { STOP_REQUEST_TIMEOUT_MS, stopSession } from '../../interactive/sessionLifecycle';
 import {
     AgentConfig,
     ExecutionRecord,
@@ -132,8 +132,17 @@ suite('Interactive backend configuration', () => {
             resources: '/resources',
             arfEndpoint: '/arf.sock',
         };
-        const descriptor = backendDescriptor(legacy);
+        const descriptor = backendDescriptor({ ...legacy, arfSessionId: 'abc', arfPid: 4242 });
         assert.strictEqual(descriptor.options.ownership, 'adopted');
+        const identified = withBackend(legacy, descriptor);
+        assert.strictEqual(identified.arfSessionId, 'abc');
+        assert.strictEqual(identified.arfPid, 4242);
+        for (const identity of [{ arfSessionId: '' }, { arfPid: 0 }, { arfPid: 1.5 }]) {
+            assert.throws(
+                () => withBackend(legacy, backendDescriptor({ ...legacy, ...identity })),
+                /Invalid arf session identity/,
+            );
+        }
         assert.strictEqual(descriptor.options.frontend, 'arf');
         const normalized = withBackend(legacy, descriptor);
         normalized.rPath = '/stale/legacy/R';
@@ -1077,6 +1086,11 @@ suite('Interactive backend contract', function () {
         replace(sessionId: string, keepConnections?: boolean): void;
         /** How many connections have been opened. */
         connections(): number;
+        /**
+         * Restart IPC at a new socket path, as `:ipc stop` and `:ipc start`
+         * do, keeping the session ID; returns the new path.
+         */
+        move(): Promise<string>;
         close(): Promise<void>;
     }> {
         const calls: Record<string, unknown>[] = [];
@@ -1125,6 +1139,7 @@ suite('Interactive backend contract', function () {
                                         arf_version: '0.7.2',
                                         capabilities: ['call_execution_timeout'],
                                         handler_api: handlerApi,
+                                        pid: process.pid,
                                     },
                                 },
                             }) + '\n',
@@ -1185,6 +1200,13 @@ suite('Interactive backend contract', function () {
                 }
             },
             connections: () => accepted,
+            move: async () => {
+                sockets.forEach((socket) => socket.destroy());
+                await new Promise<void>((resolve) => listener.close(() => resolve()));
+                const moved = path.join(root, `arf-${++endpoints}.sock`);
+                await new Promise<void>((resolve) => listener.listen(moved, resolve));
+                return moved;
+            },
             close: async () => {
                 sockets.forEach((socket) => socket.destroy());
                 http.closeAllConnections();
@@ -1546,6 +1568,131 @@ suite('Interactive backend contract', function () {
             await session.close();
         }
     });
+    test('queued code reaches an adopted session at the socket path it lists after its IPC restarts', async () => {
+        const arf = await fakeAttachedArf({});
+        // The arf CLI: Node runs `ipc` from the directory where the session
+        // was listed, which need not be R's working directory, nor exist.
+        const adapter = new Arf(
+            process.execPath,
+            path.join(root, 'removed R working directory'),
+            arf.endpoint,
+            true,
+            () => undefined,
+            'token',
+            () => undefined,
+            { sessionId: 'fake', pid: process.pid },
+            root,
+        );
+        try {
+            await adapter.start({});
+            await adapter.bootstrap('bootstrap');
+            const moved = await arf.move();
+            // As after `:ipc stop`, the adapter has seen its connection close.
+            const attach = (): { closed?: Error } | undefined =>
+                (adapter as unknown as { attach?: { closed?: Error } }).attach;
+            for (let i = 0; !attach()?.closed; i++) {
+                assert.ok(i < 200, 'the attach connection did not close');
+                await new Promise((resolve) => setTimeout(resolve, 5));
+            }
+            fs.writeFileSync(
+                path.join(root, 'ipc'),
+                `console.log(JSON.stringify({ sessions: [{ pid: ${process.pid}, socket_path: ${JSON.stringify(moved)} }] }));`,
+            );
+            await adapter.dispatch({ id: randomUUID(), code: 'after_restart()' });
+            assert.strictEqual(arf.methods.at(-1), 'attach:evaluate');
+        } finally {
+            adapter.dispose();
+            await arf.close();
+        }
+    });
+    test('Stop reaches an adopted session at the socket path it lists after its IPC restarts', async () => {
+        const runtime = await standIn();
+        const arf = await fakeAttachedArf({}, undefined, (method) =>
+            method === 'shutdown'
+                ? { error: { code: ARF_METHOD_NOT_FOUND, message: 'Method not found' } }
+                : undefined,
+        );
+        // The arf CLI: Node runs `ipc` from the directory where the session was listed.
+        const adapter = new Arf(
+            process.execPath,
+            root,
+            arf.endpoint,
+            true,
+            () => undefined,
+            'token',
+            () => undefined,
+            { sessionId: 'fake', pid: process.pid },
+        );
+        try {
+            await adapter.start({});
+            await adapter.bootstrap('bootstrap');
+            adapter.process.setPid(runtime.pid);
+            const moved = await arf.move();
+            const attach = (): { closed?: Error } | undefined =>
+                (adapter as unknown as { attach?: { closed?: Error } }).attach;
+            for (let i = 0; !attach()?.closed; i++) {
+                assert.ok(i < 200, 'the attach connection did not close');
+                await new Promise((resolve) => setTimeout(resolve, 5));
+            }
+            fs.writeFileSync(
+                path.join(root, 'ipc'),
+                `console.log(JSON.stringify({ sessions: [{ pid: ${process.pid}, socket_path: ${JSON.stringify(moved)} }] }));`,
+            );
+            // The terminal arf at the new path declines shutdown, so it was asked.
+            await assert.rejects(adapter.stop(), /terminal that started arf/);
+            assert.ok(arf.methods.includes('attach:shutdown'));
+            // Stop used its own connection; dispatch still owns reattaching.
+            assert.ok(attach()?.closed);
+            assert.ok(runtime.alive());
+        } finally {
+            runtime.end();
+            adapter.dispose();
+            await arf.close();
+        }
+    });
+    test('Stop that can neither reach nor find a moved session is refused within its client timeout', async function () {
+        this.timeout(30000);
+        const runtime = await standIn();
+        const arf = await fakeAttachedArf({});
+        const adapter = new Arf(
+            process.execPath,
+            root,
+            arf.endpoint,
+            true,
+            () => undefined,
+            'token',
+            () => undefined,
+            { sessionId: 'fake', pid: process.pid },
+        );
+        // The old path accepts connections but never answers.
+        const held = new Set<net.Socket>();
+        const silent = net.createServer((socket) => held.add(socket));
+        try {
+            await adapter.start({});
+            await adapter.bootstrap('bootstrap');
+            adapter.process.setPid(runtime.pid);
+            await arf.move();
+            const attach = (): { closed?: Error } | undefined =>
+                (adapter as unknown as { attach?: { closed?: Error } }).attach;
+            for (let i = 0; !attach()?.closed; i++) {
+                assert.ok(i < 200, 'the attach connection did not close');
+                await new Promise((resolve) => setTimeout(resolve, 5));
+            }
+            await new Promise<void>((resolve) => silent.listen(arf.endpoint, resolve));
+            // Listing does not finish either.
+            fs.writeFileSync(path.join(root, 'ipc'), 'setTimeout(() => {}, 60000);');
+            const started = Date.now();
+            await assert.rejects(adapter.stop(), StopRefusedError);
+            const elapsed = Date.now() - started;
+            assert.ok(elapsed < STOP_REQUEST_TIMEOUT_MS - 10000, `took ${elapsed} ms`);
+        } finally {
+            runtime.end();
+            adapter.dispose();
+            held.forEach((socket) => socket.destroy());
+            await new Promise<void>((resolve) => silent.close(() => resolve()));
+            await arf.close();
+        }
+    });
     test('an adopted session evaluates on the verified attach connection, not on its socket path', async () => {
         const session = await adopt({});
         try {
@@ -1637,6 +1784,74 @@ suite('Interactive backend contract', function () {
         } finally {
             runtime.end();
             adapter.dispose();
+            await arf.close();
+        }
+    });
+    test('the bootstrap is not evaluated in an arf that replaced the attached one', async () => {
+        const arf = await fakeAttachedArf({});
+        const adapter = new Arf(
+            'unused',
+            root,
+            arf.endpoint,
+            true,
+            () => undefined,
+            'token',
+            () => undefined,
+            { sessionId: 'fake' },
+        );
+        try {
+            await adapter.start({});
+            // The attach succeeded; then arf is restarted on the same path.
+            arf.replace('restarted arf');
+            // The closed attach cannot reach the new arf, and reattaching finds another session.
+            await assert.rejects(adapter.bootstrap('bootstrap'));
+            assert.ok(!arf.methods.includes('evaluate'));
+            assert.ok(!arf.methods.includes('attach:evaluate'));
+        } finally {
+            adapter.dispose();
+            await arf.close();
+        }
+    });
+    test('an adopted endpoint that now serves another arf fails to start, before any bootstrap', async () => {
+        const arf = await fakeAttachedArf({});
+        try {
+            for (const expected of [
+                { sessionId: 'other' },
+                { sessionId: 'fake', pid: 4242 },
+                { pid: 4242 },
+            ]) {
+                const adapter = new Arf(
+                    'unused',
+                    root,
+                    arf.endpoint,
+                    true,
+                    () => undefined,
+                    'token',
+                    () => undefined,
+                    expected,
+                );
+                try {
+                    await assert.rejects(adapter.start({}), /belongs to a different session/);
+                } finally {
+                    adapter.dispose();
+                }
+            }
+            const adapter = new Arf(
+                'unused',
+                root,
+                arf.endpoint,
+                true,
+                () => undefined,
+                'token',
+                () => undefined,
+                { sessionId: 'fake' },
+            );
+            try {
+                await adapter.start({});
+            } finally {
+                adapter.dispose();
+            }
+        } finally {
             await arf.close();
         }
     });

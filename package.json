@@ -2422,7 +2422,7 @@
           "type": "string",
           "ignoreSync": true,
           "default": "arf",
-          "description": "arf executable required for managed headless Interactive sessions, resolved on the R host. Use an executable name on PATH or a path (supports ~ and ${userHome}/${workspaceFolder}). Ordinary R terminals do not require arf; if unavailable, the Interactive provider picker offers configuration."
+          "description": "arf executable required for managed headless Interactive sessions and for listing running arf sessions to connect to, resolved on the R host. Listing uses the extension host's environment: if arf runs with a custom ARF_IPC_SESSIONS_DIR, set the same absolute path for the extension host. On a remote host, set this in the remote settings; local user settings do not apply there. Use an executable name on PATH or a path (supports ~ and ${userHome}/${workspaceFolder}). Ordinary R terminals do not require arf; if unavailable, the Interactive provider picker offers configuration."
         },
         "r.interactive.storagePath": {
           "tags": ["experimental"],

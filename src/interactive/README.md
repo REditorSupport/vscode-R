@@ -45,6 +45,18 @@ helpers and the version check remain in [arf.ts](arf.ts), and the long-lived
 connection in [arfAttach.ts](arfAttach.ts). Plain R Interactive creation is unavailable; ordinary
 R terminals are unaffected, and existing agents can still be reconnected.
 
+Existing arf sessions are listed with `arf ipc list`, run without a shell under
+the extension host's environment, so the CLI decides where sessions are stored
+on each platform. A custom `ARF_IPC_SESSIONS_DIR` must therefore be the same
+absolute path for arf and the extension host; the default directory is not
+listed as well. A failed, slow, oversized, or malformed listing is reported as
+unavailable rather than as no sessions. Listed sessions are candidates: the
+`session` request to each endpoint must answer for the listed PID, with the
+listed start time when one is listed, and its `session_id` and PID go into the
+agent config. The first attach must report the same session and PID before any
+bootstrap is evaluated, and the bootstrap is evaluated on that verified attach
+connection.
+
 Managed sessions dispatch the private `sess:::interactive_execute` entry point
 through arf `user_input` (send), respecting arf's visible-operation policy and
 avoiding its unbounded evaluation-output capture. Console output comes from the

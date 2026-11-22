@@ -41,6 +41,19 @@ function sessOptions(descriptor: BackendDescriptor, prepared = true): SessOption
     ) {
         throw new Error('Missing arf endpoint');
     }
+    if (
+        (options.arfSessionId !== undefined &&
+            (typeof options.arfSessionId !== 'string' || !options.arfSessionId)) ||
+        (options.arfDiscoveryDirectory !== undefined &&
+            (typeof options.arfDiscoveryDirectory !== 'string' ||
+                !options.arfDiscoveryDirectory)) ||
+        (options.arfPid !== undefined &&
+            (typeof options.arfPid !== 'number' ||
+                !Number.isSafeInteger(options.arfPid) ||
+                options.arfPid <= 0))
+    ) {
+        throw new Error('Invalid arf session identity');
+    }
     return options as unknown as SessOptions;
 }
 
@@ -101,6 +114,9 @@ export function backendDescriptor(config: AgentConfig): BackendDescriptor {
             resources: config.resources,
             arfPath: config.arfPath,
             arfEndpoint: config.arfEndpoint,
+            arfSessionId: config.arfSessionId,
+            arfPid: config.arfPid,
+            arfDiscoveryDirectory: config.arfDiscoveryDirectory,
             plotBackend: config.plotBackend ?? 'auto',
         },
     };
@@ -115,6 +131,9 @@ export function withBackend(config: AgentConfig, backend: BackendDescriptor): Ag
         'resources',
         'arfPath',
         'arfEndpoint',
+        'arfSessionId',
+        'arfPid',
+        'arfDiscoveryDirectory',
         'plotBackend',
     ] as const) {
         delete common[key];
@@ -131,6 +150,9 @@ export function withBackend(config: AgentConfig, backend: BackendDescriptor): Ag
         resources: options.resources,
         arfPath: options.arfPath,
         arfEndpoint: options.arfEndpoint,
+        arfSessionId: options.arfSessionId,
+        arfPid: options.arfPid,
+        arfDiscoveryDirectory: options.arfDiscoveryDirectory,
         plotBackend: options.plotBackend,
         provider:
             options.frontend === 'r'

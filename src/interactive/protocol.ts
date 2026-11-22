@@ -112,6 +112,11 @@ export interface AgentConfig extends AgentSettings {
     resources?: string;
     arfPath?: string;
     arfEndpoint?: string;
+    /** The arf process that discovery confirmed, which an adopted endpoint must still serve. */
+    arfSessionId?: string;
+    arfPid?: number;
+    /** Where the arf CLI listed an adopted session, which lists it again there. */
+    arfDiscoveryDirectory?: string;
     plotBackend?: 'auto' | 'jgd' | 'standard';
 }
 

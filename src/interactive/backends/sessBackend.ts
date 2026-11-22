@@ -28,6 +28,9 @@ export interface SessOptions {
     resources: string;
     arfPath?: string;
     arfEndpoint?: string;
+    arfSessionId?: string;
+    arfPid?: number;
+    arfDiscoveryDirectory?: string;
     plotBackend: 'auto' | 'jgd' | 'standard';
 }
 
@@ -116,6 +119,8 @@ export class SessBackend implements SessionBackend {
             output,
             this.token,
             (message, channel) => this.runtimeEvent(message, channel),
+            { sessionId: options.arfSessionId, pid: options.arfPid },
+            options.arfDiscoveryDirectory,
         );
     }
     onEvent(listener: (event: BackendEvent) => void): () => void {

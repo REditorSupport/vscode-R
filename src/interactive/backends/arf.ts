@@ -5,6 +5,7 @@ import {
     ArfRpcError,
     arfRequest,
     checkArfSession,
+    discoverArf,
 } from '../arf';
 import { ArfAttachConnection, ArfEvent } from '../arfAttach';
 import {
@@ -72,8 +73,14 @@ export class Arf {
         private emit: (event: BackendEvent) => void,
         private token: string,
         private event: (message: Record<string, unknown>, channel: string) => void,
+        /** The adopted arf process that discovery confirmed. */
+        private expected: { sessionId?: string; pid?: number } = {},
+        /** Where the arf CLI lists an adopted session again, if not `directory`. */
+        private discoveryDirectory = directory,
     ) {
         this.process = new RuntimeProcess(adopted, emit);
+        // The first attach must then reach the same arf as the probe did.
+        this.sessionId = expected.sessionId;
     }
     markStarted(): void {
         this.started = true;
@@ -217,7 +224,8 @@ export class Arf {
     async bootstrap(code: string): Promise<void> {
         // Visible evaluation respects arf's advertised IPC policy, including
         // bootstrap. It goes over the attach connection, which reached the
-        // verified arf, rather than a new connection to its socket path.
+        // verified arf, rather than a new connection to its socket path, which
+        // a restarted arf can serve by then.
         const attach = await this.attached();
         const result = object(
             await attach.request(
@@ -244,13 +252,82 @@ export class Arf {
         }));
     }
     private async attachOnce(): Promise<Record<string, unknown>> {
-        const { connection, result } = await ArfAttachConnection.open(this.endpoint!, {
+        try {
+            return await this.attachTo(this.endpoint!);
+        } catch (error) {
+            const session = await this.relocated();
+            if (!session) {
+                throw error;
+            }
+            return session;
+        }
+    }
+    /**
+     * Attaches to the adopted session at the socket path it now lists. arf
+     * registers a new path when IPC restarts in the same process, as after
+     * `:ipc stop` and `:ipc start`, and keeps its PID and session ID.
+     */
+    private async relocated(): Promise<Record<string, unknown> | undefined> {
+        return this.atListedPath(async (endpoint, timeout) => {
+            // The attach checks the session ID before the path is used.
+            const session = await this.attachTo(endpoint, timeout);
+            this.endpoint = endpoint;
+            return session;
+        });
+    }
+    /**
+     * Lists the adopted session again and returns what `open` returns for the
+     * first other socket path listed for its PID, within `deadline` if given.
+     * `open` must verify the session at that path.
+     */
+    private async atListedPath<T>(
+        open: (endpoint: string, timeout: number | undefined) => Promise<T>,
+        deadline?: number,
+    ): Promise<T | undefined> {
+        const pid = this.expected.pid;
+        if (!this.process.adopted || this.sessionId === undefined || pid === undefined) {
+            return undefined;
+        }
+        const remaining = (): number | undefined =>
+            deadline === undefined ? undefined : deadline - Date.now();
+        if ((remaining() ?? 1) <= 0) {
+            return undefined;
+        }
+        const discovery = await discoverArf(
+            this.command,
+            this.discoveryDirectory,
+            process.env,
+            undefined,
+            Math.min(remaining() ?? Infinity, 5000),
+        );
+        if (!discovery.available) {
+            return undefined;
+        }
+        for (const listed of discovery.sessions) {
+            if (listed.pid !== pid || listed.socket_path === this.endpoint) {
+                continue;
+            }
+            const timeout = remaining();
+            if (timeout !== undefined && timeout <= 0) {
+                break;
+            }
+            try {
+                return await open(listed.socket_path, timeout);
+            } catch {
+                // Another listed path may reach the session.
+            }
+        }
+        return undefined;
+    }
+    private async attachTo(endpoint: string, timeout?: number): Promise<Record<string, unknown>> {
+        const { connection, result } = await ArfAttachConnection.open(endpoint, {
+            timeout,
             subscribe: [STARTED_TOPIC],
             client: { name: 'vscode-R Interactive' },
             maxLineBytes: MAX_ATTACH_LINE_BYTES,
             onEvent: (event) => this.arfEvent(event),
         });
-        if (this.sessionId !== undefined && result.sessionId !== this.sessionId) {
+        if (!this.sameSession(result)) {
             connection.close();
             throw new Error('The arf endpoint now belongs to a different session');
         }
@@ -263,16 +340,50 @@ export class Arf {
         this.handlerApi = parseHandlerApi(result.session);
         return result.session;
     }
+    /** Whether an attach reached the arf session that this adapter serves, as far as it is known. */
+    private sameSession(result: { sessionId: string; session: Record<string, unknown> }): boolean {
+        return (
+            (this.sessionId === undefined || result.sessionId === this.sessionId) &&
+            (this.expected.pid === undefined || result.session.pid === this.expected.pid)
+        );
+    }
     /** A separate attach connection that reaches the same arf session as before. */
+    /**
+     * Reaching the session, including finding it at another socket path,
+     * takes at most 5 s, which Stop's client timeout allows for.
+     */
     private async verifiedConnection(): Promise<ArfAttachConnection> {
-        const { connection, result } = await ArfAttachConnection.open(this.endpoint!, {
+        const deadline = Date.now() + 5000;
+        try {
+            return await this.openVerified(this.endpoint!, deadline);
+        } catch (error) {
+            // After IPC restarts, the attach connection has closed and the
+            // session may listen at another socket path, which listing finds.
+            // A live attach connection means the session did not move. The
+            // connection found there is Stop's own; the attach connection
+            // stays with dispatch, which finds the path again itself.
+            const moved =
+                this.process.adopted && (!this.attach || this.attach.closed)
+                    ? await this.atListedPath(
+                          (endpoint) => this.openVerified(endpoint, deadline),
+                          deadline,
+                      )
+                    : undefined;
+            if (!moved) {
+                throw error;
+            }
+            return moved;
+        }
+    }
+    private async openVerified(endpoint: string, deadline: number): Promise<ArfAttachConnection> {
+        const { connection, result } = await ArfAttachConnection.open(endpoint, {
             subscribe: [],
             client: { name: 'vscode-R Interactive' },
-            timeout: 5000,
+            timeout: Math.max(1, deadline - Date.now()),
             maxLineBytes: MAX_ATTACH_LINE_BYTES,
             onEvent: () => undefined,
         });
-        if (result.sessionId !== this.sessionId) {
+        if (!this.sameSession(result)) {
             connection.close();
             throw new Error('The arf endpoint now belongs to a different session');
         }
