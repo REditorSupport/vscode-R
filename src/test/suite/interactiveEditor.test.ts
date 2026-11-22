@@ -3,6 +3,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import * as net from 'net';
+import { createServer } from 'http';
 import * as vscode from 'vscode';
 import * as sinon from 'sinon';
 import { execFile } from 'child_process';
@@ -23,7 +24,7 @@ import type { NotebookOutputState } from '../../interactive/notebookOutput';
 import { AssetStorageStats, exportedAssetName, readAsset } from '../../interactive/assets';
 import { resolveExecutable } from '../../interactive/executable';
 import { shellQuote } from '../../interactive/launcher';
-import { localEndpoint } from '../../interactive/transport';
+import { listenLocal, localEndpoint } from '../../interactive/transport';
 import type { InteractiveManager } from '../../interactive/manager';
 import type { GlobalEnvItem, WorkspaceDataProvider } from '../../workspaceViewer';
 import type { WorkspaceData } from '../../session';
@@ -963,6 +964,162 @@ suite('Interactive VS Code integration', function () {
             picker.restore();
             errors.restore();
             fs.rmSync(storage, { recursive: true, force: true });
+        }
+    });
+    test('an arf session chosen in the picker is adopted with the listing that found it', async function () {
+        if (process.platform === 'win32') {
+            this.skip();
+        }
+        const folders = ['first', 'second'].map((name, index) => ({
+            uri: vscode.Uri.file(path.join(root, name)),
+            name,
+            index,
+        }));
+        const registry = path.join(root, 'listed-registry');
+        const endpoint = path.join(root, 'listed-arf.sock');
+        const cli = path.join(root, 'listing-arf');
+        const fixtures = [...folders.map((folder) => folder.uri.fsPath), cli, endpoint];
+        // The probe reads the session over HTTP. The agent's attach, which is
+        // not HTTP, is then refused, so the agent fails to start.
+        let attached = false;
+        const server = createServer((_request, response) => {
+            response.setHeader('Content-Type', 'application/json');
+            response.end(
+                JSON.stringify({
+                    jsonrpc: '2.0',
+                    id: 1,
+                    result: { pid: process.pid, session_id: 'listed-session' },
+                }),
+            );
+        });
+        server.on('clientError', (_error, socket) => {
+            attached = true;
+            socket.destroy();
+        });
+        const config = vscode.workspace.getConfiguration('r');
+        const previousArf = config.inspect<string>('interactive.arfPath')?.globalValue;
+        const previousSupervision = config.inspect<string>('interactive.supervision')?.globalValue;
+        const previousRegistry = process.env.ARF_IPC_SESSIONS_DIR;
+        const sandbox = sinon.createSandbox();
+        const before = new Set(fs.readdirSync(root));
+        let storage: string | undefined;
+        try {
+            folders.forEach((folder) => fs.mkdirSync(folder.uri.fsPath, { recursive: true }));
+            // The arf CLI lists one session, and only from the registry it was given.
+            const listing = JSON.stringify({
+                sessions: [{ pid: process.pid, socket_path: endpoint }],
+            });
+            fs.writeFileSync(
+                cli,
+                `#!/bin/sh\nif [ "$ARF_IPC_SESSIONS_DIR" = ${shellQuote(registry)} ]; then\n  printf '%s\\n' ${shellQuote(listing)}\nelse\n  printf '{"sessions":[]}\\n'\nfi\n`,
+                { mode: 0o700 },
+            );
+            await listenLocal(server, endpoint);
+            let active: vscode.TextEditor | undefined;
+            sandbox.stub(vscode.workspace, 'workspaceFolders').value(folders);
+            sandbox
+                .stub(vscode.workspace, 'getWorkspaceFolder')
+                .callsFake((uri: vscode.Uri) =>
+                    folders.find((folder) => uri.fsPath.startsWith(folder.uri.fsPath + path.sep)),
+                );
+            // No editor is active when the picker opens.
+            sandbox.stub(vscode.window, 'activeTextEditor').get(() => active);
+            sandbox.stub(vscode.window, 'showInputBox').resolves('Listed arf');
+            sandbox.stub(vscode.window, 'showErrorMessage').resolves(undefined);
+            sandbox.stub(vscode.window, 'showQuickPick').callsFake((async (items: unknown) => {
+                const choices = (await items) as (vscode.QuickPickItem & { arf?: unknown })[];
+                const listed = choices.find((choice) => choice.arf);
+                assert.ok(listed, JSON.stringify(choices.map((choice) => choice.label)));
+                // While the picker is open, the second folder becomes active,
+                // and arf and its registry change.
+                active = {
+                    document: { uri: vscode.Uri.file(path.join(folders[1].uri.fsPath, 'a.R')) },
+                } as vscode.TextEditor;
+                await config.update(
+                    'interactive.arfPath',
+                    path.join(root, 'missing-arf'),
+                    vscode.ConfigurationTarget.Global,
+                );
+                process.env.ARF_IPC_SESSIONS_DIR = path.join(root, 'other-registry');
+                return listed;
+            }) as never);
+            await config.update('interactive.arfPath', cli, vscode.ConfigurationTarget.Global);
+            await config.update(
+                'interactive.supervision',
+                'detached',
+                vscode.ConfigurationTarget.Global,
+            );
+            process.env.ARF_IPC_SESSIONS_DIR = registry;
+            const failure = await Promise.resolve(
+                vscode.commands.executeCommand('r.interactive.connect'),
+            ).then(
+                () => undefined,
+                (error: unknown) => error,
+            );
+            // The agent's storage is the new directory whose config names this session.
+            const created = fs
+                .readdirSync(root)
+                .filter((entry) => !before.has(entry))
+                .map((entry) => path.join(root, entry, 'config.json'))
+                .filter((file) => fs.existsSync(file))
+                .map((file) => ({
+                    storage: path.dirname(file),
+                    saved: JSON.parse(fs.readFileSync(file, 'utf8')) as AgentConfig,
+                }))
+                .filter((item) => item.saved.label === 'Listed arf');
+            storage = created[0]?.storage;
+            assert.strictEqual(created.length, 1, `${String(failure)}`);
+            const saved = created[0].saved;
+            const options = saved.backend?.options ?? {};
+            assert.strictEqual(options.ownership, 'adopted');
+            assert.strictEqual(options.arfSessionId, 'listed-session');
+            assert.strictEqual(options.arfPath, cli);
+            assert.strictEqual(options.arfDiscoveryDirectory, folders[0].uri.fsPath);
+            assert.deepStrictEqual(options.arfRegistryEnvironment, {
+                ...(process.env.XDG_CACHE_HOME
+                    ? { XDG_CACHE_HOME: process.env.XDG_CACHE_HOME }
+                    : {}),
+                ...(process.env.HOME ? { HOME: process.env.HOME } : {}),
+                ARF_IPC_SESSIONS_DIR: registry,
+            });
+            // The agent started, failed at the attach, and has exited.
+            assert.ok(attached, `The agent did not attach: ${String(failure)}`);
+            const manifest = JSON.parse(
+                fs.readFileSync(path.join(storage, 'manifest.json'), 'utf8'),
+            ) as SessionManifest;
+            assert.ok(manifest.startupError, JSON.stringify(manifest));
+            await until(() => {
+                try {
+                    process.kill(manifest.agentPid, 0);
+                    return false;
+                } catch {
+                    return true;
+                }
+            }, 'The agent that failed to start did not exit');
+        } finally {
+            sandbox.restore();
+            if (previousRegistry === undefined) {
+                delete process.env.ARF_IPC_SESSIONS_DIR;
+            } else {
+                process.env.ARF_IPC_SESSIONS_DIR = previousRegistry;
+            }
+            try {
+                await config.update(
+                    'interactive.arfPath',
+                    previousArf,
+                    vscode.ConfigurationTarget.Global,
+                );
+                await config.update(
+                    'interactive.supervision',
+                    previousSupervision,
+                    vscode.ConfigurationTarget.Global,
+                );
+            } finally {
+                await new Promise((resolve) => server.close(resolve));
+                for (const entry of [...fixtures, ...(storage ? [storage] : [])]) {
+                    fs.rmSync(entry, { recursive: true, force: true });
+                }
+            }
         }
     });
     test('opens native Interactive without Jupyter and executes through its R kernel', async () => {
