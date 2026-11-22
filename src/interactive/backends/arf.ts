@@ -479,15 +479,23 @@ export class Arf {
         }
         // The previous execution has finished, so attaching again loses no
         // state; the session must still be the same arf process.
+        let connection: ArfAttachConnection;
         try {
-            await this.attached();
             if (this.reverify) {
-                (await this.verifiedConnection()).close();
-                this.reverify = false;
+                // The next attach verifies the session again.
+                this.attach?.close();
             }
+            connection = await this.attached();
+            this.reverify = false;
         } catch (error) {
             throw new DispatchNotSentError(
                 `arf could not be reached: ${error instanceof Error ? error.message : String(error)}`,
+            );
+        }
+        if (this.process.adopted && connection.closed) {
+            // The request would be rejected before it is written.
+            throw new DispatchNotSentError(
+                `arf could not be reached: ${connection.closed.message}`,
             );
         }
         const code = `sess:::interactive_execute(${rString(submission.id)}, ${rString(submission.code)}, jsonlite::fromJSON(${rString(JSON.stringify(submission.source ?? null))}, simplifyVector=FALSE))`;
@@ -495,16 +503,15 @@ export class Arf {
         this.execution = { submission: submission.id, interruptRequested: false };
         // Managed sessions use send to avoid arf's unbounded evaluation capture.
         // R's ordered events establish the outcome even if arf's reply times out.
+        // An adopted session is evaluated on the attach connection that reached
+        // it, as a new connection to its socket path can reach another arf.
+        const params = { code, visible: true, timeout_ms: 86400000 };
         let result: Record<string, unknown>;
         try {
             result = object(
-                await arfRequest(
-                    this.endpoint!,
-                    this.process.adopted ? 'evaluate' : 'user_input',
-                    { code, visible: true, timeout_ms: 86400000 },
-                    0,
-                    this.abort.signal,
-                ),
+                this.process.adopted
+                    ? await connection.request('evaluate', params, { signal: this.abort.signal })
+                    : await arfRequest(this.endpoint!, 'user_input', params, 0, this.abort.signal),
             );
         } catch (error) {
             // A server timeout does not cancel R. Keep accepting its event stream.
