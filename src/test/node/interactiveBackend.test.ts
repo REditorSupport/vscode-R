@@ -69,8 +69,11 @@ class FakeBackend implements SessionBackend {
             capabilities: this.capabilities,
         });
     }
-    dispatch(submission: Submission): Promise<void> {
+    /** The cancellation signal of the latest dispatch. */
+    signal?: AbortSignal;
+    dispatch(submission: Submission, options?: { signal?: AbortSignal }): Promise<void> {
         this.submissions.push(submission);
+        this.signal = options?.signal;
         return this.dispatchResult();
     }
     inspect(request: InspectionRequest): Promise<unknown> {
@@ -741,6 +744,121 @@ suite('Interactive backend contract', function () {
         const records = readExecutionRecords(path.join(config.storage, config.generation));
         assert.strictEqual(records.find((item) => item.id === id)?.state, 'cancelled');
     });
+    test('Cancel Queued Cells cancels a dispatch that has not written its cell yet', async () => {
+        const dispatch = heldDispatch();
+        const id = await submit();
+        await until(() => backend.submissions.length === 1);
+        await client.request('cancelQueued');
+        assert.ok(backend.signal?.aborted);
+        // The backend checks the signal before it writes, and reports the cell unsent.
+        dispatch.settle(new DispatchNotSentError('The code was cancelled before it was sent'));
+        await until(() => finished(id));
+        assert.strictEqual((await record(id)).state, 'cancelled');
+    });
+    for (const [name, outcome, state] of [
+        ['refused', () => Promise.reject(new StopRefusedError('End R in its terminal')), 'queued'],
+        [
+            'accepted',
+            () => Promise.reject(new Error('accepted but has not exited yet')),
+            'cancelled',
+        ],
+    ] as const) {
+        test(`a cell being sent when Stop starts is held, and is ${state} once Stop is ${name}`, async () => {
+            const dispatch = heldDispatch();
+            const id = await submit();
+            await until(() => backend.submissions.length === 1);
+            let answer!: () => void;
+            backend.stopResult = () =>
+                new Promise<void>((resolve, reject) => {
+                    answer = () => void outcome().then(resolve, reject);
+                });
+            const stop = client.request('stop').catch((error: unknown) => error);
+            await until(() => answer !== undefined);
+            assert.ok(backend.signal?.aborted);
+            // The backend then finds the signal aborted before it writes.
+            dispatch.settle(new DispatchNotSentError('The code was cancelled before it was sent'));
+            await new Promise((resolve) => setTimeout(resolve, 50));
+            assert.strictEqual((await record(id)).state, 'queued');
+            backend.dispatchResult = () => Promise.resolve();
+            answer();
+            await stop;
+            if (state === 'queued') {
+                // The held cell runs once Stop is refused.
+                await until(() => backend.submissions.length === 2);
+                assert.strictEqual(backend.submissions[1].id, id);
+            } else {
+                await until(() => finished(id));
+                assert.strictEqual((await record(id)).state, 'cancelled');
+                assert.strictEqual(backend.submissions.length, 1);
+            }
+        });
+    }
+    test('late events of a cell sent as R exited settle the cell, and the session stays exited', async () => {
+        const dispatch = heldDispatch();
+        const id = await submit();
+        await until(() => backend.submissions.length === 1);
+        backend.emit({ type: 'exit', code: 0 });
+        backend.emit({ type: 'started', executionId: id });
+        assert.strictEqual((await client.snapshot()).manifest.status, 'exited');
+        backend.emit({ type: 'finished', executionId: id, state: 'success' });
+        dispatch.settle();
+        await until(() => finished(id));
+        assert.strictEqual((await record(id)).state, 'success');
+        assert.strictEqual(
+            (await client.request<{ status: string }>('heartbeat')).status,
+            'exited',
+        );
+    });
+    test('a cell that R exited while running is unknown, and its late completion keeps the session exited', async () => {
+        const dispatch = heldDispatch();
+        const id = await submit();
+        await until(() => backend.submissions.length === 1);
+        backend.emit({ type: 'started', executionId: id });
+        backend.emit({ type: 'exit', code: 0 });
+        backend.emit({ type: 'finished', executionId: id, state: 'success' });
+        dispatch.settle();
+        await until(() => finished(id));
+        assert.strictEqual((await record(id)).state, 'unknown');
+        assert.strictEqual(
+            (await client.request<{ status: string }>('heartbeat')).status,
+            'exited',
+        );
+    });
+    test('a Stop whose R exits as a cell is sent leaves the session exited, not stopping', async () => {
+        const dispatch = heldDispatch();
+        const id = await submit();
+        await until(() => backend.submissions.length === 1);
+        backend.stopResult = () => {
+            backend.emit({ type: 'exit', code: 0 });
+            return Promise.resolve();
+        };
+        await client.request('stop');
+        backend.emit({ type: 'started', executionId: id });
+        dispatch.settle();
+        await until(() => finished(id));
+        assert.strictEqual((await client.snapshot()).manifest.status, 'exited');
+        await client.request('stop');
+    });
+    test('a client that connects while the agent waits to close keeps it open', async () => {
+        const dispatch = heldDispatch();
+        await submit();
+        await until(() => backend.submissions.length === 1);
+        backend.emit({ type: 'exit', code: 0 });
+        await until(() => events.some((event) => event.type === 'exit'));
+        const next = new AgentClient(client.manifest);
+        client.close();
+        await new Promise((resolve) => setTimeout(resolve, 50));
+        await next.connect();
+        try {
+            dispatch.settle(new DispatchNotSentError('arf could not be reached'));
+            await new Promise((resolve) => setTimeout(resolve, 100));
+            assert.ok(!(agent as unknown as { stopped: boolean }).stopped);
+            assert.strictEqual((await next.snapshot()).manifest.status, 'exited');
+        } finally {
+            next.close();
+        }
+        await until(() => (agent as unknown as { stopped: boolean }).stopped);
+    });
     test('observer requests and stale generations cannot invoke the backend', async () => {
         const observer = new AgentClient(client.manifest);
         await observer.connect();
@@ -855,9 +973,24 @@ suite('Interactive backend contract', function () {
                     // which receives the dispatch and does not answer it.
                     socket.on('data', (data: Buffer) => {
                         for (const line of data.toString().split('\n').filter(Boolean)) {
-                            const message = JSON.parse(line) as { method: string };
-                            if (message.method === 'evaluate') {
-                                evaluations++;
+                            const message = JSON.parse(line) as {
+                                id: number;
+                                method: string;
+                                params: { code?: string };
+                            };
+                            if (message.method !== 'evaluate') {
+                                continue;
+                            }
+                            evaluations++;
+                            if (message.params.code === 'bootstrap') {
+                                socket.write(
+                                    JSON.stringify({
+                                        jsonrpc: '2.0',
+                                        id: message.id,
+                                        result: { status: 'ok' },
+                                    }) + '\n',
+                                );
+                            } else {
                                 dispatched();
                             }
                         }
@@ -1013,11 +1146,13 @@ suite('Interactive backend contract', function () {
                     } else {
                         const method = String(message.method);
                         methods.push(`attach:${method}`);
+                        const result =
+                            method === 'session' ? sessionMetadata?.() : { status: 'ok' };
                         socket.write(
                             JSON.stringify({
                                 jsonrpc: '2.0',
                                 id: message.id,
-                                ...(answer?.(method) ?? { result: { status: 'ok' } }),
+                                ...(answer?.(method) ?? { result }),
                             }) + '\n',
                         );
                     }
@@ -1365,6 +1500,50 @@ suite('Interactive backend contract', function () {
         } finally {
             runtime.end();
             await session?.close();
+        }
+    });
+    test('code cancelled while arf is being reached again is not sent', async () => {
+        const session = await adopt({});
+        try {
+            const evaluations = (): number =>
+                session.methods.filter((method) => method.endsWith('evaluate')).length;
+            // The connection closes, and the next dispatch attaches again.
+            session.arf.replace('fake');
+            const attach = (): { closed?: Error } | undefined =>
+                (session.adapter as unknown as { attach?: { closed?: Error } }).attach;
+            for (let i = 0; !attach()?.closed; i++) {
+                assert.ok(i < 200, 'the attach connection did not close');
+                await new Promise((resolve) => setTimeout(resolve, 5));
+            }
+            const before = evaluations();
+            const cancel = new AbortController();
+            const dispatch = session.adapter.dispatch(
+                { id: randomUUID(), code: 'cancelled()' },
+                cancel.signal,
+            );
+            // Cancelled while the attach handshake is in progress, which succeeds.
+            cancel.abort();
+            await assert.rejects(dispatch, DispatchNotSentError);
+            assert.ok(!attach()?.closed);
+            assert.strictEqual(evaluations(), before);
+        } finally {
+            await session.close();
+        }
+    });
+    test('an adopted execution is interrupted on the connection that started it', async () => {
+        const session = await adopt({}, undefined, (method) =>
+            method === 'evaluate' ? { result: { status: 'ok', execution_id: 7 } } : undefined,
+        );
+        try {
+            // Another arf now serves the socket path, but the attach
+            // connection still reaches the adopted one.
+            session.arf.replace('another arf', true);
+            await session.adapter.dispatch({ id: randomUUID(), code: 'running()' });
+            await session.adapter.interrupt();
+            assert.strictEqual(session.methods.at(-1), 'attach:interrupt');
+            assert.ok(!session.methods.includes('interrupt'));
+        } finally {
+            await session.close();
         }
     });
     test('an adopted session evaluates on the verified attach connection, not on its socket path', async () => {

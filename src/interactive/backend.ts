@@ -69,8 +69,12 @@ export interface SessionBackend {
     readonly capabilities: BackendCapabilities;
     onEvent(listener: (event: BackendEvent) => void): () => void;
     start(): Promise<void>;
-    /** Acknowledges transport only. Started/finished events establish evaluation outcome. */
-    dispatch(submission: Submission): Promise<void>;
+    /**
+     * Acknowledges transport only. Started/finished events establish evaluation
+     * outcome. `signal` cancels the dispatch until the code is written, which
+     * then rejects with {@link DispatchNotSentError}; it has no effect after.
+     */
+    dispatch(submission: Submission, options?: { signal?: AbortSignal }): Promise<void>;
     inspect(request: InspectionRequest): Promise<unknown>;
     replyInput(reply: InputReply): Promise<void>;
     replyClientRequest(id: string, reply: ClientReply): Promise<void>;

@@ -191,7 +191,7 @@ export class SessBackend implements SessionBackend {
             `${rString(this.options.library)}, ${rString(bootstrap)}, ${support}, managed=${this.ownership === 'managed' ? 'TRUE' : 'FALSE'})`;
         await this.frontend.bootstrap(code);
     }
-    async dispatch(submission: Submission): Promise<void> {
+    async dispatch(submission: Submission, options?: { signal?: AbortSignal }): Promise<void> {
         await this.startup;
         if (this.closed) {
             throw new Error('Backend is disposed');
@@ -201,7 +201,7 @@ export class SessBackend implements SessionBackend {
         this.stderrFlushed = false;
         this.outputDrained = false;
         try {
-            await this.frontend.dispatch(submission);
+            await this.frontend.dispatch(submission, options?.signal);
         } catch (error) {
             if (error instanceof DispatchNotSentError) {
                 this.current = undefined;

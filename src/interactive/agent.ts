@@ -85,8 +85,10 @@ export class SessionAgent {
     private redispatchDelay = 0;
     /** Resolves once the dispatch in flight has recorded the outcome it established. */
     private dispatchAttempt?: Promise<void>;
-    /** The cell of the dispatch in flight, if it was cancelled before it was known to be sent. */
-    private cancelledDispatch?: string;
+    /** Stops the dispatch in flight until its code is written. */
+    private dispatchAbort?: AbortController;
+    /** Whether the cell of the dispatch in flight was cancelled, rather than held for Stop. */
+    private dispatchCancelled = false;
     private externalOutput: Record<string, unknown>[] = [];
     private externalBytes = 0;
     private externalTimer?: NodeJS.Timeout;
@@ -267,7 +269,9 @@ export class SessionAgent {
     }
 
     private state(status: SessionManifest['status']): void {
-        if (this.stopped) {
+        // A confirmed exit is final for this generation. Later events of a
+        // cell still settle its record, but not the session's status.
+        if (this.stopped || this.manifest.status === 'exited') {
             return;
         }
         if (status !== 'stopping') {
@@ -370,7 +374,7 @@ export class SessionAgent {
             clearTimeout(authTimer);
             this.clients.delete(client);
             if (this.manifest.status === 'exited' && !this.clients.size && !this.stopped) {
-                this.closeAfterExit();
+                this.closeAfterExit(true);
             }
             // Keep the lease briefly for reconnect; accepted executions keep running.
         });
@@ -697,7 +701,7 @@ export class SessionAgent {
                     throw new Error('Stop R before shutting down its agent');
                 }
                 this.send(client.socket, { id: request.id, result: true });
-                setTimeout(() => this.closeAfterExit(), 100);
+                setTimeout(() => this.closeAfterExit(false), 100);
                 return;
             default:
                 throw new Error(`Unknown agent method: ${request.method}`);
@@ -864,7 +868,7 @@ export class SessionAgent {
                 // A Stop whose exit came after its caller left, such as from
                 // Stop Selected, ends the agent as the last client would have.
                 if (this.stopping && !this.clients.size) {
-                    this.closeAfterExit();
+                    this.closeAfterExit(true);
                 }
                 break;
             }
@@ -971,8 +975,10 @@ export class SessionAgent {
 
     private cancelQueued(): number {
         const sending = this.current && this.journal.executions.get(this.current);
-        if (this.dispatching && sending && sending.state === 'queued') {
-            this.cancelledDispatch = sending.id;
+        if (sending && sending.state === 'queued') {
+            // A dispatch in flight has not written the cell yet.
+            this.dispatchCancelled = true;
+            this.dispatchAbort?.abort();
         }
         const queued = this.queue.splice(0);
         for (const id of queued) {
@@ -1019,7 +1025,9 @@ export class SessionAgent {
         }
         this.current = id;
         this.dispatching = true;
-        const attempt = this.backend.dispatch(record);
+        const abort = new AbortController();
+        this.dispatchAbort = abort;
+        const attempt = this.backend.dispatch(record, { signal: abort.signal });
         let settled!: () => void;
         this.dispatchAttempt = new Promise((resolve) => {
             settled = resolve;
@@ -1036,17 +1044,20 @@ export class SessionAgent {
                 return;
             }
             if (error instanceof DispatchNotSentError) {
-                if (this.cancelledDispatch === id) {
-                    // The cell was cancelled, by request, Stop or exit, while
-                    // it was being sent, and it was not.
+                if (this.dispatchCancelled) {
+                    // The cell was cancelled, by request, Stop or exit, before
+                    // it was written.
                     this.finish(record, 'cancelled');
                     return;
                 }
-                // R has not received the cell, so it stays first in the queue
-                // until the session can be reached again.
+                // R has not received the cell, so it stays first in the queue.
                 this.current = undefined;
                 this.queue.unshift(id);
-                this.scheduleRedispatch(error.message);
+                // A cell held for Stop runs again if Stop is refused; one that
+                // could not reach R waits until the session can be reached.
+                if (!abort.signal.aborted) {
+                    this.scheduleRedispatch(error.message);
+                }
                 return;
             }
             if (this.exited()) {
@@ -1059,7 +1070,8 @@ export class SessionAgent {
         } finally {
             this.dispatching = false;
             this.dispatchAttempt = undefined;
-            this.cancelledDispatch = undefined;
+            this.dispatchAbort = undefined;
+            this.dispatchCancelled = false;
             settled();
             if (!this.current) {
                 void this.pump();
@@ -1112,6 +1124,9 @@ export class SessionAgent {
     private async runStop(): Promise<void> {
         this.stopping = true;
         this.state('stopping');
+        // A cell still being sent is held, so that it is not written while R
+        // is asked to stop; it is cancelled with the queue unless Stop is refused.
+        this.dispatchAbort?.abort();
         try {
             await this.backend.stop();
         } catch (error) {
@@ -1134,14 +1149,19 @@ export class SessionAgent {
     /**
      * Closes the agent after R has exited, once a dispatch in flight has
      * recorded whether its cell was sent. A cell whose outcome is still not
-     * established after 5 s is recorded as unknown.
+     * established after 5 s is recorded as unknown. Closing because no client
+     * remains is skipped if a client has connected meanwhile; a requested
+     * shutdown always closes.
      */
-    private closeAfterExit(): void {
+    private closeAfterExit(unattended: boolean): void {
         const deadline = new Promise((resolve) => setTimeout(resolve, 5000).unref());
         void Promise.race([this.dispatchAttempt, deadline]).then(() => {
             const current = this.current && this.journal.executions.get(this.current);
             if (current && !this.stopped) {
                 this.finish(current, 'unknown');
+            }
+            if (unattended && this.clients.size) {
+                return;
             }
             return this.close();
         });

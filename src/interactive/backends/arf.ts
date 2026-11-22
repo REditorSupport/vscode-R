@@ -40,6 +40,8 @@ interface Execution {
     submission: string;
     id?: number;
     interruptRequested: boolean;
+    /** For an adopted session, the attach connection that sent the code. */
+    connection?: ArfAttachConnection;
 }
 
 export class Arf {
@@ -176,8 +178,11 @@ export class Arf {
         const deadline = Date.now() + 30000;
         for (;;) {
             const timeout = Math.max(1, Math.min(15000, deadline - Date.now()));
+            // The attach connection reached the verified session; a new
+            // connection to its socket path could reach another arf.
+            const attach = await this.attached();
             const session = object(
-                await arfRequest(this.endpoint!, 'session', {}, timeout, this.abort.signal),
+                await attach.request('session', {}, { timeout, signal: this.abort.signal }),
             );
             const libraries = session.r && object(session.r).lib_paths;
             if (
@@ -210,14 +215,15 @@ export class Arf {
         }
     }
     async bootstrap(code: string): Promise<void> {
-        // Visible evaluation respects arf's advertised IPC policy, including bootstrap.
+        // Visible evaluation respects arf's advertised IPC policy, including
+        // bootstrap. It goes over the attach connection, which reached the
+        // verified arf, rather than a new connection to its socket path.
+        const attach = await this.attached();
         const result = object(
-            await arfRequest(
-                this.endpoint!,
+            await attach.request(
                 'evaluate',
                 { code, visible: true },
-                30000,
-                this.abort.signal,
+                { timeout: 30000, signal: this.abort.signal },
             ),
         );
         // A missing or unknown status is not a successful bootstrap.
@@ -330,7 +336,7 @@ export class Arf {
         execution.interruptRequested = true;
         if (execution.id !== undefined) {
             await this.sendInterrupt(execution);
-        } else if (this.attach?.closed) {
+        } else if ((execution.connection ?? this.attach)?.closed) {
             throw new Error(
                 'Cannot interrupt: the connection to arf was lost before the execution started',
             );
@@ -343,7 +349,18 @@ export class Arf {
         }
         // Acceptance only registers the request; sess reports the outcome. A
         // rejection means the execution already ended, which races with Stop.
-        await arfRequest(this.endpoint!, 'interrupt', { execution_id: execution.id }, 5000);
+        // An adopted execution is interrupted on the connection that started
+        // it: its ID belongs to that arf, which the socket path may no longer
+        // reach.
+        const params = { execution_id: execution.id };
+        if (!execution.connection) {
+            await arfRequest(this.endpoint!, 'interrupt', params, 5000);
+            return;
+        }
+        if (execution.connection.closed) {
+            throw new Error('Cannot interrupt: the connection to arf that runs the code was lost');
+        }
+        await execution.connection.request('interrupt', params, { timeout: 5000 });
     }
     /** Records arf's execution ID for a submission, from its reply or its started event. */
     private register(submission: unknown, id: unknown): void {
@@ -473,7 +490,7 @@ export class Arf {
             throw new Error('R has not exited after Stop');
         }
     }
-    async dispatch(submission: Submission): Promise<void> {
+    async dispatch(submission: Submission, signal?: AbortSignal): Promise<void> {
         if (this.failure) {
             throw this.failure;
         }
@@ -499,8 +516,16 @@ export class Arf {
             );
         }
         const code = `sess:::interactive_execute(${rString(submission.id)}, ${rString(submission.code)}, jsonlite::fromJSON(${rString(JSON.stringify(submission.source ?? null))}, simplifyVector=FALSE))`;
+        // Nothing awaits from here until the request is written.
+        if (signal?.aborted) {
+            throw new DispatchNotSentError('The code was cancelled before it was sent');
+        }
         this.started = false;
-        this.execution = { submission: submission.id, interruptRequested: false };
+        this.execution = {
+            submission: submission.id,
+            interruptRequested: false,
+            connection: this.process.adopted ? connection : undefined,
+        };
         // Managed sessions use send to avoid arf's unbounded evaluation capture.
         // R's ordered events establish the outcome even if arf's reply times out.
         // An adopted session is evaluated on the attach connection that reached
