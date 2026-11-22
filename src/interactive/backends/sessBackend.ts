@@ -3,7 +3,7 @@ import * as os from 'os';
 import * as path from 'path';
 import { randomBytes } from 'crypto';
 import { atomicJson } from '../journal';
-import { AgentSettings, object, Submission } from '../protocol';
+import { AgentSettings, ArfRegistryEnvironment, object, Submission } from '../protocol';
 import {
     BackendCapabilities,
     BackendEvent,
@@ -31,6 +31,7 @@ export interface SessOptions {
     arfSessionId?: string;
     arfPid?: number;
     arfDiscoveryDirectory?: string;
+    arfRegistryEnvironment?: ArfRegistryEnvironment;
     plotBackend: 'auto' | 'jgd' | 'standard';
 }
 
@@ -121,6 +122,7 @@ export class SessBackend implements SessionBackend {
             (message, channel) => this.runtimeEvent(message, channel),
             { sessionId: options.arfSessionId, pid: options.arfPid },
             options.arfDiscoveryDirectory,
+            options.arfRegistryEnvironment,
         );
     }
     onEvent(listener: (event: BackendEvent) => void): () => void {

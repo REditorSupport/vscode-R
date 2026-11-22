@@ -975,10 +975,12 @@ export class SessionAgent {
 
     private cancelQueued(): number {
         const sending = this.current && this.journal.executions.get(this.current);
-        if (sending && sending.state === 'queued') {
-            // A dispatch in flight has not written the cell yet.
+        // Only a dispatch in flight may still not have written the cell. Once
+        // it has settled, a cell that is still queued was sent and waits for R
+        // to report that it started.
+        if (sending && sending.state === 'queued' && this.dispatchAbort) {
             this.dispatchCancelled = true;
-            this.dispatchAbort?.abort();
+            this.dispatchAbort.abort();
         }
         const queued = this.queue.splice(0);
         for (const id of queued) {
@@ -1149,19 +1151,22 @@ export class SessionAgent {
     /**
      * Closes the agent after R has exited, once a dispatch in flight has
      * recorded whether its cell was sent. A cell whose outcome is still not
-     * established after 5 s is recorded as unknown. Closing because no client
-     * remains is skipped if a client has connected meanwhile; a requested
+     * established after 5 s is recorded as unknown as the agent closes.
+     * Closing because no client remains is skipped if a client has connected
+     * meanwhile, and the cell is then left to its dispatch; a requested
      * shutdown always closes.
      */
     private closeAfterExit(unattended: boolean): void {
         const deadline = new Promise((resolve) => setTimeout(resolve, 5000).unref());
         void Promise.race([this.dispatchAttempt, deadline]).then(() => {
+            if (unattended && this.clients.size) {
+                // The agent stays open, so a dispatch in flight still records
+                // whether its cell was sent.
+                return;
+            }
             const current = this.current && this.journal.executions.get(this.current);
             if (current && !this.stopped) {
                 this.finish(current, 'unknown');
-            }
-            if (unattended && this.clients.size) {
-                return;
             }
             return this.close();
         });

@@ -764,6 +764,24 @@ suite('Interactive backend contract', function () {
         await until(() => finished(id));
         assert.strictEqual((await record(id)).state, 'cancelled');
     });
+    test('Cancel Queued Cells after a cell was sent does not cancel a cell submitted later', async () => {
+        const first = await submit();
+        await until(
+            () => !(agent as unknown as { dispatching: boolean }).dispatching && !!backend.signal,
+        );
+        // The cell was sent, and R has not reported that it started.
+        await client.request('cancelQueued');
+        const dispatch = heldDispatch();
+        const second = await submit();
+        backend.emit({ type: 'started', executionId: first });
+        backend.emit({ type: 'finished', executionId: first, state: 'success' });
+        await until(() => backend.submissions.length === 2);
+        dispatch.settle(new DispatchNotSentError('arf could not be reached'));
+        backend.dispatchResult = () => Promise.resolve();
+        await until(() => backend.submissions.length === 3);
+        assert.strictEqual(backend.submissions[2].id, second);
+        assert.strictEqual((await record(second)).state, 'queued');
+    });
     for (const [name, outcome, state] of [
         ['refused', () => Promise.reject(new StopRefusedError('End R in its terminal')), 'queued'],
         [
@@ -867,6 +885,29 @@ suite('Interactive backend contract', function () {
             next.close();
         }
         await until(() => (agent as unknown as { stopped: boolean }).stopped);
+    });
+    test('a client that reconnects before the close deadline leaves the cell to its dispatch', async () => {
+        const dispatch = heldDispatch();
+        const id = await submit();
+        await until(() => backend.submissions.length === 1);
+        backend.emit({ type: 'exit', code: 0 });
+        await until(() => events.some((event) => event.type === 'exit'));
+        const next = new AgentClient(client.manifest);
+        client.close();
+        await new Promise((resolve) => setTimeout(resolve, 50));
+        await next.connect();
+        try {
+            // Past the deadline for a dispatch to record whether its cell was sent.
+            await new Promise((resolve) => setTimeout(resolve, 5200));
+            dispatch.settle(new DispatchNotSentError('arf could not be reached'));
+            await new Promise((resolve) => setTimeout(resolve, 100));
+            assert.strictEqual(
+                (await next.request<ExecutionRecord>('execution', { id })).state,
+                'cancelled',
+            );
+        } finally {
+            next.close();
+        }
     });
     test('observer requests and stale generations cannot invoke the backend', async () => {
         const observer = new AgentClient(client.manifest);
@@ -1605,6 +1646,88 @@ suite('Interactive backend contract', function () {
             await arf.close();
         }
     });
+    for (const [name, recorded, own] of [
+        [
+            'a custom registry the agent does not have',
+            { ARF_IPC_SESSIONS_DIR: 'listed-registry' },
+            {},
+        ],
+        [
+            'the default registry while the agent has a custom one',
+            {},
+            { ARF_IPC_SESSIONS_DIR: 'stale-registry' },
+        ],
+        [
+            'a default registry in another cache directory than the agent has',
+            { XDG_CACHE_HOME: 'listed-cache' },
+            { XDG_CACHE_HOME: 'agent-cache' },
+        ],
+    ] as const) {
+        test(`queued code is found again after an IPC restart in ${name}`, async () => {
+            const arf = await fakeAttachedArf({});
+            const names = ['ARF_IPC_SESSIONS_DIR', 'XDG_CACHE_HOME'] as const;
+            const previous = names.map((variable) => process.env[variable]);
+            // As in an agent that tmux started with its server's environment.
+            const ownValues: Partial<Record<(typeof names)[number], string>> = own;
+            for (const variable of names) {
+                const value = ownValues[variable];
+                if (value === undefined) {
+                    delete process.env[variable];
+                } else {
+                    process.env[variable] = path.join(root, value);
+                }
+            }
+            const registry = Object.fromEntries(
+                Object.entries(recorded).map(([variable, value]) => [
+                    variable,
+                    path.join(root, value),
+                ]),
+            );
+            const adapter = new Arf(
+                process.execPath,
+                root,
+                arf.endpoint,
+                true,
+                () => undefined,
+                'token',
+                () => undefined,
+                { sessionId: 'fake', pid: process.pid },
+                root,
+                registry,
+            );
+            try {
+                await adapter.start({});
+                await adapter.bootstrap('bootstrap');
+                const moved = await arf.move();
+                const attach = (): { closed?: Error } | undefined =>
+                    (adapter as unknown as { attach?: { closed?: Error } }).attach;
+                for (let i = 0; !attach()?.closed; i++) {
+                    assert.ok(i < 200, 'the attach connection did not close');
+                    await new Promise((resolve) => setTimeout(resolve, 5));
+                }
+                // The CLI lists the session only from the registry that listed it.
+                fs.writeFileSync(
+                    path.join(root, 'ipc'),
+                    `const registry = ${JSON.stringify(registry)};
+const listed = ${JSON.stringify(names)}.every((name) => process.env[name] === registry[name]);
+console.log(JSON.stringify({ sessions: listed ? [{ pid: ${process.pid}, socket_path: ${JSON.stringify(moved)} }] : [] }));`,
+                );
+                await adapter.dispatch({ id: randomUUID(), code: 'after_restart()' });
+                assert.strictEqual(arf.methods.at(-1), 'attach:evaluate');
+            } finally {
+                names.forEach((variable, i) => {
+                    const value = previous[i];
+                    if (value === undefined) {
+                        delete process.env[variable];
+                    } else {
+                        process.env[variable] = value;
+                    }
+                });
+                adapter.dispose();
+                await arf.close();
+            }
+        });
+    }
     test('Stop reaches an adopted session at the socket path it lists after its IPC restarts', async () => {
         const runtime = await standIn();
         const arf = await fakeAttachedArf({}, undefined, (method) =>

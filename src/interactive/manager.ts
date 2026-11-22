@@ -35,7 +35,13 @@ import {
 } from './launcher';
 import { NodeRuntime, resolveNodeRuntime } from './nodeExecutable';
 import { backendDescriptor, prepareBackendRuntime } from './backendRegistry';
-import { discoverArf, probeArfSession, ProbedArfSession } from './arf';
+import {
+    ArfListing,
+    discoverArf,
+    probeArfSession,
+    ProbedArfSession,
+    registryEnvironmentOf,
+} from './arf';
 import { resolveArfExecutable } from './arfExecutable';
 import { prepareSupervisor } from './supervisor';
 import { Transcript, TranscriptCell } from './transcript';
@@ -92,10 +98,15 @@ interface InteractiveView {
 
 interface SessionChoice extends vscode.QuickPickItem {
     manifest?: SessionManifest;
-    arf?: ProbedArfSession;
+    arf?: AdoptableArf;
     create?: boolean;
     terminal?: boolean;
     configureArf?: boolean;
+}
+/** A running arf session, and how it was listed so that it is found again. */
+interface AdoptableArf {
+    session: ProbedArfSession;
+    listing: ArfListing;
 }
 interface SavedConnection {
     id: string;
@@ -1109,12 +1120,13 @@ export class InteractiveManager
     }
 
     private async create(
-        adopt?: ProbedArfSession,
+        adoptable?: AdoptableArf,
         resource = vscode.window.activeTextEditor?.document.uri,
     ): Promise<InteractiveView | undefined> {
         if (!vscode.workspace.isTrusted) {
             throw new Error('Trust this workspace before starting or controlling R');
         }
+        const adopt = adoptable?.session;
         const folder = this.sessionFolder(resource);
         const directory = adopt?.cwd ?? defaultSessionDirectory(folder?.fsPath);
         const rPath = await util.getRpath(false, resource);
@@ -1122,10 +1134,11 @@ export class InteractiveManager
             throw new Error('Configure an R executable before starting Interactive');
         }
         const arfCommand = this.arfCommand(folder ?? resource);
-        // An adopted session keeps the arf CLI that listed it, which finds the
-        // session again if its IPC restarts at another socket path.
-        const discoveryDirectory = defaultSessionDirectory(folder?.fsPath);
-        let arfPath = resolveArfExecutable(arfCommand, adopt ? discoveryDirectory : directory);
+        // An adopted session keeps the listing that found it, which finds the
+        // session again if its IPC restarts at another socket path, even if
+        // another folder has become active since.
+        const listing = adoptable?.listing;
+        let arfPath = listing ? listing.command : resolveArfExecutable(arfCommand, directory);
         const provider = adopt
             ? 'arf-existing'
             : await vscode.window.showQuickPick(
@@ -1190,7 +1203,8 @@ export class InteractiveManager
                     arfEndpoint: adopt?.socket_path,
                     arfSessionId: adopt?.session_id,
                     arfPid: adopt?.pid,
-                    arfDiscoveryDirectory: adopt ? discoveryDirectory : undefined,
+                    arfDiscoveryDirectory: listing?.directory,
+                    arfRegistryEnvironment: listing?.registry,
                     supervision,
                     plotBackend: util
                         .config()
@@ -1314,11 +1328,13 @@ export class InteractiveManager
         const live = await runningSessions(
             this.manifests.filter((manifest) => hasSessionEndpoint(manifest)),
         );
-        const terminals: ProbedArfSession[] = [];
+        const terminals: AdoptableArf[] = [];
         // Where `arf ipc list` runs and the configured arf path is resolved.
         const folder = this.sessionFolder(resource);
         const directory = defaultSessionDirectory(folder?.fsPath);
         const arfCommand = this.arfCommand(folder ?? resource);
+        // The registry that this listing reads, recorded for an adopted session.
+        const registry = registryEnvironmentOf(process.env);
         // Listing runs the configured arf CLI, which an untrusted workspace
         // must not start; adopting a session needs trust as well.
         const discovery: Awaited<ReturnType<typeof discoverArf>> = vscode.workspace.isTrusted
@@ -1334,6 +1350,14 @@ export class InteractiveManager
                 ].join('\n'),
             );
         }
+        // An adopted session is listed again as it was listed here.
+        const listing: ArfListing | undefined = discovery.available
+            ? {
+                  command: discovery.command,
+                  directory,
+                  registry,
+              }
+            : undefined;
         // Listing does not prove that an endpoint still belongs to the listed
         // process; the probe checks that before a session is offered.
         const arfCandidates = discovery.available
@@ -1344,8 +1368,8 @@ export class InteractiveManager
                 arfCandidates.slice(i, i + 8).map((arf) => probeArfSession(arf)),
             );
             for (const arf of batch) {
-                if (arf) {
-                    terminals.push(arf);
+                if (arf && listing) {
+                    terminals.push({ session: arf, listing });
                 }
             }
         }
@@ -1357,8 +1381,8 @@ export class InteractiveManager
                 manifest,
             })),
             ...terminals.map((arf) => ({
-                label: `arf ${arf.pid}`,
-                description: `${arf.r_version ?? ''} · ${arf.cwd ?? ''}`,
+                label: `arf ${arf.session.pid}`,
+                description: `${arf.session.r_version ?? ''} · ${arf.session.cwd ?? ''}`,
                 arf,
             })),
             ...(discovery.available

@@ -1,6 +1,11 @@
 import { execFile } from 'child_process';
 import * as http from 'http';
-import { object, MAX_MESSAGE_BYTES } from './protocol';
+import {
+    ARF_REGISTRY_VARIABLES,
+    ArfRegistryEnvironment,
+    object,
+    MAX_MESSAGE_BYTES,
+} from './protocol';
 import { resolveArfExecutable } from './arfExecutable';
 
 export interface ArfSession {
@@ -263,6 +268,49 @@ function listedSession(value: unknown): ArfSession | undefined {
         session[key] = field;
     }
     return session;
+}
+
+/**
+ * How `arf ipc list` listed a session: the CLI it resolved to, the directory
+ * it ran in, and the variables that selected the registry it read. Listing
+ * again with the same values reads the same registry.
+ */
+export interface ArfListing {
+    command: string;
+    directory: string;
+    registry: ArfRegistryEnvironment;
+}
+
+/** The variables of `env` that select the arf session registry. */
+export function registryEnvironmentOf(env: NodeJS.ProcessEnv): ArfRegistryEnvironment {
+    const registry: ArfRegistryEnvironment = {};
+    for (const name of ARF_REGISTRY_VARIABLES) {
+        const value = env[name];
+        if (value) {
+            registry[name] = value;
+        }
+    }
+    return registry;
+}
+
+/**
+ * `env` with the registry variables of `registry`, a variable absent there
+ * removed, so that a listing reads the recorded registry rather than one that
+ * `env` happens to select.
+ */
+export function withRegistryEnvironment(
+    env: NodeJS.ProcessEnv,
+    registry: ArfRegistryEnvironment,
+): NodeJS.ProcessEnv {
+    const names = new Set<string>(ARF_REGISTRY_VARIABLES);
+    const result: NodeJS.ProcessEnv = {};
+    for (const [key, value] of Object.entries(env)) {
+        // Windows environment variable names are case-insensitive.
+        if (!names.has(key.toUpperCase())) {
+            result[key] = value;
+        }
+    }
+    return { ...result, ...registry };
 }
 
 /**

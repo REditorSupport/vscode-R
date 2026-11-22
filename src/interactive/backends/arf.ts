@@ -6,6 +6,7 @@ import {
     arfRequest,
     checkArfSession,
     discoverArf,
+    withRegistryEnvironment,
 } from '../arf';
 import { ArfAttachConnection, ArfEvent } from '../arfAttach';
 import {
@@ -14,7 +15,7 @@ import {
     InspectionRequest,
     StopRefusedError,
 } from '../backend';
-import { MAX_MESSAGE_BYTES, object, Submission } from '../protocol';
+import { ArfRegistryEnvironment, MAX_MESSAGE_BYTES, object, Submission } from '../protocol';
 import { RuntimeProcess } from './process';
 import { rString } from './rCode';
 import { ArfOutput } from './arfOutput';
@@ -77,6 +78,11 @@ export class Arf {
         private expected: { sessionId?: string; pid?: number } = {},
         /** Where the arf CLI lists an adopted session again, if not `directory`. */
         private discoveryDirectory = directory,
+        /**
+         * The registry selection that listed the adopted session. The agent's
+         * own environment, as under tmux, need not select the same registry.
+         */
+        private registry?: ArfRegistryEnvironment,
     ) {
         this.process = new RuntimeProcess(adopted, emit);
         // The first attach must then reach the same arf as the probe did.
@@ -296,7 +302,7 @@ export class Arf {
         const discovery = await discoverArf(
             this.command,
             this.discoveryDirectory,
-            process.env,
+            this.registry ? withRegistryEnvironment(process.env, this.registry) : process.env,
             undefined,
             Math.min(remaining() ?? Infinity, 5000),
         );
