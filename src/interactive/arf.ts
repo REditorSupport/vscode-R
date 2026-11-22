@@ -16,7 +16,6 @@ export interface ArfSession {
 // 0.7.2-rc.1 keeps forked R workers from crashing on macOS, reports an R error
 // that follows a caught interrupt as an error rather than as interrupted, and
 // bounds console reads that cannot be answered.
-// TODO: Require arf 0.7.2 once it is released.
 export const MIN_ARF_VERSION = '0.7.2-rc.1';
 
 /** arf JSON-RPC error codes that the Interactive client acts on. */
