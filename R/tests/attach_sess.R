@@ -432,13 +432,29 @@ writeLines(
     "  if (!is.null(inherited)) stop('child reused the parent startup context')",
     "}",
     "ids <- character(); identities <- character(); deadline <- Sys.time() + 30",
+    "last_read_error <- ''",
     "while (length(ids) < count && Sys.time() < deadline) {",
     "  requests <- list.files(directory, pattern='\\\\.request$', full.names=TRUE)",
     "  for (request in requests) {",
     "    id <- sub('\\\\.request$', '', basename(request))",
     "    if (id %in% ids) next",
-    "    lines <- suppressWarnings(tryCatch(readLines(request, warn=FALSE),",
-    "      error=function(e) { if (!file.exists(request)) NULL else stop(e) }))",
+    "    # Windows can briefly refuse to open a request that still exists, for",
+    "    # example while it is scanned or pending deletion. Retry it on the next",
+    "    # poll and keep the reason in case the requests never become readable.",
+    "    read_warnings <- character()",
+    "    lines <- withCallingHandlers(",
+    "      tryCatch(readLines(request, warn=FALSE), error=function(e) {",
+    "        if (file.exists(request)) {",
+    "          last_read_error <<- paste0('could not read ', request, ' (still exists): ',",
+    "            paste(c(read_warnings, conditionMessage(e)), collapse='; '))",
+    "          message(last_read_error)",
+    "        }",
+    "        NULL",
+    "      }),",
+    "      warning=function(w) {",
+    "        read_warnings <<- c(read_warnings, conditionMessage(w))",
+    "        invokeRestart('muffleWarning')",
+    "      })",
     "    if (is.null(lines)) next",
     "    if (length(lines) != 5L || lines[[1L]] != 'vscode-r-sess-consent-v1' ||",
     "        lines[[2L]] != id) stop('bad request')",
@@ -452,7 +468,8 @@ writeLines(
     "  }",
     "  Sys.sleep(0.025)",
     "}",
-    "if (length(ids) != count) stop('timed out waiting for consent requests')",
+    "if (length(ids) != count) stop(paste0('timed out waiting for consent requests',",
+    "  if (nzchar(last_read_error)) paste0('; last read failure: ', last_read_error) else ''))",
     "writeLines(ids, log)",
     "writeLines(identities, identity_log)",
     "writeLines('ok', status_log)",
@@ -790,11 +807,27 @@ start_consent_agent <- function(
   list(log = log, identity_log = identity_log, status = status, stdout = stdout, stderr = stderr)
 }
 
-wait_for_agent <- function(paths, count = 1L) {
-  wait_for_file(paths$status, 10, "consent-agent completion")
+# `requesters` are the children whose requests the agent answers; their output
+# tells an explicit answer from a request that timed out without one.
+wait_for_agent <- function(paths, count = 1L, requesters = list()) {
+  output <- function() {
+    logs <- c(
+      "agent output:",
+      read_child_logs(paths),
+      unlist(lapply(requesters, function(child) c("requester output:", read_child_logs(child))))
+    )
+    paste(logs, collapse = "\n")
+  }
+  deadline <- Sys.time() + 10
+  while (!file.exists(paths$status) && Sys.time() < deadline) {
+    Sys.sleep(0.01)
+  }
+  if (!file.exists(paths$status)) {
+    stop(paste("Timed out waiting for consent-agent completion;", output()))
+  }
   result <- readLines(paths$status, warn = FALSE)
   if (!identical(result, "ok")) {
-    stop(paste("Consent agent failed:", paste(result, collapse = " ")))
+    stop(paste("Consent agent failed:", paste(result, collapse = " "), output(), sep = "\n"))
   }
   ids <- readLines(paths$log, warn = FALSE)
   identities <- readLines(paths$identity_log, warn = FALSE)
@@ -861,6 +894,51 @@ stopifnot(
   identical(scan_ids, c(first_id, second_id)),
   !file.exists(expired_request),
   identical(readLines(scan_reads), "1")
+)
+
+# A request that exists but cannot be opened yet, as Windows can report while
+# another process holds or deletes it, is answered once it becomes readable.
+retry_read_root <- file.path(root, "consent-read-retry")
+retry_read_consent <- file.path(retry_read_root, "consent")
+dir.create(retry_read_consent, recursive = TRUE)
+blocked_id <- strrep("c", 20)
+blocked_request <- file.path(retry_read_consent, paste0(blocked_id, ".request"))
+blocked_response <- file.path(retry_read_consent, paste0(blocked_id, ".response"))
+retry_reads <- file.path(retry_read_root, "blocked-request-reads")
+writeLines(request_lines(blocked_id), blocked_request)
+retry_read_agent <- file.path(retry_read_root, "blocked-agent.R")
+writeLines(
+  c(
+    paste0("blocked <- ", r_literal(blocked_request)),
+    "reads <- 0L",
+    "readLines <- function(con, ...) {",
+    "  if (identical(con, blocked)) {",
+    "    reads <<- reads + 1L",
+    "    if (reads == 1L) {",
+    "      warning('cannot open file: Permission denied')",
+    "      stop('cannot open the connection')",
+    "    }",
+    "  }",
+    "  base::readLines(con, ...)",
+    "}",
+    paste0("source(", r_literal(agent), ")"),
+    paste0("writeLines(c(as.character(reads), last_read_error), ", r_literal(retry_reads), ")")
+  ),
+  retry_read_agent
+)
+retry_read_paths <- start_consent_agent(retry_read_root, "decline", script = retry_read_agent)
+retry_read_ids <- wait_for_agent(retry_read_paths)
+wait_for_file(retry_reads, 5, "consent read retry fixture completion")
+retry_read_result <- readLines(retry_reads)
+stopifnot(
+  identical(retry_read_ids, blocked_id),
+  identical(retry_read_result[[1L]], "2"),
+  grepl(
+    "cannot open file: Permission denied; cannot open the connection",
+    retry_read_result[[2L]],
+    fixed = TRUE
+  ),
+  identical(readLines(blocked_response), "decline")
 )
 
 start_parallel_child <- function(case_root, mode, role, result_file, install_helper = "") {
@@ -995,7 +1073,7 @@ run_parallel_setup <- function(approve) {
   }
   wait_for_child(owner, paste(mode, "role=owner"))
   wait_for_child(follower, paste(mode, "role=follower"))
-  request_ids <- wait_for_agent(agent_paths)
+  request_ids <- wait_for_agent(agent_paths, requesters = list(owner, follower))
   published_requests <- readLines(file.path(case_root, "published-requests"), warn = FALSE)
   stopifnot(length(published_requests) == 1L)
   stopifnot(length(list.files(consent, pattern = "\\.(request|response)$")) == 0L)
@@ -1016,7 +1094,7 @@ run_parallel_setup <- function(approve) {
     third_result <- file.path(case_root, "third-result")
     third <- start_parallel_child(case_root, "parallel_third", "third", third_result)
     wait_for_child(third, "parallel_third role=third after decline")
-    third_id <- wait_for_agent(third_agent)
+    third_id <- wait_for_agent(third_agent, requesters = list(third))
     stopifnot(!identical(third_id, request_ids))
     published_requests <- readLines(file.path(case_root, "published-requests"), warn = FALSE)
     stopifnot(length(published_requests) == 2L)
@@ -1074,7 +1152,7 @@ run_failed_install <- function() {
     failure_helper
   )
   wait_for_child(first, "parallel_failure role=failure-owner")
-  first_id <- wait_for_agent(first_agent)
+  first_id <- wait_for_agent(first_agent, requesters = list(first))
   stopifnot(file.exists(file.path(managed_library, "sess", "DESCRIPTION")))
   stopifnot(identical(
     sess_source_revision(file.path(managed_library, "sess", "DESCRIPTION")),
@@ -1087,7 +1165,7 @@ run_failed_install <- function() {
   retry_result <- file.path(case_root, "retry-result")
   retry <- start_parallel_child(case_root, "parallel_retry", "retry", retry_result)
   wait_for_child(retry, "parallel_retry role=retry after failed setup")
-  retry_id <- wait_for_agent(retry_agent)
+  retry_id <- wait_for_agent(retry_agent, requesters = list(retry))
   stopifnot(!identical(first_id, retry_id))
   stopifnot(length(readLines(request_log, warn = FALSE)) == 2L)
   stopifnot(file.exists(file.path(managed_library, "sess", "DESCRIPTION")))
