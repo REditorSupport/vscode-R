@@ -57,6 +57,11 @@ export default defineConfig([
 		...common,
 		label: 'interactive-integration',
 		files: 'out/test/suite/interactiveEditor.test.js',
+		// The tests share R sessions and their notebooks. Mocha does not stop
+		// the body of a test that timed out, so a later test would run while
+		// it still changes them, and a failure can leave them changed. Stop at
+		// the first failure; the failed test's and suite's teardowns still run.
+		mocha: { ...common.mocha, bail: true },
 		launchArgs: testProfile('interactive-tests', true)
 	}
 ]);
