@@ -147,13 +147,29 @@ suite('Interactive real R runtime', function () {
     });
 
     test('streams output before completion and keeps one R environment', async () => {
-        const id = await submit(
-            'answer <- 42; cat("early λ🙂\\n"); Sys.sleep(0.5); cat("late\\n"); answer',
-        );
-        await until(() => text(id).includes('early'));
-        assert.ok(!events.some((event) => event.executionId === id && event.type === 'finished'));
+        // R waits after the early output until the test has seen it, rather
+        // than for a fixed time the test must resume within.
+        const gate = path.join(temporary, `stream-gate-${randomUUID()}`);
+        let id: string;
+        try {
+            id = await submit(`answer <- 42; cat("early λ🙂\\n")
+local({
+    started <- Sys.time()
+    while (!file.exists(${rString(gate)})) {
+        if (difftime(Sys.time(), started, units = "secs") > 30) stop("The test did not open the gate")
+        Sys.sleep(0.02)
+    }
+})
+cat("late\\n"); answer`);
+            await until(() => text(id).includes('early'));
+            assert.ok(
+                !events.some((event) => event.executionId === id && event.type === 'finished'),
+            );
+        } finally {
+            fs.writeFileSync(gate, '');
+        }
         assert.strictEqual((await finished(id)).state, 'success');
-        assert.match(text(id), /early λ🙂/);
+        assert.match(text(id), /early λ🙂[\s\S]*late/);
         assert.match(text(id), /42/);
         const next = await submit('answer + 1');
         await finished(next);
