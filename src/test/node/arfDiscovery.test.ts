@@ -7,13 +7,42 @@ import * as path from 'path';
 import { ArfCommandRunner, discoverArf, probeArfSession } from '../../interactive/arf';
 import { localEndpoint } from '../../interactive/transport';
 
+/** Whether a process with this PID is still running. */
+function running(pid: number): boolean {
+    try {
+        process.kill(pid, 0);
+        return true;
+    } catch (error) {
+        // EPERM: the process exists but belongs to another user.
+        return (error as NodeJS.ErrnoException).code === 'EPERM';
+    }
+}
+
 suite('arf session discovery', function () {
     this.timeout(15000);
     let root: string;
     setup(() => {
         root = fs.mkdtempSync(path.join(os.tmpdir(), 'r-arf-discovery-'));
     });
-    teardown(() => fs.rmSync(root, { recursive: true, force: true }));
+    // CLI fixtures record their PIDs here, as do the processes they start.
+    const processes = (): string => path.join(root, 'processes');
+    teardown(async () => {
+        // A CLI runs in `root`, which Windows cannot remove until a process
+        // killed at the deadline has exited and released it. POSIX removes it
+        // regardless, and an exited orphan can stay a zombie for a while.
+        const pids =
+            process.platform === 'win32' && fs.existsSync(processes())
+                ? fs.readFileSync(processes(), 'utf8').split('\n').filter(Boolean).map(Number)
+                : [];
+        const deadline = Date.now() + 10000;
+        for (const pid of pids) {
+            while (running(pid)) {
+                assert.ok(Date.now() < deadline, `process ${pid} has not exited`);
+                await new Promise((resolve) => setTimeout(resolve, 50));
+            }
+        }
+        fs.rmSync(root, { recursive: true, force: true });
+    });
 
     // Any existing executable resolves; the runner decides what it prints.
     const command = process.execPath;
@@ -100,7 +129,12 @@ suite('arf session discovery', function () {
 
     // Node runs the script named by its first argument, so `node ipc list`
     // runs `ipc` from the working directory as a stand-in for the arf CLI.
-    const fixture = (source: string): void => fs.writeFileSync(path.join(root, 'ipc'), source);
+    const fixture = (source: string): void =>
+        fs.writeFileSync(
+            path.join(root, 'ipc'),
+            `require("fs").appendFileSync(${JSON.stringify(processes())}, process.pid + "\\n");` +
+                source,
+        );
     const reason = async (): Promise<string> => {
         const discovery = await discoverArf(command, root);
         assert.strictEqual(discovery.available, false);
@@ -138,6 +172,7 @@ suite('arf session discovery', function () {
         fixture(
             `const child = require("child_process").spawn(process.execPath, ["-e", "setTimeout(() => {}, 60000)"], { stdio: "inherit" });` +
                 `require("fs").writeFileSync(${JSON.stringify(pidFile)}, String(child.pid));` +
+                `require("fs").appendFileSync(${JSON.stringify(processes())}, child.pid + "\\n");` +
                 'setTimeout(() => {}, 60000);',
         );
         // Open pipes keep a Node process from exiting, so discovery runs in its own.
