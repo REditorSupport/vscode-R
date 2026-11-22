@@ -247,6 +247,21 @@ export class Arf {
         this.handlerApi = parseHandlerApi(result.session);
         return result.session;
     }
+    /** A separate attach connection that reaches the same arf session as before. */
+    private async verifiedConnection(): Promise<ArfAttachConnection> {
+        const { connection, result } = await ArfAttachConnection.open(this.endpoint!, {
+            subscribe: [],
+            client: { name: 'vscode-R Interactive' },
+            timeout: 5000,
+            maxLineBytes: MAX_ATTACH_LINE_BYTES,
+            onEvent: () => undefined,
+        });
+        if (result.sessionId !== this.sessionId) {
+            connection.close();
+            throw new Error('The arf endpoint now belongs to a different session');
+        }
+        return connection;
+    }
     /** The attach connection, reattaching to the same session if it was lost. */
     private async attached(): Promise<ArfAttachConnection> {
         if (!this.attach || this.attach.closed) {
@@ -398,8 +413,20 @@ export class Arf {
         if (!this.endpoint) {
             throw new StopRefusedError('The arf endpoint is unknown');
         }
+        // Shut down only the adopted arf: a socket path can be bound by another
+        // session while the adopted R is still alive. A new connection is
+        // verified first, so that a failure to reach arf is known to have
+        // sent nothing, as when IPC is stopped while R keeps running.
+        let connection: ArfAttachConnection;
         try {
-            await arfRequest(this.endpoint, 'shutdown', {}, 5000);
+            connection = await this.verifiedConnection();
+        } catch (error) {
+            throw new StopRefusedError(
+                `arf could not receive the shutdown request: ${error instanceof Error ? error.message : String(error)}`,
+            );
+        }
+        try {
+            await connection.request('shutdown', {}, { timeout: 5000 });
         } catch (error) {
             if (error instanceof ArfRpcError && error.code === ARF_METHOD_NOT_FOUND) {
                 throw new StopRefusedError(
@@ -413,6 +440,8 @@ export class Arf {
             }
             // Without an answer, arf may or may not have accepted it.
             throw error;
+        } finally {
+            connection.close();
         }
         // Acceptance only starts shutdown, and running R code may delay it.
         // The process monitor reports a later exit.

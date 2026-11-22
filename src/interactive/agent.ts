@@ -75,6 +75,7 @@ export class SessionAgent {
     private closing?: Promise<void>;
     private stopped = false;
     private stopping = false;
+    private stopRequest?: Promise<void>;
     /** The status that `stopping` masks, which a refused Stop restores. */
     private runtimeStatus: SessionManifest['status'] = 'starting';
     private dispatching = false;
@@ -174,6 +175,9 @@ export class SessionAgent {
                 rename: true,
                 cancelQueued: true,
                 assetStorage: true,
+                // Stop never signals an adopted arf. Clients do not ask an
+                // older agent, which would, to stop an adopted session.
+                adoptedStop: true,
             },
             supervision: config.supervision,
         };
@@ -848,6 +852,11 @@ export class SessionAgent {
                     this.finish(this.journal.executions.get(this.current)!, 'unknown');
                 }
                 this.state('exited');
+                // A Stop whose exit came after its caller left, such as from
+                // Stop Selected, ends the agent as the last client would have.
+                if (this.stopping && !this.clients.size) {
+                    void this.close();
+                }
                 break;
         }
     }
@@ -1018,10 +1027,20 @@ export class SessionAgent {
         this.event('uncertain', { record: this.journal.executions.get(id) }, id, true);
     }
 
-    private async stopWorker(): Promise<void> {
-        if (this.stopping || this.manifest.status === 'exited') {
-            return;
+    /** Overlapping Stop requests share the outcome of the one in flight. */
+    private stopWorker(): Promise<void> {
+        if (this.stopRequest) {
+            return this.stopRequest;
         }
+        if (this.stopping || this.manifest.status === 'exited') {
+            return Promise.resolve();
+        }
+        return (this.stopRequest = this.runStop().finally(() => {
+            this.stopRequest = undefined;
+        }));
+    }
+
+    private async runStop(): Promise<void> {
         this.stopping = true;
         this.state('stopping');
         try {
@@ -1032,8 +1051,9 @@ export class SessionAgent {
                 // including a workspace refresh deferred while stopping.
                 this.stopping = false;
                 this.state(this.runtimeStatus);
-                void this.workspaceRefresh.ensure();
-                void this.pump();
+                void this.workspaceRefresh.ensure().finally(() => {
+                    void this.pump();
+                });
                 throw error;
             }
             this.cancelQueued();

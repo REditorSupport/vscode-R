@@ -22,6 +22,19 @@ export async function runningSessions(candidates: SessionManifest[]): Promise<Se
     return live;
 }
 
+/**
+ * Why Stop must not be asked of this session, if it must not: an agent from
+ * an earlier extension version terminates an adopted arf process on Stop.
+ */
+export function stopUnavailable(manifest: SessionManifest): string | undefined {
+    const adopted =
+        manifest.ownership === 'adopted' ||
+        (!manifest.ownership && manifest.provider === 'arf-existing');
+    return adopted && !manifest.capabilities.adoptedStop
+        ? 'This session is served by an agent from an earlier version of the extension, whose Stop could end arf forcibly, so it is not asked to stop. End R in the terminal or session manager that started arf.'
+        : undefined;
+}
+
 /** Stop the confirmed generation without opening a notebook or taking control from another window. */
 export async function stopSession(manifest: SessionManifest, clientId: string): Promise<void> {
     const client = new AgentClient({ ...manifest }, clientId);
@@ -29,6 +42,10 @@ export async function stopSession(manifest: SessionManifest, clientId: string): 
         await client.connect({ claim: false, timeout: 1500 });
         if (client.manifest.status === 'exited') {
             return;
+        }
+        const unavailable = stopUnavailable(client.manifest);
+        if (unavailable) {
+            throw new Error(unavailable);
         }
         if (!(await client.request<boolean>('claim', {}, 1500))) {
             throw new Error(

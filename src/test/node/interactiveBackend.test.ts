@@ -10,7 +10,14 @@ import { localEndpoint } from '../../interactive/transport';
 import { SessionAgent } from '../../interactive/agent';
 import { AgentClient } from '../../interactive/client';
 import { readSessionManifest } from '../../interactive/launcher';
-import { AgentConfig, ExecutionRecord, SessionEvent, Submission } from '../../interactive/protocol';
+import { stopSession } from '../../interactive/sessionLifecycle';
+import {
+    AgentConfig,
+    ExecutionRecord,
+    SessionEvent,
+    SessionManifest,
+    Submission,
+} from '../../interactive/protocol';
 import {
     BackendEvent,
     ClientReply,
@@ -535,6 +542,84 @@ suite('Interactive backend contract', function () {
         await stop;
         await until(() => inspections > before);
     });
+    test('an adopted session served by an older agent is not asked to stop', async () => {
+        // An agent from an earlier extension version terminated an adopted arf
+        // on Stop and does not advertise that it no longer does.
+        const manifest = (agent as unknown as { manifest: SessionManifest }).manifest;
+        manifest.ownership = 'adopted';
+        manifest.provider = 'arf-existing';
+        delete manifest.capabilities.adoptedStop;
+        let stops = 0;
+        backend.stopResult = () => {
+            stops++;
+            return Promise.resolve();
+        };
+        await assert.rejects(
+            stopSession(manifest, client.clientId),
+            /earlier version of the extension.*End R in the terminal/,
+        );
+        assert.strictEqual(stops, 0);
+        manifest.capabilities.adoptedStop = true;
+        backend.stopResult = () => {
+            stops++;
+            backend.emit({ type: 'exit', code: 0 });
+            return Promise.resolve();
+        };
+        await stopSession(manifest, client.clientId);
+        assert.strictEqual(stops, 1);
+    });
+    test('overlapping Stop requests each receive the outcome of the one in flight', async () => {
+        let refuse!: () => void;
+        let stops = 0;
+        backend.stopResult = () => {
+            stops++;
+            return new Promise<void>((_resolve, reject) => {
+                refuse = () => reject(new StopRefusedError('End R in its terminal'));
+            });
+        };
+        const first = assert.rejects(client.request('stop'), /End R in its terminal/);
+        await until(() => refuse !== undefined);
+        const second = assert.rejects(client.request('stop'), /End R in its terminal/);
+        // The agent has received the second Stop once it answers a later request.
+        await client.request('heartbeat');
+        refuse();
+        await Promise.all([first, second]);
+        assert.strictEqual(stops, 1);
+    });
+    test('a refused Stop reads the workspace before it dispatches the next queued cell', async () => {
+        const running = await submit(),
+            queued = await submit();
+        backend.emit({ type: 'started', executionId: running });
+        const dispatchedAtInspection: number[] = [];
+        backend.inspectResult = () => {
+            dispatchedAtInspection.push(backend.submissions.length);
+            return Promise.resolve({ marker: dispatchedAtInspection.length });
+        };
+        let refuse!: () => void;
+        backend.stopResult = () =>
+            new Promise<void>((_resolve, reject) => {
+                refuse = () => reject(new StopRefusedError('End R in its terminal'));
+            });
+        const stop = assert.rejects(client.request('stop'), /End R in its terminal/);
+        await until(() => refuse !== undefined);
+        backend.emit({ type: 'finished', executionId: running, state: 'success' });
+        // The refusal arrives after the completion has been handled.
+        await new Promise((resolve) => setTimeout(resolve, 50));
+        assert.strictEqual(dispatchedAtInspection.length, 0);
+        refuse();
+        await stop;
+        await until(() => backend.submissions.length === 2);
+        assert.strictEqual(backend.submissions[1].id, queued);
+        assert.ok(dispatchedAtInspection.includes(1), JSON.stringify(dispatchedAtInspection));
+    });
+    test('an agent whose stopped runtime exits after every client left shuts down', async () => {
+        backend.stopResult = () => Promise.reject(new Error('accepted but has not exited yet'));
+        await assert.rejects(client.request('stop'), /has not exited yet/);
+        client.close();
+        await new Promise((resolve) => setTimeout(resolve, 50));
+        backend.emit({ type: 'exit', code: 0 });
+        await until(() => (agent as unknown as { stopped: boolean }).stopped);
+    });
     test('a Stop that fails without refusing keeps stopping and cancels the queue', async () => {
         const running = await submit(),
             queued = await submit();
@@ -730,11 +815,15 @@ suite('Interactive backend contract', function () {
     ): Promise<{
         endpoint: string;
         calls: Record<string, unknown>[];
+        /** Methods requested over HTTP and, prefixed with `attach:`, over attach connections. */
         methods: string[];
+        /** Serve another arf from now on, as a socket path reused by a new session would. */
+        replace(sessionId: string): void;
         close(): Promise<void>;
     }> {
         const calls: Record<string, unknown>[] = [];
         const methods: string[] = [];
+        let sessionId = 'fake';
         const http = createServer((request, response) => {
             let body = '';
             request.on('data', (chunk: Buffer) => {
@@ -761,7 +850,7 @@ suite('Interactive backend contract', function () {
                     socket.resume();
                     return;
                 }
-                const answer = (message: Record<string, unknown>): void => {
+                const reply = (message: Record<string, unknown>): void => {
                     if (message.method === 'attach') {
                         socket.write(
                             JSON.stringify({
@@ -771,7 +860,7 @@ suite('Interactive backend contract', function () {
                                     connection_id: 1,
                                     api_version: 1,
                                     capabilities: ['events', 'call_execution_timeout'],
-                                    session_id: 'fake',
+                                    session_id: sessionId,
                                     session: {
                                         arf_version: '0.7.2',
                                         capabilities: ['call_execution_timeout'],
@@ -794,6 +883,16 @@ suite('Interactive backend contract', function () {
                                 },
                             }) + '\n',
                         );
+                    } else {
+                        const method = String(message.method);
+                        methods.push(`attach:${method}`);
+                        socket.write(
+                            JSON.stringify({
+                                jsonrpc: '2.0',
+                                id: message.id,
+                                ...(answer?.(method) ?? { result: { status: 'ok' } }),
+                            }) + '\n',
+                        );
                     }
                 };
                 let buffer = '';
@@ -801,7 +900,7 @@ suite('Interactive backend contract', function () {
                     buffer += data.toString();
                     let newline: number;
                     while ((newline = buffer.indexOf('\n')) >= 0) {
-                        answer(JSON.parse(buffer.slice(0, newline)) as Record<string, unknown>);
+                        reply(JSON.parse(buffer.slice(0, newline)) as Record<string, unknown>);
                         buffer = buffer.slice(newline + 1);
                     }
                 };
@@ -817,6 +916,10 @@ suite('Interactive backend contract', function () {
             endpoint,
             calls,
             methods,
+            replace: (id) => {
+                sessionId = id;
+                sockets.forEach((socket) => socket.destroy());
+            },
             close: async () => {
                 sockets.forEach((socket) => socket.destroy());
                 http.closeAllConnections();
@@ -831,6 +934,7 @@ suite('Interactive backend contract', function () {
         answer?: (method: string) => Record<string, unknown> | undefined,
     ): Promise<{
         adapter: Arf;
+        arf: Awaited<ReturnType<typeof fakeAttachedArf>>;
         calls: Record<string, unknown>[];
         methods: string[];
         close(): Promise<void>;
@@ -849,6 +953,7 @@ suite('Interactive backend contract', function () {
         await adapter.bootstrap('bootstrap');
         return {
             adapter,
+            arf,
             calls: arf.calls,
             methods: arf.methods,
             close: async () => {
@@ -1059,10 +1164,47 @@ suite('Interactive backend contract', function () {
                     /terminal that started arf/.test(error.message),
             );
             await assert.rejects(session.adapter.stop(true), StopRefusedError);
-            assert.strictEqual(session.methods.filter((method) => method === 'shutdown').length, 1);
+            assert.strictEqual(
+                session.methods.filter((method) => method === 'attach:shutdown').length,
+                1,
+            );
             assert.ok(runtime.alive());
             // The same connection still evaluates after the refusal.
             await session.adapter.dispatch({ id: randomUUID(), code: 'still_running()' });
+            assert.ok(runtime.alive());
+        } finally {
+            runtime.end();
+            await session?.close();
+        }
+    });
+    test('Stop does not shut down another arf that now serves the adopted socket path', async () => {
+        const runtime = await standIn();
+        let session: Awaited<ReturnType<typeof adopt>> | undefined;
+        try {
+            session = await adopt({});
+            session.adapter.process.setPid(runtime.pid);
+            session.arf.replace('another arf');
+            await assert.rejects(
+                session.adapter.stop(),
+                (error: unknown) =>
+                    error instanceof StopRefusedError && /different session/.test(error.message),
+            );
+            assert.ok(!session.methods.includes('attach:shutdown'));
+            assert.ok(runtime.alive());
+        } finally {
+            runtime.end();
+            await session?.close();
+        }
+    });
+    test('Stop that cannot reach arf is refused, as nothing was sent', async () => {
+        const runtime = await standIn();
+        let session: Awaited<ReturnType<typeof adopt>> | undefined;
+        try {
+            session = await adopt({});
+            session.adapter.process.setPid(runtime.pid);
+            // As after `:ipc stop`: R keeps running without an IPC server.
+            await session.arf.close();
+            await assert.rejects(session.adapter.stop(), StopRefusedError);
             assert.ok(runtime.alive());
         } finally {
             runtime.end();

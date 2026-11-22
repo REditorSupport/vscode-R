@@ -57,7 +57,7 @@ import { tableColumnAlignment, tableDisplayValue, tableSnapshotSummary } from '.
 import { HistoryPage, searchHistory } from './history';
 import { readExecutionRecordsAsync, readPreviousJournalAsync } from './journal';
 import { sessionAge, sessionPresentation } from './sessionPresentation';
-import { runningSessions, stopSession } from './sessionLifecycle';
+import { runningSessions, stopSession, stopUnavailable } from './sessionLifecycle';
 import { InteractiveInputFeatures } from './inputFeatures';
 
 interface InteractiveView {
@@ -2924,6 +2924,10 @@ export class InteractiveManager
     }
 
     private async stop(view: InteractiveView): Promise<void> {
+        const unavailable = stopUnavailable(view.client.manifest);
+        if (unavailable) {
+            throw new Error(unavailable);
+        }
         const answer = await vscode.window.showWarningMessage(
             `Stop R session “${view.client.manifest.label}”? Its in-memory objects will be lost.`,
             { modal: true },
