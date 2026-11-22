@@ -432,7 +432,7 @@ writeLines(
     "  if (!is.null(inherited)) stop('child reused the parent startup context')",
     "}",
     "ids <- character(); identities <- character(); deadline <- Sys.time() + 30",
-    "last_read_error <- ''",
+    "last_read_error <- ''; published_read_error <- ''",
     "while (length(ids) < count && Sys.time() < deadline) {",
     "  requests <- list.files(directory, pattern='\\\\.request$', full.names=TRUE)",
     "  for (request in requests) {",
@@ -444,10 +444,21 @@ writeLines(
     "    read_warnings <- character()",
     "    lines <- withCallingHandlers(",
     "      tryCatch(readLines(request, warn=FALSE), error=function(e) {",
-    "        if (file.exists(request)) {",
-    "          last_read_error <<- paste0('could not read ', request, ' (still exists): ',",
-    "            paste(c(read_warnings, conditionMessage(e)), collapse='; '))",
-    "          message(last_read_error)",
+    "        reason <- paste0('could not read ', request, ' (still exists): ',",
+    "          paste(c(read_warnings, conditionMessage(e)), collapse='; '))",
+    "        if (!file.exists(request)) return(NULL)",
+    "        # Log a repeated failure once rather than on every poll.",
+    "        if (!identical(reason, last_read_error)) message(reason)",
+    "        last_read_error <<- reason",
+    "        # Publish it for a parent that stops waiting before this agent's",
+    "        # deadline, and try again on the next poll if that fails.",
+    "        if (!identical(reason, published_read_error)) {",
+    "          published <- tempfile(tmpdir=dirname(status_log))",
+    "          renamed <- tryCatch({",
+    "            writeLines(reason, published)",
+    "            file.rename(published, paste0(status_log, '.read-error'))",
+    "          }, error=function(e) FALSE, warning=function(w) FALSE)",
+    "          if (isTRUE(renamed)) published_read_error <<- reason else unlink(published)",
     "        }",
     "        NULL",
     "      }),",
@@ -491,6 +502,42 @@ read_child_logs <- function(paths) {
     ))
   }
   c(read_log(paths$stdout), read_log(paths$stderr))
+}
+# The agent publishes each read failure next to its status as it happens, so
+# a parent that stops waiting before the agent's own deadline can report it.
+agent_read_error <- function(status) {
+  path <- paste0(status, ".read-error")
+  if (!file.exists(path)) {
+    return(character())
+  }
+  suppressWarnings(tryCatch(
+    readLines(path, warn = FALSE),
+    error = function(e) paste("could not read", path)
+  ))
+}
+# Rscript truncates a long error message, so the subprocess logs go to stderr
+# and the error itself stays short. `requesters` are the children whose
+# requests the agent answers; their output can show where a request failed or
+# stalled.
+consent_agent_failure <- function(message, paths, requesters = list(), timed_out = FALSE) {
+  write_logs <- function(label, child) {
+    cat(
+      paste0(label, " output:\n"),
+      paste0(read_child_logs(child), "\n"),
+      sep = "",
+      file = stderr()
+    )
+  }
+  write_logs("consent agent", paths)
+  for (child in requesters) {
+    write_logs("requester", child)
+  }
+  read_error <- if (timed_out) agent_read_error(paths$status) else character()
+  if (length(read_error)) {
+    cat("last consent read failure:\n", paste0(read_error, "\n"), sep = "", file = stderr())
+    message <- paste0(message, "; last read failure: ", paste(read_error, collapse = " "))
+  }
+  stop(message, call. = FALSE)
 }
 run_case <- function(mode) {
   case_root <- file.path(root, mode)
@@ -616,8 +663,8 @@ run_case <- function(mode) {
         release_marker
       )),
       wait = FALSE,
-      stdout = FALSE,
-      stderr = FALSE
+      stdout = file.path(case_root, "consent-agent-stdout"),
+      stderr = file.path(case_root, "consent-agent-stderr")
     )
   }
   flags <- if (startup) {
@@ -709,16 +756,28 @@ run_case <- function(mode) {
   }
   if (mode %in% consent_modes) {
     status_path <- file.path(case_root, "consent-agent-status")
+    agent_paths <- list(
+      status = status_path,
+      stdout = file.path(case_root, "consent-agent-stdout"),
+      stderr = file.path(case_root, "consent-agent-stderr")
+    )
     deadline <- Sys.time() + 5
     while (!file.exists(status_path) && Sys.time() < deadline) {
       Sys.sleep(0.01)
     }
     if (!file.exists(status_path)) {
-      stop(paste("consent agent did not finish:", mode))
+      consent_agent_failure(
+        paste("consent agent did not finish:", mode),
+        agent_paths,
+        timed_out = TRUE
+      )
     }
     agent_status <- readLines(status_path, warn = FALSE)
     if (!identical(agent_status, "ok")) {
-      stop(paste("consent agent failed in", mode, ":", paste(agent_status, collapse = " ")))
+      consent_agent_failure(
+        paste("consent agent failed in", mode, ":", paste(agent_status, collapse = " ")),
+        agent_paths
+      )
     }
     log_path <- file.path(case_root, "consent-ids")
     ids <- readLines(log_path, warn = FALSE)
@@ -807,27 +866,26 @@ start_consent_agent <- function(
   list(log = log, identity_log = identity_log, status = status, stdout = stdout, stderr = stderr)
 }
 
-# `requesters` are the children whose requests the agent answers. Their output
-# is included because it can show where a request failed or stalled.
-wait_for_agent <- function(paths, count = 1L, requesters = list()) {
-  output <- function() {
-    logs <- c(
-      "agent output:",
-      read_child_logs(paths),
-      unlist(lapply(requesters, function(child) c("requester output:", read_child_logs(child))))
-    )
-    paste(logs, collapse = "\n")
-  }
-  deadline <- Sys.time() + 10
+wait_for_agent <- function(paths, count = 1L, requesters = list(), seconds = 10) {
+  deadline <- Sys.time() + seconds
   while (!file.exists(paths$status) && Sys.time() < deadline) {
     Sys.sleep(0.01)
   }
   if (!file.exists(paths$status)) {
-    stop(paste("Timed out waiting for consent-agent completion;", output()))
+    consent_agent_failure(
+      "Timed out waiting for consent-agent completion",
+      paths,
+      requesters,
+      timed_out = TRUE
+    )
   }
   result <- readLines(paths$status, warn = FALSE)
   if (!identical(result, "ok")) {
-    stop(paste("Consent agent failed:", paste(result, collapse = " "), output(), sep = "\n"))
+    consent_agent_failure(
+      paste("Consent agent failed:", paste(result, collapse = " ")),
+      paths,
+      requesters
+    )
   }
   ids <- readLines(paths$log, warn = FALSE)
   identities <- readLines(paths$identity_log, warn = FALSE)
@@ -896,8 +954,9 @@ stopifnot(
   identical(readLines(scan_reads), "1")
 )
 
-# A request that exists but cannot be opened yet, as Windows can report while
-# another process holds or deletes it, is answered once it becomes readable.
+# A request that exists but cannot be opened, as Windows can report while
+# another process holds or deletes it, is retried until it becomes readable.
+# While it cannot be read, a parent that stops waiting reports the reason.
 retry_read_root <- file.path(root, "consent-read-retry")
 retry_read_consent <- file.path(retry_read_root, "consent")
 dir.create(retry_read_consent, recursive = TRUE)
@@ -905,16 +964,18 @@ blocked_id <- strrep("c", 20)
 blocked_request <- file.path(retry_read_consent, paste0(blocked_id, ".request"))
 blocked_response <- file.path(retry_read_consent, paste0(blocked_id, ".response"))
 retry_reads <- file.path(retry_read_root, "blocked-request-reads")
+retry_release <- file.path(retry_read_root, "release-blocked-request")
 writeLines(request_lines(blocked_id), blocked_request)
 retry_read_agent <- file.path(retry_read_root, "blocked-agent.R")
 writeLines(
   c(
     paste0("blocked <- ", r_literal(blocked_request)),
+    paste0("release <- ", r_literal(retry_release)),
     "reads <- 0L",
     "readLines <- function(con, ...) {",
     "  if (identical(con, blocked)) {",
     "    reads <<- reads + 1L",
-    "    if (reads == 1L) {",
+    "    if (!file.exists(release)) {",
     "      warning('cannot open file: Permission denied')",
     "      stop('cannot open the connection')",
     "    }",
@@ -929,18 +990,64 @@ writeLines(
   retry_read_agent
 )
 retry_read_paths <- start_consent_agent(retry_read_root, "decline", script = retry_read_agent)
+wait_for_file(paste0(retry_read_paths$status, ".read-error"), 10, "published consent read failure")
+reported_logs <- textConnection("reported_log_lines", "w", local = TRUE)
+sink(reported_logs, type = "message")
+reported <- tryCatch(wait_for_agent(retry_read_paths, seconds = 0), error = identity)
+sink(type = "message")
+close(reported_logs)
+stopifnot(
+  inherits(reported, "error"),
+  grepl(
+    "last read failure: could not read .*cannot open file: Permission denied; cannot open the connection",
+    conditionMessage(reported)
+  ),
+  any(reported_log_lines == "consent agent output:")
+)
+invisible(file.create(retry_release))
 retry_read_ids <- wait_for_agent(retry_read_paths)
 wait_for_file(retry_reads, 5, "consent read retry fixture completion")
 retry_read_result <- readLines(retry_reads)
 stopifnot(
   identical(retry_read_ids, blocked_id),
-  identical(retry_read_result[[1L]], "2"),
+  as.integer(retry_read_result[[1L]]) >= 2L,
   grepl(
     "cannot open file: Permission denied; cannot open the connection",
     retry_read_result[[2L]],
     fixed = TRUE
   ),
   identical(readLines(blocked_response), "decline")
+)
+
+# A long agent log does not hide the requester output.
+log_check_root <- file.path(root, "consent-failure-logs")
+dir.create(log_check_root)
+log_check_paths <- function(name) {
+  list(
+    status = file.path(log_check_root, paste0(name, "-status")),
+    stdout = file.path(log_check_root, paste0(name, "-stdout")),
+    stderr = file.path(log_check_root, paste0(name, "-stderr"))
+  )
+}
+log_check_agent <- log_check_paths("agent")
+log_check_requester <- log_check_paths("requester")
+writeLines(sprintf("agent line %d %s", 1:60, strrep("x", 100)), log_check_agent$stderr)
+writeLines(character(), log_check_agent$stdout)
+writeLines("distinctive requester line", log_check_requester$stderr)
+writeLines(character(), log_check_requester$stdout)
+writeLines("error: injected", log_check_agent$status)
+reported_logs <- textConnection("reported_log_lines", "w", local = TRUE)
+sink(reported_logs, type = "message")
+reported <- tryCatch(
+  consent_agent_failure("injected failure", log_check_agent, list(log_check_requester)),
+  error = identity
+)
+sink(type = "message")
+close(reported_logs)
+stopifnot(
+  identical(conditionMessage(reported), "injected failure"),
+  any(reported_log_lines == sprintf("agent line 60 %s", strrep("x", 100))),
+  any(reported_log_lines == "distinctive requester line")
 )
 
 start_parallel_child <- function(case_root, mode, role, result_file, install_helper = "") {
