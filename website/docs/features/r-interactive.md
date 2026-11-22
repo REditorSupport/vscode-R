@@ -8,7 +8,7 @@ R Interactive was introduced in vscode-R 3.2.0 ([PR #1805](https://github.com/RE
 
 ## Requirements and setup
 
-Use **VS Code 1.101.0 or newer**. R Interactive supports Linux, macOS, and Windows. On Windows, [connecting to an existing arf session](#connect-to-an-existing-arf-session) is not yet supported. Existing R terminal workflows remain available.
+Use **VS Code 1.101.0 or newer**. R Interactive supports Linux, macOS, and Windows, including [connecting to an existing arf session](#connect-to-an-existing-arf-session). Existing R terminal workflows remain available.
 
 For Remote SSH, install this extension **on the remote host**. R, its packages, optional executables, and session storage must be available on that host. For local use, the same requirements apply to your computer.
 

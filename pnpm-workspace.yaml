@@ -8,3 +8,6 @@ overrides:
 allowBuilds:
   '@vscode/vsce-sign': false
   esbuild: true
+  # koffi's install script provides the native library that @microsoft/tui-test
+  # uses for the pseudo-terminal in the interactive arf runtime test.
+  koffi: true

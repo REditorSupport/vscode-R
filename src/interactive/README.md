@@ -130,7 +130,8 @@ Both providers report notebook stdin/debugger support as unavailable: arf IPC
 R terminals for `readline`, `scan`, and debugger interaction. arf IPC is
 experimental; the integration requires arf 0.7.2-rc.1 or later and is tested with
 the version pinned in `src/test/node/mise.toml`. Managed sessions also support
-Windows with detached supervision; existing-arf discovery/adoption remains Unix-only.
+Windows with detached supervision, and existing arf sessions are discovered and
+adopted on every platform.
 
 [SessGraphics](backends/sessGraphics.ts) owns jgd negotiation, its font-metrics worker, plot attribution/coalescing, SVG production, and resize transport. It emits display payloads with stable identities. The agent stores assets and journals references. Static graphics remains available without jgd; another backend can supply SVG/PNG directly.
 
