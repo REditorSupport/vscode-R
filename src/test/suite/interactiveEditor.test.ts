@@ -5441,7 +5441,7 @@ par(mfrow=c(1,1))`,
         // once found, since the first one's metadata is reset later.
         const ids: string[] = [];
         const notebooks: vscode.NotebookDocument[] = [];
-        const diagnostics = new FailureDiagnostics('Stale saved URI', () => ({
+        const sessionState = () => ({
             sessions: ids.map((id) => ({
                 id,
                 status: temporary.find(({ manifest }) => manifest.id === id)?.manifest.status,
@@ -5455,6 +5455,16 @@ par(mfrow=c(1,1))`,
                 session: (doc.metadata.rSessionId as string | undefined) ?? null,
             })),
             activeNotebook: vscode.window.activeNotebookEditor?.notebook.uri.toString() ?? null,
+        });
+        // The cleanup detaches the sessions, which deletes their saved URIs,
+        // and closes their notebooks, so the state is also saved when the body
+        // throws, before the cleanup. After a Mocha timeout, which does not
+        // reject the pending step, only the state at the report is available.
+        // The stages show where the test or its cleanup stopped.
+        let stateAtFailure: ReturnType<typeof sessionState> | undefined;
+        const diagnostics = new FailureDiagnostics('Stale saved URI', () => ({
+            atFailure: stateAtFailure ?? null,
+            atReport: sessionState(),
         }));
         testDiagnostics = diagnostics;
         // Teardown reports the latest stages once, so that a cleanup step that
@@ -5514,6 +5524,13 @@ par(mfrow=c(1,1))`,
                 saved.get(temporary[0].manifest.id)?.notebookUri,
                 saved.get(temporary[1].manifest.id)?.notebookUri,
             );
+        } catch (error) {
+            try {
+                stateAtFailure = sessionState();
+            } catch {
+                // The diagnostics must not replace the failure.
+            }
+            throw error;
         } finally {
             for (const [i, { agent, manifest }] of temporary.entries()) {
                 await step(`cleanup ${i}: detach`, () =>
