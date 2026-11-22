@@ -1,4 +1,5 @@
 import * as assert from 'assert';
+import { createHash } from 'crypto';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as net from 'net';
@@ -33,9 +34,77 @@ let diagnosticMessages: Array<{
     href?: string;
 }>;
 
+/** Each panel's details as read just before it was disposed, since a failure is reported after that. */
+let diagnosticPanelDetails: Map<vscode.WebviewPanel, unknown>;
+
+/**
+ * A fixture script expression for the report of what the page received: the
+ * generation of the injected script, the theme colors of VS Code's default
+ * styles for text and code, and, for each stylesheet link, the response status
+ * of its request, whether it produced a stylesheet, and the colors its body and
+ * code rules declare. Chromium creates a stylesheet even for a failed request,
+ * so a stylesheet does not mean the request succeeded. The status comes from
+ * the page's resource timing, which issues no new request; it is the response
+ * the page received, and is null or 0 when resource timing does not expose it.
+ * A stylesheet from another origin cannot be read, so only its presence is
+ * known.
+ */
+const pageStylesheetReport = `JSON.stringify({
+    generation: document.querySelector('script[data-generation]')?.dataset.generation ?? null,
+    themeText: getComputedStyle(document.documentElement).getPropertyValue('--vscode-editor-foreground').trim(),
+    themeCode: getComputedStyle(document.documentElement).getPropertyValue('--vscode-textPreformat-foreground').trim(),
+    links: [...document.querySelectorAll('link[rel="stylesheet"]')].map((link) => {
+        let colors = null;
+        try {
+            colors = link.sheet && Object.fromEntries([...link.sheet.cssRules]
+                .filter((rule) => rule.selectorText === 'body' || rule.selectorText === 'code')
+                .map((rule) => [rule.selectorText, rule.style.color]));
+        } catch { colors = 'unreadable'; }
+        return { file: (link.getAttribute('href') ?? '').split(/[?#]/)[0].split('/').pop(),
+            status: performance.getEntriesByName(link.href).at(-1)?.responseStatus ?? null, sheet: !!link.sheet, colors };
+    }),
+})`;
+
+function fileDetails(file: string): unknown {
+    try {
+        const content = fs.readFileSync(file);
+        return {
+            file,
+            bytes: content.length,
+            sha256: createHash('sha256').update(content).digest('hex').slice(0, 16),
+        };
+    } catch (error) {
+        return { file, error: String(error) };
+    }
+}
+
+function panelDetails(panel: vscode.WebviewPanel, index: number): unknown {
+    const html = panel.webview.html;
+    const injectedScript = html.match(/<script\b[^>]*data-generation=[^>]*>/i)?.[0];
+    const entry = [...fixtureViewers.values()]
+        .flatMap((manager) => [...manager.viewers.values()])
+        .find((entry) => entry.panel === panel);
+    return {
+        index,
+        title: panel.title,
+        active: panel.active,
+        visible: panel.visible,
+        injectedScript: injectedScript ?? null,
+        stylesheets: [...html.matchAll(/<link\b[^>]*rel="stylesheet"[^>]*>/gi)].map(
+            ([link]) => link,
+        ),
+        enableScripts: panel.webview.options.enableScripts,
+        localResourceRoots: panel.webview.options.localResourceRoots?.map((uri) => uri.toString()),
+        revision: entry?.revision ?? injectedScript?.match(/data-generation="(\d+)"/)?.[1] ?? null,
+        loading: entry?.loading,
+        loadStatus: entry?.loadStatus,
+    };
+}
+
 function observeWidgetPanel(panel: vscode.WebviewPanel): void {
     const index = diagnosticPanels.push(panel) - 1;
     const messages = diagnosticMessages;
+    const details = diagnosticPanelDetails;
     const listener = panel.webview.onDidReceiveMessage((value: unknown) => {
         const message = value as { message?: unknown; generation?: unknown; href?: unknown } | null;
         if (
@@ -48,12 +117,28 @@ function observeWidgetPanel(panel: vscode.WebviewPanel): void {
             panel: index,
             message: message.message,
             generation: typeof message.generation === 'number' ? message.generation : undefined,
-            href: typeof message.href === 'string' ? message.href.slice(0, 400) : undefined,
+            href: typeof message.href === 'string' ? message.href.slice(0, 1500) : undefined,
         });
+
         if (messages.length > 16) {
             messages.shift();
         }
     });
+    const dispose = panel.dispose.bind(panel);
+    try {
+        panel.dispose = () => {
+            try {
+                if (!details.has(panel)) {
+                    details.set(panel, panelDetails(panel, index));
+                }
+            } catch {
+                // A panel that VS Code already disposed has nothing left to read.
+            }
+            dispose();
+        };
+    } catch {
+        // Without a replaceable dispose, the report has only the live details.
+    }
     panel.onDidDispose(() => {
         listener.dispose();
     });
@@ -62,46 +147,24 @@ function observeWidgetPanel(panel: vscode.WebviewPanel): void {
 function widgetSnapshot(
     panels: vscode.WebviewPanel[],
     messages: typeof diagnosticMessages,
+    details: typeof diagnosticPanelDetails,
 ): unknown {
-    const scriptFile = path.resolve(__dirname, '../../../dist/webviews/webview/index.js');
-    let script: unknown;
-    try {
-        script = { file: scriptFile, bytes: fs.statSync(scriptFile).size };
-    } catch (error) {
-        script = { file: scriptFile, error: String(error) };
-    }
+    const webviewDirectory = path.resolve(__dirname, '../../../dist/webviews/webview');
     return {
-        script,
+        script: fileDetails(path.join(webviewDirectory, 'index.js')),
+        style: fileDetails(path.join(webviewDirectory, 'style.css')),
         fixtureExtensionPath: extensionContext?.extensionPath ?? null,
         activeTab: vscode.window.tabGroups.activeTabGroup.activeTab?.label,
         messages,
         panels: panels.map((panel, index) => {
             try {
-                const injectedScript = panel.webview.html.match(
-                    /<script\b[^>]*data-generation=[^>]*>/i,
-                )?.[0];
-                const entry = [...fixtureViewers.values()]
-                    .flatMap((manager) => [...manager.viewers.values()])
-                    .find((entry) => entry.panel === panel);
+                return panelDetails(panel, index);
+            } catch (error) {
                 return {
                     index,
-                    title: panel.title,
-                    active: panel.active,
-                    visible: panel.visible,
-                    injectedScript: injectedScript ?? null,
-                    enableScripts: panel.webview.options.enableScripts,
-                    localResourceRoots: panel.webview.options.localResourceRoots?.map((uri) =>
-                        uri.toString(),
-                    ),
-                    revision:
-                        entry?.revision ??
-                        injectedScript?.match(/data-generation="(\d+)"/)?.[1] ??
-                        null,
-                    loading: entry?.loading,
-                    loadStatus: entry?.loadStatus,
+                    unavailable: String(error),
+                    beforeDisposal: details.get(panel) ?? null,
                 };
-            } catch (error) {
-                return { index, unavailable: String(error) };
             }
         }),
     };
@@ -157,10 +220,12 @@ suite('HTML widget browser rendering', () => {
     setup(function () {
         const panels: vscode.WebviewPanel[] = [];
         const messages: typeof diagnosticMessages = [];
+        const details: typeof diagnosticPanelDetails = new Map();
         diagnosticPanels = panels;
         diagnosticMessages = messages;
+        diagnosticPanelDetails = details;
         widgetDiagnostics = new FailureDiagnostics(this.currentTest!.fullTitle(), () =>
-            widgetSnapshot(panels, messages),
+            widgetSnapshot(panels, messages, details),
         );
     });
     teardown(async function () {
@@ -1089,7 +1154,8 @@ suite('HTML widget browser rendering', () => {
                             image: String(document.getElementById('widget-image').naturalWidth === 1), fetch: String(fetched),
                             direct: String(!document.getElementById('widget-frame') && !document.getElementById('widget-toolbar')),
                             textColor: getComputedStyle(document.getElementById('markdown-text')).color,
-                            codeColor: getComputedStyle(document.getElementById('markdown-code')).color });
+                            codeColor: getComputedStyle(document.getElementById('markdown-code')).color,
+                            page: ${pageStylesheetReport} });
                         report.href = 'https://widget-test.invalid/${name}?' + params; report.click();
                         if (++reports === 30) clearInterval(timer);
                     }, 100);`,
