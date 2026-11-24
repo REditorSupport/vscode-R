@@ -182,6 +182,15 @@ local({
     error = identity
   )
   stopifnot(inherits(too_old, "error"), !dir.exists(file.path(managed, "jgd")))
+  mirror_error <- tryCatch(
+    tool_library_plan("jgd", "1.0.0", root_path, repos = c(CRAN = "@CRAN@")),
+    error = identity
+  )
+  stopifnot(
+    inherits(mirror_error, "error"),
+    grepl("@CRAN@", conditionMessage(mirror_error), fixed = TRUE),
+    grepl("https://cloud.r-project.org", conditionMessage(mirror_error), fixed = TRUE)
+  )
   frozen_plan <- tool_library_plan("jgd", "1.0.0", root_path, repos = c(CRAN = repo))
   stopifnot(identical(frozen_plan$version, "1.2.0"))
   consent_lines <- .tool_consent_lines(frozen_plan, strrep("a", 32L), "once")

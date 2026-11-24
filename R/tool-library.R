@@ -215,11 +215,18 @@ tool_library_plan <- function(package, minimum_version, root, repos = getOption(
     return(NULL)
   }
   if (!is.character(repos)) {
-    stop("No R package repository is configured for the managed tool library.")
+    stop(
+      "No R package repository is configured for the managed tool library. ",
+      'Set options(repos = c(CRAN = "https://cloud.r-project.org")), then restart the R terminal.'
+    )
   }
   repositories <- repos[!is.na(repos) & nzchar(repos) & repos != "@CRAN@"]
   if (length(repositories) == 0L) {
-    stop("No usable R package repository is configured.")
+    stop(
+      'getOption("repos") is empty or still contains only the "@CRAN@" placeholder. ',
+      "Without a downloadable repository, the installation prompt is not shown. ",
+      'Set options(repos = c(CRAN = "https://cloud.r-project.org")), then restart the R terminal.'
+    )
   }
   package_type <- getOption("pkgType")
   if (identical(package_type, "binary")) {
