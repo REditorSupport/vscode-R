@@ -2,6 +2,7 @@ import * as assert from 'assert';
 import * as os from 'os';
 import * as path from 'path';
 import * as fsp from 'node:fs/promises';
+import fs from 'node:fs';
 import * as sinon from 'sinon';
 import * as vscode from 'vscode';
 import * as extension from '../../extension';
@@ -218,6 +219,88 @@ suite('External Terminal Integration', () => {
         } finally {
             registration.dispose();
             await session.cleanupSession('native-scan-register-race');
+        }
+    });
+
+    test('revival observes a failed startup while a pending record is still being read', async () => {
+        const endpoint = await session.getGlobalPipePath();
+        const discovery = await session.createSessionDiscoveryFile('previous-endpoint');
+        const foreign = await session.createSessionDiscoveryFile('previous-endpoint');
+        const startup = discovery + '.startup';
+        const pid = 55142;
+        const checkedTerminal = deferred<void>();
+        setTerminals([
+            {
+                ...makeTerminal(Promise.resolve(pid)),
+                get creationOptions() {
+                    checkedTerminal.resolve();
+                    return { env: { SESS_DISCOVERY_FILE: discovery } };
+                },
+            } as vscode.Terminal,
+        ]);
+        const status = (state: string) =>
+            [
+                'vscode-r-terminal-startup-v1',
+                'a'.repeat(32),
+                'a'.repeat(16),
+                String(pid),
+                'previous-endpoint',
+                state,
+                '',
+            ].join('\n');
+        async function publish(file: string, state: string): Promise<void> {
+            await fsp.writeFile(file + '.tmp', status(state));
+            await fsp.rename(file + '.tmp', file);
+        }
+        const firstRead = deferred<void>();
+        const resume = deferred<void>();
+        const open = fs.promises.open.bind(fs.promises);
+        let held = false;
+        sandbox.stub(fs.promises, 'open').callsFake(async (...args) => {
+            const handle = await open(...args);
+            if (args[0] === startup && !held) {
+                held = true;
+                const close = handle.close.bind(handle);
+                handle.close = async () => {
+                    await close();
+                    firstRead.resolve();
+                    await resume.promise;
+                };
+            }
+            return handle;
+        });
+        try {
+            // Although the claimed process matches, it explicitly belongs to another file.
+            await publish(foreign + '.startup', 'failed');
+            await checkedTerminal.promise;
+            await publish(startup, 'pending');
+            await firstRead.promise;
+            await publish(startup, 'failed');
+            await waitForValue(() => {
+                const record = JSON.parse(fs.readFileSync(discovery, 'utf8')) as {
+                    endpoint: string;
+                    terminalPid?: number;
+                };
+                return record.endpoint === endpoint && record.terminalPid === pid
+                    ? true
+                    : undefined;
+            });
+            assert.strictEqual(
+                ((await readJson(foreign)) as { endpoint: string }).endpoint,
+                'previous-endpoint',
+            );
+        } finally {
+            resume.resolve();
+            await Promise.all(
+                [
+                    discovery,
+                    startup,
+                    startup + '.tmp',
+                    foreign,
+                    foreign + '.startup',
+                    foreign + '.startup.tmp',
+                ].map((file) => fsp.rm(file, { force: true })),
+            );
         }
     });
 

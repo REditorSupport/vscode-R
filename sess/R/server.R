@@ -18,9 +18,11 @@
 #' @details
 #' When SESS_DISCOVERY_FILE describes the connected endpoint, an unexpected disconnect waits for a
 #' replacement endpoint in that file and reconnects with the same runtime options and session
-#' identity. The optional discovery jgdSocket string updates JGD_SOCKET when the resolved backend
-#' includes jgd and `allow_jgd` is `TRUE`; an empty string clears it, and an omitted field leaves it
-#' unchanged. Set `options(sess.quiet = TRUE)` to suppress the successful connection message.
+#' identity. A managed R terminal that starts before its editor is ready retries its first discovery
+#' connection in the background. A new R process gets its own workspace and session identity. The
+#' optional discovery jgdSocket string updates JGD_SOCKET when the resolved backend includes jgd and
+#' `allow_jgd` is `TRUE`; an empty string clears it, and an omitted field leaves it unchanged. Set
+#' `options(sess.quiet = TRUE)` to suppress the successful connection message.
 #' @export
 connect <- function(
   endpoint = NULL,
@@ -69,21 +71,27 @@ connect <- function(
 
   .sess_env$latest_plot_path <- file.path(.sess_env$tempdir, "sess_plot.png")
 
-  endpoint <- .resolve_endpoint(endpoint)
-  if (!nzchar(endpoint)) {
-    warning("[sess] Connection info not available. Cannot connect to VS Code.")
-    return(invisible(FALSE))
-  }
-
   discovery_file <- Sys.getenv("SESS_DISCOVERY_FILE")
+  registration <- getOption("vscodeR.terminalStartup")
+  managed_startup <- is.null(endpoint) &&
+    !nzchar(Sys.getenv("SESS_ENDPOINT")) &&
+    nzchar(discovery_file) &&
+    is.list(registration) &&
+    identical(registration$pid, Sys.getpid()) &&
+    identical(registration$file, paste0(discovery_file, ".startup")) &&
+    is.function(registration$run)
   # Only follow discovery if it describes this connection, including explicit
   # endpoints from the generated attach script. Never redirect an unrelated client.
   discovery <- if (nzchar(discovery_file)) .read_discovery(discovery_file) else NULL
-  if (!is.null(discovery) && identical(discovery$endpoint, endpoint)) {
+  endpoint <- if (managed_startup) discovery$endpoint %||% "" else .resolve_endpoint(endpoint)
+  if (managed_startup || (!is.null(discovery) && identical(discovery$endpoint, endpoint))) {
     .configure_discovery_jgd(discovery, allow_jgd && plot_backend %in% c("auto", "jgd"))
     .sess_env$reconnect <- list(
       path = discovery_file,
-      endpoint = endpoint,
+      # The first handshake can lose its socket during the attach write or poll.
+      # Until startup succeeds, even the same endpoint is eligible for retry.
+      endpoint = if (managed_startup) NULL else endpoint,
+      startup_run = if (managed_startup) registration$run,
       options = list(
         use_rstudioapi = use_rstudioapi,
         plot_backend = plot_backend,
@@ -93,6 +101,21 @@ connect <- function(
       )
     )
   }
+
+  retry_startup <- function() {
+    if (managed_startup) {
+      message("[sess] Waiting for VS Code to accept the terminal connection.")
+      .schedule_reconnect(.sess_env$reconnect)
+    }
+    invisible(FALSE)
+  }
+  if (!nzchar(endpoint)) {
+    if (!managed_startup) {
+      warning("[sess] Connection info not available. Cannot connect to VS Code.")
+    }
+    return(retry_startup())
+  }
+  discovery_endpoint <- endpoint
 
   # processx uses the \\?\pipe\ namespace on Windows.
   # Normalize \\.\pipe\* paths from Node.js to improve compatibility.
@@ -106,7 +129,7 @@ connect <- function(
   # and the console does not redraw it. Startup and console calls to connect()
   # are followed by the frontend's own prompt.
   print_async_msg <- function(msg) {
-    redraw <- isTRUE(.sess_env$reconnecting) && interactive()
+    redraw <- !is.null(.sess_env$reconnecting) && interactive()
     prompt <- if (redraw) getOption("prompt") else ""
     cat(sprintf("\r%s\n\n%s", msg, prompt))
   }
@@ -115,12 +138,14 @@ connect <- function(
     con <- tryCatch(
       processx::conn_connect_unix_socket(endpoint, encoding = ""),
       error = function(e) {
-        print_async_msg(sprintf("[sess] Failed to connect to IPC endpoint: %s", e$message))
+        if (!managed_startup && !identical(.sess_env$reconnecting, "startup")) {
+          print_async_msg(sprintf("[sess] Failed to connect to IPC endpoint: %s", e$message))
+        }
         NULL
       }
     )
     if (is.null(con)) {
-      return(FALSE)
+      return(retry_startup())
     }
 
     .sess_env$con <- con
@@ -138,15 +163,12 @@ connect <- function(
 
     # Start the polling loop
     poll_connection(.sess_env$transport_generation)
-    TRUE
-  }
-
-  connected <- do_connect()
-
-  if (is.na(use_rstudioapi)) {
-    use_rstudioapi <- TRUE
-  }
-  if (isTRUE(connected) && !is.null(.sess_env$con)) {
+    if (is.null(.sess_env$con)) {
+      return(FALSE)
+    }
+    if (is.na(use_rstudioapi)) {
+      use_rstudioapi <- TRUE
+    }
     tryCatch(
       runtime_start(
         use_rstudioapi = use_rstudioapi,
@@ -180,9 +202,18 @@ connect <- function(
         .sess_env$runtime_start_phase <- NULL
       }
     )
+    if (!is.null(.sess_env$con) && managed_startup) {
+      .sess_env$reconnect$endpoint <- discovery_endpoint
+      .sess_env$reconnect$startup_run <- NULL
+    }
+    invisible(!is.null(.sess_env$con))
   }
-
-  invisible(isTRUE(connected) && !is.null(.sess_env$con))
+  if (managed_startup && !identical(registration$endpoint, discovery_endpoint)) {
+    # The editor replaced discovery before the revived profile reached sess.
+    # Publish readiness for the actual endpoint, superseding the saved attempt.
+    return(.reconnect_with_startup(discovery_endpoint, do_connect))
+  }
+  do_connect()
 }
 
 # Resolve the direct argument, environment variables, then discovery data.
@@ -343,7 +374,8 @@ connect <- function(
 .schedule_reconnect <- function(
   settings,
   generation = .sess_env$transport_generation,
-  schedule = later::later
+  schedule = later::later,
+  delay = 1
 ) {
   if (is.null(settings)) {
     return(invisible(NULL))
@@ -359,8 +391,22 @@ connect <- function(
       ) {
         return(invisible(NULL))
       }
+      registration <- getOption("vscodeR.terminalStartup")
+      if (
+        is.null(settings$endpoint) &&
+          (!is.list(registration) ||
+            !identical(registration$pid, pid) ||
+            !identical(registration$file, paste0(settings$path, ".startup")) ||
+            !identical(registration$run, settings$startup_run))
+      ) {
+        return(invisible(NULL))
+      }
       discovery <- .read_discovery(settings$path)
       endpoint <- discovery$endpoint
+      if (is.null(endpoint) && is.null(settings$endpoint)) {
+        # Wake an editor which started after the discovery file disappeared.
+        .reconnect_with_startup(registration$endpoint, function() FALSE)
+      }
       if (
         is.character(endpoint) &&
           length(endpoint) == 1L &&
@@ -377,7 +423,7 @@ connect <- function(
           discovery,
           isTRUE(allow_jgd) && settings$options$plot_backend %in% c("auto", "jgd")
         )
-        .sess_env$reconnecting <- TRUE
+        .sess_env$reconnecting <- if (is.null(settings$endpoint)) "startup" else TRUE
         tryCatch(
           .reconnect_with_startup(
             endpoint,
@@ -390,6 +436,7 @@ connect <- function(
         )
         if (!is.null(.sess_env$con)) {
           settings$endpoint <- endpoint
+          settings$startup_run <- NULL
           .sess_env$reconnect <- settings
           return(invisible(NULL))
         }
@@ -397,9 +444,10 @@ connect <- function(
         # before scheduling our retry so there is only one pending chain.
         .transport_disconnect(silent = TRUE, preserve_plots = TRUE)
       }
-      .schedule_reconnect(settings, .sess_env$transport_generation, schedule)
+      next_delay <- if (is.null(settings$endpoint)) min(delay * 2, 8) else 1
+      .schedule_reconnect(settings, .sess_env$transport_generation, schedule, next_delay)
     },
-    1
+    delay
   )
   invisible(NULL)
 }

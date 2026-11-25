@@ -458,7 +458,7 @@ const TERMINAL_ATTACH_TIMEOUT = 30000;
 /** Read the bounded status sidecar written by the R startup helper. */
 async function readTerminalStartupRecord(
     filePath: string,
-    token: string,
+    token?: string,
 ): Promise<TerminalStartupRecord | undefined> {
     let file: fs.promises.FileHandle | undefined;
     try {
@@ -909,9 +909,13 @@ export function deploySessionWatcher(extensionPath: string): void {
     console.info(`[deploySessionWatcher] extensionPath: ${extensionPath}`);
     resDir = path.join(extensionPath, 'dist', 'resources');
 
+    const generation = attachmentLifecycleGeneration;
     void getGlobalPipePath()
         .then(async (pipePath) => {
-            await refreshTerminalDiscoveryFiles(pipePath);
+            await Promise.all([
+                watchTerminalStartupRecords(pipePath, generation),
+                refreshTerminalDiscoveryFiles(pipePath),
+            ]);
         })
         .catch((err) => {
             console.error('Failed to initialize global session server', err);
@@ -1240,6 +1244,87 @@ async function findDiscoveryFileForTerminal(terminalPid: number): Promise<string
     }
     candidates.sort((a, b) => b.mtimeMs - a.mtimeMs || a.filePath.localeCompare(b.filePath));
     return candidates[0]?.filePath;
+}
+
+// A full editor restart gives a restored terminal a new process ID and omits
+// its original env from Terminal.creationOptions. R's managed startup helper
+// publishes a new attempt in its original sidecar even before it can attach.
+let terminalStartupWatcher: fs.FSWatcher | undefined;
+
+async function watchTerminalStartupRecords(endpoint: string, generation: number): Promise<void> {
+    const directory = getSessionDiscoveryDir();
+    await fsp.mkdir(directory, { recursive: true });
+    const isCurrent = () =>
+        generation === attachmentLifecycleGeneration && !attachmentLifecycleStopping;
+    if (!isCurrent()) {
+        return;
+    }
+    terminalStartupWatcher?.close();
+    terminalStartupWatcher = fs.watch(directory, { persistent: false }, (_, name) => {
+        if (!name?.endsWith('.json.startup')) {
+            return;
+        }
+        const discovery = path.join(directory, name.slice(0, -'.startup'.length));
+        if (isExtensionDiscoveryPath(discovery)) {
+            // Process every rename: the failed record can arrive while the
+            // previous pending record is still being read.
+            void refreshRevivedTerminal(discovery, endpoint, isCurrent).catch((error) =>
+                console.warn('[session discovery] Could not refresh revived terminal', error),
+            );
+        }
+    });
+    terminalStartupWatcher.on('error', (error) =>
+        console.warn('[session discovery] Could not observe terminal startup', error),
+    );
+}
+
+async function refreshRevivedTerminal(
+    discovery: string,
+    endpoint: string,
+    isCurrent: () => boolean,
+): Promise<void> {
+    const file = discovery + '.startup';
+    const record = await readTerminalStartupRecord(file);
+    // Only an observed failed attempt needs help discovering this host.
+    if (!record || record.status !== 'failed' || !isCurrent()) {
+        return;
+    }
+    if (await pathExists(discovery)) {
+        const saved = (await readJson(discovery)) as Partial<SessionDiscoveryFile>;
+        if (
+            saved.version !== 1 ||
+            saved.endpoint !== record.endpoint ||
+            saved.endpoint === endpoint
+        ) {
+            return;
+        }
+    }
+    const candidate = await findLocalTerminal(String(record.pid));
+    const options = candidate?.terminal.creationOptions as vscode.TerminalOptions | undefined;
+    const envPath = options?.env?.['SESS_DISCOVERY_FILE'];
+    if (
+        !candidate?.isCurrent() ||
+        !isCurrent() ||
+        (envPath !== undefined && envPath !== discovery)
+    ) {
+        return;
+    }
+    const latest = await readTerminalStartupRecord(file, record.token);
+    if (
+        latest?.attemptId !== record.attemptId ||
+        latest.pid !== record.pid ||
+        latest.endpoint !== record.endpoint ||
+        latest.status !== 'failed'
+    ) {
+        return;
+    }
+    await updateTerminalSessionDiscoveryFile(
+        candidate.terminal,
+        discovery,
+        endpoint,
+        Number(candidate.pid),
+        () => isCurrent() && candidate.isCurrent(),
+    );
 }
 
 export async function refreshTerminalDiscoveryFiles(
@@ -1997,6 +2082,8 @@ export async function shutdownSessionWatcher(): Promise<void> {
     nativeTerminalPidWaits.invalidateAll();
     attachmentLifecycleGeneration++;
     attachmentLifecycleStopping = true;
+    terminalStartupWatcher?.close();
+    terminalStartupWatcher = undefined;
     const terminalIntegrationSnapshot = [...terminalIntegrations.values()];
     const shutdownGeneration = attachmentLifecycleGeneration;
     const consentStartup = attachConsentStartup;
