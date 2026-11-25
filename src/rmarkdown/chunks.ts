@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import { config } from '../util';
-import { runChunksInTerm } from '../rTerminal';
+import { runChunksInTerm, runSource } from '../rTerminal';
 
 export function isRDocument(document: vscode.TextDocument) {
     return document.languageId === 'r';
@@ -248,6 +248,18 @@ export async function runCurrentChunk(
     if (currentChunk) {
         await runChunksInTerm([currentChunk.codeRange]);
     }
+}
+
+export function runSourceWithEcho(options?: { runChunkAtCursor?: boolean }): Promise<void> {
+    const editor = vscode.window.activeTextEditor;
+    if (options?.runChunkAtCursor === true && editor && isRDocument(editor.document)) {
+        const line = editor.selection.active.line;
+        const chunk = getCurrentChunk(getChunks(editor.document), line);
+        if (chunk && isWithinChunk(chunk, line)) {
+            return runChunksInTerm([chunk.codeRange]);
+        }
+    }
+    return runSource(true);
 }
 
 export async function runCurrentChunkAndMove(
