@@ -309,6 +309,10 @@ suite('R Terminal', () => {
             assert.strictEqual(options.env['SESS_PLOT_BACKEND'], 'httpgd');
             assert.ok(options.env['R_PROFILE_USER']);
             assert.ok(options.env['R_PROFILE_USER'].endsWith(path.join('R', 'profile.R')));
+            assert.strictEqual(
+                options.env['R_PROFILE_USER_OLD'],
+                process.env.R_PROFILE_USER ?? null,
+            );
             if (typeof discoveryFile !== 'string') {
                 throw new Error('SESS_DISCOVERY_FILE should be a string path');
             }

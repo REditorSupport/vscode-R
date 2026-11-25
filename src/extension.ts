@@ -112,7 +112,7 @@ export async function activate(
         'r.runCommandWithSelectionOrWord': rTerminal.runCommandWithSelectionOrWord,
         'r.runCommandWithEditorPath': rTerminal.runCommandWithEditorPath,
         'r.runCommand': rTerminal.runCommand,
-        'r.runSourcewithEcho': () => rTerminal.runSource(true),
+        'r.runSourcewithEcho': rmarkdown.runSourceWithEcho,
 
         // chunk related
         'r.selectCurrentChunk': rmarkdown.selectCurrentChunk,

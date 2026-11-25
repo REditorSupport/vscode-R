@@ -993,7 +993,7 @@
         "command": "r.runCurrentChunk",
         "key": "Ctrl+shift+enter",
         "mac": "cmd+shift+enter",
-        "when": "editorTextFocus && (editorLangId == 'rmd' || editorLangId == 'r')"
+        "when": "editorTextFocus && editorLangId == 'rmd'"
       },
       {
         "command": "r.runAboveChunks",
@@ -1015,6 +1015,7 @@
       },
       {
         "command": "r.runSourcewithEcho",
+        "args": { "runChunkAtCursor": true },
         "key": "shift+Ctrl+enter",
         "mac": "shift+cmd+enter",
         "when": "editorTextFocus && editorLangId == 'r'"

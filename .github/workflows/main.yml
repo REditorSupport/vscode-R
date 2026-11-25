@@ -74,6 +74,8 @@ jobs:
       - name: Verify managed tool consent
         run: pnpm run test:tool-consent
       - uses: ./.github/actions/prepare-test-runtime
+      - name: Verify terminal profile inheritance
+        run: Rscript --vanilla R/tests/terminal-profile.R
       - name: Verify managed jgd preparation
         run: pnpm run test:prepare-jgd
       - name: Verify managed rstudioapi preparation

@@ -1,12 +1,80 @@
 import * as assert from 'assert';
+import * as sinon from 'sinon';
 import * as vscode from 'vscode';
-import { getChunks, getCurrentChunk } from '../../rmarkdown/chunks';
+import * as executionTarget from '../../interactive/executionTarget';
+import { getChunks, getCurrentChunk, runSourceWithEcho } from '../../rmarkdown/chunks';
 
 suite('R code chunk boundaries', () => {
     async function chunkCode(text: string, language = 'r') {
         const document = await vscode.workspace.openTextDocument({ language, content: text });
         return getChunks(document).map((chunk) => document.getText(chunk.codeRange));
     }
+
+    test('the run shortcut has one binding per editor language', () => {
+        const manifest = vscode.extensions.getExtension('REditorSupport.r')!.packageJSON as {
+            contributes: {
+                keybindings: {
+                    key: string;
+                    mac?: string;
+                    command: string;
+                    when: string;
+                    args?: unknown;
+                }[];
+            };
+        };
+        const normalize = (key: string) => key.toLowerCase().split('+').sort().join('+');
+        for (const platform of ['key', 'mac'] as const) {
+            const shortcut = normalize(platform === 'mac' ? 'cmd+shift+enter' : 'ctrl+shift+enter');
+            const bindings = manifest.contributes.keybindings.filter(
+                (binding) => normalize(binding[platform] ?? binding.key) === shortcut,
+            );
+            assert.strictEqual(bindings.length, 2);
+            assert.deepStrictEqual(Object.fromEntries(bindings.map((b) => [b.command, b.when])), {
+                'r.runCurrentChunk': "editorTextFocus && editorLangId == 'rmd'",
+                'r.runSourcewithEcho': "editorTextFocus && editorLangId == 'r'",
+            });
+            assert.deepStrictEqual(
+                bindings.find((b) => b.command === 'r.runSourcewithEcho')?.args,
+                { runChunkAtCursor: true },
+            );
+        }
+    });
+
+    test('the R shortcut submits only the chunk at the cursor and sources the file outside chunks', async () => {
+        const text = 'outside <- 1\n# %%\ninside <- 2\n# section ----\noutside <- 3\n# %%';
+        const document = await vscode.workspace.openTextDocument({ language: 'r', content: text });
+        const sandbox = sinon.createSandbox();
+        try {
+            let line = 0;
+            sandbox.stub(vscode.window, 'activeTextEditor').get(() => ({
+                document,
+                selection: new vscode.Selection(0, 0, line, 0),
+            }));
+            const submit = sandbox
+                .stub(executionTarget, 'tryInteractiveExecution')
+                .resolves('executed');
+            for (const [cursor, expected] of [
+                [1, 'inside <- 2'],
+                [2, 'inside <- 2'],
+                [0, text],
+                [4, text],
+            ] as const) {
+                line = cursor;
+                await runSourceWithEcho({ runChunkAtCursor: true });
+                assert.strictEqual(submit.callCount, 1);
+                assert.strictEqual(submit.firstCall.args[0], expected);
+                submit.resetHistory();
+            }
+            line = 5;
+            await runSourceWithEcho({ runChunkAtCursor: true });
+            sinon.assert.notCalled(submit);
+            line = 2;
+            await runSourceWithEcho();
+            assert.strictEqual(submit.firstCall.args[0], text);
+        } finally {
+            sandbox.restore();
+        }
+    });
 
     test('includes the final code line without a trailing newline', async () => {
         assert.deepStrictEqual(await chunkCode('# %%\nx <- 1'), ['x <- 1']);
