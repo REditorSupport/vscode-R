@@ -145,7 +145,7 @@ exports.run = async (api) => {
     const extension = vscode.extensions.getExtension('REditorSupport.r');
     let terminalReload;
     const restricted = testCase === 'restricted-workspace';
-    if (!restricted) { assert.ok(extension, 'The development extension must be available'); }
+    if (!restricted) { assert.ok(extension, 'The R extension must be available'); }
     // Give delayed startup activation and workspace searches time to run. The
     // normal suite's forced global activation would hide this regression.
     await pause(3000);
@@ -437,6 +437,17 @@ exports.activate = async () => {
         { stdio: 'inherit', shell: process.platform === 'win32' });
         assert.equal(installed.status, 0, 'Could not install the R syntax dependency');
     }
+    // VS Code force-enables development extensions. Both trust cases use the same
+    // installed runtime and syntax package. Let VS Code build the index for this
+    // directory; the shared extensions.json could already list only r-syntax.
+    const installedExtensions = path.join(root, 'installed-extensions');
+    if (selected.includes('language-r') || selected.includes('restricted-workspace')) {
+        const syntaxPackage = fs.readdirSync(extensions).find((name) => name.startsWith('reditorsupport.r-syntax-'));
+        assert.ok(syntaxPackage, 'The R syntax package must be installed');
+        fs.mkdirSync(installedExtensions);
+        fs.cpSync(path.join(extensions, syntaxPackage), path.join(installedExtensions, syntaxPackage), { recursive: true });
+        fs.symlinkSync(repository, path.join(installedExtensions, 'reditorsupport.r-' + require('../package.json').version), 'junction');
+    }
     let success = false;
     try {
         const reports = [];
@@ -492,17 +503,9 @@ exports.activate = async () => {
                 env.R_LIBS_USER = [library, ...fs.readFileSync(librariesFile, 'utf8').trim().split(/\r?\n/)].join(path.delimiter);
                 env.R_PROFILE_USER = emptyProfile;
             }
-            // Under-development extensions are force-enabled in Restricted Mode.
-            // Exercise VS Code's normal trust decision with an installed runtime.
-            let caseExtensions = extensions;
-            if (installedRuntime) {
-                caseExtensions = path.join(caseRoot, 'extensions');
-                fs.cpSync(extensions, caseExtensions, { recursive: true });
-                fs.symlinkSync(repository, path.join(caseExtensions, 'reditorsupport.r-' + require('../package.json').version), 'junction');
-            }
             const launchArgs = [
                     ...(testCase === 'no-folder' ? [] : [workspace]),
-                    '--user-data-dir', profile, '--extensions-dir', caseExtensions,
+                    '--user-data-dir', profile, '--extensions-dir', installedRuntime ? installedExtensions : extensions,
                     '--disable-renderer-backgrounding', '--disable-background-timer-throttling',
                     '--disable-backgrounding-occluded-windows',
                     // Pty host trace logs show whether reload-time input reached R.
