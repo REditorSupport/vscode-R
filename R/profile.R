@@ -9,13 +9,17 @@ local({
     }
   }
 
-  r_profile <- Sys.getenv("R_PROFILE_USER_OLD")
-  Sys.setenv(R_PROFILE_USER_OLD = "", R_PROFILE_USER = r_profile)
-
-  if (nzchar(r_profile)) {
-    try_source(r_profile)
-  } else {
+  r_profile <- Sys.getenv("R_PROFILE_USER_OLD", unset = NA_character_)
+  Sys.unsetenv("R_PROFILE_USER_OLD")
+  if (is.na(r_profile)) {
+    # Restore normal profile discovery for the project and its child R processes.
+    Sys.unsetenv("R_PROFILE_USER")
     try_source(".Rprofile") || try_source(file.path("~", ".Rprofile"))
+  } else {
+    Sys.setenv(R_PROFILE_USER = r_profile)
+    if (nzchar(r_profile)) {
+      try_source(r_profile)
+    }
   }
 
   invisible()

@@ -321,7 +321,7 @@ export async function makeTerminalOptions(resource?: vscode.Uri): Promise<vscode
             const startupToken = crypto.randomBytes(16).toString('hex');
             const newRprofile = extensionContext.asAbsolutePath(path.join('R', 'profile.R'));
             const env: Record<string, string | null | undefined> = {
-                R_PROFILE_USER_OLD: process.env.R_PROFILE_USER,
+                R_PROFILE_USER_OLD: process.env.R_PROFILE_USER ?? null,
                 R_PROFILE_USER: newRprofile,
                 VSCODE_R_SESS_PKG_PATH: extensionContext.asAbsolutePath(
                     path.join('dist', 'resources', 'sess'),
