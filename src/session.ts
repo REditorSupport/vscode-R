@@ -15,6 +15,7 @@ import { config, readContent, readSessSourceRevision, setContext, UriIcon } from
 import * as rTerminal from './rTerminal';
 import { getProcessAncestors } from './processTree';
 import { TerminalSessionRegistry } from './terminalSessionRegistry';
+import { TerminalStartupMonitor } from './terminalStartupMonitor';
 import { SessionProcessMonitor } from './sessionProcessMonitor';
 import { sessionProcessIdentity } from './sessionIdentity';
 import { NativeTerminalPidWaitRegistry } from './nativeTerminalPidWait';
@@ -905,6 +906,8 @@ export function deploySessionWatcher(extensionPath: string): void {
         attachSessionScriptPath = undefined;
     }
     attachmentLifecycleGeneration++;
+    void terminalStartupWatcher?.dispose();
+    terminalStartupWatcher = undefined;
     attachmentLifecycleStopping = false;
     console.info(`[deploySessionWatcher] extensionPath: ${extensionPath}`);
     resDir = path.join(extensionPath, 'dist', 'resources');
@@ -1249,44 +1252,43 @@ async function findDiscoveryFileForTerminal(terminalPid: number): Promise<string
 // A full editor restart gives a restored terminal a new process ID and omits
 // its original env from Terminal.creationOptions. R's managed startup helper
 // publishes a new attempt in its original sidecar even before it can attach.
-let terminalStartupWatcher: fs.FSWatcher | undefined;
+let terminalStartupWatcher: TerminalStartupMonitor | undefined;
 
 async function watchTerminalStartupRecords(endpoint: string, generation: number): Promise<void> {
-    const directory = getSessionDiscoveryDir();
-    await fsp.mkdir(directory, { recursive: true });
     const isCurrent = () =>
         generation === attachmentLifecycleGeneration && !attachmentLifecycleStopping;
     if (!isCurrent()) {
         return;
     }
-    terminalStartupWatcher?.close();
-    terminalStartupWatcher = fs.watch(directory, { persistent: false }, (_, name) => {
-        if (!name?.endsWith('.json.startup')) {
-            return;
-        }
-        const discovery = path.join(directory, name.slice(0, -'.startup'.length));
-        if (isExtensionDiscoveryPath(discovery)) {
-            // Process every rename: the failed record can arrive while the
-            // previous pending record is still being read.
-            void refreshRevivedTerminal(discovery, endpoint, isCurrent).catch((error) =>
-                console.warn('[session discovery] Could not refresh revived terminal', error),
-            );
-        }
-    });
-    terminalStartupWatcher.on('error', (error) =>
-        console.warn('[session discovery] Could not observe terminal startup', error),
+    terminalStartupWatcher = new TerminalStartupMonitor(
+        getSessionDiscoveryDir(),
+        readTerminalStartupRecord,
+        async (file, record, observedRetry) => {
+            const discovery = file.slice(0, -'.startup'.length);
+            if (!isCurrent() || !isExtensionDiscoveryPath(discovery)) {
+                return;
+            }
+            await refreshRevivedTerminal(discovery, endpoint, isCurrent, record, observedRetry);
+        },
     );
+    await terminalStartupWatcher.start();
 }
 
 async function refreshRevivedTerminal(
     discovery: string,
     endpoint: string,
     isCurrent: () => boolean,
+    record: TerminalStartupRecord,
+    observedRetry: boolean,
 ): Promise<void> {
     const file = discovery + '.startup';
-    const record = await readTerminalStartupRecord(file);
-    // Only an observed failed attempt needs help discovering this host.
-    if (!record || record.status !== 'failed' || !isCurrent()) {
+    if (
+        !window.terminals.some(
+            (term) =>
+                isNativeTerminalEligible(term) &&
+                (observedRetry || terminalDiscoveryPath(term) === discovery),
+        )
+    ) {
         return;
     }
     if (await pathExists(discovery)) {
@@ -1305,7 +1307,7 @@ async function refreshRevivedTerminal(
     if (
         !candidate?.isCurrent() ||
         !isCurrent() ||
-        (envPath !== undefined && envPath !== discovery)
+        (envPath !== discovery && (!observedRetry || envPath !== undefined))
     ) {
         return;
     }
@@ -2082,7 +2084,7 @@ export async function shutdownSessionWatcher(): Promise<void> {
     nativeTerminalPidWaits.invalidateAll();
     attachmentLifecycleGeneration++;
     attachmentLifecycleStopping = true;
-    terminalStartupWatcher?.close();
+    const startupMonitorStopped = terminalStartupWatcher?.dispose();
     terminalStartupWatcher = undefined;
     const terminalIntegrationSnapshot = [...terminalIntegrations.values()];
     const shutdownGeneration = attachmentLifecycleGeneration;
@@ -2140,7 +2142,7 @@ export async function shutdownSessionWatcher(): Promise<void> {
     sessionSelectionRevision++;
     revokeTerminalIntegrationSnapshot(terminalIntegrationSnapshot);
     enqueueSessionConnectionChanges(shutdownChanges);
-    await Promise.allSettled(pendingOperations);
+    await Promise.allSettled([...pendingOperations, startupMonitorStopped]);
     await manualCleanup.catch(() => undefined);
     await consentStartup?.catch(() => undefined);
     await consentService?.stop();
