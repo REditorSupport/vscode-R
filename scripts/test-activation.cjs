@@ -22,9 +22,9 @@ function clearElectronNodeMode(environment) {
 }
 exports.clearElectronNodeMode = clearElectronNodeMode;
 
-async function until(predicate, message) {
-    const deadline = Date.now() + 15000;
-    while (!predicate()) {
+async function until(predicate, message, timeout = 15000) {
+    const deadline = Date.now() + timeout;
+    while (!(await predicate())) {
         assert.ok(Date.now() < deadline, message);
         await pause(50);
     }
@@ -205,14 +205,18 @@ exports.run = async (api) => {
                     await until(() => extension.isActive, 'R file did not activate vscode-R');
                     await until(() => extension.exports.session.getSessionReference(sessionId),
                         `Revived R terminal ${terminalPid} did not attach R process ${pid} through ${discovery}`);
-                    terminal.sendText('revivedTable <- data.frame(x = 1); View(revivedTable); plot(1)');
+                    terminal.sendText('revivedTable <- data.frame(x = 1)');
+                    // The connection is public before the native process lookup selects
+                    // its Workspace. Wait for the editor's session completion to observe
+                    // the object created in this R process.
+                    await until(async () => {
+                        const completions = await vscode.commands.executeCommand('vscode.executeCompletionItemProvider',
+                            document.uri, new vscode.Position(0, 7));
+                        return completions.items.some((item) => item.label === 'revivedTable' && item.detail === '[session]');
+                    }, 'The refreshed Workspace did not contain the revived session object', 30000);
+                    terminal.sendText('View(revivedTable); plot(1)');
                     const hasTab = (label) => vscode.window.tabGroups.all.some((group) => group.tabs.some((tab) => tab.label === label));
                     await until(() => hasTab('revivedTable') && hasTab('R Plot'), 'Data and plot viewers did not open after revival');
-                    await vscode.commands.executeCommand('r.workspaceViewer.refreshEntry');
-                    const completions = await vscode.commands.executeCommand('vscode.executeCompletionItemProvider',
-                        document.uri, new vscode.Position(0, 7));
-                    assert.ok(completions.items.some((item) => item.label === 'revivedTable' && item.detail === '[session]'),
-                        'The refreshed Workspace did not contain the revived session object');
                     terminal.dispose();
                 }
                 break;
@@ -552,20 +556,21 @@ exports.activate = async () => {
             for (const directory of fs.readdirSync(root, { withFileTypes: true })) {
                 if (!directory.isDirectory()) { continue; }
                 const caseRoot = path.join(root, directory.name);
-                if (directory.name === 'terminal-persistent-reload') {
+                const terminalCase = directory.name === 'terminal-persistent-reload' || directory.name === 'terminal-revive';
+                if (terminalCase) {
                     fs.mkdirSync(path.join(artifacts, directory.name), { recursive: true });
                 }
                 for (const file of fs.readdirSync(caseRoot, { withFileTypes: true })) {
                     if (file.name.endsWith('.log')) {
                         fs.copyFileSync(path.join(caseRoot, file.name),
                             path.join(artifacts, `${directory.name}-${file.name}`));
-                    } else if (directory.name === 'terminal-persistent-reload' && file.isFile()) {
+                    } else if (terminalCase && file.isFile()) {
                         // Phase and probe files show how far each window got.
                         fs.copyFileSync(path.join(caseRoot, file.name),
                             path.join(artifacts, directory.name, file.name));
                     }
                 }
-                if (directory.name === 'terminal-persistent-reload') {
+                if (terminalCase) {
                     const logs = path.join(caseRoot, 'profile', 'logs');
                     if (fs.existsSync(logs)) {
                         fs.cpSync(logs, path.join(artifacts, directory.name, 'logs'), { recursive: true });
