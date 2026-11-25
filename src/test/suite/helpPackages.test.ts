@@ -28,12 +28,12 @@ const index = (name: string): HelpFile => ({
 function manager(
     state: Memento,
     getHelpFileForPath: () => Promise<HelpFile | undefined>,
-    start: () => void = () => undefined,
+    watchPackageChanges: () => void = () => undefined,
 ) {
     return new PackageManager({
         rPath: 'R',
         persistentState: state,
-        rHelp: { getHelpFileForPath, helpProvider: { start } } as unknown as RHelp,
+        rHelp: { getHelpFileForPath, watchPackageChanges } as unknown as RHelp,
     });
 }
 
