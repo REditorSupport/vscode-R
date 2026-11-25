@@ -503,6 +503,7 @@ export class RHelp implements api.HelpPanel, vscode.WebviewPanelSerializer<strin
 
     // helper function to get aliases from aliasprovider
     private async getAllAliases(includePreview: boolean = false): Promise<Alias[] | undefined> {
+        this.helpProvider.start();
         const aliases = await doWithProgress(
             () => this.aliasProvider.getAllAliases(),
             vscode.ProgressLocation.Window,

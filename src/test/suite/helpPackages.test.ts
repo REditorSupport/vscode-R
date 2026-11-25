@@ -25,11 +25,15 @@ const index = (name: string): HelpFile => ({
     html: `<table><tr><td><a href="${name}.html">${name}</a></td><td>Description</td></tr></table>`,
 });
 
-function manager(state: Memento, getHelpFileForPath: () => Promise<HelpFile | undefined>) {
+function manager(
+    state: Memento,
+    getHelpFileForPath: () => Promise<HelpFile | undefined>,
+    start: () => void = () => undefined,
+) {
     return new PackageManager({
         rPath: 'R',
         persistentState: state,
-        rHelp: { getHelpFileForPath } as unknown as RHelp,
+        rHelp: { getHelpFileForPath, helpProvider: { start } } as unknown as RHelp,
     });
 }
 
@@ -77,6 +81,21 @@ suite('Help package state and index requests', () => {
         assert.deepStrictEqual(a, b);
         await packages.getTopics('example');
         assert.strictEqual(requests, 1);
+    });
+
+    test('reading a persisted package index starts watching for package changes', async () => {
+        const state = jsonState();
+        await manager(state, () => Promise.resolve(index('cached'))).getTopics('example');
+        let watching = false;
+        const packages = manager(
+            state,
+            () => assert.fail('Expected the cached index'),
+            () => {
+                watching = true;
+            },
+        );
+        assert.ok((await packages.getTopics('example'))?.some((topic) => topic.name === 'cached'));
+        assert.ok(watching);
     });
 
     test('clearing the cache prevents an older pending fetch from restoring stale topics', async () => {

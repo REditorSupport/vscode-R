@@ -383,6 +383,7 @@ export class PackageManager {
     // retrieve and parse an index file
     // (either list of all packages, or documentation entries of a package)
     private async getParsedIndexFile(path: string): Promise<IndexEntry[] | undefined> {
+        this.rHelp.helpProvider.start();
         let indexItems = this.getCachedIndexFile(path);
 
         // only read and parse file if not cached yet
