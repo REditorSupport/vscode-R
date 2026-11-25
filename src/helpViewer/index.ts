@@ -212,7 +212,7 @@ export class RHelp implements api.HelpPanel, vscode.WebviewPanelSerializer<strin
     readonly cwd?: string;
 
     // Provides the content of help pages:
-    readonly helpProvider: HelpProvider;
+    private readonly helpProvider: HelpProvider;
 
     // Provides a list of aliases:
     readonly aliasProvider: AliasProvider;
@@ -501,8 +501,14 @@ export class RHelp implements api.HelpPanel, vscode.WebviewPanelSerializer<strin
         return false;
     }
 
+    // Cached aliases and package indexes still need invalidating when installed packages change.
+    public watchPackageChanges(): void {
+        this.helpProvider.start();
+    }
+
     // helper function to get aliases from aliasprovider
     private async getAllAliases(includePreview: boolean = false): Promise<Alias[] | undefined> {
+        this.watchPackageChanges();
         const aliases = await doWithProgress(
             () => this.aliasProvider.getAllAliases(),
             vscode.ProgressLocation.Window,

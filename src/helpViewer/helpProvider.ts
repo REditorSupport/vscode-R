@@ -21,7 +21,8 @@ type ChildProcessWithPort = DisposableProcess & {
 
 // Class to forward help requests to a backgorund R instance that is running a help server
 export class HelpProvider {
-    private cp: ChildProcessWithPort;
+    private cp?: ChildProcessWithPort;
+    private disposed = false;
     private readonly rPath: string;
     private readonly cwd?: string;
     private readonly pkgListener?: () => void;
@@ -30,16 +31,23 @@ export class HelpProvider {
         this.rPath = options.rPath || 'R';
         this.cwd = options.cwd;
         this.pkgListener = options.pkgListener;
-        this.cp = this.launchRHelpServer();
     }
 
     public async refresh(): Promise<void> {
-        this.cp.dispose();
-        this.cp = this.launchRHelpServer();
-        await this.cp.port;
+        this.cp?.dispose();
+        this.cp = undefined;
+        await this.start()?.port;
     }
 
-    public launchRHelpServer(): ChildProcessWithPort {
+    // The server also watches installed packages for callers using cached Help metadata.
+    public start(): ChildProcessWithPort | undefined {
+        if (!this.disposed) {
+            this.cp ??= this.launchRHelpServer();
+        }
+        return this.cp;
+    }
+
+    private launchRHelpServer(): ChildProcessWithPort {
         const lim = '---vsc---';
         const portRegex = new RegExp(`.*${lim}(.*)${lim}.*`, 'ms');
 
@@ -108,7 +116,7 @@ export class HelpProvider {
     public async getHelpFileFromRequestPath(
         requestPath: string,
     ): Promise<undefined | rHelp.HelpFile> {
-        const port = await this.cp?.port;
+        const port = await this.start()?.port;
         if (!port || typeof port !== 'number') {
             return undefined;
         }
@@ -145,7 +153,9 @@ export class HelpProvider {
     }
 
     dispose(): void {
-        this.cp.dispose();
+        this.disposed = true;
+        this.cp?.dispose();
+        this.cp = undefined;
     }
 }
 

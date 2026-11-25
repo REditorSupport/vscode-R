@@ -2662,8 +2662,8 @@
   ],
   "capabilities": {
     "untrustedWorkspaces": {
-      "supported": "limited",
-      "description": "R execution and persistent session connections require a trusted workspace.",
+      "supported": false,
+      "description": "Trust the workspace to enable R processes and session connections. R syntax highlighting is available in Restricted Mode.",
       "restrictedConfigurations": [
         "r.interactive.nodePath",
         "r.interactive.arfPath",

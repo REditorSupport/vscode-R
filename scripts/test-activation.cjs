@@ -8,7 +8,7 @@ const path = require('node:path');
 const repository = path.resolve(__dirname, '..');
 const cases = [
     'no-folder', 'non-r', 'non-r-interactive', 'language-r', 'language-rmd',
-    'workspace', 'command', 'terminal-profile', 'task', 'r-notebook',
+    'workspace', 'restricted-workspace', 'command', 'terminal-profile', 'task', 'r-notebook',
     'interactive-create', 'interactive-restore',
     'interactive-background-create', 'interactive-background-restore',
     'terminal-persistent-reload',
@@ -101,18 +101,58 @@ function terminalLayoutState(logs, pid) {
     return state;
 }
 
+// Count real launches synchronously so a slow R startup cannot hide an eager
+// Help process. The two page requests share the server while its port is pending.
+async function checkRDocumentActivation(vscode, extension, restricted) {
+    assert.equal(vscode.workspace.isTrusted, !restricted);
+    assert.ok(!extension?.isActive, 'R activated before opening the document');
+    const cp = require('node:child_process');
+    const originalSpawn = cp.spawn;
+    const rProcesses = [];
+    cp.spawn = function (command, args, ...options) {
+        if (/^(r|rterm|rscript)(\.exe)?$/i.test(path.basename(command))) {
+            rProcesses.push(args);
+        }
+        return originalSpawn.call(this, command, args, ...options);
+    };
+    try {
+        const document = await vscode.workspace.openTextDocument({ language: 'r', content: '1 + 1' });
+        await vscode.window.showTextDocument(document);
+        assert.ok(vscode.extensions.getExtension('REditorSupport.r-syntax'), 'R syntax is available');
+        if (restricted) {
+            await pause(2000);
+            assert.ok(!extension?.isActive, 'R runtime activated in Restricted Mode');
+            assert.deepEqual(rProcesses, []);
+        } else {
+            await until(() => extension.isActive, 'R document did not activate the extension');
+            assert.deepEqual(rProcesses, [], 'Opening a plain R file launched R with the LSP off');
+            const help = extension.exports.helpPanel;
+            const pages = await Promise.all(['mean', 'sum'].map((topic) =>
+                help.getHelpFileForPath(`library/base/html/${topic}.html`)));
+            assert.ok(pages.every((page) => page?.html), 'Both help pages loaded');
+            assert.equal(rProcesses.length, 1, 'Concurrent Help requests should share one R process');
+            assert.ok(rProcesses[0].some((arg) => path.basename(arg) === 'helpServer.R'));
+        }
+    } finally {
+        cp.spawn = originalSpawn;
+    }
+}
+
 exports.run = async (api) => {
     const vscode = api?.extensions ? api : require('vscode');
     const testCase = process.env.VSCR_ACTIVATION_CASE;
     const root = process.env.VSCR_ACTIVATION_ROOT;
     const extension = vscode.extensions.getExtension('REditorSupport.r');
     let terminalReload;
-    assert.ok(extension, 'The development extension must be available');
+    const restricted = testCase === 'restricted-workspace';
+    if (!restricted) { assert.ok(extension, 'The R extension must be available'); }
     // Give delayed startup activation and workspace searches time to run. The
     // normal suite's forced global activation would hide this regression.
     await pause(3000);
 
-    if (testCase === 'workspace') {
+    if (testCase === 'language-r' || restricted) {
+        await checkRDocumentActivation(vscode, extension, restricted);
+    } else if (testCase === 'workspace') {
         await until(() => extension.isActive, 'R workspace marker did not activate the extension');
     } else if (testCase === 'interactive-restore') {
         await until(() => extension.isActive, 'Restored R Interactive input did not activate R');
@@ -141,12 +181,10 @@ exports.run = async (api) => {
                 assert.equal(extension.isActive, false, 'JavaScript editing activated R');
                 break;
             }
-            case 'language-r':
             case 'language-rmd': {
-                const language = testCase.slice('language-'.length);
-                const document = await vscode.workspace.openTextDocument({ language, content: '' });
+                const document = await vscode.workspace.openTextDocument({ language: 'rmd', content: '' });
                 await vscode.window.showTextDocument(document);
-                await until(() => extension.isActive, `${language} document did not activate R`);
+                await until(() => extension.isActive, 'R Markdown document did not activate R');
                 break;
             }
             case 'command':
@@ -341,7 +379,7 @@ exports.run = async (api) => {
                 throw new Error(`Unknown activation case: ${testCase}`);
         }
     }
-    const result = { case: testCase, vscode: vscode.version, active: extension.isActive, ...terminalReload };
+    const result = { case: testCase, vscode: vscode.version, active: extension?.isActive ?? false, ...terminalReload };
     fs.writeFileSync(path.join(root, `${testCase}.json`), JSON.stringify(result));
     console.log('Activation regression:', JSON.stringify(result));
 };
@@ -373,6 +411,7 @@ async function main() {
     fs.writeFileSync(path.join(helper, 'package.json'), JSON.stringify({
         name: 'activation-fixture', publisher: 'vscode-r-tests', version: '1.0.0',
         engines: { vscode: '^1.101.0' }, activationEvents: ['onStartupFinished'], main: 'index.cjs',
+        capabilities: { untrustedWorkspaces: { supported: true } },
     }));
     fs.writeFileSync(path.join(helper, 'index.cjs'), `
 const vscode = require('vscode');
@@ -398,6 +437,17 @@ exports.activate = async () => {
         { stdio: 'inherit', shell: process.platform === 'win32' });
         assert.equal(installed.status, 0, 'Could not install the R syntax dependency');
     }
+    // VS Code force-enables development extensions. Both trust cases use the same
+    // installed runtime and syntax package. Let VS Code build the index for this
+    // directory; the shared extensions.json could already list only r-syntax.
+    const installedExtensions = path.join(root, 'installed-extensions');
+    if (selected.includes('language-r') || selected.includes('restricted-workspace')) {
+        const syntaxPackage = fs.readdirSync(extensions).find((name) => name.startsWith('reditorsupport.r-syntax-'));
+        assert.ok(syntaxPackage, 'The R syntax package must be installed');
+        fs.mkdirSync(installedExtensions);
+        fs.cpSync(path.join(extensions, syntaxPackage), path.join(installedExtensions, syntaxPackage), { recursive: true });
+        fs.symlinkSync(repository, path.join(installedExtensions, 'reditorsupport.r-' + require('../package.json').version), 'junction');
+    }
     let success = false;
     try {
         const reports = [];
@@ -408,6 +458,8 @@ exports.activate = async () => {
             const caseRoot = path.join(root, name);
             const workspace = path.join(caseRoot, 'workspace');
             const profile = path.join(caseRoot, 'profile');
+            const restricted = testCase === 'restricted-workspace';
+            const installedRuntime = restricted || testCase === 'language-r';
             fs.mkdirSync(workspace, { recursive: true });
             fs.mkdirSync(path.join(profile, 'User'), { recursive: true });
             fs.writeFileSync(path.join(profile, 'User', 'settings.json'), JSON.stringify({
@@ -417,6 +469,8 @@ exports.activate = async () => {
                 'window.restoreWindows': 'all', 'terminal.integrated.enablePersistentSessions': persistentTerminal,
                 ...(persistentTerminal ? { 'r.session.emulateRStudioAPI': false,
                     'r.consoleArgs': ['--no-save', '--no-restore', '--no-site-file'] } : {}),
+                ...(restricted ? { 'security.workspace.trust.startupPrompt': 'never', 'r.lsp.enabled': true,
+                    'r.sessionWatcher': true } : {}),
             }));
             fs.writeFileSync(path.join(workspace, 'index.js'), 'const unrelated = true;\n');
             if (testCase === 'workspace') {
@@ -451,7 +505,7 @@ exports.activate = async () => {
             }
             const launchArgs = [
                     ...(testCase === 'no-folder' ? [] : [workspace]),
-                    '--user-data-dir', profile, '--extensions-dir', extensions,
+                    '--user-data-dir', profile, '--extensions-dir', installedRuntime ? installedExtensions : extensions,
                     '--disable-renderer-backgrounding', '--disable-background-timer-throttling',
                     '--disable-backgrounding-occluded-windows',
                     // Pty host trace logs show whether reload-time input reached R.
@@ -459,11 +513,12 @@ exports.activate = async () => {
             ];
             const log = fs.createWriteStream(path.join(caseRoot, `${testCase}.log`));
             try {
-                if (testCase.startsWith('interactive-') || persistentTerminal) {
+                if (testCase.startsWith('interactive-') || persistentTerminal || installedRuntime) {
                     await new Promise((resolve, reject) => {
                         const child = require('node:child_process').spawn(executable, [...launchArgs,
                             '--no-sandbox', '--disable-gpu-sandbox', '--skip-welcome', '--skip-release-notes', '--disable-updates',
-                            '--disable-workspace-trust', `--extensionDevelopmentPath=${repository}`,
+                            ...(restricted ? [] : ['--disable-workspace-trust']),
+                            ...(installedRuntime ? [] : [`--extensionDevelopmentPath=${repository}`]),
                             `--extensionDevelopmentPath=${helper}`], { env: { ...process.env, ...env } });
                         const timer = setTimeout(() => { child.kill(); reject(new Error('Restore window timed out')); },
                             persistentTerminal ? 90000 : 45000);
