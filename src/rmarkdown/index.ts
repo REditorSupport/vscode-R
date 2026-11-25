@@ -16,6 +16,7 @@ export { newDraft } from './draft';
 export {
     getChunks,
     runCurrentChunk,
+    runSourceWithEcho,
     runCurrentChunkAndMove,
     runPreviousChunk,
     runNextChunk,
