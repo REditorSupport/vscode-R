@@ -22,7 +22,7 @@ const MAX_RECORD_BYTES = 512;
 /** Parse the small base-R sidecar without accepting partial or cross-terminal records. */
 export function parseTerminalStartupRecord(
     contents: string,
-    expectedToken: string,
+    expectedToken?: string,
 ): TerminalStartupRecord | undefined {
     if (Buffer.byteLength(contents, 'utf8') > MAX_RECORD_BYTES) {
         return;
@@ -32,7 +32,11 @@ export function parseTerminalStartupRecord(
         return;
     }
     lines.pop();
-    if (lines.length !== 6 || lines[0] !== PROTOCOL || lines[1] !== expectedToken) {
+    if (
+        lines.length !== 6 ||
+        lines[0] !== PROTOCOL ||
+        (expectedToken !== undefined && lines[1] !== expectedToken)
+    ) {
         return;
     }
     if (!/^[a-f0-9]{32}$/.test(lines[1])) {

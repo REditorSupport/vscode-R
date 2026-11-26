@@ -199,3 +199,105 @@ local({
   tick() # Invalidate the retry without invoking setup.
   expect_equal(length(callbacks), 0L)
 })
+
+# Initial discovery retries belong only to a managed profile in this process.
+local({
+  env <- new.env(parent = asNamespace("sess"))
+  env$connect <- sess::connect
+  environment(env$connect) <- env
+  scheduled <- list()
+  env$.schedule_reconnect <- function(settings) scheduled[[length(scheduled) + 1L]] <<- settings
+  directory <- tempfile("revive-")
+  dir.create(directory)
+  discovery <- file.path(directory, "terminal.json")
+  socket <- if (.Platform$OS.type == "windows") {
+    paste0("\\\\?\\pipe\\vscode-r-", basename(directory))
+  } else {
+    file.path(directory, "r.sock")
+  }
+  original <- Sys.getenv(c("SESS_DISCOVERY_FILE", "SESS_ENDPOINT"), unset = NA_character_)
+  registration <- list(
+    file = paste0(discovery, ".startup"),
+    pid = Sys.getpid(),
+    endpoint = socket,
+    run = function(endpoint, setup) setup()
+  )
+  old <- options(vscodeR.terminalStartup = registration, warn = 2)
+  on.exit(
+    {
+      options(old)
+      for (key in names(original)) {
+        if (is.na(original[[key]])) {
+          Sys.unsetenv(key)
+        } else {
+          do.call(Sys.setenv, as.list(original[key]))
+        }
+      }
+      sess:::.transport_disconnect(silent = TRUE)
+      unlink(directory, recursive = TRUE)
+    },
+    add = TRUE
+  )
+  Sys.setenv(SESS_DISCOVERY_FILE = discovery)
+  Sys.unsetenv("SESS_ENDPOINT")
+  attempt <- function(...) {
+    capture.output(result <- env$connect(..., use_rstudioapi = FALSE, plot_backend = "native"))
+    expect_false(result)
+  }
+  attempt()
+  expect_length(scheduled, 1L)
+  expect_identical(scheduled[[1L]]$path, discovery)
+  expect_null(scheduled[[1L]]$endpoint)
+  expect_identical(scheduled[[1L]]$options$use_rstudioapi, FALSE)
+  expect_identical(scheduled[[1L]]$options$plot_backend, "native")
+  writeLines(jsonlite::toJSON(list(version = 1L, endpoint = socket), auto_unbox = TRUE), discovery)
+  attempt()
+  expect_length(scheduled, 2L)
+  expect_null(scheduled[[2L]]$endpoint)
+
+  # The current endpoint can be published before this profile even starts.
+  registration$endpoint <- "saved-endpoint"
+  notified <- NULL
+  registration$run <- function(endpoint, setup) {
+    notified <<- endpoint
+    setup()
+  }
+  options(vscodeR.terminalStartup = registration)
+  attempt()
+  expect_identical(notified, socket)
+  expect_length(scheduled, 3L)
+  # A direct attach, environment override, or inherited registration stays one-shot.
+  attempt(endpoint = socket)
+  Sys.setenv(SESS_ENDPOINT = socket)
+  attempt()
+  Sys.unsetenv("SESS_ENDPOINT")
+  registration$pid <- Sys.getpid() + 1L
+  options(vscodeR.terminalStartup = registration)
+  attempt()
+  expect_length(scheduled, 3L)
+
+  # If the first connection is lost during its attach write, it has never
+  # been ready. The same endpoint must still be eligible for exactly one retry.
+  registration$pid <- Sys.getpid()
+  registration$endpoint <- socket
+  options(vscodeR.terminalStartup = registration)
+  env$.transport_disconnect <- sess:::.transport_disconnect
+  environment(env$.transport_disconnect) <- env
+  env$notify_client <- function(...) env$.transport_disconnect(silent = TRUE, reconnect = TRUE)
+  server <- processx::conn_create_unix_socket(socket, encoding = "")
+  on.exit(try(close(server), silent = TRUE), add = TRUE)
+  attempt()
+  expect_length(scheduled, 4L)
+  expect_null(scheduled[[4L]]$endpoint)
+  expect_identical(scheduled[[4L]]$startup_run, registration$run)
+
+  # Replacing the managed registration cancels the original process's retry.
+  callbacks <- list()
+  retry <- sess:::.schedule_reconnect
+  environment(retry) <- env
+  retry(scheduled[[4L]], schedule = function(f, delay) callbacks[[length(callbacks) + 1L]] <<- f)
+  options(vscodeR.terminalStartup = NULL)
+  callbacks[[1L]]()
+  expect_length(callbacks, 1L)
+  expect_null(sess:::.sess_env$con)
+})

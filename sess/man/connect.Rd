@@ -43,7 +43,10 @@ Connect to the VS Code IPC server
 \details{
 When SESS_DISCOVERY_FILE describes the connected endpoint, an
 unexpected disconnect waits for a replacement endpoint in that file and
-reconnects with the same runtime options and session identity. The optional
+reconnects with the same runtime options and session identity. A managed R
+terminal that starts before its editor is ready retries its first discovery
+connection in the background. A new R process gets its own workspace and
+session identity. The optional
 discovery jgdSocket string updates JGD_SOCKET when the resolved backend
 includes jgd and \code{allow_jgd} is \code{TRUE}; an empty string clears it, and an
 omitted field leaves it unchanged. Set

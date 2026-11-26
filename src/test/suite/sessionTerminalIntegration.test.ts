@@ -2,6 +2,7 @@ import * as assert from 'assert';
 import * as os from 'os';
 import * as path from 'path';
 import * as fsp from 'node:fs/promises';
+import fs from 'node:fs';
 import * as sinon from 'sinon';
 import * as vscode from 'vscode';
 import * as extension from '../../extension';
@@ -218,6 +219,165 @@ suite('External Terminal Integration', () => {
         } finally {
             registration.dispose();
             await session.cleanupSession('native-scan-register-race');
+        }
+    });
+
+    test('revival observes a failed startup while a pending record is still being read', async () => {
+        const endpoint = await session.getGlobalPipePath();
+        const discovery = await session.createSessionDiscoveryFile('previous-endpoint');
+        const foreign = await session.createSessionDiscoveryFile('previous-endpoint');
+        const startup = discovery + '.startup';
+        const pid = 55142;
+        const checkedTerminal = deferred<void>();
+        setTerminals([
+            {
+                ...makeTerminal(Promise.resolve(pid)),
+                get creationOptions() {
+                    checkedTerminal.resolve();
+                    return { env: { SESS_DISCOVERY_FILE: discovery } };
+                },
+            } as vscode.Terminal,
+        ]);
+        const status = (state: string) =>
+            [
+                'vscode-r-terminal-startup-v1',
+                'a'.repeat(32),
+                'a'.repeat(16),
+                String(pid),
+                'previous-endpoint',
+                state,
+                '',
+            ].join('\n');
+        async function publish(file: string, state: string): Promise<void> {
+            await fsp.writeFile(file + '.tmp', status(state));
+            await fsp.rename(file + '.tmp', file);
+        }
+        const firstRead = deferred<void>();
+        const resume = deferred<void>();
+        const open = fs.promises.open.bind(fs.promises);
+        let held = false;
+        sandbox.stub(fs.promises, 'open').callsFake(async (...args) => {
+            const handle = await open(...args);
+            if (args[0] === startup && !held) {
+                held = true;
+                const close = handle.close.bind(handle);
+                handle.close = async () => {
+                    await close();
+                    firstRead.resolve();
+                    await resume.promise;
+                };
+            }
+            return handle;
+        });
+        try {
+            // Although the claimed process matches, it explicitly belongs to another file.
+            await publish(foreign + '.startup', 'failed');
+            await checkedTerminal.promise;
+            await publish(startup, 'pending');
+            await firstRead.promise;
+            await publish(startup, 'failed');
+            resume.resolve();
+            await waitForValue(() => {
+                const record = JSON.parse(fs.readFileSync(discovery, 'utf8')) as {
+                    endpoint: string;
+                    terminalPid?: number;
+                };
+                return record.endpoint === endpoint && record.terminalPid === pid
+                    ? true
+                    : undefined;
+            });
+            assert.strictEqual(
+                ((await readJson(foreign)) as { endpoint: string }).endpoint,
+                'previous-endpoint',
+            );
+        } finally {
+            resume.resolve();
+            await Promise.all(
+                [
+                    discovery,
+                    startup,
+                    startup + '.tmp',
+                    foreign,
+                    foreign + '.startup',
+                    foreign + '.startup.tmp',
+                ].map((file) => fsp.rm(file, { force: true })),
+            );
+        }
+    });
+
+    test('a silent watcher recovers a live retry without claiming an old record with the same PID', async () => {
+        await session.shutdownSessionWatcher();
+        const stale = await session.createSessionDiscoveryFile('old');
+        const live = await session.createSessionDiscoveryFile('old');
+        const pid = 55162;
+        const terminal = makeTerminal(Promise.resolve(pid)); // Restored terminal has no creation env.
+        setTerminals([terminal]);
+        const watch = fs.watch.bind(fs);
+        let rescan: (() => void) | undefined;
+        const directory = path.dirname(stale);
+        sandbox.stub(fs, 'watch').callsFake(((
+            target: fs.PathLike,
+            options: fs.WatchOptionsWithStringEncoding,
+            notify: fs.WatchListener<string>,
+        ) => {
+            if (target === directory) {
+                rescan = () => notify('rename', null);
+                return watch(directory, { persistent: false }, () => {});
+            }
+            return watch(target, options, notify);
+        }) as typeof fs.watch);
+        const opens = sandbox.spy(fs.promises, 'open');
+        async function publish(discovery: string, attempt: string) {
+            const file = discovery + '.startup';
+            await fsp.writeFile(
+                file + '.tmp',
+                [
+                    'vscode-r-terminal-startup-v1',
+                    'a'.repeat(32),
+                    attempt,
+                    String(pid),
+                    'old',
+                    'failed',
+                    '',
+                ].join('\n'),
+            );
+            await fsp.rename(file + '.tmp', file);
+        }
+        try {
+            await publish(stale, 'a'.repeat(16));
+            await publish(live, 'b'.repeat(16));
+            session.deploySessionWatcher(extensionRoot);
+            const endpoint = await session.getGlobalPipePath();
+            await waitForValue(() =>
+                opens.calledWith(stale + '.startup') && opens.calledWith(live + '.startup')
+                    ? true
+                    : undefined,
+            );
+            // Allow the initial read of the live file to close before its atomic replacement on Windows.
+            const handle = await opens
+                .getCalls()
+                .find((call) => call.args[0] === live + '.startup')!.returnValue;
+            await waitForValue(() => (handle.fd === -1 ? true : undefined));
+            await publish(live, 'c'.repeat(16));
+            assert.ok(rescan);
+            rescan();
+            await waitForValue(() => {
+                const data = JSON.parse(fs.readFileSync(live, 'utf8')) as {
+                    endpoint: string;
+                    terminalPid?: number;
+                };
+                return data.endpoint === endpoint && data.terminalPid === pid ? true : undefined;
+            });
+            assert.equal(((await readJson(stale)) as { endpoint: string }).endpoint, 'old');
+        } finally {
+            await session.shutdownSessionWatcher();
+            for (const file of [stale, live]) {
+                await Promise.all(
+                    [file, file + '.startup', file + '.startup.tmp'].map((entry) =>
+                        fsp.rm(entry, { force: true }),
+                    ),
+                );
+            }
         }
     });
 

@@ -11,7 +11,7 @@ const cases = [
     'workspace', 'restricted-workspace', 'command', 'terminal-profile', 'task', 'r-notebook',
     'interactive-create', 'interactive-restore',
     'interactive-background-create', 'interactive-background-restore',
-    'terminal-persistent-reload',
+    'terminal-persistent-reload', 'terminal-revive-create', 'terminal-revive-restore',
 ];
 const pause = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds));
 
@@ -22,9 +22,9 @@ function clearElectronNodeMode(environment) {
 }
 exports.clearElectronNodeMode = clearElectronNodeMode;
 
-async function until(predicate, message) {
-    const deadline = Date.now() + 15000;
-    while (!predicate()) {
+async function until(predicate, message, timeout = 15000) {
+    const deadline = Date.now() + timeout;
+    while (!(await predicate())) {
         assert.ok(Date.now() < deadline, message);
         await pause(50);
     }
@@ -200,6 +200,63 @@ exports.run = async (api) => {
                 await until(() => extension.isActive, 'R Terminal profile did not activate R');
                 await until(() => vscode.window.terminals.length > 0, 'R Terminal was not created');
                 vscode.window.terminals.forEach((terminal) => terminal.dispose());
+                break;
+            }
+            case 'terminal-revive-create':
+            case 'terminal-revive-restore': {
+                const creating = testCase === 'terminal-revive-create';
+                const previousFile = path.join(root, 'terminal-before-quit.json');
+                if (creating) {
+                    await within(vscode.commands.executeCommand('r.createRTerm'), 'Could not create R terminal');
+                }
+                const previous = creating ? undefined : JSON.parse(fs.readFileSync(previousFile, 'utf8'));
+                const name = previous?.name ?? 'R Interactive';
+                await until(() => vscode.window.terminals.some((term) => term.name === name),
+                    'The R terminal was missing from the restored window');
+                const terminal = vscode.window.terminals.find((term) => term.name === name);
+                const terminalPid = await within(terminal.processId, 'Missing terminal PID');
+                const stateFile = path.join(root, testCase + '-state');
+                const rPath = (value) => JSON.stringify(value.replace(/\\/g, '/'));
+                const deadline = Date.now() + 30000;
+                while (!fs.existsSync(stateFile)) {
+                    assert.ok(Date.now() < deadline, 'R terminal did not report its startup state');
+                    terminal.sendText(`writeLines(c(Sys.getpid(), sess:::.session_id(), Sys.getenv('SESS_DISCOVERY_FILE')), ` +
+                        `${rPath(stateFile + '.pending')}); invisible(file.rename(${rPath(stateFile + '.pending')}, ${rPath(stateFile)}))`);
+                    for (let i = 0; i < 20 && !fs.existsSync(stateFile); ++i) { await pause(100); }
+                }
+                const [pid, sessionId, discovery] = fs.readFileSync(stateFile, 'utf8').trim().split(/\r?\n/);
+                if (creating) {
+                    await until(() => extension.exports.session.getSessionReference(sessionId), 'Initial sess attachment failed');
+                    const logs = path.join(root, 'profile', 'logs');
+                    await until(() => terminalLayoutState(logs, terminalPid).saved, 'R terminal layout was not saved');
+                    fs.writeFileSync(previousFile, JSON.stringify({ name: terminal.name, pid, sessionId }));
+                } else {
+                    assert.notEqual(pid, previous.pid, 'A full restart must create a new R process');
+                    assert.notEqual(sessionId, previous.sessionId);
+                    // The new R process has already tried the saved endpoint. Exercise
+                    // recovery even if its stale discovery record is removed before activation.
+                    const sessionsDir = path.join(root, 'profile', 'User', 'globalStorage', 'reditorsupport.r', 'sessions');
+                    assert.equal(path.relative(sessionsDir, path.dirname(discovery)), '');
+                    fs.rmSync(discovery, { force: true });
+                    const document = await vscode.workspace.openTextDocument({ language: 'r', content: 'revived' });
+                    await vscode.window.showTextDocument(document);
+                    await until(() => extension.isActive, 'R file did not activate vscode-R');
+                    await until(() => extension.exports.session.getSessionReference(sessionId),
+                        `Revived R terminal ${terminalPid} did not attach R process ${pid} through ${discovery}`);
+                    terminal.sendText('revivedTable <- data.frame(x = 1)');
+                    // The connection is public before the native process lookup selects
+                    // its Workspace. Wait for the editor's session completion to observe
+                    // the object created in this R process.
+                    await until(async () => {
+                        const completions = await vscode.commands.executeCommand('vscode.executeCompletionItemProvider',
+                            document.uri, new vscode.Position(0, 7));
+                        return completions.items.some((item) => item.label === 'revivedTable' && item.detail === '[session]');
+                    }, 'The refreshed Workspace did not contain the revived session object', 30000);
+                    terminal.sendText('View(revivedTable); plot(1)');
+                    const hasTab = (label) => vscode.window.tabGroups.all.some((group) => group.tabs.some((tab) => tab.label === label));
+                    await until(() => hasTab('revivedTable') && hasTab('R Plot'), 'Data and plot viewers did not open after revival');
+                    terminal.dispose();
+                }
                 break;
             }
             case 'terminal-persistent-reload': {
@@ -394,7 +451,7 @@ async function main() {
     const executable = process.env.VSCR_ACTIVATION_VSCODE || await downloadAndUnzipVSCode();
     const selected = process.env.VSCR_ACTIVATION_CASES?.split(',') || cases;
     selected.forEach((testCase) => assert.ok(cases.includes(testCase), `Unknown case: ${testCase}`));
-    for (const prefix of ['interactive-', 'interactive-background-']) {
+    for (const prefix of ['interactive-', 'interactive-background-', 'terminal-revive-']) {
         if (selected.includes(`${prefix}restore`)) {
             assert.ok(selected.includes(`${prefix}create`), 'Restore requires its create stage in the same run');
             assert.ok(selected.indexOf(`${prefix}create`) < selected.indexOf(`${prefix}restore`));
@@ -452,9 +509,10 @@ exports.activate = async () => {
     try {
         const reports = [];
         for (const testCase of selected) {
-            const persistentTerminal = testCase === 'terminal-persistent-reload';
+            const revive = testCase.startsWith('terminal-revive-');
+            const persistentTerminal = testCase === 'terminal-persistent-reload' || revive;
             const name = testCase.startsWith('interactive-background-') ? 'restore-background'
-                : testCase.startsWith('interactive-') ? 'restore' : testCase;
+                : testCase.startsWith('interactive-') ? 'restore' : revive ? 'terminal-revive' : testCase;
             const caseRoot = path.join(root, name);
             const workspace = path.join(caseRoot, 'workspace');
             const profile = path.join(caseRoot, 'profile');
@@ -463,10 +521,11 @@ exports.activate = async () => {
             fs.mkdirSync(workspace, { recursive: true });
             fs.mkdirSync(path.join(profile, 'User'), { recursive: true });
             fs.writeFileSync(path.join(profile, 'User', 'settings.json'), JSON.stringify({
-                'r.lsp.enabled': false, 'r.sessionWatcher': persistentTerminal, 'r.plot.backend': 'native',
+                'r.lsp.enabled': false, 'r.sessionWatcher': persistentTerminal, 'r.plot.backend': revive ? 'standard' : 'native',
                 'r.interactive.restore': false, 'r.interactive.storagePath': path.join(caseRoot, 'sessions'),
                 'update.mode': 'none', 'extensions.autoUpdate': false, 'workbench.startupEditor': 'none',
                 'window.restoreWindows': 'all', 'terminal.integrated.enablePersistentSessions': persistentTerminal,
+                ...(revive ? { 'terminal.integrated.persistentSessionReviveProcess': 'onExitAndWindowClose' } : {}),
                 ...(persistentTerminal ? { 'r.session.emulateRStudioAPI': false,
                     'r.consoleArgs': ['--no-save', '--no-restore', '--no-site-file'] } : {}),
                 ...(restricted ? { 'security.workspace.trust.startupPrompt': 'never', 'r.lsp.enabled': true,
@@ -491,15 +550,17 @@ exports.activate = async () => {
                 const library = path.join(caseRoot, 'r-library');
                 const librariesFile = path.join(caseRoot, 'r-library-paths');
                 const emptyProfile = path.join(caseRoot, 'empty-profile');
-                fs.mkdirSync(library);
+                fs.mkdirSync(library, { recursive: true });
                 fs.writeFileSync(emptyProfile, '');
                 const rString = (value) => JSON.stringify(value.replace(/\\/g, '/'));
-                const setup = spawnSync('Rscript', ['--vanilla', '-e',
-                    `writeLines(.libPaths(), ${rString(librariesFile)}); ` +
-                    `install.packages(${rString(path.join(repository, 'dist', 'resources', 'sess'))}, ` +
-                    `lib=${rString(library)}, repos=NULL, type='source')`],
-                { encoding: 'utf8', timeout: 300000 });
-                assert.equal(setup.status, 0, `Could not prepare isolated terminal sess: ${setup.stderr}`);
+                if (!fs.existsSync(librariesFile)) {
+                    const setup = spawnSync('Rscript', ['--vanilla', '-e',
+                        `writeLines(.libPaths(), ${rString(librariesFile)}); ` +
+                        `install.packages(${rString(path.join(repository, 'dist', 'resources', 'sess'))}, ` +
+                        `lib=${rString(library)}, repos=NULL, type='source')`],
+                    { encoding: 'utf8', timeout: 300000 });
+                    assert.equal(setup.status, 0, `Could not prepare isolated terminal sess: ${setup.stderr}`);
+                }
                 env.R_LIBS_USER = [library, ...fs.readFileSync(librariesFile, 'utf8').trim().split(/\r?\n/)].join(path.delimiter);
                 env.R_PROFILE_USER = emptyProfile;
             }
@@ -550,20 +611,21 @@ exports.activate = async () => {
             for (const directory of fs.readdirSync(root, { withFileTypes: true })) {
                 if (!directory.isDirectory()) { continue; }
                 const caseRoot = path.join(root, directory.name);
-                if (directory.name === 'terminal-persistent-reload') {
+                const terminalCase = directory.name === 'terminal-persistent-reload' || directory.name === 'terminal-revive';
+                if (terminalCase) {
                     fs.mkdirSync(path.join(artifacts, directory.name), { recursive: true });
                 }
                 for (const file of fs.readdirSync(caseRoot, { withFileTypes: true })) {
                     if (file.name.endsWith('.log')) {
                         fs.copyFileSync(path.join(caseRoot, file.name),
                             path.join(artifacts, `${directory.name}-${file.name}`));
-                    } else if (directory.name === 'terminal-persistent-reload' && file.isFile()) {
+                    } else if (terminalCase && file.isFile()) {
                         // Phase and probe files show how far each window got.
                         fs.copyFileSync(path.join(caseRoot, file.name),
                             path.join(artifacts, directory.name, file.name));
                     }
                 }
-                if (directory.name === 'terminal-persistent-reload') {
+                if (terminalCase) {
                     const logs = path.join(caseRoot, 'profile', 'logs');
                     if (fs.existsSync(logs)) {
                         fs.cpSync(logs, path.join(artifacts, directory.name, 'logs'), { recursive: true });
