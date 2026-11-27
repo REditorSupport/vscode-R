@@ -9,7 +9,7 @@ runs:
     # checksums. Run before setup-r: on Windows, the Rtools curl it puts on PATH
     # breaks mise-action's packslip download (jdx/mise-action#743).
     - name: Install arf for Interactive tests
-      uses: jdx/mise-action@d5574b52816a478f9d4e6529a3f6ff17a8a36785 # v5.2.8
+      uses: jdx/mise-action@90f833d396d0cc3674b631d2d225e306476c303a # v5.2.10
       with:
         working_directory: src/test/node
     - uses: r-lib/actions/setup-r@f9a764fea8d5c63df6ef9a5c7795bf7deb5d7e05 # v2
