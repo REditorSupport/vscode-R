@@ -2641,7 +2641,7 @@
     "oxfmt": "0.78.0",
     "sinon": "^22.1.0",
     "typescript": "~7.0.2",
-    "oxlint": "^1.93.0",
+    "oxlint": "^1.94.0",
     "oxlint-tsgolint": "~7.0.2007"
   },
   "dependencies": {
