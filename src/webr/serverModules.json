@@ -1,0 +1,12 @@
+[
+  {
+    "name": "workspace.R",
+    "url": "https://raw.githubusercontent.com/REditorSupport/languageserver/b01a3854da9a4510b01e768a83e6b05da3bc4a49/R/workspace.R",
+    "sha256": "8af7cd220a570c8324a8a63cffde2bf773116618c92d233de1c46d7d172ea94f"
+  },
+  {
+    "name": "embedded.R",
+    "url": "https://raw.githubusercontent.com/REditorSupport/languageserver/b01a3854da9a4510b01e768a83e6b05da3bc4a49/R/embedded.R",
+    "sha256": "f830a315cb483de8f5a079ac6882079c4b18b142f29c3742b74669d0c7243cef"
+  }
+]

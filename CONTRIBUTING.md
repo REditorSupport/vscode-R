@@ -82,6 +82,14 @@ Interactive session. Run the source/bootstrap checks with
 `pnpm run test:sess-source`, or just the base-R identity checks with
 `pnpm run test:sess-identity`.
 
+## Testing the webR language service
+
+After compiling the extension, set `VSCR_ACTIVATION_CASES=webr-language` and run
+`pnpm run test:activation` to exercise the automatic fallback in an isolated
+VS Code profile. This case uses an unavailable R executable and downloads the
+pinned webR assets. It checks Outline and Go to Definition across two unsaved R
+documents, then edits a declaration and checks the new symbol.
+
 ## Testing R Interactive
 
 The [architecture and backend contract](src/interactive/README.md) live beside the implementation. User setup and behavior belong in the [R Interactive documentation page](https://reditorsupport.github.io/vscode-R/features/r-interactive).

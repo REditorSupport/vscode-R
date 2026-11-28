@@ -1836,6 +1836,13 @@
           "default": false,
           "markdownDescription": "Use renv library paths to launch R background processes (R languageserver, help server, etc.)."
         },
+        "r.lsp.runtime": {
+          "type": "string",
+          "enum": ["auto", "native", "webR"],
+          "default": "auto",
+          "scope": "resource",
+          "description": "Language server runtime. Auto uses native R when available and webR otherwise. webR downloads a pinned runtime and package library on first use and analyzes open documents."
+        },
         "r.lsp.enabled": {
           "type": "boolean",
           "default": true,
@@ -2651,8 +2658,12 @@
     "ejs": "^7.0.2",
     "highlight.js": "^11.12.0",
     "js-yaml": "^5.5.0",
+    "tar": "7.5.24",
+    "vscode-jsonrpc": "10.0.0",
     "vscode-languageclient": "^11.0.0",
-    "winreg": "^1.2.5"
+    "webr": "0.6.1",
+    "winreg": "^1.2.5",
+    "ws": "^8.23.0"
   },
   "extensionDependencies": [
     "REditorSupport.r-syntax"

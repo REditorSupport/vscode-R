@@ -82,7 +82,11 @@ export function getRPathConfigEntry(term: boolean = false): string {
     return `${trunc}.${platform}`;
 }
 
-export async function getRpath(quote = false, resource?: vscode.Uri): Promise<string | undefined> {
+export async function getRpath(
+    quote = false,
+    resource?: vscode.Uri,
+    warnIfMissing = true,
+): Promise<string | undefined> {
     const configEntry = getRPathConfigEntry();
     const resolution = await resolveBackgroundR(
         getRPathResolverDependencies(resource),
@@ -90,7 +94,7 @@ export async function getRpath(quote = false, resource?: vscode.Uri): Promise<st
     );
     const rpath = formatRPath(resolution, quote, process.platform);
 
-    if (!rpath) {
+    if (!rpath && warnIfMissing) {
         // inform user about missing R path:
         void vscode.window.showErrorMessage(
             `Cannot find R to use for help, package installation etc. Change setting r.${rExecutablePathSetting} to an R executable.`,

@@ -1,0 +1,172 @@
+[
+  {
+    "name": "R.cache",
+    "url": "https://repo.r-wasm.org/bin/emscripten/contrib/4.6/R.cache_0.17.0.tgz",
+    "sha256": "ba53cb4704e8298b69835f2d4965471bd5558b8a063b9a7af3f5791dede93a96"
+  },
+  {
+    "name": "R.methodsS3",
+    "url": "https://repo.r-wasm.org/bin/emscripten/contrib/4.6/R.methodsS3_1.8.2.tgz",
+    "sha256": "b3d2d789f50fd72bb9a7074768d5dfa08f5c54bbe8e0b1cceac605cbd3de5e52"
+  },
+  {
+    "name": "R.oo",
+    "url": "https://repo.r-wasm.org/bin/emscripten/contrib/4.6/R.oo_1.27.1.tgz",
+    "sha256": "791826747b52bd1ad1548531df858e77ec5e1bbe7eb1077dd82b0e24e7700381"
+  },
+  {
+    "name": "R.utils",
+    "url": "https://repo.r-wasm.org/bin/emscripten/contrib/4.6/R.utils_2.13.0.tgz",
+    "sha256": "249d0ab8c8df3134860f837385424443e6736b100dc57b52521ff7b7881ba676"
+  },
+  {
+    "name": "R6",
+    "url": "https://repo.r-wasm.org/bin/emscripten/contrib/4.6/R6_2.6.1.tgz",
+    "sha256": "134d30277b1c64afe9ae31a4a52857822bc21d32db46479eb3ea2f3a7397c8d6"
+  },
+  {
+    "name": "callr",
+    "url": "https://repo.r-wasm.org/bin/emscripten/contrib/4.6/callr_3.8.0.tgz",
+    "sha256": "c4093fa70e16cb0b067ba95faef423a8ae4068fcc6d764fe74f537216eb93482"
+  },
+  {
+    "name": "cli",
+    "url": "https://repo.r-wasm.org/bin/emscripten/contrib/4.6/cli_3.6.6.tgz",
+    "sha256": "efa9c2b12c2da09cccb0a27d2e7a079ebd4c38fc1d03560d599f7634eb7f9932"
+  },
+  {
+    "name": "codetools",
+    "url": "https://repo.r-wasm.org/bin/emscripten/contrib/4.6/codetools_0.2-20.tgz",
+    "sha256": "36b3c58993dffe36937ff8470b2d185f9f6588412605ca0709fc95d970ce5014"
+  },
+  {
+    "name": "collections",
+    "url": "https://repo.r-wasm.org/bin/emscripten/contrib/4.6/collections_0.3.12.tgz",
+    "sha256": "35f265a5d51ed2e21310a5b1807c89032b27a815cf70af1030878dcac499d0d0"
+  },
+  {
+    "name": "digest",
+    "url": "https://repo.r-wasm.org/bin/emscripten/contrib/4.6/digest_0.6.39.tgz",
+    "sha256": "0531577e58efa9e61aeb4505c31766c53507d7bb59db9c4ce0ed2e7e9e862d07"
+  },
+  {
+    "name": "evaluate",
+    "url": "https://repo.r-wasm.org/bin/emscripten/contrib/4.6/evaluate_1.0.5.tgz",
+    "sha256": "78e951393968c4d2298d9ea380bb06ab31f037dc9eaf74fac9b59a77c3801c3c"
+  },
+  {
+    "name": "fs",
+    "url": "https://repo.r-wasm.org/bin/emscripten/contrib/4.6/fs_2.1.0.tgz",
+    "sha256": "c5c986963981c09e40a50cd4ff3b1cc98f2f7758880f7fcc91a71855a96c9d9b"
+  },
+  {
+    "name": "glue",
+    "url": "https://repo.r-wasm.org/bin/emscripten/contrib/4.6/glue_1.8.1.tgz",
+    "sha256": "3b025aa5fd067ad9b87fecd219e561d4537d488b33581af8beabe2b06024d44d"
+  },
+  {
+    "name": "highr",
+    "url": "https://repo.r-wasm.org/bin/emscripten/contrib/4.6/highr_0.12.tgz",
+    "sha256": "007f33651dca953ffa35db7362776aa8a00993c6f3986c46cfdc2e0759581871"
+  },
+  {
+    "name": "jsonlite",
+    "url": "https://repo.r-wasm.org/bin/emscripten/contrib/4.6/jsonlite_2.0.0.tgz",
+    "sha256": "35df0622339690661adc69521caab76a7b54e3a2f39b4b0d53832d2be3ccd5ea"
+  },
+  {
+    "name": "knitr",
+    "url": "https://repo.r-wasm.org/bin/emscripten/contrib/4.6/knitr_1.52.tgz",
+    "sha256": "7d6a45ce61a39380eae654dbcf1cc79b9a4f4d3d06560e20c08fd017faaf80ac"
+  },
+  {
+    "name": "languageserver",
+    "url": "https://r2.ropensci.org/d2b6bbccffd2072172d582dbbcf545fbf1ee94dc96b3faad5e7d6995b7d38af6",
+    "sha256": "d2b6bbccffd2072172d582dbbcf545fbf1ee94dc96b3faad5e7d6995b7d38af6"
+  },
+  {
+    "name": "lifecycle",
+    "url": "https://repo.r-wasm.org/bin/emscripten/contrib/4.6/lifecycle_1.0.5.tgz",
+    "sha256": "c2f8c5905f58b4526c3b68c6163f891b9a12f81d7e50347ad49a70b1f6592527"
+  },
+  {
+    "name": "lintr",
+    "url": "https://repo.r-wasm.org/bin/emscripten/contrib/4.6/lintr_3.4.0.tgz",
+    "sha256": "1860d098a5ea2c94b9695242b8085eda466803d554644d7523cefe4a4bffa295"
+  },
+  {
+    "name": "magrittr",
+    "url": "https://repo.r-wasm.org/bin/emscripten/contrib/4.6/magrittr_2.0.5.tgz",
+    "sha256": "ff7c81a6839f611a9a7d16b2e03ba6e99859992128012f8e9d3d7a8ef1ad5588"
+  },
+  {
+    "name": "otel",
+    "url": "https://repo.r-wasm.org/bin/emscripten/contrib/4.6/otel_0.2.0.tgz",
+    "sha256": "722eed201325be994c5ce729f0d016571b9987c51193e87134fd2fe65d6ce09b"
+  },
+  {
+    "name": "processx",
+    "url": "https://repo.r-wasm.org/bin/emscripten/contrib/4.6/processx_3.9.0.tgz",
+    "sha256": "c994d967a7daf02b3a1fc816cf7e2cc58520b7e887b1fa11d83f878ed79dccbc"
+  },
+  {
+    "name": "ps",
+    "url": "https://repo.r-wasm.org/bin/emscripten/contrib/4.6/ps_1.9.3.tgz",
+    "sha256": "ec2e4d31b380325725ccc5618ff3335c8adb451eca347ede3e30d856b56b6614"
+  },
+  {
+    "name": "purrr",
+    "url": "https://repo.r-wasm.org/bin/emscripten/contrib/4.6/purrr_1.2.2.tgz",
+    "sha256": "bd87e3e08ace87d8d6be7a47f4d2620843f15beb2f6e54f28eb90b1bdbb731e0"
+  },
+  {
+    "name": "rex",
+    "url": "https://repo.r-wasm.org/bin/emscripten/contrib/4.6/rex_1.2.2.tgz",
+    "sha256": "2098a2912b3f1a52b8c8fa050dd9f2cdfc137cb3f16756a9414a669095785bc1"
+  },
+  {
+    "name": "rlang",
+    "url": "https://repo.r-wasm.org/bin/emscripten/contrib/4.6/rlang_1.3.0.tgz",
+    "sha256": "c5562dc07b5d3c62fb85ee856a670b83105ba7793c778a30c1d9512d914e208a"
+  },
+  {
+    "name": "rprojroot",
+    "url": "https://repo.r-wasm.org/bin/emscripten/contrib/4.6/rprojroot_2.1.1.tgz",
+    "sha256": "ed74ec20e04afbc9ae96ac61b3503801f52e93adbe32f71b3122a63463190a0f"
+  },
+  {
+    "name": "styler",
+    "url": "https://repo.r-wasm.org/bin/emscripten/contrib/4.6/styler_1.11.0.tgz",
+    "sha256": "098a80aecb75125f9caa90a918e428d7dd9f74e3e5ed4c3ad768750c147815a3"
+  },
+  {
+    "name": "vctrs",
+    "url": "https://repo.r-wasm.org/bin/emscripten/contrib/4.6/vctrs_0.7.3.tgz",
+    "sha256": "42cc19d325e7de2160490273d97099049f261e8b6c3e6736391d96e43923798d"
+  },
+  {
+    "name": "withr",
+    "url": "https://repo.r-wasm.org/bin/emscripten/contrib/4.6/withr_3.0.3.tgz",
+    "sha256": "65530833ac1e34d41a8e991aab69713aae1a24500af11257b637256af7cc2195"
+  },
+  {
+    "name": "xfun",
+    "url": "https://repo.r-wasm.org/bin/emscripten/contrib/4.6/xfun_0.61.tgz",
+    "sha256": "62e6499ecbf49a3a2fc7343ac836c91c80f4d6bab5edeaed97fc1450230ff686"
+  },
+  {
+    "name": "xml2",
+    "url": "https://repo.r-wasm.org/bin/emscripten/contrib/4.6/xml2_1.6.0.tgz",
+    "sha256": "3618879568c846e1c4b298604297addf1867c2c461ad13361b623c0352a3ac86"
+  },
+  {
+    "name": "xmlparsedata",
+    "url": "https://repo.r-wasm.org/bin/emscripten/contrib/4.6/xmlparsedata_1.0.5.tgz",
+    "sha256": "d845e8ee3549cc03035ae53c081f23d13f62b0173e754211e09789f0daea0926"
+  },
+  {
+    "name": "yaml",
+    "url": "https://repo.r-wasm.org/bin/emscripten/contrib/4.6/yaml_2.3.12.tgz",
+    "sha256": "027e4bd87fcd16d0ba744dd41c51e2eb711c07d873f6050e65c8daf454d74f13"
+  }
+]

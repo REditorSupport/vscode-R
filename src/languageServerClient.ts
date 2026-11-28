@@ -217,6 +217,10 @@ export class CancellableLanguageClient extends LanguageClient {
         return child;
     }
 
+    ownResource(release: () => void): void {
+        this.resources?.own(release);
+    }
+
     ownSocket(socket: Socket): void {
         this.resources?.own(() => socket.destroy());
     }

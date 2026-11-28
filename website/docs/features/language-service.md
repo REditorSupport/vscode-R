@@ -1,5 +1,22 @@
 # R Language Service
 
+## Language server runtime
+
+With `r.lsp.runtime` set to `auto`, vscode-R uses your configured R installation
+when available. If it cannot find R, it starts the WebAssembly build of R
+(webR) in a separate worker when you open an R document. Use `webR` to choose
+this runtime explicitly or `native` to require a native installation.
+`r.lsp.enabled` controls both runtimes. Reload the window after changing the
+runtime setting.
+
+The first webR session requires internet access to download the pinned runtime,
+language server and packages. Downloads are cached in extension storage. The
+language worker analyzes the open editor buffers locally, including unsaved
+changes. Cross-file navigation and rename cover open documents in the same
+workspace. Package information reflects the packages installed in the worker.
+The native server can additionally index closed files and use your project's R
+library.
+
 The
 [R language server](https://github.com/REditorSupport/languageserver#servers-implemented)
 implements the
