@@ -1780,6 +1780,7 @@ export class InteractiveManager
                     { method: data.method, params: data.params ?? {} },
                     data.method === 'hover' || data.method === 'completion' ? 250 : 6000,
                 ),
+            manifest.provider,
         );
         target.pid = String(manifest.rPid ?? '');
         target.rVer = manifest.rVersion ?? '';

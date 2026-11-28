@@ -185,8 +185,10 @@ export class LanguageService implements Disposable {
         const debug = this.config.get<boolean>('lsp.debug');
         const useRenvLibPath = this.config.get<boolean>('useRenvLibPath') ?? false;
         const policy = resourceConfig.get<string>('lsp.runtime', 'auto');
+        // Interactive input/cell clients follow their bound runtime in auto mode.
+        // Ordinary source files keep their shared workspace language server.
         const rPath =
-            policy === 'webR'
+            policy === 'webR' || (policy === 'auto' && target?.interactiveProvider === 'webr')
                 ? ''
                 : target?.rPath ||
                   (await withRpcCancellation(
@@ -505,7 +507,7 @@ export class LanguageService implements Disposable {
                         target?.workingDir ?? folder?.uri.fsPath ?? os.homedir(),
                         folder,
                         this.outputChannel,
-                        folder?.uri,
+                        folder?.uri ?? document.uri,
                         target,
                     );
                     this.clients.set(key, client);
@@ -701,7 +703,10 @@ export class LanguageService implements Disposable {
                     return;
                 }
                 const document = workspace.textDocuments.find(
-                    (doc) => this.getKey(doc.uri) === this.getKey(uri),
+                    (doc) =>
+                        !doc.isClosed &&
+                        (doc.languageId === 'r' || doc.languageId === 'rmd') &&
+                        this.getKey(doc.uri) === this.getKey(uri),
                 );
                 if (document) {
                     updateDocument(document, true);

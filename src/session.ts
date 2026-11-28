@@ -18,6 +18,7 @@ import { TerminalSessionRegistry } from './terminalSessionRegistry';
 import { TerminalStartupMonitor } from './terminalStartupMonitor';
 import { SessionProcessMonitor } from './sessionProcessMonitor';
 import { sessionProcessIdentity } from './sessionIdentity';
+import type { ProviderKind } from './interactive/protocol';
 import { NativeTerminalPidWaitRegistry } from './nativeTerminalPidWait';
 import { WorkspaceRefreshScheduler } from './workspaceRefresh';
 import {
@@ -128,6 +129,7 @@ export class Session {
     public execute?: (code: string) => Promise<void>;
     public rPath?: string;
     public libraryPaths?: string[];
+    public interactiveProvider?: ProviderKind;
     public requester?: (data: Record<string, unknown>) => Promise<unknown>;
     public connectionId?: string;
     public attachmentId?: string;
@@ -298,16 +300,40 @@ export function bindSessionDocument(uri: Uri, session: Session): void {
 }
 
 export function unbindSessionDocument(uri: Uri): void {
-    documentSessions.delete(uri.toString());
+    const previous = boundSessionForDocument(uri);
+    if (documentSessions.delete(uri.toString()) && previous !== boundSessionForDocument(uri)) {
+        sessionDocumentBound.fire(uri);
+    }
+}
+
+/** Let per-notebook language clients reselect their runtime after restart or detach. */
+function retargetDocuments(previous: Session, next?: Session): void {
+    const changed = new Set<string>();
+    for (const [key, owner] of documentSessions) {
+        if (owner !== previous) {
+            continue;
+        }
+        if (next) {
+            documentSessions.set(key, next);
+        } else {
+            documentSessions.delete(key);
+        }
+        const uri = Uri.parse(key);
+        // All cells of a notebook use the same language client.
+        changed.add(
+            uri.scheme === 'vscode-notebook-cell'
+                ? uri.with({ query: '', fragment: '' }).toString()
+                : key,
+        );
+    }
+    for (const key of changed) {
+        sessionDocumentBound.fire(Uri.parse(key));
+    }
 }
 
 export function unregisterSessionTransport(target: Session): void {
     workspaceRefreshes.get(target)?.dispose();
-    for (const [uri, owner] of documentSessions) {
-        if (owner === target) {
-            documentSessions.delete(uri);
-        }
-    }
+    retargetDocuments(target);
     terminalRegistry.releaseSession(target);
     const current = sessions.get(target.sessionId) === target;
     if (current) {
@@ -399,11 +425,7 @@ export function invalidateWorkspaceChildren(target: Session): void {
 /** Move document routing to a new process; existing data viewers keep their old owner. */
 export function replaceSessionTransport(previous: Session, next: Session): void {
     workspaceRefreshes.get(previous)?.dispose();
-    for (const [uri, owner] of documentSessions) {
-        if (owner === previous) {
-            documentSessions.set(uri, next);
-        }
-    }
+    retargetDocuments(previous, next);
     terminalRegistry.releaseSession(previous);
     const current = sessions.get(previous.sessionId) === previous;
     if (current) {
@@ -424,20 +446,19 @@ export function registerSessionTransport(
     host: string,
     directory: string,
     requester: (data: Record<string, unknown>) => Promise<unknown>,
+    provider?: ProviderKind,
 ): Session {
     const previous = sessions.get(id);
-    const target = previous?.connectionId
-        ? new Session(id, host, '', '', new net.Socket())
-        : (previous ?? new Session(id, host, '', '', new net.Socket()));
+    const target =
+        previous && (previous.connectionId || previous.interactiveProvider !== provider)
+            ? new Session(id, host, '', '', new net.Socket())
+            : (previous ?? new Session(id, host, '', '', new net.Socket()));
     target.requester = requester;
     target.workingDir = directory;
+    target.interactiveProvider = provider;
     sessions.set(id, target);
     if (previous && previous !== target) {
-        for (const [uri, owner] of documentSessions) {
-            if (owner === previous) {
-                documentSessions.set(uri, target);
-            }
-        }
+        retargetDocuments(previous, target);
         terminalRegistry.releaseSession(previous);
         const disconnected = invalidateSessionConnection(previous);
         if (activeSession === previous) {
