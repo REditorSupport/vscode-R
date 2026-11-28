@@ -92,6 +92,18 @@ suite('Interactive session button', () => {
         );
     });
 
+    test('identifies the webR agent without reporting a native R process', () => {
+        const presentation = sessionPresentation(
+            { ...manifest, provider: 'webr', rPid: undefined, rPath: undefined, agentPid: 456 },
+            true,
+            true,
+        );
+        assert.match(presentation.description, /webR · Agent PID 456/);
+        assert.match(presentation.tooltip, /Provider: webR/);
+        assert.match(presentation.tooltip, /Agent PID: 456/);
+        assert.doesNotMatch(presentation.tooltip, /PID: pending|R executable:/);
+    });
+
     test('does not report pending process metadata as a starting session', () => {
         const presentation = sessionPresentation(
             { ...manifest, status: 'exited', rPid: undefined, rVersion: undefined },

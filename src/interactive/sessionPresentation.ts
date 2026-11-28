@@ -16,6 +16,13 @@ export function sessionAge(manifest: SessionManifest, now = Date.now()): string 
             : `${Math.floor(minutes / 1440)}d`;
 }
 
+/** The webR worker runs inside the session agent and has no separate process ID. */
+export function sessionProcessLabel(manifest: SessionManifest, pending = 'starting'): string {
+    return manifest.provider === 'webr'
+        ? `Agent PID ${manifest.agentPid}`
+        : `PID ${manifest.rPid ?? pending}`;
+}
+
 /** Public session details; never include connection credentials. */
 export function sessionPresentation(
     manifest: SessionManifest,
@@ -33,12 +40,12 @@ export function sessionPresentation(
             : manifest.status === 'input'
               ? 'waiting for input'
               : manifest.status;
-    const provider =
-        manifest.provider === 'r'
-            ? 'plain'
-            : manifest.provider === 'arf-existing'
-              ? 'arf (attached)'
-              : 'arf';
+    const provider = {
+        r: { short: 'plain', name: 'Plain R' },
+        arf: { short: 'arf', name: 'Headless arf' },
+        'arf-existing': { short: 'arf (attached)', name: 'Attached arf' },
+        webr: { short: 'webR', name: 'webR' },
+    }[manifest.provider];
     const version = manifest.rVersion?.match(/^R version (\S+)/)?.[1];
     const supervision =
         manifest.supervision === 'detached' ? 'Independent process' : manifest.supervision;
@@ -48,7 +55,7 @@ export function sessionPresentation(
         label: `R: ${manifest.label} · ${state}`,
         // Description is inline (and doubles as the native button tooltip); detail
         // gets a second picker row. Neither supports arbitrary multiline content.
-        description: `${version ? `R ${version}` : 'R'} · ${provider} · PID ${manifest.rPid ?? 'pending'}${age ? ` · ${age}` : ''}${connected && !control ? ' · observing' : ''}`,
+        description: `${version ? `R ${version}` : 'R'} · ${provider.short} · ${sessionProcessLabel(manifest, 'pending')}${age ? ` · ${age}` : ''}${connected && !control ? ' · observing' : ''}`,
         detail: `${directory} · ${manifest.host} · ${supervision}`,
         // The full details remain available in the status bar hover and Session Details.
         tooltip: [
@@ -61,9 +68,11 @@ export function sessionPresentation(
                       ? `Connected · ${control ? 'controlling' : 'observing'}`
                       : 'Disconnected'
             }`,
-            `Provider: ${manifest.provider === 'r' ? 'Plain R' : manifest.provider === 'arf-existing' ? 'Attached arf' : 'Headless arf'}`,
+            `Provider: ${provider.name}`,
             manifest.rVersion ?? 'R version: pending',
-            `PID: ${manifest.rPid ?? 'pending'}`,
+            manifest.provider === 'webr'
+                ? `Agent PID: ${manifest.agentPid}`
+                : `PID: ${manifest.rPid ?? 'pending'}`,
             ...(age
                 ? [`${manifest.status === 'exited' ? 'Lifetime' : 'Session age'}: ${age}`]
                 : []),

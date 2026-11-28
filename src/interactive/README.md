@@ -27,14 +27,21 @@ the input changes, the session is replaced, or the manager is disposed. Paste
 keeps native insertion behavior and separate undo steps for formatting and
 insertion.
 
-## Current backend
-
-The shipped `sess` backend uses arf with pure R sess helpers:
+## Runtime backends
 
 | Public provider | Backend | Frontend | Ownership |
 | --- | --- | --- | --- |
 | `arf` | `sess` | arf headless | Managed |
 | `arf-existing` | `sess` | arf | Adopted |
+| `webr` | `webr` | webR Wasm worker | Managed |
+
+The webR provider starts a console in the agent and mounts the selected host directory
+at `/project`. The shared console stages complete submissions in the Wasm filesystem
+and tags each one with its execution outcome. A subsequent REPL prompt completes the
+cell after delayed output has arrived. Nested prompts use the ordinary editor input
+flow. The agent journals static PNGs, so the editor can reconnect to a running session
+and replay its plots. [webR backend](backends/webr.ts) · [Console](../webr/console.ts)
+
 
 [SessBackend](backends/sessBackend.ts) owns readiness, metadata, capabilities, and
 ordered output. [SessBridge](backends/sessBridge.ts) owns authenticated sess
@@ -125,7 +132,7 @@ and the captured response. There is no subscription for arbitrary terminal conso
 output. Terminal task notifications and rich viewers still work. Disposal restores
 sess hooks without changing frontend console callbacks or killing adopted R.
 
-Both providers report notebook stdin/debugger support as unavailable: arf IPC
+Both arf providers report notebook stdin/debugger support as unavailable: arf IPC
 `user_input` submits code, rather than answering nested R prompts. Use ordinary
 R terminals for `readline`, `scan`, and debugger interaction. arf IPC is
 experimental; the integration requires arf 0.7.2-rc.1 or later and is tested with

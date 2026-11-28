@@ -62,7 +62,7 @@ import { queryTablePage } from './tableQuery';
 import { tableColumnAlignment, tableDisplayValue, tableSnapshotSummary } from './tableFormatting';
 import { HistoryPage, searchHistory } from './history';
 import { readExecutionRecordsAsync, readPreviousJournalAsync } from './journal';
-import { sessionAge, sessionPresentation } from './sessionPresentation';
+import { sessionAge, sessionPresentation, sessionProcessLabel } from './sessionPresentation';
 import {
     STOP_REQUEST_TIMEOUT_MS,
     runningSessions,
@@ -603,7 +603,9 @@ export class InteractiveManager
                     ? 'R session disconnected. Reconnecting to its workspace…'
                     : view.client.manifest.status === 'starting'
                       ? 'R is starting…'
-                      : undefined;
+                      : view.client.manifest.capabilities.inspection === false
+                        ? 'Workspace inspection is unavailable for this session provider.'
+                        : undefined;
             if (
                 view.target.label !== view.client.manifest.label ||
                 view.target.workspaceUnavailable !== unavailable
@@ -1129,26 +1131,30 @@ export class InteractiveManager
         const adopt = adoptable?.session;
         const folder = this.sessionFolder(resource);
         const directory = adopt?.cwd ?? defaultSessionDirectory(folder?.fsPath);
-        const rPath = await util.getRpath(false, resource);
-        if (!rPath) {
-            throw new Error('Configure an R executable before starting Interactive');
-        }
         const arfCommand = this.arfCommand(folder ?? resource);
         // An adopted session keeps the listing that found it, which finds the
         // session again if its IPC restarts at another socket path, even if
         // another folder has become active since.
         const listing = adoptable?.listing;
         let arfPath = listing ? listing.command : resolveArfExecutable(arfCommand, directory);
+        const webR = {
+            label: 'webR',
+            detail: 'Run R in WebAssembly using the project directory and a separate package library.',
+            value: 'webr' as const,
+        };
         const provider = adopt
             ? 'arf-existing'
-            : await vscode.window.showQuickPick(
+            : await vscode.window.showQuickPick<
+                  vscode.QuickPickItem & { value: 'arf' | 'webr' | 'configure' }
+              >(
                   arfPath
-                      ? [{ label: 'arf', detail: arfPath, value: 'arf' as const }]
+                      ? [{ label: 'arf', detail: arfPath, value: 'arf' as const }, webR]
                       : [
+                            webR,
                             {
                                 label: '$(gear) Configure arf…',
-                                description: 'Required for Interactive · executable unavailable',
-                                detail: `Install arf on this host and set its path. Ordinary R terminals remain available. Checked: ${arfCommand}`,
+                                description: 'Native R session',
+                                detail: `Install arf on this host and set its path. Checked: ${arfCommand}`,
                                 value: 'configure' as const,
                             },
                         ],
@@ -1160,6 +1166,10 @@ export class InteractiveManager
         const kind = typeof provider === 'string' ? provider : provider.value;
         if (kind === 'configure') {
             await this.configureArf();
+            return;
+        }
+        const rPath = kind === 'webr' ? undefined : await util.getRpath(false, resource);
+        if (kind !== 'webr' && !rPath) {
             return;
         }
         const label = await vscode.window.showInputBox({
@@ -1197,18 +1207,25 @@ export class InteractiveManager
                     label,
                     directory,
                     storage: path.join(this.root, identity.id),
-                    rPath,
                     provider: kind,
-                    arfPath,
-                    arfEndpoint: adopt?.socket_path,
-                    arfSessionId: adopt?.session_id,
-                    arfPid: adopt?.pid,
-                    arfDiscoveryDirectory: listing?.directory,
-                    arfRegistryEnvironment: listing?.registry,
+                    ...(kind === 'webr'
+                        ? { backend: { kind, options: {} } }
+                        : {
+                              rPath,
+                              arfPath,
+                              arfEndpoint: adopt?.socket_path,
+                              arfSessionId: adopt?.session_id,
+                              arfPid: adopt?.pid,
+                              arfDiscoveryDirectory: listing?.directory,
+                              arfRegistryEnvironment: listing?.registry,
+                              plotBackend: util
+                                  .config()
+                                  .get<AgentConfig['plotBackend']>(
+                                      'interactive.plotBackend',
+                                      'auto',
+                                  ),
+                          }),
                     supervision,
-                    plotBackend: util
-                        .config()
-                        .get<AgentConfig['plotBackend']>('interactive.plotBackend', 'auto'),
                     historyLimit: util.config().get<number>('interactive.historyLimit', 100),
                     ...this.retentionLimits(),
                 };
@@ -1313,7 +1330,7 @@ export class InteractiveManager
         void Promise.resolve(
             vscode.window.showWarningMessage(
                 `Cannot ${restarting ? 'restart' : 'start'} Headless arf: “${command}” was not found or is not executable on this host. ` +
-                    'Install arf or set r.interactive.arfPath to its executable. Plain R sessions do not require arf.' +
+                    'Install arf or set r.interactive.arfPath to its executable.' +
                     (restarting ? ' The current R session has not been stopped.' : ''),
                 'Configure arf',
             ),
@@ -1394,6 +1411,7 @@ export class InteractiveManager
                 description: `${arf.session.r_version ?? ''} · ${arf.session.cwd ?? ''}`,
                 arf,
             })),
+            { label: '$(add) New persistent R session', create: true },
             ...(discovery.available
                 ? []
                 : [
@@ -1404,7 +1422,6 @@ export class InteractiveManager
                           configureArf: true,
                       },
                   ]),
-            { label: '$(add) New persistent R session', create: true },
         ];
     }
 
@@ -1457,7 +1474,7 @@ export class InteractiveManager
 
     private sessionChoiceDescription(manifest: SessionManifest): string {
         const age = sessionAge(manifest);
-        return `${manifest.status} · ${manifest.provider} · PID ${manifest.rPid ?? 'starting'}${age ? ` · ${age}` : ''}`;
+        return `${manifest.status} · ${manifest.provider} · ${sessionProcessLabel(manifest)}${age ? ` · ${age}` : ''}`;
     }
 
     private async pick(): Promise<void> {
@@ -1763,6 +1780,7 @@ export class InteractiveManager
                     { method: data.method, params: data.params ?? {} },
                     data.method === 'hover' || data.method === 'completion' ? 250 : 6000,
                 ),
+            manifest.provider,
         );
         target.pid = String(manifest.rPid ?? '');
         target.rVer = manifest.rVersion ?? '';
@@ -3093,7 +3111,7 @@ export class InteractiveManager
             targets
                 .map(
                     (manifest) =>
-                        `${manifest.label} — PID ${manifest.rPid ?? 'starting'} · ${manifest.id.slice(0, 8)}\n${manifest.directory}`,
+                        `${manifest.label} — ${sessionProcessLabel(manifest)} · ${manifest.id.slice(0, 8)}\n${manifest.directory}`,
                 )
                 .join('\n\n'),
             ...(targets.some(
@@ -3140,7 +3158,7 @@ export class InteractiveManager
                             stopped.add(`${manifest.id}:${manifest.generation}`);
                         } else {
                             failures.push(
-                                `${manifest.label} (PID ${manifest.rPid ?? 'starting'}): ${String(result.reason)}`,
+                                `${manifest.label} (${sessionProcessLabel(manifest)}): ${String(result.reason)}`,
                             );
                         }
                     });

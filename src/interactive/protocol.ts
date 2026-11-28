@@ -4,7 +4,7 @@ export const MAX_MESSAGE_BYTES = 4 * 1024 * 1024;
 export const MAX_CODE_BYTES = 1024 * 1024;
 export const DEFAULT_MAX_ASSET_BYTES = 1024 * 1024 * 1024;
 
-export type ProviderKind = 'r' | 'arf' | 'arf-existing';
+export type ProviderKind = 'r' | 'arf' | 'arf-existing' | 'webr';
 export type ExecutionState =
     | 'queued'
     | 'running'
