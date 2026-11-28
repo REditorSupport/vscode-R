@@ -2,20 +2,29 @@
 
 ## Language server runtime
 
-With `r.lsp.runtime` set to `auto`, vscode-R uses your configured R installation
-when available. If it cannot find R, it starts the WebAssembly build of R
-(webR) in a separate worker when you open an R document. Use `webR` to choose
-this runtime explicitly or `native` to require a native installation.
-`r.lsp.enabled` controls both runtimes. Reload the window after changing the
-runtime setting.
+For R and R Markdown source editors, `r.lsp.runtime` selects the workspace
+language server. On desktop, `auto` uses the configured native R installation
+when available and otherwise starts webR. Choose `native` to require native R
+or `webR` to use WebAssembly. Reload the window after changing this setting.
 
-The first webR session requires internet access to download the pinned runtime,
-language server and packages. Downloads are cached in extension storage. The
-language worker analyzes the open editor buffers locally, including unsaved
-changes. Cross-file navigation and rename cover open documents in the same
-workspace. Package information reflects the packages installed in the worker.
-The native server can additionally index closed files and use your project's R
-library.
+**R Interactive inputs and cells follow their execution session.** An arf
+session uses a native language server with the session's R executable, working
+directory and reported library paths. A webR session uses a dedicated webR
+language worker. This also applies when the workspace setting selects the other
+runtime. For example, with `r.lsp.runtime` set to `native`, sending a selection
+from `analysis.R` to a webR session leaves the source editor on native R and the
+Interactive notebook on webR. If native R is unavailable, the webR notebook
+can still provide language features. Set `r.lsp.enabled` to `false` to disable
+the language service for both source editors and Interactive documents.
+
+The first webR language session downloads a pinned runtime, language server
+and package library. Subsequent starts reuse cached assets. The worker analyzes
+open editor buffers locally, including unsaved changes. Cross-file navigation
+and rename cover open documents served by the same language client. Package
+completion and signatures reflect the language worker's library. Installing
+a package in an Interactive webR session changes that session's execution
+library only. Native R can additionally index closed files and use the
+project's R library.
 
 The
 [R language server](https://github.com/REditorSupport/languageserver#servers-implemented)
@@ -232,6 +241,14 @@ can be used to adjust the referenced color.
 
 ## VS Code for the Web
 
-Opening an R or R Markdown document in a trusted browser workspace starts the webR language server when `r.lsp.enabled` is enabled and `r.lsp.runtime` is `auto` or `webR`. Initial startup downloads the language server and its WebAssembly package library. Subsequent starts reuse cached package assets.
+In a trusted browser workspace, opening an R or R Markdown source document
+starts the webR language server when `r.lsp.runtime` is `auto` or `webR`.
+Choosing `native` leaves ordinary browser source editors without a language
+server. Cells in a webR Interactive notebook use webR regardless of that
+workspace preference. `r.lsp.enabled` controls both.
 
-Open buffers provide the source for Outline, completion, hover, signature help, and Go to Definition, including unsaved edits and navigation between open documents. Package-aware results reflect the worker’s package library. The browser language service operates independently of an Interactive notebook. Whole-project indexing and tools that launch a native executable require a workspace extension host with native R.
+The browser language worker provides Outline, completion, hover, signature
+help and Go to Definition for open buffers, including unsaved edits. It can
+serve requests while Interactive code is running. Package-aware results use
+its own language-service library. Whole-project indexing and tools that launch
+a native executable require a workspace extension host with native R.

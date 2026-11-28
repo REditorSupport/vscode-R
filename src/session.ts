@@ -1,5 +1,6 @@
 'use strict';
 
+import { isDeepStrictEqual } from 'node:util';
 import * as fs from 'node:fs';
 import * as fsp from 'node:fs/promises';
 import { pathExists, readJson } from './fileSystem';
@@ -130,6 +131,7 @@ export class Session {
     public rPath?: string;
     public libraryPaths?: string[];
     public interactiveProvider?: ProviderKind;
+    public languageEnvironmentRevision = 0;
     public requester?: (data: Record<string, unknown>) => Promise<unknown>;
     public connectionId?: string;
     public attachmentId?: string;
@@ -304,6 +306,21 @@ export function unbindSessionDocument(uri: Uri): void {
     if (documentSessions.delete(uri.toString()) && previous !== boundSessionForDocument(uri)) {
         sessionDocumentBound.fire(uri);
     }
+}
+
+/** Restart bound virtual clients if the runtime reports a new executable or library order. */
+export function updateSessionLanguageEnvironment(
+    target: Session,
+    rPath: string | undefined,
+    libraryPaths: string[] | undefined,
+): void {
+    if (target.rPath === rPath && isDeepStrictEqual(target.libraryPaths, libraryPaths)) {
+        return;
+    }
+    target.rPath = rPath;
+    target.libraryPaths = libraryPaths;
+    target.languageEnvironmentRevision++;
+    retargetDocuments(target, target);
 }
 
 /** Let per-notebook language clients reselect their runtime after restart or detach. */

@@ -57,6 +57,65 @@ const command = (id, ...args) => vscode.commands.executeCommand(id, ...args);
 const items = cell => cell.outputs.flatMap(out => out.items);
 const stdout = cell => items(cell).filter(i => i.mime.endsWith('.stdout')).map(i => new TextDecoder().decode(i.data)).join('');
 
+async function notebookLanguagePolicy(source, files) {
+    const settings = vscode.workspace.getConfiguration('r');
+    const previousRuntime = settings.inspect('lsp.runtime')?.globalValue;
+    const previousEnabled = settings.inspect('lsp.enabled')?.globalValue;
+    const global = vscode.ConfigurationTarget.Global;
+    const hasSymbol = async (document, name) => {
+        const symbols = await command('vscode.executeDocumentSymbolProvider', document.uri);
+        return symbols?.some(symbol => symbol.name === name);
+    };
+    const definitions = async (document, line) =>
+        (await command('vscode.executeDefinitionProvider', document.uri, new vscode.Position(line, 3))) ?? [];
+
+    async function openNotebook(unique) {
+        // VS Code's document selectors see the same path for both virtual repositories.
+        const uri = files.uri('analysis[1].rnb').with({ authority: unique });
+        const cell = value => ({ kind: vscode.NotebookCellKind.Code, language: 'r', value, outputs: [] });
+        const transcript = {
+            version: 1,
+            metadata: {},
+            cells: [
+                cell(`session_fn <- function(x) x\n${unique} <- function(x) x + 1`),
+                cell('session_fn(42)\nonly_in_b(0)\ntriple_it(3)'),
+            ],
+        };
+        await vscode.workspace.fs.writeFile(uri, new TextEncoder().encode(JSON.stringify(transcript)));
+        const notebook = await vscode.workspace.openNotebookDocument(uri);
+        await vscode.window.showNotebookDocument(notebook);
+        return notebook;
+    }
+
+    try {
+        await settings.update('lsp.runtime', 'native', global);
+        const a = await openNotebook('only_in_a');
+        const b = await openNotebook('only_in_b');
+        for (const book of [a, b]) {
+            const declaration = book.cellAt(0).document;
+            const call = book.cellAt(1).document;
+            await until(async () => {
+                const results = await definitions(call, 0);
+                return results.length === 1 &&
+                    (results[0].uri ?? results[0].targetUri).toString() === declaration.uri.toString();
+            }, 'Definition did not resolve within ' + book.uri.toString());
+        }
+        assert(!(await hasSymbol(source, 'triple_it')), 'An ordinary browser source received webR under native mode.');
+        assert((await definitions(a.cellAt(1).document, 1)).length === 0, 'Another notebook supplied a local definition.');
+
+        await settings.update('lsp.runtime', 'auto', global);
+        await until(() => hasSymbol(source, 'triple_it'), 'Ordinary source language features did not resume.');
+        assert((await definitions(a.cellAt(1).document, 2)).length === 0, 'A standalone source supplied a notebook definition.');
+
+        await settings.update('lsp.enabled', false, global);
+        await until(async () => !(await hasSymbol(a.cellAt(0).document, 'session_fn')) &&
+            !(await hasSymbol(source, 'triple_it')), 'Disabling the language service left providers registered.');
+    } finally {
+        await settings.update('lsp.runtime', previousRuntime, global);
+        await settings.update('lsp.enabled', previousEnabled, global);
+    }
+}
+
 exports.run = async () => {
     const files = testFiles();
     try {
@@ -132,6 +191,7 @@ exports.run = async () => {
         assert(stdout(reopened.cellAt(0)).includes('17'), 'Saved notebook lost its transcript.');
         await command('r.runCommand','exists("held_value", inherits = FALSE)');
         assert(stdout(reopened.cellAt(1)).includes('FALSE'), 'Reopening retained stale R state.');
+        await notebookLanguagePolicy(first, files);
         console.log('Verified webR language features, R Interactive execution, files, and transcript reopening.');
     } finally {
         await command('r.interactive.stopAll');

@@ -20,6 +20,7 @@ import { CancellableLanguageClient } from '../../languageServerClient';
 import * as util from '../../util';
 import {
     bindSessionDocument,
+    updateSessionLanguageEnvironment,
     registerSessionTransport,
     replaceSessionTransport,
     unregisterSessionTransport,
@@ -31,7 +32,7 @@ suite('Language service startup lifecycle', () => {
     let appendLine: sinon.SinonStub;
     const prototype = LanguageService.prototype as unknown as {
         createClient: () => Promise<LanguageClient>;
-        startMultiLanguageService: () => void;
+        startMultiLanguageService: (virtualOnly?: boolean) => void;
         spawnServer: (
             client: LanguageClient,
             executable: string,
@@ -58,7 +59,7 @@ suite('Language service startup lifecycle', () => {
         const service = new LanguageService();
         await service.dispose();
         sinon.assert.calledWithMatch(appendLine, 'Failed to start language server:');
-        sinon.assert.notCalled(register);
+        sinon.assert.calledOnceWithExactly(register, true);
     });
 
     test('disposal during startup stops the eventual client without registering listeners', async () => {
@@ -75,7 +76,7 @@ suite('Language service startup lifecycle', () => {
         finish({ stop } as unknown as LanguageClient);
         await disposal;
         sinon.assert.calledOnce(stop);
-        sinon.assert.notCalled(register);
+        sinon.assert.calledOnceWithExactly(register, true);
     });
 
     test('disposal cancels TCP startup while R remains alive without connecting', async () => {
@@ -102,7 +103,7 @@ suite('Language service startup lifecycle', () => {
         await listening;
         await service.dispose();
         sinon.assert.calledOnce(disposeChild);
-        sinon.assert.notCalled(register);
+        sinon.assert.calledOnceWithExactly(register, true);
     });
 
     test('a missing package still prompts for installation without stopping a starting client', () => {
@@ -267,8 +268,156 @@ suite('Language service startup lifecycle', () => {
 });
 
 suite('Language service for bound Interactive documents', () => {
+    test('keeps an ordinary bound source in its own workspace with multiServer enabled', async () => {
+        const sandbox = sinon.createSandbox();
+        const a = vscode.Uri.file(path.join(os.tmpdir(), 'workspace-a'));
+        const b = vscode.Uri.file(path.join(os.tmpdir(), 'workspace-b'));
+        const source = {
+            uri: vscode.Uri.joinPath(a, 'helper.R'),
+            languageId: 'r',
+            isClosed: false,
+        } as vscode.TextDocument;
+        sandbox.stub(vscode.workspace, 'getConfiguration').returns({
+            get: (key: string) => key === 'lsp.multiServer',
+        } as unknown as vscode.WorkspaceConfiguration);
+        sandbox.stub(vscode.workspace, 'textDocuments').get(() => [source]);
+        sandbox.stub(vscode.workspace, 'getWorkspaceFolder').callsFake((uri) => {
+            const root = uri.fsPath.startsWith(a.fsPath) ? a : b;
+            return { uri: root, name: path.basename(root.fsPath), index: 0 };
+        });
+        const target = registerSessionTransport(
+            'cross-folder-run',
+            'host',
+            b.fsPath,
+            () => Promise.resolve({}),
+            'webr',
+        );
+        bindSessionDocument(source.uri, target);
+        const start = sandbox
+            .stub(
+                LanguageService.prototype as unknown as {
+                    createClient: (
+                        selector: unknown[],
+                        cwd: string,
+                        folder: vscode.WorkspaceFolder,
+                    ) => Promise<LanguageClient>;
+                },
+                'createClient',
+            )
+            .resolves({ stop: () => Promise.resolve() } as LanguageClient);
+        const service = new LanguageService();
+        try {
+            const state = service as unknown as {
+                startup: Promise<void>;
+                clientUpdates: Map<string, Promise<void>>;
+            };
+            await state.startup;
+            await Promise.all(state.clientUpdates.values());
+            sinon.assert.calledOnce(start);
+            assert.strictEqual(start.firstCall.args[1], a.fsPath);
+            assert.strictEqual(start.firstCall.args[2].uri.toString(), a.toString());
+        } finally {
+            await service.dispose();
+            unregisterSessionTransport(target);
+            sandbox.restore();
+        }
+    });
+
+    test('defers the ordinary webR download until a source editor opens', async () => {
+        const sandbox = sinon.createSandbox();
+        const opened = new vscode.EventEmitter<vscode.TextDocument>();
+        const controller = new AbortController();
+        const cell = {
+            uri: vscode.Uri.parse('vscode-notebook-cell:/one#cell'),
+            languageId: 'r',
+        } as vscode.TextDocument;
+        sandbox.stub(vscode.workspace, 'textDocuments').get(() => [cell]);
+        sandbox.stub(vscode.workspace, 'onDidOpenTextDocument').callsFake(opened.event);
+        const gate = LanguageService.prototype as unknown as {
+            waitForRDocument(signal: AbortSignal, virtualOnly: boolean): Promise<void>;
+        };
+        let sourceReady = false;
+        const source = gate.waitForRDocument(controller.signal, false).then(() => {
+            sourceReady = true;
+        });
+        try {
+            // The notebook side is ready immediately despite a waiting ordinary client.
+            await gate.waitForRDocument(controller.signal, true);
+            opened.fire(cell);
+            await Promise.resolve();
+            assert.strictEqual(sourceReady, false);
+            opened.fire({
+                uri: vscode.Uri.file('/source.R'),
+                languageId: 'r',
+            } as vscode.TextDocument);
+            await source;
+            assert.strictEqual(sourceReady, true);
+        } finally {
+            controller.abort();
+            opened.dispose();
+            sandbox.restore();
+        }
+    });
+
+    test('starts a bound webR input even when the ordinary native source client cannot start', async () => {
+        const sandbox = sinon.createSandbox();
+        const input = {
+            uri: vscode.Uri.parse('vscode-interactive-input:/session-only'),
+            languageId: 'r',
+            isClosed: false,
+        } as vscode.TextDocument;
+        const config = vscode.workspace.getConfiguration;
+        sandbox.stub(vscode.workspace, 'getConfiguration').callsFake((...args) => {
+            const settings = config(...args);
+            return args[0] !== 'r'
+                ? settings
+                : ({
+                      ...settings,
+                      get: (key: string, fallback?: unknown) =>
+                          key === 'lsp.runtime'
+                              ? 'native'
+                              : key === 'lsp.multiServer'
+                                ? false
+                                : settings.get(key, fallback),
+                  } as vscode.WorkspaceConfiguration);
+        });
+        mockExtensionContext(path.resolve(__dirname, '../../..'), sandbox);
+        sandbox.stub(vscode.workspace, 'textDocuments').get(() => [input]);
+        sandbox.stub(vscode.workspace, 'getWorkspaceFolder').returns(undefined);
+        sandbox.stub(util, 'getRpath').resolves(undefined);
+        sandbox.stub(CancellableLanguageClient.prototype, 'start').resolves();
+        sandbox.stub(CancellableLanguageClient.prototype, 'stop').resolves();
+        const target = registerSessionTransport(
+            'wasm-only',
+            'host',
+            os.tmpdir(),
+            () => Promise.resolve({}),
+            'webr',
+        );
+        bindSessionDocument(input.uri, target);
+        const service = new LanguageService();
+        try {
+            const state = service as unknown as {
+                startup: Promise<void>;
+                clientUpdates: Map<string, Promise<void>>;
+                clients: Map<string, LanguageClient>;
+            };
+            await state.startup;
+            await Promise.all(state.clientUpdates.values());
+            assert.strictEqual(state.clients.has('global'), false);
+            assert.strictEqual(
+                state.clients.get(input.uri.toString(true))?.name,
+                'R Language Server (webR)',
+            );
+        } finally {
+            await service.dispose();
+            unregisterSessionTransport(target);
+            sandbox.restore();
+        }
+    });
+
     for (const policy of ['auto', 'native', 'webR']) {
-        test(`uses the configured runtime across binding, restart, and detach (${policy})`, async () => {
+        test(`uses the session runtime for Interactive and the configured runtime for ordinary sources (${policy})`, async () => {
             const sandbox = sinon.createSandbox();
             const tester = (scheme: string, path: string, fragment?: string) =>
                 ({
@@ -279,7 +428,10 @@ suite('Language service for bound Interactive documents', () => {
             const source = tester('file', '/test/script.R');
             const notebook = tester('vscode-notebook-cell', '/test/Interactive.rnb', 'cell1');
             const prompt = tester('vscode-interactive-input', '/test/Interactive.input');
-            const docs = [source, notebook, prompt];
+            const nativePrompt = tester('vscode-interactive-input', '/test/Other.input');
+            const docs = [source, notebook, prompt, nativePrompt];
+            const opened = new vscode.EventEmitter<vscode.TextDocument>();
+            sandbox.stub(vscode.workspace, 'onDidOpenTextDocument').callsFake(opened.event);
             const getConfiguration = vscode.workspace.getConfiguration;
             sandbox.stub(vscode.workspace, 'getConfiguration').callsFake((...args) => {
                 const config = getConfiguration(...args);
@@ -303,16 +455,26 @@ suite('Language service for bound Interactive documents', () => {
             sandbox.stub(vscode.workspace, 'createFileSystemWatcher').returns({
                 dispose() {},
             } as vscode.FileSystemWatcher);
-            sandbox.stub(util, 'getRpath').resolves(process.execPath);
+            sandbox.stub(vscode.workspace, 'getWorkspaceFolder').returns(undefined);
+            const findR = sandbox.stub(util, 'getRpath').resolves(process.execPath);
             // Only transport startup is stubbed: createClient must select the real
             // client type/providers using the same document events as an editor.
             const start = sandbox.stub(CancellableLanguageClient.prototype, 'start').resolves();
             sandbox.stub(CancellableLanguageClient.prototype, 'needsStop').returns(true);
             sandbox.stub(CancellableLanguageClient.prototype, 'stop').resolves();
             const session = (id: string, provider: 'webr' | 'arf') =>
-                registerSessionTransport(id, 'host', '/test', () => Promise.resolve({}), provider);
+                registerSessionTransport(
+                    id,
+                    'host',
+                    path.join(os.tmpdir(), id),
+                    () => Promise.resolve({}),
+                    provider,
+                );
             const wasm = session('lsp-test-webr', 'webr');
             const native = session('lsp-test-arf', 'arf');
+            updateSessionLanguageEnvironment(native, process.execPath, [
+                path.join(os.tmpdir(), 'first-library'),
+            ]);
             const languageService = new LanguageService();
             const state = languageService as unknown as {
                 startup: Promise<void>;
@@ -337,11 +499,30 @@ suite('Language service for bound Interactive documents', () => {
                 await settle();
                 const project = state.clients.get('global');
                 check(policy === 'webR');
+                const unboundPrompt = state.clients.get(prompt.uri.toString(true));
+                // Queue ordinary open updates before the editor reports its binding.
+                // Both updates run after the owner changes and reuse an existing client.
+                opened.fire(notebook);
+                opened.fire(prompt);
                 bindSessionDocument(source.uri, wasm);
                 bindSessionDocument(notebook.uri.with({ fragment: '' }), wasm);
                 bindSessionDocument(prompt.uri, wasm);
+                bindSessionDocument(nativePrompt.uri, native);
                 await settle();
-                check(policy !== 'native');
+                check(true);
+                const nativeKey = nativePrompt.uri.toString(true);
+                const nativeClient = state.clients.get(nativeKey);
+                assert.strictEqual(nativeClient?.name, 'R Language Server');
+                assert.strictEqual(
+                    nativeClient.clientOptions.workspaceFolder?.uri.fsPath,
+                    vscode.Uri.file(native.workingDir).fsPath,
+                );
+                assert.strictEqual(
+                    state.clients.get(prompt.uri.toString(true))?.clientOptions.workspaceFolder?.uri
+                        .fsPath,
+                    vscode.Uri.file(wasm.workingDir).fsPath,
+                );
+                assert.notStrictEqual(state.clients.get(prompt.uri.toString(true)), unboundPrompt);
                 assert.strictEqual(state.clients.get('global'), project);
                 const count = start.callCount;
                 bindSessionDocument(notebook.uri, wasm);
@@ -353,15 +534,40 @@ suite('Language service for bound Interactive documents', () => {
                 );
                 replaceSessionTransport(wasm, native);
                 await settle();
-                check(policy === 'webR');
+                check(false);
+                const nativeKeyAfterRestart = prompt.uri.toString(true);
+                const oldClient = state.clients.get(nativeKeyAfterRestart);
+                updateSessionLanguageEnvironment(native, process.execPath, [
+                    path.join(os.tmpdir(), 'changed-library'),
+                ]);
+                await settle();
+                assert.notStrictEqual(state.clients.get(nativeKeyAfterRestart), oldClient);
+                const callsAfterMetadata = start.callCount;
+                updateSessionLanguageEnvironment(native, process.execPath, [
+                    path.join(os.tmpdir(), 'changed-library'),
+                ]);
+                await settle();
+                assert.strictEqual(start.callCount, callsAfterMetadata);
+                // Never silently analyze this session with the workspace's R or webR.
+                const finds = findR.callCount;
+                updateSessionLanguageEnvironment(
+                    native,
+                    path.join(os.tmpdir(), 'unavailable-session-R'),
+                    [],
+                );
+                await settle();
+                assert.strictEqual(state.clients.has(nativeKeyAfterRestart), false);
+                assert.strictEqual(findR.callCount, finds);
+                assert.strictEqual(state.clients.get('global'), project);
                 replaceSessionTransport(native, wasm);
                 await settle();
-                check(policy !== 'native');
+                check(true);
                 unregisterSessionTransport(wasm);
                 await settle();
                 check(policy === 'webR');
             } finally {
                 await languageService.dispose();
+                opened.dispose();
                 unregisterSessionTransport(wasm);
                 unregisterSessionTransport(native);
                 sandbox.restore();

@@ -1785,8 +1785,7 @@ export class InteractiveManager
         target.pid = String(manifest.rPid ?? '');
         target.rVer = manifest.rVersion ?? '';
         target.processExited = manifest.status === 'exited';
-        target.rPath = manifest.rPath;
-        target.libraryPaths = manifest.libraryPaths;
+        session.updateSessionLanguageEnvironment(target, manifest.rPath, manifest.libraryPaths);
         target.label = manifest.label;
         target.execute = async (code) => {
             const view = [...this.views.values()].find((item) => item.target === target);
@@ -1886,8 +1885,11 @@ export class InteractiveManager
         view.target.pid = String(snapshot.manifest.rPid ?? '');
         view.target.rVer = snapshot.manifest.rVersion ?? '';
         view.target.processExited = snapshot.manifest.status === 'exited';
-        view.target.rPath = snapshot.manifest.rPath;
-        view.target.libraryPaths = snapshot.manifest.libraryPaths;
+        session.updateSessionLanguageEnvironment(
+            view.target,
+            snapshot.manifest.rPath,
+            snapshot.manifest.libraryPaths,
+        );
         view.base = snapshot.manifest.assetBase
             ? (
                   await vscode.env.asExternalUri(vscode.Uri.parse(snapshot.manifest.assetBase))
@@ -2140,12 +2142,15 @@ export class InteractiveManager
             }
             if (typeof event.data.rPath === 'string') {
                 view.client.manifest.rPath = event.data.rPath;
-                view.target.rPath = event.data.rPath;
             }
             if (Array.isArray(event.data.libraryPaths)) {
                 view.client.manifest.libraryPaths = event.data.libraryPaths.map(String);
-                view.target.libraryPaths = view.client.manifest.libraryPaths;
             }
+            session.updateSessionLanguageEnvironment(
+                view.target,
+                view.client.manifest.rPath,
+                view.client.manifest.libraryPaths,
+            );
             if (typeof event.data.runtimeSessionId === 'string') {
                 view.client.manifest.runtimeSessionId = event.data.runtimeSessionId;
             }
@@ -3415,8 +3420,11 @@ export class InteractiveManager
             target.pid = String(snapshot.manifest.rPid ?? '');
             target.rVer = snapshot.manifest.rVersion ?? '';
             target.processExited = snapshot.manifest.status === 'exited';
-            target.rPath = snapshot.manifest.rPath;
-            target.libraryPaths = snapshot.manifest.libraryPaths;
+            session.updateSessionLanguageEnvironment(
+                target,
+                snapshot.manifest.rPath,
+                snapshot.manifest.libraryPaths,
+            );
             view.prompts.clear();
             if (snapshot.workspace) {
                 target.workspaceData = snapshot.workspace as unknown as session.WorkspaceData;
