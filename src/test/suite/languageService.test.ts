@@ -18,6 +18,12 @@ import { LanguageService } from '../../languageService';
 import { connectTcpLanguageServer } from '../../languageServerTransport';
 import { CancellableLanguageClient } from '../../languageServerClient';
 import * as util from '../../util';
+import {
+    bindSessionDocument,
+    registerSessionTransport,
+    replaceSessionTransport,
+    unregisterSessionTransport,
+} from '../../session';
 import { mockExtensionContext } from '../common/mockvscode';
 
 suite('Language service startup lifecycle', () => {
@@ -258,6 +264,110 @@ suite('Language service startup lifecycle', () => {
             'Failed to stop language server: Error: shutdown failed',
         );
     });
+});
+
+suite('Language service for bound Interactive documents', () => {
+    for (const policy of ['auto', 'native', 'webR']) {
+        test(`uses the configured runtime across binding, restart, and detach (${policy})`, async () => {
+            const sandbox = sinon.createSandbox();
+            const tester = (scheme: string, path: string, fragment?: string) =>
+                ({
+                    uri: vscode.Uri.from({ scheme, path, fragment }),
+                    isClosed: false,
+                    languageId: 'r',
+                }) as vscode.TextDocument;
+            const source = tester('file', '/test/script.R');
+            const notebook = tester('vscode-notebook-cell', '/test/Interactive.rnb', 'cell1');
+            const prompt = tester('vscode-interactive-input', '/test/Interactive.input');
+            const docs = [source, notebook, prompt];
+            const getConfiguration = vscode.workspace.getConfiguration;
+            sandbox.stub(vscode.workspace, 'getConfiguration').callsFake((...args) => {
+                const config = getConfiguration(...args);
+                return args[0] === 'r'
+                    ? ({
+                          ...config,
+                          get: (key: string, fallback?: unknown) => {
+                              if (key === 'lsp.runtime') {
+                                  return policy;
+                              }
+                              if (key === 'lsp.multiServer') {
+                                  return false;
+                              }
+                              return config.get(key, fallback);
+                          },
+                      } as vscode.WorkspaceConfiguration)
+                    : config;
+            });
+            mockExtensionContext(path.resolve(__dirname, '../../..'), sandbox);
+            sandbox.stub(vscode.workspace, 'textDocuments').get(() => docs);
+            sandbox.stub(vscode.workspace, 'createFileSystemWatcher').returns({
+                dispose() {},
+            } as vscode.FileSystemWatcher);
+            sandbox.stub(util, 'getRpath').resolves(process.execPath);
+            // Only transport startup is stubbed: createClient must select the real
+            // client type/providers using the same document events as an editor.
+            const start = sandbox.stub(CancellableLanguageClient.prototype, 'start').resolves();
+            sandbox.stub(CancellableLanguageClient.prototype, 'needsStop').returns(true);
+            sandbox.stub(CancellableLanguageClient.prototype, 'stop').resolves();
+            const session = (id: string, provider: 'webr' | 'arf') =>
+                registerSessionTransport(id, 'host', '/test', () => Promise.resolve({}), provider);
+            const wasm = session('lsp-test-webr', 'webr');
+            const native = session('lsp-test-arf', 'arf');
+            const languageService = new LanguageService();
+            const state = languageService as unknown as {
+                startup: Promise<void>;
+                clients: Map<string, LanguageClient>;
+                clientUpdates: Map<string, Promise<void>>;
+            };
+            const settle = async () => {
+                await state.startup;
+                while (state.clientUpdates.size) {
+                    await Promise.all(state.clientUpdates.values());
+                }
+            };
+            const check = (usesWasm: boolean) => {
+                const expected = usesWasm ? 'R Language Server (webR)' : 'R Language Server';
+                assert.strictEqual(
+                    state.clients.get(`vscode-notebook:${notebook.uri.fsPath}`)?.name,
+                    expected,
+                );
+                assert.strictEqual(state.clients.get(prompt.uri.toString(true))?.name, expected);
+            };
+            try {
+                await settle();
+                const project = state.clients.get('global');
+                check(policy === 'webR');
+                bindSessionDocument(source.uri, wasm);
+                bindSessionDocument(notebook.uri.with({ fragment: '' }), wasm);
+                bindSessionDocument(prompt.uri, wasm);
+                await settle();
+                check(policy !== 'native');
+                assert.strictEqual(state.clients.get('global'), project);
+                const count = start.callCount;
+                bindSessionDocument(notebook.uri, wasm);
+                await settle();
+                assert.strictEqual(
+                    start.callCount,
+                    count,
+                    'Adding another binding to the same notebook restarted its client',
+                );
+                replaceSessionTransport(wasm, native);
+                await settle();
+                check(policy === 'webR');
+                replaceSessionTransport(native, wasm);
+                await settle();
+                check(policy !== 'native');
+                unregisterSessionTransport(wasm);
+                await settle();
+                check(policy === 'webR');
+            } finally {
+                await languageService.dispose();
+                unregisterSessionTransport(wasm);
+                unregisterSessionTransport(native);
+                sandbox.restore();
+            }
+        });
+    }
 });
 
 suite('Language service initialization cancellation', () => {
