@@ -6,6 +6,7 @@ import * as os from 'os';
 import * as sinon from 'sinon';
 import * as vscode from 'vscode';
 import * as util from '../../util';
+import * as rPathResolver from '../../rPathResolver';
 import { mockExtensionContext } from '../common/mockvscode';
 
 suite('R command utilities', () => {
@@ -15,6 +16,35 @@ suite('R command utilities', () => {
         mockExtensionContext(path.resolve(__dirname, '../../..'), sandbox);
     });
     teardown(() => sandbox.restore());
+
+    test('concurrent missing R lookups share a notification and still resolve per resource', async () => {
+        const folder = vscode.Uri.file(path.join(os.tmpdir(), 'with-r'));
+        const invalid = vscode.Uri.file(path.join(os.tmpdir(), 'invalid-r'));
+        const setting = (value?: string) =>
+            ({
+                get: (key: string) => (key === 'executablePath' ? value : undefined),
+            }) as vscode.WorkspaceConfiguration;
+        const config = sandbox.stub(vscode.workspace, 'getConfiguration').returns(setting());
+        config.withArgs('r', folder).returns(setting(process.execPath));
+        config.withArgs('r', invalid).returns(setting(path.join(__dirname, 'nonexistent-R')));
+        sandbox.stub(rPathResolver, 'resolveSystemR').resolves(undefined);
+        let dismiss!: () => void;
+        const notice = new Promise<undefined>((resolve) => {
+            dismiss = () => resolve(undefined);
+        });
+        const show = sandbox.stub(vscode.window, 'showErrorMessage').returns(notice);
+        try {
+            const paths = await Promise.all([util.getRpath(), util.getRpath(false, invalid)]);
+            assert.ok(paths.every((rPath) => !rPath));
+            sinon.assert.calledOnce(show);
+            assert.strictEqual(await util.getRpath(false, folder), process.execPath);
+        } finally {
+            dismiss();
+            await notice;
+        }
+        await util.getRpath();
+        sinon.assert.calledTwice(show);
+    });
 
     test('in-memory help state preserves falsy values and supports key deletion', async () => {
         const state = new util.DummyMemento();
