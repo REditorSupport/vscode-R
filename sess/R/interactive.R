@@ -348,7 +348,9 @@ interactive_execute <- function(id, code, source = NULL) {
     diagnostic(cnd, "message")
     invokeRestart("muffleMessage")
   }
-  on_error <- function(cnd) diagnostic(cnd, "error")
+  on_error <- function(cnd) {
+    diagnostic(cnd, "error")
+  }
   evaluate <- function() {
     # The agent can interrupt as soon as started arrives. Install the condition
     # handlers before publishing it or doing any interruptible setup work.

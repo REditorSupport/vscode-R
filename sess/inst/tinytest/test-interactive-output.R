@@ -10,7 +10,9 @@ local({
 
 # Failed user printers must not break the rich preview or leave a sink active.
 local({
-  print.snapshot_failure <- function(x, ...) stop("custom print failed")
+  print.snapshot_failure <- function(x, ...) {
+    stop("custom print failed")
+  }
   assign("print.snapshot_failure", print.snapshot_failure, envir = .GlobalEnv)
   on.exit(rm("print.snapshot_failure", envir = .GlobalEnv))
   before <- sink.number()
@@ -22,7 +24,9 @@ local({
 
 # Bound retained text and keep UTF-8 valid even when the cutoff splits a glyph.
 local({
-  print.snapshot_large <- function(x, ...) cat(strrep("λ🙂", 50000L))
+  print.snapshot_large <- function(x, ...) {
+    cat(strrep("λ🙂", 50000L))
+  }
   assign("print.snapshot_large", print.snapshot_large, envir = .GlobalEnv)
   on.exit(rm("print.snapshot_large", envir = .GlobalEnv))
   result <- printed(structure(value, class = c("snapshot_large", "data.frame")))$printedText
@@ -33,7 +37,9 @@ local({
 
 # A deliberately silent class printer produces a valid empty text snapshot.
 local({
-  print.snapshot_empty <- function(x, ...) invisible(x)
+  print.snapshot_empty <- function(x, ...) {
+    invisible(x)
+  }
   assign("print.snapshot_empty", print.snapshot_empty, envir = .GlobalEnv)
   on.exit(rm("print.snapshot_empty", envir = .GlobalEnv))
   expect_identical(

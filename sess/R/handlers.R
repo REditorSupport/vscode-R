@@ -19,7 +19,9 @@ try_capture_str <- function(object, max_level = 0L) {
   )
 }
 
-workspace_env_names <- function(env) ls(env, sorted = FALSE)
+workspace_env_names <- function(env) {
+  ls(env, sorted = FALSE)
+}
 
 workspace_child_count <- function(object) {
   # POSIXlt is list-backed, but [[ returns another date-time, not a child list.
@@ -691,7 +693,9 @@ handle_listview_view <- function(view_id, index, path = list()) {
 # such as `.DollarNames()`, is reported to the editor as no result rather than
 # as an error with a console warning. Interrupts are not caught, so that the
 # dispatcher can reply that the request was interrupted.
-handle_hover <- function(expr_str) tryCatch(inspection_hover(expr_str), error = function(e) NULL)
+handle_hover <- function(expr_str) {
+  tryCatch(inspection_hover(expr_str), error = function(e) NULL)
+}
 
 handle_complete <- function(expr_str, trigger = NULL) {
   tryCatch(inspection_completion(expr_str, trigger), error = function(e) NULL)
@@ -960,7 +964,9 @@ dataview_to_state <- function(data) {
   )
 }
 
-dataview_columns <- function(state) state$columns
+dataview_columns <- function(state) {
+  state$columns
+}
 
 dataview_new_id <- function() {
   repeat {
@@ -1224,7 +1230,9 @@ dataview_filter_values <- function(values, model) {
   }
 }
 
-`%||%` <- function(x, y) if (is.null(x)) y else x
+`%||%` <- function(x, y) {
+  if (is.null(x)) y else x
+}
 
 dataview_field_position <- function(field, column_count) {
   position <- suppressWarnings(as.integer(field)) + 1L
@@ -1423,10 +1431,9 @@ handle_dataview_page <- function(params) {
       function(column) column$type == "numericColumn" && column$field != "0",
       logical(1)
     )
-    result$formattedColumns <- lapply(
-      result$rows[numeric_fields],
-      function(values) I(format(values, trim = TRUE, justify = "none"))
-    )
+    result$formattedColumns <- lapply(result$rows[numeric_fields], function(values) {
+      I(format(values, trim = TRUE, justify = "none"))
+    })
   }
   result
 }

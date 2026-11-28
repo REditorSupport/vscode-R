@@ -425,10 +425,9 @@ connect <- function(
         )
         .sess_env$reconnecting <- if (is.null(settings$endpoint)) "startup" else TRUE
         tryCatch(
-          .reconnect_with_startup(
-            endpoint,
-            function() do.call(connect, c(list(endpoint = endpoint), settings$options))
-          ),
+          .reconnect_with_startup(endpoint, function() {
+            do.call(connect, c(list(endpoint = endpoint), settings$options))
+          }),
           error = function(e) message("[sess] Reconnection failed: ", conditionMessage(e)),
           finally = {
             .sess_env$reconnecting <- NULL

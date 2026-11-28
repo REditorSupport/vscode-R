@@ -3,7 +3,9 @@ local({
   root <- tempfile("prepare-jgd-")
   dir.create(root)
   root <- normalizePath(root, winslash = "/", mustWork = TRUE)
-  r_literal <- function(value) paste0("\"", gsub("\\\"", "\\\\\\\"", value), "\"")
+  r_literal <- function(value) {
+    paste0("\"", gsub("\\\"", "\\\\\\\"", value), "\"")
+  }
   on.exit(unlink(root, recursive = TRUE), add = TRUE)
   ambient_library <- file.path(root, "ambient-user-library")
   isolated_child_env <- function(label, libraries = "") {

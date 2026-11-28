@@ -84,7 +84,9 @@ inspection_check_string <- function(value, name, max_bytes = 100000L) {
   value
 }
 
-inspection_is_number <- function(value) is.numeric(value) && length(value) == 1L && is.finite(value)
+inspection_is_number <- function(value) {
+  is.numeric(value) && length(value) == 1L && is.finite(value)
+}
 
 inspection_check_number <- function(value, name) {
   if (!inspection_is_number(value)) {
@@ -184,9 +186,13 @@ inspection_validate <- function(method, params) {
   string <- inspection_check_string
   number <- inspection_check_number
   index <- inspection_check_index
-  one <- function(name, check, ...) inspection_param(params, name, check, ...)
+  one <- function(name, check, ...) {
+    inspection_param(params, name, check, ...)
+  }
   # Absent fields are omitted rather than set to NULL.
-  fields <- function(...) Filter(Negate(is.null), list(...))
+  fields <- function(...) {
+    Filter(Negate(is.null), list(...))
+  }
   switch(
     method,
     workspace = fields(revision = one("revision", number)),

@@ -492,7 +492,9 @@ writeLines(
 )
 
 r_binary <- file.path(R.home("bin"), if (.Platform$OS.type == "windows") "R.exe" else "R")
-r_literal <- function(value) encodeString(value, quote = "\"")
+r_literal <- function(value) {
+  encodeString(value, quote = "\"")
+}
 read_child_logs <- function(paths) {
   read_log <- function(path) {
     # Windows can deny reads while a child still has its redirected stream open.

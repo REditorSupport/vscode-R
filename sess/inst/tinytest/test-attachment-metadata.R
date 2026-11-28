@@ -16,15 +16,12 @@ local({
     "dataviews",
     "dataview_registry"
   )
-  saved <- lapply(
-    fields,
-    function(name) {
-      list(
-        exists = exists(name, envir = state, inherits = FALSE),
-        value = if (exists(name, envir = state, inherits = FALSE)) get(name, state) else NULL
-      )
-    }
-  )
+  saved <- lapply(fields, function(name) {
+    list(
+      exists = exists(name, envir = state, inherits = FALSE),
+      value = if (exists(name, envir = state, inherits = FALSE)) get(name, state) else NULL
+    )
+  })
   names(saved) <- fields
   original_discovery <- Sys.getenv("SESS_DISCOVERY_FILE", unset = NA_character_)
   original_endpoint <- Sys.getenv("SESS_ENDPOINT", unset = NA_character_)
@@ -61,8 +58,12 @@ local({
     state$con <- NULL
     state$reconnect <- NULL
   }
-  env$.resolve_plot_backend <- function(plot_backend) "standard"
-  env$.resolve_endpoint <- function(endpoint = NULL, ...) if (is.null(endpoint)) "" else endpoint
+  env$.resolve_plot_backend <- function(plot_backend) {
+    "standard"
+  }
+  env$.resolve_endpoint <- function(endpoint = NULL, ...) {
+    if (is.null(endpoint)) "" else endpoint
+  }
 
   # Invalid new options must be rejected before the old transport is touched.
   sentinel <- new.env(parent = emptyenv())
@@ -109,8 +110,12 @@ local({
   on.exit(unlink(discovery_path), add = TRUE)
   target_endpoint <- "unavailable-test-endpoint"
   Sys.setenv(SESS_DISCOVERY_FILE = discovery_path)
-  env$.resolve_endpoint <- function(endpoint = NULL, ...) target_endpoint
-  env$.read_discovery <- function(path) list(endpoint = target_endpoint)
+  env$.resolve_endpoint <- function(endpoint = NULL, ...) {
+    target_endpoint
+  }
+  env$.read_discovery <- function(path) {
+    list(endpoint = target_endpoint)
+  }
   discovery_jgd_enabled <- logical()
   env$.configure_discovery_jgd <- function(discovery, jgd_enabled) {
     discovery_jgd_enabled <<- c(discovery_jgd_enabled, jgd_enabled)

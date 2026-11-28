@@ -57,7 +57,9 @@ local({
 
 local({
   sess:::runtime_stop()
-  sentinel_device <- function(...) stop("R's device option was used")
+  sentinel_device <- function(...) {
+    stop("R's device option was used")
+  }
   original_device <- getOption("device")
   original_null_dev <- getOption("sess.null_dev")
   original_plot_hook <- getHook("plot.new")
@@ -131,7 +133,9 @@ local({
   )
   old_discovery <- Sys.getenv("SESS_DISCOVERY_FILE", unset = NA_character_)
   Sys.setenv(SESS_DISCOVERY_FILE = discovery)
-  sentinel_device <- function(...) stop("R's device option was used")
+  sentinel_device <- function(...) {
+    stop("R's device option was used")
+  }
   original_device <- getOption("device")
   original_devices <- grDevices::dev.list()
   options(device = sentinel_device)

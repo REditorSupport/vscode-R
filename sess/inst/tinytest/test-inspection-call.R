@@ -16,12 +16,16 @@ local({
     "dataview_page",
     "dataview_dispose"
   )
-  json <- function(...) as.character(jsonlite::toJSON(list(...), auto_unbox = TRUE))
+  json <- function(...) {
+    as.character(jsonlite::toJSON(list(...), auto_unbox = TRUE))
+  }
   invalid <- function(method, args) {
     condition <- tryCatch(call(method, args), error = function(e) e)
     inherits(condition, "sess_inspection_invalid")
   }
-  decode <- function(text) jsonlite::fromJSON(text, simplifyVector = FALSE)
+  decode <- function(text) {
+    jsonlite::fromJSON(text, simplifyVector = FALSE)
+  }
   library_path <- dirname(system.file(package = "sess"))
   on.exit(
     rm(list = ls(.GlobalEnv, all.names = TRUE, pattern = paste0("^", prefix)), envir = .GlobalEnv),

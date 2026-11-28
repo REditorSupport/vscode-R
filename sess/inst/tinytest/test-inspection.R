@@ -16,7 +16,9 @@ local({
       detach("sess_inspection_search", character.only = TRUE)
     }
   })
-  global <- function(name, value) assign(paste0(prefix, name), value, envir = .GlobalEnv)
+  global <- function(name, value) {
+    assign(paste0(prefix, name), value, envir = .GlobalEnv)
+  }
   invalid <- function(expr, trigger = NULL) {
     condition <- tryCatch(
       if (is.null(trigger)) hover(expr) else completion(expr, trigger),

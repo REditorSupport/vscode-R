@@ -50,8 +50,12 @@ local({
     expect_null(replies[[1L]]$error)
     replies[[1L]]$result
   }
-  id <- function(type, name = root) get(paste0(type, ":", name), runtime$dataview_registry)
-  selector <- function(index, name) list(kind = "index", value = index, name = name)
+  id <- function(type, name = root) {
+    get(paste0(type, ":", name), runtime$dataview_registry)
+  }
+  selector <- function(index, name) {
+    list(kind = "index", value = index, name = name)
+  }
 
   expect_true(request("workspace_view", list(name = root)))
   list_id <- id("list")

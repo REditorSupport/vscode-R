@@ -14,7 +14,9 @@ local({
   state <- new.env(parent = emptyenv())
   state$devices <- list()
   env <- new.env(parent = asNamespace("sess"))
-  env$.runtime_state <- function() state
+  env$.runtime_state <- function() {
+    state
+  }
   track <- sess:::.runtime_track_device
   environment(track) <- env
 

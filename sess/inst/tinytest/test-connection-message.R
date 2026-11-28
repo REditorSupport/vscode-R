@@ -21,7 +21,9 @@ local({
     environment(fun) <- env
     assign(name, fun, env)
   }
-  env$interactive <- function() TRUE
+  env$interactive <- function() {
+    TRUE
+  }
   opts <- list(use_rstudioapi = FALSE, plot_backend = "standard")
 
   connect_once <- function(quiet) {
@@ -55,7 +57,9 @@ local({
 
   # Automatic reconnects print at an idle prompt, so each message redraws it.
   callbacks <- list()
-  schedule <- function(callback, delay) callbacks[[length(callbacks) + 1L]] <<- callback
+  schedule <- function(callback, delay) {
+    callbacks[[length(callbacks) + 1L]] <<- callback
+  }
   tick <- function() {
     callback <- callbacks[[1L]]
     callbacks <<- callbacks[-1L]

@@ -206,7 +206,9 @@ local({
   env$connect <- sess::connect
   environment(env$connect) <- env
   scheduled <- list()
-  env$.schedule_reconnect <- function(settings) scheduled[[length(scheduled) + 1L]] <<- settings
+  env$.schedule_reconnect <- function(settings) {
+    scheduled[[length(scheduled) + 1L]] <<- settings
+  }
   directory <- tempfile("revive-")
   dir.create(directory)
   discovery <- file.path(directory, "terminal.json")
@@ -283,7 +285,9 @@ local({
   options(vscodeR.terminalStartup = registration)
   env$.transport_disconnect <- sess:::.transport_disconnect
   environment(env$.transport_disconnect) <- env
-  env$notify_client <- function(...) env$.transport_disconnect(silent = TRUE, reconnect = TRUE)
+  env$notify_client <- function(...) {
+    env$.transport_disconnect(silent = TRUE, reconnect = TRUE)
+  }
   server <- processx::conn_create_unix_socket(socket, encoding = "")
   on.exit(try(close(server), silent = TRUE), add = TRUE)
   attempt()
