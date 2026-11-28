@@ -2,6 +2,33 @@
 // next top-level prompt. R can print deferred warnings after the outcome.
 export const consoleRunner = String.raw`
 base::local({
+    # Install from the Wasm repository while keeping ordinary package loading semantics.
+    install_packages <- function(pkgs, lib = NULL, repos = getOption("repos"), ...,
+                                 type = "binary", quiet = FALSE) {
+        if (is.null(repos) || !identical(type, "binary")) {
+            stop("webR installs prebuilt WebAssembly packages from a repository.", call. = FALSE)
+        }
+        if (...length()) {
+            stop("The webR installer supports pkgs, lib, repos, type = 'binary' and quiet.",
+                call. = FALSE)
+        }
+        repos <- unlist(lapply(repos, function(repo) {
+            if (identical(repo, "@CRAN@")) getOption("webr_pkg_repos") else repo
+        }), use.names = FALSE)
+        webr::install(packages = pkgs, lib = lib, repos = repos, quiet = quiet)
+        # The upstream installer can warn and return normally after an index download fails.
+        libraries <- unique(c(lib, .libPaths()))
+        missing <- pkgs[!vapply(pkgs, function(pkg) {
+            length(find.package(pkg, lib.loc = libraries, quiet = TRUE)) > 0L
+        }, logical(1))]
+        if (length(missing)) {
+            stop("Could not install ", paste(missing, collapse = ", "),
+                " from the webR binary repositories: ", paste(repos, collapse = ", "), call. = FALSE)
+        }
+        invisible(NULL)
+    }
+    attach(list(install.packages = install_packages), name = "vscodeR:webR", warn.conflicts = FALSE)
+
     # Emscripten emits complete tty lines. Preserve an unterminated fragment
     # before another channel writes or R asks for input. File sinks have their
     # own streams and retain the regular R connection semantics.
