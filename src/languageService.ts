@@ -69,12 +69,13 @@ export class LanguageService implements Disposable {
         try {
             await this.startLanguageService();
         } catch (error) {
+            const retry = this.disposed ? '' : ' Open an R document to retry.';
+            this.outputChannel.appendLine(
+                `Failed to start language server: ${String(error)}.${retry}`,
+            );
             if (this.disposed) {
                 return;
             }
-            this.outputChannel.appendLine(
-                `Failed to start language server: ${String(error)}. Open an R document to retry.`,
-            );
             const nextDocument = workspace.onDidOpenTextDocument((doc) => {
                 if (doc.languageId === 'r' || doc.languageId === 'rmd') {
                     nextDocument.dispose();
