@@ -24,6 +24,7 @@ import type { NotebookOutputState } from '../../interactive/notebookOutput';
 import { AssetStorageStats, exportedAssetName, readAsset } from '../../interactive/assets';
 import { resolveExecutable } from '../../interactive/executable';
 import { shellQuote } from '../../interactive/launcher';
+import { prepareNodeWebR } from '../../webr/nodeRuntime';
 import { listenLocal, localEndpoint } from '../../interactive/transport';
 import type { InteractiveManager } from '../../interactive/manager';
 import type { GlobalEnvItem, WorkspaceDataProvider } from '../../workspaceViewer';
@@ -722,10 +723,16 @@ suite('Interactive VS Code integration', function () {
         }
     });
 
-    test('missing arf offers setup, with no failed session or runtime installation', async () => {
+    test('missing native R and arf still offers webR and the native setup action', async () => {
         const config = vscode.workspace.getConfiguration('r');
         const previous = config.inspect<string>('interactive.arfPath')?.globalValue;
         const missing = path.join(root, 'missing-arf');
+        const previousR = config.inspect<string>('executablePath')?.globalValue;
+        await config.update(
+            'executablePath',
+            path.join(root, 'missing-R'),
+            vscode.ConfigurationTarget.Global,
+        );
         await config.update('interactive.arfPath', missing, vscode.ConfigurationTarget.Global);
         const entries = fs.readdirSync(root);
         const picker = sinon.stub(vscode.window, 'showQuickPick').resolves(undefined);
@@ -740,18 +747,22 @@ suite('Interactive VS Code integration', function () {
             })[];
             assert.deepStrictEqual(
                 choices.map((item) => item.value),
-                ['configure'],
+                ['webr', 'configure'],
             );
-            assert.ok(choices[0].detail?.includes(missing));
-            picker.resolves(choices[0]);
+            assert.ok(choices[1].detail?.includes(missing));
+            picker.resolves(choices[1]);
             await vscode.commands.executeCommand('r.interactive.new');
             sinon.assert.calledOnce(
                 commands.withArgs('workbench.action.openSettings', 'r.interactive.arfPath'),
             );
             sinon.assert.notCalled(input);
+            picker.resolves(choices[0]);
+            await vscode.commands.executeCommand('r.interactive.new');
+            sinon.assert.calledOnce(input);
             sinon.assert.notCalled(errors);
             assert.deepStrictEqual(fs.readdirSync(root), entries);
         } finally {
+            await config.update('executablePath', previousR, vscode.ConfigurationTarget.Global);
             commands.restore();
             picker.restore();
             input.restore();
@@ -799,9 +810,9 @@ suite('Interactive VS Code integration', function () {
             })[];
             assert.deepStrictEqual(
                 choices.map((item) => item.value),
-                ['configure'],
+                ['webr', 'configure'],
             );
-            assert.ok(choices[0].detail?.includes(missing), choices[0].detail);
+            assert.ok(choices[1].detail?.includes(missing), choices[1].detail);
         } finally {
             picker.restore();
             stubs.forEach((stub) => stub.restore());
@@ -876,9 +887,9 @@ suite('Interactive VS Code integration', function () {
             })[];
             assert.deepStrictEqual(
                 providers.map((item) => item.value),
-                ['configure'],
+                ['webr', 'configure'],
             );
-            assert.ok(providers[0].detail?.includes(missing[0]), providers[0].detail);
+            assert.ok(providers[1].detail?.includes(missing[0]), providers[1].detail);
         } finally {
             sandbox.restore();
             folders.forEach((folder) =>
@@ -913,11 +924,11 @@ suite('Interactive VS Code integration', function () {
             })[];
             assert.deepStrictEqual(
                 choices.map((item) => item.value),
-                ['arf'],
+                ['arf', 'webr'],
             );
             assert.deepStrictEqual(
                 choices.map((item) => item.label),
-                ['arf'],
+                ['arf', 'webR'],
             );
             assert.ok(choices.every((item) => item.description === undefined));
             assert.strictEqual(choices[0].detail, executable);
@@ -989,6 +1000,112 @@ suite('Interactive VS Code integration', function () {
                 previous,
                 vscode.ConfigurationTarget.Global,
             );
+        }
+    });
+    test('the webR picker runs a selection and renders a PNG without native R or arf', async () => {
+        const config = vscode.workspace.getConfiguration('r');
+        const overrides = {
+            executablePath: path.join(root, 'missing-native-R'),
+            'interactive.arfPath': path.join(root, 'missing-native-arf'),
+            'interactive.supervision': 'detached',
+        };
+        const previous = Object.keys(overrides).map(
+            (key) => [key, config.inspect<string>(key)?.globalValue] as const,
+        );
+        // Seed the same versioned cache the detached agent uses, using the installed npm assets.
+        await prepareNodeWebR(root, (directory) =>
+            fs.promises.cp(path.dirname(require.resolve('webr')), directory, { recursive: true }),
+        );
+
+        const label = 'webR picker test';
+        const sandbox = sinon.createSandbox();
+        const folder = { uri: vscode.Uri.file(root), name: label, index: 0 };
+        sandbox.stub(vscode.workspace, 'workspaceFolders').value([folder]);
+        const errors = sandbox.stub(vscode.window, 'showErrorMessage').resolves(undefined);
+        sandbox.stub(vscode.window, 'showQuickPick').callsFake((async (items: unknown) => {
+            const choices = (await items) as (vscode.QuickPickItem & { value?: string })[];
+            const selected = choices.find((item) => item.value === 'webr');
+            assert.ok(selected, 'The picker should offer webR');
+            return selected;
+        }) as never);
+        sandbox.stub(vscode.window, 'showInputBox').resolves(label);
+        let manifest: SessionManifest | undefined;
+        try {
+            for (const [key, value] of Object.entries(overrides)) {
+                await config.update(key, value, vscode.ConfigurationTarget.Global);
+            }
+            await vscode.commands.executeCommand('r.interactive.new');
+            const manager = interactiveManager();
+            manager.refresh();
+            manifest = manager.getChildren().find((item) => item.label === label);
+            assert.ok(manifest, JSON.stringify(errors.args));
+            assert.strictEqual(manifest.provider, 'webr');
+            assert.strictEqual(manifest.supervision, 'detached');
+            const notebook = vscode.workspace.notebookDocuments.find(
+                (doc) => doc.metadata.rSessionId === manifest?.id,
+            );
+            assert.ok(notebook, JSON.stringify(errors.args));
+
+            const code = 'value <- 6 * 7\ncat("webR result", value, "\\n")\nplot(1:3)';
+            const document = await vscode.workspace.openTextDocument({
+                content: code,
+                language: 'r',
+            });
+            const editor = await vscode.window.showTextDocument(document, vscode.ViewColumn.One);
+            editor.selection = new vscode.Selection(
+                document.positionAt(0),
+                document.positionAt(code.length),
+            );
+            await vscode.commands.executeCommand('r.runSelection');
+            await until(() =>
+                notebook
+                    .getCells()
+                    .some(
+                        (cell) =>
+                            cell.document.getText().includes('plot(1:3)') &&
+                            cell.executionSummary?.success === true,
+                    ),
+            );
+            const cell = notebook
+                .getCells()
+                .find((item) => item.document.getText().includes('plot(1:3)'));
+            assert.ok(cell);
+            const items = cell.outputs.flatMap((output) => output.items);
+            assert.ok(
+                items.some(
+                    (item) =>
+                        item.mime.includes('stdout') &&
+                        Buffer.from(item.data).toString().includes('webR result 42'),
+                ),
+            );
+            const png = items.find((item) => item.mime === 'image/png');
+            const rich = items.find((item) => item.mime === DISPLAY_MIME);
+            assert.ok(png && rich);
+            const plot = JSON.parse(Buffer.from(rich.data).toString()) as {
+                kind: string;
+                imageData: string;
+            };
+            assert.strictEqual(plot.kind, 'plot');
+            assert.strictEqual(plot.imageData, Buffer.from(png.data).toString('base64'));
+            assert.strictEqual(
+                Buffer.from(png.data).subarray(0, 8).toString('hex'),
+                '89504e470d0a1a0a',
+            );
+        } finally {
+            try {
+                if (manifest) {
+                    sandbox
+                        .stub(vscode.window, 'showWarningMessage')
+                        .resolves('Stop Session' as never);
+                    await vscode.commands.executeCommand('r.interactive.stop', manifest);
+                    await vscode.commands.executeCommand('r.interactive.detach', manifest);
+                }
+            } finally {
+                sandbox.restore();
+                for (const [key, value] of previous) {
+                    await config.update(key, value, vscode.ConfigurationTarget.Global);
+                }
+            }
         }
     });
     test('missing explicit tmux reports a recovery setting before installing or creating a session', async function () {

@@ -10,15 +10,14 @@ R Interactive was introduced in vscode-R 3.2.0 ([PR #1805](https://github.com/RE
 
 Use **VS Code 1.101.0 or newer**. R Interactive supports Linux, macOS, and Windows, including [connecting to an existing arf session](#connect-to-an-existing-arf-session). Existing R terminal workflows remain available.
 
-For Remote SSH, install this extension **on the remote host**. R, its packages, optional executables, and session storage must be available on that host. For local use, the same requirements apply to your computer.
+For Remote SSH, install this extension **on the remote host**. The session agent uses the extension host’s bundled Node.js runtime on that host. On desktop it uses VS Code’s Electron runtime in Node mode. A separate Node.js installation is optional.
 
-The R host needs:
+Choose **webR** to run R in WebAssembly with no native R or arf installation. Relative paths such as `source("helpers.R")` and `read.csv("data.csv")` use the session’s project directory. Writes to that directory are visible on the host. Install a WebAssembly build into the session with `webr::install("data.table")`, then use `library(data.table)` as usual. Additional packages live in the running webR session. Static plots appear in the transcript. Workspace inspection and the native graphics devices described below are available with arf. [webR package installation](https://docs.r-wasm.org/webr/latest/packages.html)
 
-- R. The bundled sess package is pure R and needs no compiler; its missing Imports are installed from the configured R repository and may need build tools when installed from source.
-- The session agent automatically uses the extension host's bundled runtime: VS Code's Electron runtime in Node mode on desktop, or VS Code Server's Node runtime remotely. A separate Node.js installation is optional.
-- `tmux` is optional. On Linux, the default supervisor uses tmux when available and otherwise starts an independent detached process. `systemd --user` is another configurable option.
-- R packages processx, later, jsonlite, and rstudioapi. Install languageserver for language features, jgd and systemfonts for jgd graphics, and htmlwidgets/htmltools for HTML output. Static plots use SVG when `svglite` is available and PNG otherwise.
-- arf. Creating a new Interactive session requires an arf executable on the R host. Listing already-running arf sessions to connect to uses the arf CLI on the R host, found through `r.interactive.arfPath`; the connection itself then uses the session's socket. R Interactive requires arf 0.7.2-rc.1 or later.
+Choose **arf** to use an installed R and its project libraries. On the R host, install:
+
+- Native R and arf 0.7.2-rc.1 or later. The arf CLI is also used to list running arf sessions for adoption.
+- R packages processx, later, jsonlite, and rstudioapi. Install languageserver for native language features, jgd and systemfonts for jgd graphics, and htmlwidgets/htmltools for HTML output. Static plots use SVG when `svglite` is available and PNG otherwise. The bundled sess package is pure R. Installing missing packages from source may require build tools.
 
 For example, run in the R installation used on the server:
 
@@ -35,9 +34,9 @@ The experimental `r.interactive.nodePath` setting provides an optional standalon
 
 Runtime availability and version (Node.js 18+) are checked before installation or restart, so a failed check leaves the current R process running. If an editor update removes the automatic runtime, reload VS Code to select its current executable. Reconnecting to an existing agent does not launch or replace its runtime; new and restarted sessions reread `r.interactive.nodePath`.
 
-### R packages and project libraries
+### Native R packages and project libraries
 
-The extension installs its bundled pure R sess into a private, content-addressed library when starting an Interactive session. It does not replace your installed sess package. Missing Imports are installed from the configured R repository; no global repository settings are changed. Installation diagnostics appear in the **R Interactive** output channel.
+The extension installs its bundled pure R sess into a private, content-addressed library when starting an arf Interactive session. It does not replace your installed sess package. Missing Imports are installed from the configured R repository; no global repository settings are changed. Installation diagnostics appear in the **R Interactive** output channel.
 
 That private library is used only to load the bridge; it is not added to your session's `.libPaths()` or `R_LIBS`. Package installation follows ordinary R behavior: `install.packages()` defaults to the first library in `.libPaths()`, usually your user library. Startup files can customize that order, and an explicit `lib=` still takes precedence. The extension does not force a user-library destination over a project library.
 
@@ -62,7 +61,7 @@ Typical remote settings:
 
 Executable paths, storage location, supervision, graphics backend, and output/journal/asset size limits are excluded from VS Code Settings Sync by default because they depend on the R host. Execution target, table presentation, automatic reconnection, and history-length preferences can still sync.
 
-Use the paths appropriate for your server. Linux `auto` prefers tmux when its executable is on the extension host's PATH. If tmux is missing or not executable, it uses a detached agent and records the fallback in the **R Interactive** output channel and agent log. Session Details shows **Independent process**. macOS and Windows `auto` also use a detached agent. Both plain R and managed arf support this fallback with the same Interactive features.
+Use the paths appropriate for your server. Linux `auto` prefers tmux when its executable is on the extension host's PATH. If tmux is missing or not executable, it uses a detached agent and records the fallback in the **R Interactive** output channel and agent log. Session Details shows **Independent process**. macOS and Windows `auto` also use a detached agent. Both webR and managed arf use the same agent supervision.
 
 Selecting `tmux` or `systemd` explicitly requires `tmux` or `systemd-run` on the R host. Missing executables produce an actionable error before installing a runtime or stopping the current R process for restart. Install the selected supervisor or change `r.interactive.supervision` to `auto` or `detached`. New sessions and restarts use the current setting; merely reconnecting leaves the existing supervisor unchanged. If an installed supervisor fails to launch (for example, a systemd user service is unavailable), the error includes its diagnostics. The extension does not retry with another supervisor after a launch attempt, which could create duplicate R processes.
 
@@ -70,7 +69,7 @@ Detached launch goes through a short-lived bootstrap so the agent leaves the edi
 
 ## Start a session
 
-Run **R: New Persistent Interactive Session**, choose **arf**, and name the session. Each session opens its own Interactive window; select it in **R → Interactive Sessions** to return to it. Multiple sessions execute concurrently; each R process runs submitted cells serially.
+Run **R: New Persistent Interactive Session**, choose **webR** or **arf**, and name the session. Each session opens its own Interactive window; select it in **R → Interactive Sessions** to return to it. Multiple sessions execute concurrently; each runtime runs its submitted cells serially.
 
 ### Connect to an existing arf session
 
@@ -86,7 +85,7 @@ The agent itself runs under the separately selected supervisor (`tmux`, `systemd
 
 ### Configure managed arf sessions
 
-The provider picker shows **R** and **arf**, each with its resolved executable path on a second line. **arf** appears only when `r.interactive.arfPath` resolves to an executable file on this host (the remote server with Remote SSH). Otherwise, **Configure arf…** opens its setting without creating a session. Install arf separately and configure its path, or choose **R** with the same persistence and multi-session controls. The setting accepts names on PATH, absolute or workspace-relative paths, `~/`, `${userHome}`, and `${workspaceFolder}`. Configured paths containing spaces do not need quotes. Changing the setting takes effect the next time the picker opens; shell aliases are not executables.
+The provider picker shows **arf** with its executable path when `r.interactive.arfPath` resolves to an executable file on this host (the remote server with Remote SSH). Otherwise, **Configure arf…** opens its setting without creating a session. Choose **webR** to start an Interactive session while arf is unavailable. The setting accepts names on PATH, absolute or workspace-relative paths, `~/`, `${userHome}`, and `${workspaceFolder}`. Configured paths containing spaces do not need quotes. Changing the setting takes effect the next time the picker opens; shell aliases are not executables.
 
 The setting must name arf itself, or a script that replaces itself with arf using `exec` (for example, `exec arf "$@"`). A launcher that starts arf as another process and waits for it is not supported: the extension signals, and waits for the exit of, only the process it started. A managed session refuses such a launcher when arf reports a different PID, and asks you to change the setting. The arf it started may then still be running and need to be ended by hand.
 
@@ -103,7 +102,7 @@ New arf sessions save their resolved absolute executable path, so a later PATH c
 - Session age appears in the session list, connection/stop pickers, and kernel description as **<1m**, **30m**, **1h**, or **1d**. It refreshes once a minute; the tooltip includes the start time. Age uses the persisted start of the current process generation, so reloading preserves it and restarting resets it. The recorded process exit time keeps a stopped session's lifetime fixed.
 - **R: Stop Selected Interactive Sessions…** in the Command Palette opens a checkbox picker with session names, PIDs, and directories. Use Ctrl/Cmd-click or Shift-click to select entries in **Interactive Sessions**, then click the header's stop icon or right-click **Stop Selected Interactive Sessions…** to stop that selection. With no tree selection, the header icon opens the picker. **R: Stop All Interactive Sessions…**, also in the view's **…** menu, targets running Interactive sessions in the configured registry on this host, including those without open tabs. Both ask once with the target list, retain history, and leave the current editor layout intact. Sessions controlled by another VS Code window are skipped; the result offers **Show Details** for failures. Use **Take Control** explicitly before retrying those sessions. Sessions created or restarted after confirmation opens are not added to its targets.
 - The Interactive toolbar includes **Restart**, **Session…**, **History**, and **Clear Completed**, alongside VS Code's **Interrupt** control. **Session…** opens a searchable action picker for switching/creating sessions, rename/details, queued-work cancellation, input/control, plots/export/asset cleanup, disconnect, and stop. These actions target that window's notebook, even when another session or editor has focus. On narrow windows, VS Code moves excess actions into its toolbar overflow. The controls also work in the fallback R notebook and stay out of other kernels' notebooks.
-- Restart and Stop confirmations name the affected session and explain that in-memory objects will be lost. Restart is available for managed plain R and arf sessions; restart an adopted arf session in its original terminal or session manager, then reconnect. **Disconnect** leaves R running. **Clear Completed** retains active/queued cells, drafts, and saved history.
+- Restart and Stop confirmations name the affected session and explain that in-memory objects will be lost. Restart is available for managed webR and arf sessions; restart an adopted arf session in its original terminal or session manager, then reconnect. **Disconnect** leaves R running. **Clear Completed** retains active/queued cells, drafts, and saved history.
 - When R stops, the Interactive window shows a **R session stopped** notice, including when R exits itself. Reopening the stopped session restores one notice along with its history. Restart keeps the same Interactive window, its input draft, edited cells, code, and output. A **R session restarted** boundary marks where the fresh process begins; subsequent execution uses that process. Source-document bindings and the existing kernel controls follow the replacement. A failed restart leaves an explanation and the transcript in place so it can be retried.
 - **Search Interactive History** (`Ctrl+Alt+H`, or `Cmd+Alt+H` on macOS) searches admitted code in the session's durable history, including commands older than the restored window. Enter inserts a command into the input for editing and preserves any existing draft. Item buttons copy, run again, or navigate to the original source; the history button loads older matches. Disconnected and older agents use the locally restored history.
 - **New Persistent Interactive Session** focuses the new session's input, preserving drafts in other sessions. Creating a target through **Run Selection** preserves source-editor focus.

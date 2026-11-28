@@ -1,3 +1,5 @@
+import * as path from 'node:path';
+import { prepareNodeWebR } from '../webr/nodeRuntime';
 import {
     AgentConfig,
     AgentSettings,
@@ -7,6 +9,7 @@ import {
 } from './protocol';
 import { SessionBackend } from './backend';
 import { SessBackend, SessOptions } from './backends/sessBackend';
+import { WebRBackend } from './backends/webr';
 import { installAgentBundle } from './launcher';
 import { installSessRuntime } from './backends/sessPreparation';
 import { resolveArfExecutable } from './arfExecutable';
@@ -77,6 +80,22 @@ function sessOptions(descriptor: BackendDescriptor, prepared = true): SessOption
 }
 
 const definitions: Readonly<Record<string, BackendDefinition>> = {
+    webr: {
+        preflight(descriptor) {
+            return descriptor;
+        },
+        async prepare(_descriptor, context) {
+            const baseUrl = await prepareNodeWebR(context.root);
+            return { kind: 'webr', options: { baseUrl } };
+        },
+        create(descriptor, settings) {
+            const baseUrl = descriptor.options.baseUrl;
+            if (typeof baseUrl !== 'string' || !path.isAbsolute(baseUrl)) {
+                throw new Error('Missing local webR runtime.');
+            }
+            return new WebRBackend(settings, baseUrl);
+        },
+    },
     sess: {
         preflight(descriptor, settings) {
             const options = sessOptions(descriptor, false);
