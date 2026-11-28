@@ -82,6 +82,14 @@ Interactive session. Run the source/bootstrap checks with
 `pnpm run test:sess-source`, or just the base-R identity checks with
 `pnpm run test:sess-identity`.
 
+## Updating the webR viewer dependency
+
+The data and list viewers use a private copy of jsonlite's Wasm namespace so
+they can open before a user installs any packages. When updating the jsonlite
+entry in `src/webr/packages.json`, run `python3 scripts/update-webr-viewer-jsonlite.py`
+and commit the regenerated archive. The script verifies the upstream digest.
+A local copy of the upstream archive can be passed as its first argument.
+
 ## Testing the webR language service
 
 After compiling the extension, set `VSCR_ACTIVATION_CASES=webr-language` and run

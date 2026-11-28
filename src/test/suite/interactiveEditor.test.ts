@@ -1030,6 +1030,7 @@ suite('Interactive VS Code integration', function () {
         }) as never);
         sandbox.stub(vscode.window, 'showInputBox').resolves(label);
         let manifest: SessionManifest | undefined;
+        const viewerPanels: vscode.WebviewPanel[] = [];
         try {
             for (const [key, value] of Object.entries(overrides)) {
                 await config.update(key, value, vscode.ConfigurationTarget.Global);
@@ -1103,8 +1104,69 @@ suite('Interactive VS Code integration', function () {
                 Buffer.from(png.data).subarray(0, 8).toString('hex'),
                 '89504e470d0a1a0a',
             );
+
+            // Exercise both View() and the controls of the notebook renderer.
+            const examples = 'View(mtcars); lst <- list(nested = list(answer = 42)); View(lst)';
+            await vscode.commands.executeCommand('r.runSelection', examples);
+            const viewerCell = () =>
+                notebook.getCells().find((item) => item.document.getText() === examples);
+            await until(() => viewerCell()?.executionSummary?.success === true);
+            const displays = viewerCell()!
+                .outputs.flatMap((output) => output.items)
+                .filter((item) => item.mime === DISPLAY_MIME)
+                .map(
+                    (item) =>
+                        JSON.parse(Buffer.from(item.data).toString()) as Record<string, unknown>,
+                );
+            assert.deepStrictEqual(
+                displays.map((item) => item.kind),
+                ['table', 'list'],
+            );
+            assert.strictEqual(
+                (displays[0].rows as Record<string, unknown>[])[0]['0'],
+                'Mazda RX4',
+            );
+            assert.strictEqual((displays[1].children as { label: string }[])[0].label, '$ nested');
+            await vscode.commands.executeCommand(
+                'interactive.open',
+                { preserveFocus: false },
+                notebook.uri,
+            );
+            const owner = vscode.window.visibleNotebookEditors.find(
+                (item) => item.notebook === notebook,
+            );
+            assert.ok(owner);
+            const actions = manager as unknown as {
+                rendererMessage(
+                    editor: vscode.NotebookEditor,
+                    message: Record<string, unknown>,
+                ): Promise<void>;
+            };
+            const createPanel = vscode.window.createWebviewPanel;
+            sandbox
+                .stub(vscode.window, 'createWebviewPanel')
+                .callsFake((type, title, column, options) => {
+                    const panel = createPanel(type, title, column, options);
+                    if (type === 'dataview') {
+                        viewerPanels.push(panel);
+                    }
+                    return panel;
+                });
+            for (const display of displays) {
+                await actions.rendererMessage(owner, {
+                    action: display.kind,
+                    generation: display.generation,
+                    displayId: display.displayId,
+                });
+            }
+            assert.strictEqual(viewerPanels.length, 2, JSON.stringify(errors.args));
+            assert.match(viewerPanels[0].title, /table/i);
+            assert.match(viewerPanels[1].title, /list/i);
         } finally {
             try {
+                for (const panel of viewerPanels) {
+                    panel.dispose();
+                }
                 if (manifest) {
                     sandbox
                         .stub(vscode.window, 'showWarningMessage')

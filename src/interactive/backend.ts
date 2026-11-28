@@ -1,3 +1,4 @@
+import type { HtmlBundle } from './htmlBundle';
 import type { AgentSettings, Submission } from './protocol';
 
 export type BackendOwnership = 'managed' | 'adopted';
@@ -31,6 +32,22 @@ export interface InspectionRequest {
      */
     timeout?: number;
 }
+/** Live controls attached to a retained table or list never take an R expression. */
+export function isViewerInspection(request: InspectionRequest): boolean {
+    return (
+        typeof request.params.view_id === 'string' &&
+        request.params.view_id.length > 0 &&
+        [
+            'dataview_init',
+            'dataview_page',
+            'dataview_dispose',
+            'workspace_children',
+            'listview_navigate',
+            'listview_view',
+        ].includes(request.method)
+    );
+}
+
 export interface InputReply {
     value: string;
 }
@@ -53,6 +70,7 @@ export type BackendEvent = (
     | { type: 'finished'; state: 'success' | 'error' | 'interrupted' }
     | { type: 'stream'; text: string; channel: string; external?: boolean }
     | { type: 'condition' | 'input' | 'display'; data: Record<string, unknown> }
+    | { type: 'widget'; files: HtmlBundle }
     | { type: 'workspaceChanged' }
     | { type: 'notification' | 'viewer'; method: string; params: Record<string, unknown> }
     | { type: 'clientRequest'; id: string; method: string; params: unknown }

@@ -41,7 +41,37 @@ export class BrowserInteractive implements vscode.Disposable {
             });
         };
         this.controller.interruptHandler = (doc) => this.interrupt(doc);
+        const messages = vscode.notebooks.createRendererMessaging('r-interactive-renderer');
         this.registrations = [
+            messages.onDidReceiveMessage(async ({ editor, message: raw }) => {
+                const message = raw as Record<string, unknown> | undefined;
+                if (
+                    !message ||
+                    typeof message !== 'object' ||
+                    !['table', 'page', 'list', 'listPage', 'listNavigate', 'listItem'].includes(
+                        String(message.action),
+                    )
+                ) {
+                    return;
+                }
+                const session = this.sessions.get(editor.notebook);
+                const reply = {
+                    outputId: message.outputId,
+                    action: message.action,
+                    requestId: message.requestId,
+                };
+                try {
+                    if (!session) {
+                        throw new Error(
+                            'This webR session has ended. Run the cell again for live controls.',
+                        );
+                    }
+                    const result = await session.viewers.rendererMessage(message);
+                    await messages.postMessage({ ...reply, result }, editor);
+                } catch (error) {
+                    await messages.postMessage({ ...reply, error: String(error) }, editor);
+                }
+            }),
             this.controller,
             vscode.workspace.registerNotebookSerializer(notebookType, new InteractiveSerializer(), {
                 transientOutputs: false,
@@ -100,7 +130,7 @@ export class BrowserInteractive implements vscode.Disposable {
         }
         let session = this.sessions.get(doc);
         if (!session) {
-            session = new BrowserSession(this.controller);
+            session = new BrowserSession(this.controller, this.context.extensionUri, doc);
             this.sessions.set(doc, session);
         }
         return session;

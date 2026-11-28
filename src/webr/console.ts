@@ -1,5 +1,7 @@
 import type { WebR } from 'webr';
 import { consoleRunner } from './consoleRunner';
+import { inspectWebRViewer, prepareWebRViewers } from './viewers';
+import { checkHtmlSize, type HtmlBundle, validateHtmlBundle } from '../interactive/htmlBundle';
 
 export type WebRConsoleResult = 'success' | 'error' | 'interrupted';
 
@@ -7,7 +9,10 @@ export type WebRConsoleEvent =
     | { type: 'stream'; channel: 'stdout' | 'stderr'; text: string }
     | { type: 'started' }
     | { type: 'input'; prompt: string }
-    | { type: 'plot'; png: Uint8Array };
+    | { type: 'plot'; png: Uint8Array }
+    | { type: 'display'; data: Record<string, unknown> }
+    | { type: 'viewer'; method: 'dataview'; params: Record<string, unknown> }
+    | { type: 'widget'; files: Record<string, Uint8Array> };
 
 interface Cell {
     id: number;
@@ -15,6 +20,9 @@ interface Cell {
     phase: 'preparing' | 'submitted' | 'running' | 'input' | 'finishing' | 'fence';
     interrupted: boolean;
     outcome?: WebRConsoleResult;
+    widgetBytes: number;
+    widgetFiles: number;
+    widgetError?: boolean;
     resolve(result: WebRConsoleResult): void;
     reject(error: Error): void;
 }
@@ -48,6 +56,7 @@ export class WebRConsole {
             }
         }
         await this.runtime.FS.mkdir(root);
+        await prepareWebRViewers(this.runtime);
         await this.runtime.evalRVoid(consoleRunner);
         void this.pump().catch((error) =>
             this.end(error instanceof Error ? error : new Error(String(error))),
@@ -71,6 +80,8 @@ export class WebRConsole {
                 directory: root + '/' + id,
                 phase: 'preparing',
                 interrupted: false,
+                widgetBytes: 0,
+                widgetFiles: 0,
                 resolve,
                 reject,
             };
@@ -116,6 +127,16 @@ export class WebRConsole {
             }
             throw error;
         }
+    }
+
+    async inspect(method: string, params: Record<string, unknown>): Promise<unknown> {
+        if (this.closed) {
+            throw new Error('This webR session has ended.');
+        }
+        if (this.active) {
+            throw new Error('R is busy. Retry when the cell finishes.');
+        }
+        return inspectWebRViewer(this.runtime, method, params);
     }
 
     replyInput(value: string): void {
@@ -190,6 +211,64 @@ export class WebRConsole {
                     }
                     break;
                 }
+                case 'vscode-r-widget': {
+                    const packet = message.data as { id?: unknown; files?: HtmlBundle } | null;
+                    if (cell && packet?.id === cell.id && packet.files && !cell.widgetError) {
+                        try {
+                            cell.widgetBytes += validateHtmlBundle(packet.files);
+                            cell.widgetFiles += Object.keys(packet.files).length;
+                            checkHtmlSize(cell.widgetFiles, cell.widgetBytes);
+                            this.onEvent({ type: 'widget', files: packet.files });
+                        } catch (error) {
+                            cell.widgetError = true;
+                            this.onEvent({
+                                type: 'stream',
+                                channel: 'stderr',
+                                text: 'Unable to display the HTML widget: ' + String(error) + '\n',
+                            });
+                        }
+                    }
+                    break;
+                }
+                case 'vscode-r-display': {
+                    const data = message.data as Record<string, unknown> | null;
+                    if (
+                        cell &&
+                        (data?.kind === 'table' || data?.kind === 'list') &&
+                        typeof data.viewId === 'string'
+                    ) {
+                        this.onEvent({ type: 'display', data });
+                    }
+                    break;
+                }
+                case 'vscode-r-viewer': {
+                    // A retained Wasm object is opened by handle. Host filesystem paths
+                    // are never accepted from the worker's viewer notification.
+                    const request = message.data as {
+                        method?: unknown;
+                        params?: Record<string, unknown>;
+                    } | null;
+                    const params = request?.params;
+                    if (
+                        request?.method === 'dataview' &&
+                        params &&
+                        (params.source === 'table' || params.source === 'list') &&
+                        typeof params.view_id === 'string'
+                    ) {
+                        this.onEvent({
+                            type: 'viewer',
+                            method: 'dataview',
+                            params: {
+                                source: params.source,
+                                type: 'json',
+                                title: params.title,
+                                view_id: params.view_id,
+                                navigation: params.navigation,
+                            },
+                        });
+                    }
+                    break;
+                }
                 case 'vscode-r-execution': {
                     const marker = message.data as { id?: unknown; state?: unknown } | null;
                     if (!cell || marker?.id !== cell.id) {
@@ -206,7 +285,8 @@ export class WebRConsole {
                         marker.state === 'error' ||
                         marker.state === 'interrupted'
                     ) {
-                        cell.outcome = marker.state;
+                        cell.outcome =
+                            cell.widgetError && marker.state === 'success' ? 'error' : marker.state;
                     }
                     break;
                 }

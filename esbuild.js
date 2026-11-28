@@ -30,6 +30,14 @@ function copyResources() {
         }
     }
     fs.copyFileSync(path.join(__dirname, 'node_modules/webr/LICENSE.md'), path.join(destDir, 'webr-LICENSE.md'));
+    const viewerLibrary = fs.readFileSync(path.join(__dirname, 'src/webr/resources/viewer-jsonlite.tgz'));
+    fs.writeFileSync(path.join(destDir, 'webr-viewer-jsonlite.json'), JSON.stringify(viewerLibrary.toString('base64')));
+    // The detached agent and the browser extension embed the same R viewer
+    // helpers as sess. The Node test build reads the generated resource directly.
+    const viewerSource = ['dispatch.R', 'handlers.R', 'inspection_call.R', 'interactive_viewers.R']
+        .map(file => fs.readFileSync(path.join(__dirname, 'sess', 'R', file), 'utf8'))
+        .join('\n');
+    fs.writeFileSync(path.join(destDir, 'webr-viewers.json'), JSON.stringify(viewerSource));
     console.log('Resources copied.');
 }
 

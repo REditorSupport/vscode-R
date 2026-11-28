@@ -1,5 +1,5 @@
 import { WebRConsole, WebRConsoleEvent } from '../../webr/console';
-import { BackendEvent, DispatchNotSentError, SessionBackend } from '../backend';
+import { BackendEvent, DispatchNotSentError, InspectionRequest, SessionBackend } from '../backend';
 import type { AgentSettings, Submission } from '../protocol';
 
 /** An R runtime managed by the session agent's Node process. */
@@ -9,8 +9,9 @@ export class WebRBackend implements SessionBackend {
         streaming: true,
         stdin: true,
         debugger: false,
-        tables: false,
-        html: false,
+        tables: true,
+        viewerInspection: true,
+        html: true,
         inspection: false,
         inspectionDeadline: false,
         interrupt: true,
@@ -95,6 +96,13 @@ export class WebRBackend implements SessionBackend {
                     data: { inputId: ++this.inputId, prompt: event.prompt },
                 });
                 break;
+            case 'display':
+            case 'viewer':
+                this.emit({ ...event, executionId });
+                break;
+            case 'widget':
+                this.emit({ type: 'widget', files: event.files, executionId });
+                break;
             case 'plot':
                 this.emit({
                     type: 'display',
@@ -150,8 +158,11 @@ export class WebRBackend implements SessionBackend {
         });
     }
 
-    inspect(): Promise<never> {
-        return Promise.reject(new Error('Object inspection is unavailable for webR Interactive.'));
+    inspect(request: InspectionRequest): Promise<unknown> {
+        if (!this.console || this.stopped) {
+            return Promise.reject(new Error('webR session is closed.'));
+        }
+        return this.console.inspect(request.method, request.params);
     }
 
     replyInput(reply: { value: string }): Promise<void> {

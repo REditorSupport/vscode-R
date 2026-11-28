@@ -4,11 +4,17 @@ import { OutputQueue } from '../interactive/outputQueue';
 import { WebRConsole, type WebRConsoleEvent } from '../webr/console';
 import { WEBR_BASE_URL } from '../webr/runtime';
 import { sessionDirectory } from './files';
+import { BrowserViewers } from './viewers';
+import { webRWidgetHtml } from '../webr/widgetHtml';
 
 interface ActiveCell {
     execution: vscode.NotebookCellExecution;
     output: OutputQueue;
-    pending: ({ type: 'stdout' | 'stderr'; text: string } | { type: 'plot'; png: Uint8Array })[];
+    pending: (
+        | { type: 'stdout' | 'stderr'; text: string }
+        | { type: 'plot'; png: Uint8Array }
+        | { type: 'rich'; output: vscode.NotebookCellOutput }
+    )[];
     remaining: number;
     truncated: boolean;
     outputError?: unknown;
@@ -28,7 +34,22 @@ export class BrowserSession implements vscode.Disposable {
     private closed = false;
     private readonly lifetime = new AbortController();
 
-    constructor(private readonly controller: vscode.NotebookController) {}
+    readonly viewers: BrowserViewers;
+    constructor(
+        private readonly controller: vscode.NotebookController,
+        extension: vscode.Uri,
+        doc: vscode.NotebookDocument,
+    ) {
+        this.viewers = new BrowserViewers(extension, doc, (method, params) =>
+            this.run(async () => {
+                const worker = this.worker;
+                if (!worker) {
+                    throw new Error('This webR viewer is no longer connected.');
+                }
+                return worker.console.inspect(method, params);
+            }),
+        );
+    }
 
     // Queue file operations and submissions together. A stopped generation must
     // never execute work against a replacement session or a closed worker.
@@ -104,6 +125,9 @@ export class BrowserSession implements vscode.Disposable {
             output: new OutputQueue(
                 async () => {
                     const outputs = active.pending.splice(0).map((value) => {
+                        if (value.type === 'rich') {
+                            return value.output;
+                        }
                         const item =
                             value.type === 'plot'
                                 ? new vscode.NotebookCellOutputItem(value.png, 'image/png')
@@ -164,6 +188,30 @@ export class BrowserSession implements vscode.Disposable {
     }
 
     private onEvent(event: WebRConsoleEvent): void {
+        if (event.type === 'viewer' && !this.closed) {
+            const p = event.params;
+            const view = vscode.workspace
+                .getConfiguration('r')
+                .get<Record<string, string>>('session.viewers.viewColumn')?.view;
+            if (
+                view !== 'Disable' &&
+                typeof p.view_id === 'string' &&
+                (p.source === 'table' || p.source === 'list')
+            ) {
+                void this.viewers
+                    .openValue(
+                        p.source,
+                        p.view_id,
+                        typeof p.title === 'string' ? p.title : 'R Viewer',
+                    )
+                    .catch((error: unknown) => {
+                        if (!this.closed) {
+                            void vscode.window.showErrorMessage(String(error));
+                        }
+                    });
+            }
+            return;
+        }
         const active = this.current;
         if (!active || this.closed) {
             return;
@@ -177,6 +225,20 @@ export class BrowserSession implements vscode.Disposable {
                         session?.replyInput(value ?? '');
                     }
                 });
+        } else if (event.type === 'display' || event.type === 'widget') {
+            try {
+                const data =
+                    event.type === 'display'
+                        ? event.data
+                        : { kind: 'htmlText', text: webRWidgetHtml(event.files) };
+                active.pending.push({ type: 'rich', output: this.viewers.output(data) });
+            } catch (error) {
+                active.pending.push({
+                    type: 'stderr',
+                    text: `Unable to display webR output: ${String(error)}\n`,
+                });
+            }
+            active.output.schedule('cell');
         } else if (event.type === 'plot') {
             active.pending.push(event);
             active.output.schedule('cell');
@@ -228,6 +290,7 @@ export class BrowserSession implements vscode.Disposable {
             this.current.execution.end(false, Date.now());
             this.current = undefined;
         }
+        this.viewers.dispose();
         this.lifetime.abort();
         this.worker?.console.close();
         this.worker = undefined;

@@ -1,3 +1,5 @@
+import { widgetRunner } from './widget';
+
 // The console host reads the typed outcome and all subsequent output through the
 // next top-level prompt. R can print deferred warnings after the outcome.
 export const consoleRunner = String.raw`
@@ -51,6 +53,15 @@ base::local({
                 return ops.write(...args);
             } };
         }
+        const channel = runtime.webr.channel;
+        const write = channel.write.bind(channel);
+        channel.write = (message, transfer) => {
+            if (['vscode-r-widget', 'vscode-r-display', 'vscode-r-viewer'].includes(message.type)) {
+                flush(0);
+                flush(1);
+            }
+            return write(message, transfer);
+        };
         const setPrompt = runtime.webr.setPrompt;
         runtime.webr.setPrompt = (prompt) => {
             flush(0);
@@ -60,6 +71,8 @@ base::local({
         return null;
     })()")
 
+${widgetRunner}
+    rich_value <- getOption("vscodeR.webR.richValue")
     default_device <- getOption("device")
     notify <- function(id, state) {
         webr::eval_js(sprintf(
@@ -97,15 +110,18 @@ base::local({
             if (identical(getOption("device"), default_device)) options(device = capture_device)
             expressions <- parse(file = file.path(directory, "cell.R"),
                 keep.source = TRUE, encoding = "UTF-8")
-            for (expression in expressions) {
-                value <- withVisible(eval(expression, envir = .GlobalEnv))
+            for (index in seq_along(expressions)) {
+                value <- withVisible(eval(expressions[[index]], envir = .GlobalEnv))
                 if (file.exists(cancel)) {
                     # Returning an empty console input releases a blocked
                     # readline(). Give R a chance to consume its interrupt.
                     Sys.sleep(0)
                     return("interrupted")
                 }
-                if (value$visible) print(value$value)
+                if (value$visible && !display_widget(value$value, directory, id) &&
+                        !rich_value(value$value)) {
+                    print(value$value)
+                }
             }
             "success"
         }
