@@ -1,3 +1,4 @@
+import { type HtmlBundle, validateHtmlBundle, checkHtmlSize } from './htmlBundle';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as http from 'http';
@@ -179,9 +180,7 @@ export class AssetStore {
                 return;
             }
             total += stat.size;
-            if (total > 64 * 1024 * 1024 || entries.length >= 5000) {
-                throw new Error('HTML bundle exceeds the 64 MiB / 5000 file limit');
-            }
+            checkHtmlSize(entries.length + 1, total);
             const bytes = fs.readFileSync(absolute);
             entries.push({ relative: path.relative(root, absolute), bytes });
             if (!/\.(html?|css)$/i.test(absolute)) {
@@ -218,6 +217,20 @@ export class AssetStore {
             }
         };
         collect(fs.realpathSync(file));
+        return this.storeHtml(entries, path.basename(file), total);
+    }
+
+    importHtmlFiles(files: HtmlBundle): string {
+        const total = validateHtmlBundle(files);
+        const entries = Object.entries(files).map(([relative, bytes]) => ({ relative, bytes }));
+        return this.storeHtml(entries, 'index.html', total);
+    }
+
+    private storeHtml(
+        entries: { relative: string; bytes: Uint8Array }[],
+        entry: string,
+        total: number,
+    ): string {
         entries.sort((a, b) => a.relative.localeCompare(b.relative));
         const hash = createHash('sha256');
         for (const entry of entries) {
@@ -233,7 +246,7 @@ export class AssetStore {
                 for (const entry of entries) {
                     const target = path.join(temporary, entry.relative);
                     fs.mkdirSync(path.dirname(target), { recursive: true, mode: 0o700 });
-                    fs.writeFileSync(target, entry.bytes, { mode: 0o600 });
+                    fs.writeFileSync(target, entry.bytes, { mode: 0o600, flag: 'wx' });
                 }
                 fs.renameSync(temporary, destination);
                 this.bytes += total;
@@ -242,7 +255,7 @@ export class AssetStore {
                 throw error;
             }
         }
-        return `${id}/${path.basename(file)}`;
+        return `${id}/${entry}`;
     }
 
     resolve(id: string): string {

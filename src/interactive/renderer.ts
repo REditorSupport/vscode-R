@@ -241,7 +241,10 @@ export function activate(context: RendererContext): {
                     },
                     'Text',
                 );
-                toolbar.prepend(open, toggle);
+                toolbar.prepend(toggle);
+                if (!data.panel) {
+                    toolbar.prepend(open);
+                }
                 showView();
                 state.dispose = () => {
                     state.table?.dispose();
@@ -347,7 +350,10 @@ export function activate(context: RendererContext): {
                     },
                     'Text',
                 );
-                toolbar.append(open, toggle, reset);
+                if (!data.panel) {
+                    toolbar.append(open);
+                }
+                toolbar.append(toggle, reset);
                 status.textContent = connectionHint(data);
                 showView();
                 state.dispose = () => {
@@ -508,7 +514,9 @@ export function activate(context: RendererContext): {
                     iframe.srcdoc = String(data.text);
                 }
                 element.append(iframe);
-                toolbar.append(button('Open viewer', 'open', () => send(item, data, 'open')));
+                if (!data.inlineOnly) {
+                    toolbar.append(button('Open viewer', 'open', () => send(item, data, 'open')));
+                }
             } else if (data.kind === 'url') {
                 const label = document.createElement('span');
                 label.textContent = typeof data.url === 'string' ? data.url : '';

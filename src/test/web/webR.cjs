@@ -175,6 +175,24 @@ exports.run = async () => {
         assert(items(notebook.cellAt(packageCell)).some(item => item.mime === 'image/png' && item.data.length > 100),
             'Installing ggplot2 in a fresh browser session did not produce a plot.');
 
+        const rich = cell => items(cell)
+            .filter(item => item.mime === 'application/vnd.vscode-r.display+json')
+            .map(item => JSON.parse(new TextDecoder().decode(item.data)));
+        await command('r.runCommand', 'obj <- list(nest=list(text="hello", rows=mtcars)); View(mtcars); View(obj); mtcars; obj');
+        const previews = rich(notebook.cellAt(notebook.cellCount - 1));
+        assert(previews.map(p => p.kind).join(',') === 'table,list,table,list', 'View and bare objects must render in evaluation order.');
+        assert(previews[0].rows.length === 20 && previews[0].sourceRows === 32 &&
+            previews[1].children[0].has_children, 'Expected a paged table and an expandable list.');
+
+        await command('r.runCommand', [
+            'install.packages(c("plotly", "gapminder"))',
+            'library(plotly); library(gapminder)',
+            'p <- gapminder |> filter(year == 1977) |> ggplot(aes(gdpPercap, lifeExp, size=pop, color=continent)) + geom_point() + theme_bw()',
+            'ggplotly(p)',
+        ].join('\n'));
+        const widget = rich(notebook.cellAt(notebook.cellCount - 1)).find(p => p.kind === 'htmlText');
+        assert(widget?.text.includes('html-widget') && widget.text.includes('plotly'), 'A live Plotly widget should retain its JavaScript and data.');
+
         const savedUri = files.uri('transcript.rnb');
         const snapshot = new TextEncoder().encode(JSON.stringify({version:1,metadata:{},cells:[]}));
         await vscode.workspace.fs.writeFile(savedUri,snapshot);

@@ -15,6 +15,7 @@ import {
     SessionBackend,
     StopRefusedError,
     inspectionMethod,
+    isViewerInspection,
 } from './backend';
 import {
     AGENT_PROTOCOL,
@@ -616,11 +617,19 @@ export class SessionAgent {
                 this.input = undefined;
                 this.state('busy');
                 break;
-            case 'inspect':
-                if (this.backend.capabilities.inspection === false) {
+            case 'inspect': {
+                const request = {
+                    method: inspectionMethod(params.method),
+                    params: object(params.params ?? {}),
+                    timeout: 5000,
+                };
+                if (
+                    this.backend.capabilities.inspection === false &&
+                    !(this.backend.capabilities.viewerInspection && isViewerInspection(request))
+                ) {
                     throw new Error('This runtime does not support inspection');
                 }
-                if (params.method === 'workspace') {
+                if (request.method === 'workspace') {
                     if (!this.current) {
                         await this.refreshWorkspace();
                     }
@@ -630,12 +639,9 @@ export class SessionAgent {
                 if (this.current) {
                     throw new Error('R is busy; cached data remains available. Retry when idle.');
                 }
-                result = await this.backend.inspect({
-                    method: inspectionMethod(params.method),
-                    params: object(params.params ?? {}),
-                    timeout: 5000,
-                });
+                result = await this.backend.inspect(request);
                 break;
+            }
             case 'asset': {
                 result = this.assets.read(String(params.id), 2 * 1024 * 1024).toString('base64');
                 break;
@@ -720,7 +726,7 @@ export class SessionAgent {
             this.handleBackendEvent(event);
         } catch (error) {
             // Storage failures must never stop draining runtime output.
-            if (event.type === 'display') {
+            if (event.type === 'display' || event.type === 'widget') {
                 const key = event.executionId ?? 'session';
                 if (this.retentionWarnings.has(key)) {
                     return;
@@ -794,6 +800,12 @@ export class SessionAgent {
                 this.input = { ...event.data, executionId: executionId ?? this.current };
                 this.event('input', this.input, executionId);
                 this.state('input');
+                break;
+            case 'widget':
+                this.display(
+                    { kind: 'html', asset: this.assets.importHtmlFiles(event.files) },
+                    executionId,
+                );
                 break;
             case 'display':
                 this.display(event.data, executionId);
