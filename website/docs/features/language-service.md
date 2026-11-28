@@ -229,3 +229,9 @@ decoration. Hovering over the decoration brings out a color picker popup that
 can be used to adjust the referenced color.
 
 ![Document color](https://user-images.githubusercontent.com/4662568/73992222-5f832980-4989-11ea-9593-a58e97df47b5.png)
+
+## VS Code for the Web
+
+Opening an R or R Markdown document in a trusted browser workspace starts the webR language server when `r.lsp.enabled` is enabled and `r.lsp.runtime` is `auto` or `webR`. Initial startup downloads the language server and its WebAssembly package library. Subsequent starts reuse cached package assets.
+
+Open buffers provide the source for Outline, completion, hover, signature help, and Go to Definition, including unsaved edits and navigation between open documents. Package-aware results reflect the worker’s package library. The browser language service operates independently of an Interactive notebook. Whole-project indexing and tools that launch a native executable require a workspace extension host with native R.

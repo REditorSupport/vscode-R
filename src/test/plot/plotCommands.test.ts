@@ -59,6 +59,7 @@ suite('Contextual plot commands', () => {
             category: 'R Plot',
             command: 'r.plot.showViewers',
             icon: '$(versions)',
+            enablement: '!r.webExtension',
         });
         assert.ok(
             !manifest.contributes.menus.commandPalette.some(

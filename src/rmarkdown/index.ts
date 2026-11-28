@@ -1,6 +1,8 @@
 import * as vscode from 'vscode';
 import { config } from '../util';
+import { runChunksInTerm, runSource } from '../rTerminal';
 import {
+    createChunkCommands,
     shouldDisplayChunkOptions,
     getChunks,
     getCurrentChunk,
@@ -13,8 +15,9 @@ import {
 export { knitDir, RMarkdownKnitManager } from './knit';
 export { RMarkdownPreviewManager } from './preview';
 export { newDraft } from './draft';
-export {
-    getChunks,
+export { getChunks, goToPreviousChunk, goToNextChunk, selectCurrentChunk } from './chunks';
+
+export const {
     runCurrentChunk,
     runSourceWithEcho,
     runCurrentChunkAndMove,
@@ -24,10 +27,7 @@ export {
     runBelowChunks,
     runCurrentAndBelowChunks,
     runAllChunks,
-    goToPreviousChunk,
-    goToNextChunk,
-    selectCurrentChunk,
-} from './chunks';
+} = createChunkCommands(runChunksInTerm, runSource);
 
 export class RMarkdownCodeLensProvider implements vscode.CodeLensProvider {
     private _onDidChangeCodeLenses: vscode.EventEmitter<void> = new vscode.EventEmitter<void>();

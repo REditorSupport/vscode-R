@@ -90,6 +90,12 @@ VS Code profile. This case uses an unavailable R executable and downloads the
 pinned webR assets. It checks Outline and Go to Definition across two unsaved R
 documents, then edits a declaration and checks the new symbol.
 
+## Testing VS Code for the Web
+
+Run `pnpm run test:web` for the headless Chromium suite. The test runner downloads VS Code for the Web, the R syntax extension, and Playwright's Chromium. The first R session fetches the pinned webR assets and package library over HTTPS. Linux CI images also need the Playwright browser system dependencies. To provision Chromium and its system dependencies explicitly for the tested runner, run `pnpm dlx playwright@1.65.1 install --with-deps chromium` before the suite.
+
+The suite opens virtual and unsaved documents, runs editor commands, transfers files, exercises cancellation on a cross-origin isolated workbench, and reopens a saved Interactive transcript. Manually testing a browser development extension on `vscode.dev` can prompt for notebook trust when opening a notebook for the first time.
+
 ## Testing R Interactive
 
 The [architecture and backend contract](src/interactive/README.md) live beside the implementation. User setup and behavior belong in the [R Interactive documentation page](https://reditorsupport.github.io/vscode-R/features/r-interactive).
