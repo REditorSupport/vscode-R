@@ -1051,10 +1051,22 @@ suite('Interactive VS Code integration', function () {
                 content: code,
                 language: 'r',
             });
-            const editor = await vscode.window.showTextDocument(document, vscode.ViewColumn.One);
+            // Run Selection reads the focused editor. Earlier tests can leave a
+            // split layout where column one is visible but the Interactive input owns focus.
+            const editor = await vscode.window.showTextDocument(document, {
+                viewColumn: vscode.ViewColumn.Active,
+                preserveFocus: false,
+                preview: false,
+            });
             editor.selection = new vscode.Selection(
                 document.positionAt(0),
                 document.positionAt(code.length),
+            );
+            await until(
+                () =>
+                    vscode.window.activeTextEditor === editor &&
+                    document.getText(editor.selection) === code,
+                'Run Selection needs the source editor and its full selection',
             );
             await vscode.commands.executeCommand('r.runSelection');
             await until(() =>
