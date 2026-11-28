@@ -24,8 +24,8 @@ suite('Language service startup lifecycle', () => {
     let sandbox: sinon.SinonSandbox;
     let appendLine: sinon.SinonStub;
     const prototype = LanguageService.prototype as unknown as {
-        createClient: () => Promise<LanguageClient>;
-        startMultiLanguageService: () => void;
+        createClient: () => Promise<LanguageClient | undefined>;
+        startMultiLanguageService: (virtualOnly?: boolean) => void;
         spawnServer: (
             client: LanguageClient,
             executable: string,
@@ -45,6 +45,72 @@ suite('Language service startup lifecycle', () => {
         } as unknown as vscode.WorkspaceConfiguration);
     });
     teardown(() => sandbox.restore());
+
+    test('missing R skips the global client and keeps session document listeners', async () => {
+        mockExtensionContext(path.resolve(__dirname, '../../..'), sandbox);
+        (vscode.workspace.getConfiguration as sinon.SinonStub).returns({
+            get: () => undefined,
+        } as unknown as vscode.WorkspaceConfiguration);
+        sandbox.stub(util, 'getRpath').resolves('');
+        const watcher = sandbox.stub(vscode.workspace, 'createFileSystemWatcher').throws();
+        const register = sandbox.stub(prototype, 'startMultiLanguageService');
+        const service = new LanguageService();
+        try {
+            const state = service as unknown as {
+                startup: Promise<void>;
+                clients: Map<string, LanguageClient>;
+            };
+            await state.startup;
+            assert.strictEqual(state.clients.size, 0);
+            sinon.assert.notCalled(watcher);
+            sinon.assert.calledWithMatch(appendLine, 'no R executable was found');
+            sinon.assert.calledOnceWithExactly(register, true);
+        } finally {
+            await service.dispose();
+        }
+    });
+
+    test('a folder can retry startup after a failed client and a missing R lookup', async () => {
+        (vscode.workspace.getConfiguration as sinon.SinonStub).returns({
+            get: (key: string) => key === 'lsp.multiServer',
+        } as unknown as vscode.WorkspaceConfiguration);
+        const uri = vscode.Uri.file(path.join(os.tmpdir(), 'project'));
+        sandbox
+            .stub(vscode.workspace, 'getWorkspaceFolder')
+            .returns({ uri, name: 'project', index: 0 });
+        sandbox.stub(vscode.workspace, 'textDocuments').value([]);
+        const opened = sandbox
+            .stub(vscode.workspace, 'onDidOpenTextDocument')
+            .returns({ dispose() {} });
+        const client = { stop: sandbox.stub().resolves() } as unknown as LanguageClient;
+        const create = sandbox.stub(prototype, 'createClient');
+        create.onFirstCall().rejects(new Error('R exited before connecting'));
+        create.onSecondCall().resolves(undefined);
+        create.onThirdCall().resolves(client);
+        const service = new LanguageService();
+        const state = service as unknown as {
+            clients: Map<string, LanguageClient>;
+            clientUpdates: Map<string, Promise<void>>;
+        };
+        const open = async (name: string) => {
+            opened.firstCall.args[0]({
+                uri: vscode.Uri.joinPath(uri, name),
+                languageId: 'r',
+            } as vscode.TextDocument);
+            await Promise.all(state.clientUpdates.values());
+        };
+        try {
+            await open('one.R');
+            sinon.assert.calledWithMatch(appendLine, 'R exited before connecting');
+            await open('two.R');
+            sinon.assert.calledTwice(create);
+            assert.strictEqual(state.clients.size, 0);
+            await open('three.R');
+            assert.strictEqual(state.clients.get(uri.toString(true)), client);
+        } finally {
+            await service.dispose();
+        }
+    });
 
     test('an initial startup rejection is logged and does not block disposal', async () => {
         sandbox.stub(prototype, 'createClient').rejects(new Error('R exited before connecting'));

@@ -132,10 +132,9 @@ export class LanguageService implements Disposable {
         selector: DocumentFilter[],
         cwd: string,
         workspaceFolder: WorkspaceFolder | undefined,
-        outputChannel: LogOutputChannel,
         resource?: Uri,
         target?: Session,
-    ): Promise<LanguageClient> {
+    ): Promise<LanguageClient | undefined> {
         let client: CancellableLanguageClient;
         const virtualOnly = selector.every(
             (filter) =>
@@ -166,10 +165,15 @@ export class LanguageService implements Disposable {
             (await withRpcCancellation(
                 () => getRpath(false, resource),
                 this.startupCancellation.signal,
-            )) ||
-            ''; // TODO: Abort gracefully
+            ));
         if (this.disposed) {
             throw new Error('The R language service is shutting down.');
+        }
+        if (!rPath) {
+            this.outputChannel.appendLine(
+                `Skipping the R language server in ${cwd} because no R executable was found.`,
+            );
+            return undefined;
         }
         if (debug) {
             console.log(`R path: ${rPath}`);
@@ -248,7 +252,7 @@ export class LanguageService implements Disposable {
                 },
             },
             workspaceFolder: workspaceFolder,
-            outputChannel: outputChannel,
+            outputChannel: this.outputChannel,
             synchronize: {
                 // Synchronize the setting section 'r' to the server
                 configurationSection: 'r.lsp',
@@ -369,6 +373,27 @@ export class LanguageService implements Disposable {
         return false;
     }
 
+    private async startDocumentClient(
+        key: string,
+        selector: DocumentFilter[],
+        cwd: string,
+        folder: WorkspaceFolder | undefined,
+        resource?: Uri,
+        target?: Session,
+    ): Promise<void> {
+        try {
+            const client = await this.createClient(selector, cwd, folder, resource, target);
+            if (client) {
+                this.clients.set(key, client);
+            } else {
+                this.clients.delete(key);
+            }
+        } finally {
+            // A file can start a shared folder client. Release the key we acquired.
+            this.initSet.delete(key);
+        }
+    }
+
     private getKey(uri: Uri): string {
         switch (uri.scheme) {
             case 'untitled':
@@ -417,16 +442,14 @@ export class LanguageService implements Disposable {
                             pattern: document.uri.fsPath,
                         },
                     ];
-                    const client = await this.createClient(
+                    await this.startDocumentClient(
+                        key,
                         selector,
                         target?.workingDir ?? folder?.uri.fsPath ?? os.homedir(),
                         folder,
-                        this.outputChannel,
                         folder?.uri,
                         target,
                     );
-                    this.clients.set(key, client);
-                    this.initSet.delete(key);
                 }
                 return;
             }
@@ -443,16 +466,14 @@ export class LanguageService implements Disposable {
                             pattern: `${document.uri.fsPath}`,
                         },
                     ];
-                    const client = await this.createClient(
+                    await this.startDocumentClient(
+                        key,
                         documentSelector,
                         target?.workingDir ?? folder?.uri.fsPath ?? dirname(document.uri.fsPath),
                         folder,
-                        this.outputChannel,
                         folder?.uri ?? document.uri,
                         target,
                     );
-                    this.clients.set(key, client);
-                    this.initSet.delete(key);
                 }
                 return;
             }
@@ -467,15 +488,13 @@ export class LanguageService implements Disposable {
                         { scheme: 'file', language: 'r', pattern: pattern },
                         { scheme: 'file', language: 'rmd', pattern: pattern },
                     ];
-                    const client = await this.createClient(
+                    await this.startDocumentClient(
+                        key,
                         documentSelector,
                         folder.uri.fsPath,
                         folder,
-                        this.outputChannel,
                         folder.uri,
                     );
-                    this.clients.set(key, client);
-                    this.initSet.delete(key);
                 }
             } else {
                 // All untitled documents share a server started from home folder
@@ -487,15 +506,13 @@ export class LanguageService implements Disposable {
                             { scheme: 'untitled', language: 'r' },
                             { scheme: 'untitled', language: 'rmd' },
                         ];
-                        const client = await this.createClient(
+                        await this.startDocumentClient(
+                            key,
                             documentSelector,
                             os.homedir(),
                             undefined,
-                            this.outputChannel,
                             document.uri,
                         );
-                        this.clients.set(key, client);
-                        this.initSet.delete(key);
                     }
                     return;
                 }
@@ -508,15 +525,13 @@ export class LanguageService implements Disposable {
                         const documentSelector: DocumentFilter[] = [
                             { scheme: 'file', pattern: document.uri.fsPath },
                         ];
-                        const client = await this.createClient(
+                        await this.startDocumentClient(
+                            key,
                             documentSelector,
                             dirname(document.uri.fsPath),
                             undefined,
-                            this.outputChannel,
                             document.uri,
                         );
-                        this.clients.set(key, client);
-                        this.initSet.delete(key);
                     }
                     return;
                 }
@@ -605,7 +620,6 @@ export class LanguageService implements Disposable {
                         clientTargets.set(key, target);
                     }
                 } catch (error) {
-                    this.initSet.delete(key);
                     this.outputChannel.appendLine(
                         `Failed to start language server: ${String(error)}`,
                     );
@@ -669,14 +683,15 @@ export class LanguageService implements Disposable {
                 documentSelector,
                 cwd,
                 undefined,
-                this.outputChannel,
                 workspaceFolder?.uri,
             );
             if (this.disposed) {
-                await client.stop();
+                await client?.stop();
                 return;
             }
-            this.clients.set('global', client);
+            if (client) {
+                this.clients.set('global', client);
+            }
             this.startMultiLanguageService(true);
         }
     }

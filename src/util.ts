@@ -82,6 +82,8 @@ export function getRPathConfigEntry(term: boolean = false): string {
     return `${trunc}.${platform}`;
 }
 
+let pendingMissingRMessage: Promise<void> | undefined;
+
 export async function getRpath(quote = false, resource?: vscode.Uri): Promise<string | undefined> {
     const configEntry = getRPathConfigEntry();
     const resolution = await resolveBackgroundR(
@@ -90,11 +92,15 @@ export async function getRpath(quote = false, resource?: vscode.Uri): Promise<st
     );
     const rpath = formatRPath(resolution, quote, process.platform);
 
-    if (!rpath) {
-        // inform user about missing R path:
-        void vscode.window.showErrorMessage(
-            `Cannot find R to use for help, package installation etc. Change setting r.${rExecutablePathSetting} to an R executable.`,
-        );
+    if (!rpath && !pendingMissingRMessage) {
+        const clearPending = () => {
+            pendingMissingRMessage = undefined;
+        };
+        pendingMissingRMessage = Promise.resolve(
+            vscode.window.showErrorMessage(
+                `Cannot find R to use for help, package installation etc. Change setting r.${rExecutablePathSetting} to an R executable.`,
+            ),
+        ).then(clearPending, clearPending);
     }
 
     return rpath;
