@@ -170,6 +170,21 @@ exports.run = async (api) => {
             assert.equal(extension.isActive, false, `${testCase}: R activated before an R trigger`);
         }
         switch (testCase) {
+            case 'webr-language': {
+                const definition = await vscode.workspace.openTextDocument({language:'r', content:'double_it <- function(x) x * 2\n'});
+                const caller = await vscode.workspace.openTextDocument({language:'r', content:'answer <- double_it(21)\n'});
+                await vscode.window.showTextDocument(caller);
+                const symbols = () => vscode.commands.executeCommand('vscode.executeDocumentSymbolProvider', definition.uri);
+                await until(async () => (await symbols())?.some(symbol => symbol.name === 'double_it'),
+                    'The webR language server did not publish an outline', 180000);
+                const target = await vscode.commands.executeCommand('vscode.executeDefinitionProvider', caller.uri, new vscode.Position(0, 14));
+                assert.ok(target.some(location => (location.uri ?? location.targetUri).toString() === definition.uri.toString()));
+                const edits = new vscode.WorkspaceEdit();
+                edits.replace(definition.uri, new vscode.Range(0, 0, 0, 9), 'triple_it');
+                assert.ok(await vscode.workspace.applyEdit(edits));
+                await until(async () => (await symbols())?.some(symbol => symbol.name === 'triple_it'), 'Outline did not update');
+                break;
+            }
             case 'no-folder':
                 assert.equal(vscode.workspace.workspaceFolders, undefined);
                 break;
@@ -450,7 +465,7 @@ async function main() {
     const { spawnSync } = require('node:child_process');
     const executable = process.env.VSCR_ACTIVATION_VSCODE || await downloadAndUnzipVSCode();
     const selected = process.env.VSCR_ACTIVATION_CASES?.split(',') || cases;
-    selected.forEach((testCase) => assert.ok(cases.includes(testCase), `Unknown case: ${testCase}`));
+    selected.forEach((testCase) => assert.ok(cases.includes(testCase) || testCase === 'webr-language', `Unknown case: ${testCase}`));
     for (const prefix of ['interactive-', 'interactive-background-', 'terminal-revive-']) {
         if (selected.includes(`${prefix}restore`)) {
             assert.ok(selected.includes(`${prefix}create`), 'Restore requires its create stage in the same run');
@@ -521,7 +536,9 @@ exports.activate = async () => {
             fs.mkdirSync(workspace, { recursive: true });
             fs.mkdirSync(path.join(profile, 'User'), { recursive: true });
             fs.writeFileSync(path.join(profile, 'User', 'settings.json'), JSON.stringify({
-                'r.lsp.enabled': false, 'r.sessionWatcher': persistentTerminal, 'r.plot.backend': revive ? 'standard' : 'native',
+                'r.lsp.enabled': testCase === 'webr-language',
+                ...(testCase === 'webr-language' ? { 'r.executablePath': path.join(caseRoot, 'missing-R') } : {}),
+                'r.sessionWatcher': persistentTerminal, 'r.plot.backend': revive ? 'standard' : 'native',
                 'r.interactive.restore': false, 'r.interactive.storagePath': path.join(caseRoot, 'sessions'),
                 'update.mode': 'none', 'extensions.autoUpdate': false, 'workbench.startupEditor': 'none',
                 'window.restoreWindows': 'all', 'terminal.integrated.enablePersistentSessions': persistentTerminal,

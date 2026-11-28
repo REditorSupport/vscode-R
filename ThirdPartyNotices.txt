@@ -31,3 +31,12 @@ raster variant used as the extension icon.
 The logo is distributed under Creative Commons Attribution-ShareAlike 4.0
 International:
 https://creativecommons.org/licenses/by-sa/4.0/
+
+webR JavaScript API
+-------------------
+
+The extension bundles the JavaScript API from webR 0.6.1. Copyright 2023 webR
+authors. The distribution's licensing terms are included in
+dist/resources/webr-LICENSE.md. Runtime binaries and R packages are retrieved
+from their upstream distributions when the user starts webR.
+https://github.com/r-wasm/webr/tree/v0.6.1

@@ -29,6 +29,7 @@ function copyResources() {
             console.warn(`Warning: Resource not found: ${srcPath}`);
         }
     }
+    fs.copyFileSync(path.join(__dirname, 'node_modules/webr/LICENSE.md'), path.join(destDir, 'webr-LICENSE.md'));
     console.log('Resources copied.');
 }
 
@@ -72,6 +73,7 @@ async function main() {
         sourcemap: !production,
         sourcesContent: false,
         platform: 'node',
+        alias: { webr: path.resolve(__dirname, 'node_modules/webr/dist/webr.cjs') },
         target: 'node22',
         outfile: 'dist/extension.js',
         external: ['vscode', 'utf-8-validate', 'bufferutil'],
@@ -84,6 +86,7 @@ async function main() {
         bundle: true,
         format: 'cjs',
         platform: 'node',
+        alias: { webr: path.resolve(__dirname, 'node_modules/webr/dist/webr.cjs') },
         target: 'node18',
         outfile: 'dist/interactive-agent.js',
         sourcemap: !production,

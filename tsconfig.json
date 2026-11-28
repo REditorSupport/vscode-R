@@ -3,6 +3,9 @@
     "compilerOptions": {
         "module": "Node16",
         "moduleResolution": "Node16",
+        "resolveJsonModule": true,
+        // webR ships declarations for both the main thread and Emscripten worker internals.
+        "skipLibCheck": true,
         "target": "ES2022",
         "outDir": "out",
         "lib": [

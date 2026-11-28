@@ -45,7 +45,7 @@ export async function initializeHelp(
     void vscode.commands.executeCommand('setContext', 'r.helpViewer.show', true);
 
     // get the "vanilla" R path from config
-    const rPath = await getRpath();
+    const rPath = await getRpath(false, undefined, false);
     if (!rPath) {
         return undefined;
     }

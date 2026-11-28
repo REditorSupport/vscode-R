@@ -40,6 +40,10 @@ import { completionMiddleware } from './completionMiddleware';
 import { connectTcpLanguageServer } from './languageServerTransport';
 import { CancellableLanguageClient } from './languageServerClient';
 import { withRpcCancellation } from './nativeRpc';
+import { prepareNodeWebR } from './webr/nodeRuntime';
+import { cachedWebRAssets } from './webr/assetCache';
+import { createWebRLanguageSession } from './webr/languageSession';
+import { createWebRMessageTransports } from './webr/messageTransports';
 
 export class LanguageService implements Disposable {
     private readonly clients: Map<string, LanguageClient> = new Map();
@@ -49,7 +53,7 @@ export class LanguageService implements Disposable {
     private readonly sessionSignatures = new SessionSignatureHelpProvider();
     private readonly clientUpdates = new Map<string, Promise<void>>();
     private readonly listeners: Disposable[] = [];
-    private readonly startup: Promise<void>;
+    private startup: Promise<void>;
     private readonly startupCancellation = new AbortController();
     private readonly startingClients = new Set<CancellableLanguageClient>();
     private readonly stoppingClients = new Set<Promise<void>>();
@@ -58,9 +62,28 @@ export class LanguageService implements Disposable {
     constructor() {
         this.outputChannel = window.createOutputChannel('R Language Server', { log: true });
         this.config = workspace.getConfiguration('r');
-        this.startup = this.startLanguageService().catch((error: unknown) => {
-            this.outputChannel.appendLine(`Failed to start language server: ${String(error)}`);
-        });
+        this.startup = this.startWithRetry();
+    }
+
+    private async startWithRetry(): Promise<void> {
+        try {
+            await this.startLanguageService();
+        } catch (error) {
+            const retry = this.disposed ? '' : ' Open an R document to retry.';
+            this.outputChannel.appendLine(
+                `Failed to start language server: ${String(error)}.${retry}`,
+            );
+            if (this.disposed) {
+                return;
+            }
+            const nextDocument = workspace.onDidOpenTextDocument((doc) => {
+                if (doc.languageId === 'r' || doc.languageId === 'rmd') {
+                    nextDocument.dispose();
+                    this.startup = this.startWithRetry();
+                }
+            });
+            this.listeners.push(nextDocument);
+        }
     }
 
     dispose(): Thenable<void> {
@@ -161,13 +184,19 @@ export class LanguageService implements Disposable {
         const resourceConfig = config(resource);
         const debug = this.config.get<boolean>('lsp.debug');
         const useRenvLibPath = this.config.get<boolean>('useRenvLibPath') ?? false;
+        const policy = resourceConfig.get<string>('lsp.runtime', 'auto');
         const rPath =
-            target?.rPath ||
-            (await withRpcCancellation(
-                () => getRpath(false, resource),
-                this.startupCancellation.signal,
-            )) ||
-            ''; // TODO: Abort gracefully
+            policy === 'webR'
+                ? ''
+                : target?.rPath ||
+                  (await withRpcCancellation(
+                      () => getRpath(false, resource, policy === 'native'),
+                      this.startupCancellation.signal,
+                  )) ||
+                  '';
+        if (!rPath && policy === 'native') {
+            throw new Error('Native R is required by r.lsp.runtime.');
+        }
         if (this.disposed) {
             throw new Error('The R language service is shutting down.');
         }
@@ -219,34 +248,36 @@ export class LanguageService implements Disposable {
             return transport;
         };
 
-        const fileWatcher = workspace.createFileSystemWatcher('**/*.{R,r}');
+        const fileWatcher = rPath ? workspace.createFileSystemWatcher('**/*.{R,r}') : undefined;
 
         // Options to control the language client
         const clientOptions: LanguageClientOptions = {
             // Register the server for selected R documents
             documentSelector: selector,
-            uriConverters: {
-                // VS Code by default %-encodes even the colon after the drive letter
-                // NodeJS handles it much better
-                // languageserver interprets vscode-notebook-cell paths as real files.
-                // Unsaved Interactive notebooks have no such file; namespace linters
-                // call normalizePath even with lint_cache disabled. Use an opaque
-                // scheme so the server lints the text like an unsaved input document.
-                // Preserve the full path/fragment and translate every result back.
-                code2Protocol: (uri) =>
-                    new URL(
-                        (uri.scheme === 'vscode-notebook-cell' && pathlessNotebook
-                            ? uri.with({ scheme: 'vscode-r-cell' })
-                            : uri
-                        ).toString(true),
-                    ).toString(),
-                protocol2Code: (str) => {
-                    const uri = Uri.parse(str);
-                    return uri.scheme === 'vscode-r-cell'
-                        ? uri.with({ scheme: 'vscode-notebook-cell' })
-                        : uri;
-                },
-            },
+            uriConverters: !rPath
+                ? undefined
+                : {
+                      // VS Code by default %-encodes even the colon after the drive letter
+                      // NodeJS handles it much better
+                      // languageserver interprets vscode-notebook-cell paths as real files.
+                      // Unsaved Interactive notebooks have no such file; namespace linters
+                      // call normalizePath even with lint_cache disabled. Use an opaque
+                      // scheme so the server lints the text like an unsaved input document.
+                      // Preserve the full path/fragment and translate every result back.
+                      code2Protocol: (uri) =>
+                          new URL(
+                              (uri.scheme === 'vscode-notebook-cell' && pathlessNotebook
+                                  ? uri.with({ scheme: 'vscode-r-cell' })
+                                  : uri
+                              ).toString(true),
+                          ).toString(),
+                      protocol2Code: (str) => {
+                          const uri = Uri.parse(str);
+                          return uri.scheme === 'vscode-r-cell'
+                              ? uri.with({ scheme: 'vscode-notebook-cell' })
+                              : uri;
+                      },
+                  },
             workspaceFolder: workspaceFolder,
             outputChannel: outputChannel,
             synchronize: {
@@ -321,7 +352,31 @@ export class LanguageService implements Disposable {
         };
 
         // Create the language client and start the client.
-        if (use_stdio && process.platform !== 'win32') {
+        if (!rPath) {
+            client = new CancellableLanguageClient(
+                'r',
+                'R Language Server (webR)',
+                async () => {
+                    await this.waitForRDocument(client.startupSignal);
+                    const baseUrl = await withRpcCancellation(
+                        () => prepareNodeWebR(extensionContext.globalStorageUri.fsPath),
+                        client.startupSignal,
+                    );
+                    outputChannel.appendLine(
+                        'Starting the webR language server for open documents.',
+                    );
+                    const session = await createWebRLanguageSession({
+                        baseUrl,
+                        signal: client.startupSignal,
+                        loadAsset: cachedWebRAssets(extensionContext.globalStorageUri),
+                    });
+                    client.ownResource(() => session.close());
+                    return createWebRMessageTransports(session);
+                },
+                clientOptions,
+                this.startupCancellation.signal,
+            );
+        } else if (use_stdio && process.platform !== 'win32') {
             client = new CancellableLanguageClient(
                 'r',
                 'R Language Server',
@@ -339,7 +394,6 @@ export class LanguageService implements Disposable {
             );
         }
 
-        extensionContext.subscriptions.push(client, fileWatcher);
         this.startingClients.add(client);
         try {
             await client.start();
@@ -347,14 +401,43 @@ export class LanguageService implements Disposable {
                 await client.stop();
                 throw new Error('The R language service is shutting down.');
             }
+            extensionContext.subscriptions.push(client);
+            if (fileWatcher) {
+                extensionContext.subscriptions.push(fileWatcher);
+            }
             return client;
         } catch (error) {
             client.cancelStartup();
-            fileWatcher.dispose();
+            fileWatcher?.dispose();
             throw error;
         } finally {
             this.startingClients.delete(client);
         }
+    }
+
+    private async waitForRDocument(signal: AbortSignal): Promise<void> {
+        const isR = (doc: TextDocument) => doc.languageId === 'r' || doc.languageId === 'rmd';
+        if (workspace.textDocuments.some(isR)) {
+            return;
+        }
+        signal.throwIfAborted();
+        await new Promise<void>((resolve, reject) => {
+            const listener = workspace.onDidOpenTextDocument((doc) => {
+                if (isR(doc)) {
+                    cleanup();
+                    resolve();
+                }
+            });
+            const cancel = () => {
+                cleanup();
+                reject(signal.reason);
+            };
+            const cleanup = () => {
+                listener.dispose();
+                signal.removeEventListener('abort', cancel);
+            };
+            signal.addEventListener('abort', cancel, { once: true });
+        });
     }
 
     private checkClient(name: string): boolean {
