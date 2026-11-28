@@ -46,6 +46,13 @@ import { cachedWebRAssets } from './webr/assetCache';
 import { createWebRLanguageSession } from './webr/languageSession';
 import { createWebRMessageTransports } from './webr/messageTransports';
 
+function isOrdinaryRDocument(document: TextDocument): boolean {
+    return (
+        (document.uri.scheme === 'file' || document.uri.scheme === 'untitled') &&
+        (document.languageId === 'r' || document.languageId === 'rmd')
+    );
+}
+
 export class LanguageService implements Disposable {
     private readonly clients: Map<string, LanguageClient> = new Map();
     private readonly initSet: Set<string> = new Set();
@@ -79,10 +86,7 @@ export class LanguageService implements Disposable {
                 return;
             }
             const nextDocument = workspace.onDidOpenTextDocument((doc) => {
-                if (
-                    (doc.uri.scheme === 'file' || doc.uri.scheme === 'untitled') &&
-                    (doc.languageId === 'r' || doc.languageId === 'rmd')
-                ) {
+                if (isOrdinaryRDocument(doc)) {
                     nextDocument.dispose();
                     this.startup = this.startWithRetry();
                 }
@@ -201,7 +205,14 @@ export class LanguageService implements Disposable {
                 (provider && target?.rPath
                     ? resolveExecutable(target.rPath, cwd)
                     : await withRpcCancellation(
-                          () => getRpath(false, resource, policy === 'native' && !provider),
+                          () =>
+                              getRpath(
+                                  false,
+                                  resource,
+                                  policy === 'native' &&
+                                      !provider &&
+                                      workspace.textDocuments.some(isOrdinaryRDocument),
+                              ),
                           this.startupCancellation.signal,
                       )) ?? '';
             if (!rPath && policy === 'native') {
@@ -374,7 +385,7 @@ export class LanguageService implements Disposable {
                 'r',
                 'R Language Server (webR)',
                 async () => {
-                    await this.waitForRDocument(client.startupSignal);
+                    await this.waitForRDocument(client.startupSignal, virtualOnly);
                     const baseUrl = await withRpcCancellation(
                         () => prepareNodeWebR(extensionContext.globalStorageUri.fsPath),
                         client.startupSignal,
@@ -432,8 +443,15 @@ export class LanguageService implements Disposable {
         }
     }
 
-    private async waitForRDocument(signal: AbortSignal): Promise<void> {
-        const isR = (doc: TextDocument) => doc.languageId === 'r' || doc.languageId === 'rmd';
+    private async waitForRDocument(signal: AbortSignal, virtualOnly: boolean): Promise<void> {
+        // A native Interactive notebook must not wake a separate desktop webR
+        // worker merely because webR was selected for ordinary source files.
+        const isR = virtualOnly
+            ? (doc: TextDocument) =>
+                  (doc.uri.scheme === 'vscode-interactive-input' ||
+                      doc.uri.scheme === 'vscode-notebook-cell') &&
+                  (doc.languageId === 'r' || doc.languageId === 'rmd')
+            : isOrdinaryRDocument;
         if (workspace.textDocuments.some(isR)) {
             return;
         }

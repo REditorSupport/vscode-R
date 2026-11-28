@@ -2351,6 +2351,9 @@ suite('Interactive VS Code integration', function () {
                     );
                     const end = document.positionAt(document.getText().length);
                     editor.selection = new vscode.Selection(end, end);
+                    // The type command targets keyboard focus, which may have moved
+                    // while the client registered its formatting provider.
+                    await vscode.commands.executeCommand('interactive.input.focus');
                     await vscode.commands.executeCommand('type', { text: ch });
                     await until(
                         () => document.getText() === expected,
