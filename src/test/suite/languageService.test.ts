@@ -323,6 +323,42 @@ suite('Language service for bound Interactive documents', () => {
         }
     });
 
+    test('defers the ordinary webR download until a source editor opens', async () => {
+        const sandbox = sinon.createSandbox();
+        const opened = new vscode.EventEmitter<vscode.TextDocument>();
+        const controller = new AbortController();
+        const cell = {
+            uri: vscode.Uri.parse('vscode-notebook-cell:/one#cell'),
+            languageId: 'r',
+        } as vscode.TextDocument;
+        sandbox.stub(vscode.workspace, 'textDocuments').get(() => [cell]);
+        sandbox.stub(vscode.workspace, 'onDidOpenTextDocument').callsFake(opened.event);
+        const gate = LanguageService.prototype as unknown as {
+            waitForRDocument(signal: AbortSignal, virtualOnly: boolean): Promise<void>;
+        };
+        let sourceReady = false;
+        const source = gate.waitForRDocument(controller.signal, false).then(() => {
+            sourceReady = true;
+        });
+        try {
+            // The notebook side is ready immediately despite a waiting ordinary client.
+            await gate.waitForRDocument(controller.signal, true);
+            opened.fire(cell);
+            await Promise.resolve();
+            assert.strictEqual(sourceReady, false);
+            opened.fire({
+                uri: vscode.Uri.file('/source.R'),
+                languageId: 'r',
+            } as vscode.TextDocument);
+            await source;
+            assert.strictEqual(sourceReady, true);
+        } finally {
+            controller.abort();
+            opened.dispose();
+            sandbox.restore();
+        }
+    });
+
     test('starts a bound webR input even when the ordinary native source client cannot start', async () => {
         const sandbox = sinon.createSandbox();
         const input = {
