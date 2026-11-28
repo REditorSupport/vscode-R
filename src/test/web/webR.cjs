@@ -107,6 +107,15 @@ exports.run = async () => {
             await command('r.runCommand','answer');
             assert(stdout(notebook.cellAt(4)).includes('9'), 'Interrupt lost the R environment.');
         }
+        const packageCell = notebook.cellCount;
+        await command('r.runCommand', [
+            'install.packages("ggplot2")',
+            'library(ggplot2)',
+            'ggplot(mtcars, aes(wt, mpg)) + geom_point()',
+        ].join('\n'));
+        assert(items(notebook.cellAt(packageCell)).some(item => item.mime === 'image/png' && item.data.length > 100),
+            'Installing ggplot2 in a fresh browser session did not produce a plot.');
+
         const savedUri = files.uri('transcript.rnb');
         const snapshot = new TextEncoder().encode(JSON.stringify({version:1,metadata:{},cells:[]}));
         await vscode.workspace.fs.writeFile(savedUri,snapshot);

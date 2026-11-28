@@ -262,7 +262,7 @@ The [architecture and backend contract](https://github.com/REditorSupport/vscode
 
 ## VS Code for the Web
 
-In a trusted browser workspace, **R: New Interactive Session** opens a notebook backed by webR. Use **Run Selection**, **Run Source**, or **Run Current Chunk** from an R or R Markdown editor. Each notebook has its own R environment. Text, warnings, errors, and PNG plots appear below the corresponding cell. The first run downloads the pinned webR runtime. Packages installed in a session need compatible WebAssembly builds.
+In a trusted browser workspace, **R: New Interactive Session** opens a notebook backed by webR. Use **Run Selection**, **Run Source**, or **Run Current Chunk** from an R or R Markdown editor. Each notebook has its own R environment. Text, warnings, errors, and PNG plots appear below the corresponding cell. The first run downloads the pinned webR runtime. Install session packages with `install.packages("ggplot2")` and load them with `library(ggplot2)`. The repository must supply compatible WebAssembly binaries.
 
 Use **R: Import Files into webR…** to copy scripts and data from the workspace into the session. Paths relative to their workspace folder are retained, so importing `helpers/fit.R` and `data/measurements.csv` allows `source("helpers/fit.R")` and `read.csv("data/measurements.csv")` in the notebook. In a multi-root workspace the folder name prefixes each imported path. Files created by R live in the session directory. **R: Export File from webR…** copies a selected result to a writable destination. Virtual workspaces backed by a read-only provider can still supply input files.
 
