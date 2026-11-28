@@ -80,6 +80,21 @@ async function main() {
         logLevel: 'info',
     });
 
+    const browserExtensionCtx = await esbuild.context({
+        entryPoints: ['./src/web/extension.ts'],
+        outfile: 'dist/web-extension.js',
+        format: 'cjs',
+        platform: 'browser',
+        bundle: true,
+        // webR's Node entry imports worker_threads. The upstream browser
+        // distribution uses a Web Worker with the same JavaScript API.
+        alias: { webr: path.join(__dirname, 'node_modules/webr/dist/webr.js') },
+        external: ['vscode'],
+        minify: production,
+        sourcemap: !production,
+        sourcesContent: false,
+    });
+
     // A session agent remains alive after the extension host exits.
     const agentCtx = await esbuild.context({
         entryPoints: ['./src/interactive/agentMain.ts'],
@@ -119,7 +134,7 @@ async function main() {
         logLevel: 'info',
     });
 
-    const contexts = [extensionCtx, agentCtx, interactiveRendererCtx, webviewCtx];
+    const contexts = [extensionCtx, browserExtensionCtx, agentCtx, interactiveRendererCtx, webviewCtx];
     if (watch) {
         await Promise.all(contexts.map(context => context.watch()));
         console.log('Watching for changes...');

@@ -1,9 +1,8 @@
 'use strict';
 
-import { Position, Range, window } from 'vscode';
+import { commands, Position, Range, TextEditor, window, workspace } from 'vscode';
 
 import { LineCache } from './lineCache';
-import { config } from './util';
 
 export function getWordOrSelection(): string | undefined {
     const textEditor = window.activeTextEditor;
@@ -80,13 +79,30 @@ export function getSelection(): RSelection | undefined {
 
     let selectedText = currentDocument.getText(selection.range).trim();
 
-    if (config().get<boolean>('removeLeadingComments')) {
+    if (workspace.getConfiguration('r').get<boolean>('removeLeadingComments')) {
         selectedText = removeLeadingComments(selectedText);
     }
 
     selection.selectedText = selectedText;
 
     return selection;
+}
+
+/** Advance only the original editor after the submission has been accepted. */
+export async function moveAfterSelection(editor: TextEditor, selection: RSelection): Promise<void> {
+    if (window.activeTextEditor !== editor || selection.linesDownToMoveCursor <= 0) {
+        return;
+    }
+    const lineCount = editor.document.lineCount;
+    if (selection.linesDownToMoveCursor + editor.selection.end.line === lineCount) {
+        const last = editor.document.lineAt(lineCount - 1).range.end;
+        await editor.edit((edit) => edit.insert(last, '\n'));
+    }
+    await commands.executeCommand('cursorMove', {
+        to: 'down',
+        value: selection.linesDownToMoveCursor,
+    });
+    await commands.executeCommand('cursorMove', { to: 'wrappedLineFirstNonWhitespaceCharacter' });
 }
 
 /**

@@ -2,7 +2,8 @@ import * as assert from 'assert';
 import * as sinon from 'sinon';
 import * as vscode from 'vscode';
 import * as executionTarget from '../../interactive/executionTarget';
-import { getChunks, getCurrentChunk, runSourceWithEcho } from '../../rmarkdown/chunks';
+import { getChunks, getCurrentChunk } from '../../rmarkdown/chunks';
+import { runSourceWithEcho } from '../../rmarkdown';
 
 suite('R code chunk boundaries', () => {
     async function chunkCode(text: string, language = 'r') {

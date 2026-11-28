@@ -11,7 +11,7 @@ import * as vscode from 'vscode';
 import { extensionContext, globalPlotManager } from './extension';
 import * as util from './util';
 import * as selection from './selection';
-import { getSelection } from './selection';
+import { getSelection, moveAfterSelection } from './selection';
 import {
     cleanupTerminalBinding,
     createSessionDiscoveryFile,
@@ -595,29 +595,8 @@ export async function runSelectionInTerm(moveCursor: boolean, useRepl = true): P
             return;
         }
     }
-    // Cancellation must preserve both the selected code and its cursor position.
-    if (vscode.window.activeTextEditor !== textEditor) {
-        return;
-    }
-    if (moveCursor && selection.linesDownToMoveCursor > 0) {
-        if (!textEditor) {
-            return;
-        }
-        const lineCount = textEditor.document.lineCount;
-        if (selection.linesDownToMoveCursor + textEditor.selection.end.line === lineCount) {
-            const endPos = new vscode.Position(
-                lineCount,
-                textEditor.document.lineAt(lineCount - 1).text.length,
-            );
-            await textEditor.edit((e) => e.insert(endPos, '\n'));
-        }
-        await vscode.commands.executeCommand('cursorMove', {
-            to: 'down',
-            value: selection.linesDownToMoveCursor,
-        });
-        await vscode.commands.executeCommand('cursorMove', {
-            to: 'wrappedLineFirstNonWhitespaceCharacter',
-        });
+    if (moveCursor && textEditor) {
+        await moveAfterSelection(textEditor, selection);
     }
 }
 

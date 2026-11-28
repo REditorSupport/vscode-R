@@ -38,6 +38,7 @@
     "onNotebook:r-interactive"
   ],
   "main": "./dist/extension",
+  "browser": "./dist/web-extension.js",
   "contributes": {
     "terminal": {
       "profiles": [
@@ -197,7 +198,8 @@
         "command": "r.workspaceViewer.view",
         "title": "View",
         "icon": "$(open-preview)",
-        "category": "R Workspace Viewer"
+        "category": "R Workspace Viewer",
+        "enablement": "!r.webExtension"
       },
       {
         "command": "r.workspaceViewer.clear",
@@ -210,7 +212,8 @@
         "command": "r.workspaceViewer.remove",
         "title": "Remove",
         "icon": "$(close)",
-        "category": "R Workspace Viewer"
+        "category": "R Workspace Viewer",
+        "enablement": "!r.webExtension"
       },
       {
         "command": "r.workspaceViewer.save",
@@ -223,40 +226,47 @@
         "command": "r.workspaceViewer.load",
         "title": "Load workspace",
         "icon": "$(folder-opened)",
-        "category": "R Workspace Viewer"
+        "category": "R Workspace Viewer",
+        "enablement": "!r.webExtension"
       },
       {
         "command": "r.workspaceViewer.package.showQuickPick",
         "title": "Show QuickPick",
-        "category": "R Workspace Viewer"
+        "category": "R Workspace Viewer",
+        "enablement": "!r.webExtension"
       },
       {
         "command": "r.browser.refresh",
         "title": "Refresh",
         "icon": "$(refresh)",
-        "category": "R"
+        "category": "R",
+        "enablement": "!r.webExtension"
       },
       {
         "command": "r.browser.openExternal",
         "title": "Open in external browser",
         "icon": "$(link-external)",
-        "category": "R"
+        "category": "R",
+        "enablement": "!r.webExtension"
       },
       {
         "command": "r.showHelp",
         "title": "Show help",
-        "category": "R"
+        "category": "R",
+        "enablement": "!r.webExtension"
       },
       {
         "command": "r.webview.find",
         "title": "R: Find in WebView",
         "icon": "$(search)",
-        "category": "R"
+        "category": "R",
+        "enablement": "!r.webExtension"
       },
       {
         "command": "r.htmlViewer.restore",
         "title": "Restore HTML Viewer",
-        "category": "R"
+        "category": "R",
+        "enablement": "!r.webExtension"
       },
       {
         "command": "r.htmlViewer.back",
@@ -289,7 +299,8 @@
       {
         "title": "Create R terminal",
         "category": "R",
-        "command": "r.createRTerm"
+        "command": "r.createRTerm",
+        "enablement": "!r.webExtension"
       },
       {
         "title": "Run Source",
@@ -301,22 +312,26 @@
         "title": "Knit Rmd",
         "category": "R",
         "command": "r.knitRmd",
-        "icon": "$(run-below)"
+        "icon": "$(run-below)",
+        "enablement": "!r.webExtension"
       },
       {
         "title": "Knit Rmd To PDF",
         "category": "R",
-        "command": "r.knitRmdToPdf"
+        "command": "r.knitRmdToPdf",
+        "enablement": "!r.webExtension"
       },
       {
         "title": "Knit Rmd To HTML",
         "category": "R",
-        "command": "r.knitRmdToHtml"
+        "command": "r.knitRmdToHtml",
+        "enablement": "!r.webExtension"
       },
       {
         "title": "Knit Rmd To All Formats",
         "category": "R",
-        "command": "r.knitRmdToAll"
+        "command": "r.knitRmdToAll",
+        "enablement": "!r.webExtension"
       },
       {
         "title": "Run Source with Echo",
@@ -331,112 +346,134 @@
       {
         "title": "Show number of rows for selected object",
         "category": "R",
-        "command": "r.nrow"
+        "command": "r.nrow",
+        "enablement": "!r.webExtension"
       },
       {
         "title": "Show length for a selected object",
         "category": "R",
-        "command": "r.length"
+        "command": "r.length",
+        "enablement": "!r.webExtension"
       },
       {
         "title": "Show first part of a selected object",
         "category": "R",
-        "command": "r.head"
+        "command": "r.head",
+        "enablement": "!r.webExtension"
       },
       {
         "title": "Show first part of a selected object (transposed)",
         "category": "R",
-        "command": "r.thead"
+        "command": "r.thead",
+        "enablement": "!r.webExtension"
       },
       {
         "title": "Show names for a selected object",
         "category": "R",
-        "command": "r.names"
+        "command": "r.names",
+        "enablement": "!r.webExtension"
       },
       {
         "title": "View selected object",
         "category": "R",
-        "command": "r.view"
+        "command": "r.view",
+        "enablement": "!r.webExtension"
       },
       {
         "title": "Create gitignore",
         "category": "R",
-        "command": "r.createGitignore"
+        "command": "r.createGitignore",
+        "enablement": "!r.webExtension"
       },
       {
         "title": "Create .lintr to the workspace",
         "category": "R",
-        "command": "r.createLintrConfig"
+        "command": "r.createLintrConfig",
+        "enablement": "!r.webExtension"
       },
       {
         "title": "Preview Dataframe",
         "category": "R",
-        "command": "r.previewDataframe"
+        "command": "r.previewDataframe",
+        "enablement": "!r.webExtension"
       },
       {
         "title": "Preview Environment",
         "category": "R",
-        "command": "r.previewEnvironment"
+        "command": "r.previewEnvironment",
+        "enablement": "!r.webExtension"
       },
       {
         "title": "Load All",
         "category": "R Package",
-        "command": "r.loadAll"
+        "command": "r.loadAll",
+        "enablement": "!r.webExtension"
       },
       {
         "title": "Build",
         "category": "R Package",
-        "command": "r.build"
+        "command": "r.build",
+        "enablement": "!r.webExtension"
       },
       {
         "title": "Build Binary",
         "category": "R Package",
-        "command": "r.buildBinary"
+        "command": "r.buildBinary",
+        "enablement": "!r.webExtension"
       },
       {
         "title": "Check",
         "category": "R Package",
-        "command": "r.check"
+        "command": "r.check",
+        "enablement": "!r.webExtension"
       },
       {
         "title": "Document",
         "category": "R Package",
-        "command": "r.document"
+        "command": "r.document",
+        "enablement": "!r.webExtension"
       },
       {
         "title": "Install",
         "category": "R Package",
-        "command": "r.install"
+        "command": "r.install",
+        "enablement": "!r.webExtension"
       },
       {
         "title": "Test",
         "category": "R Package",
-        "command": "r.test"
+        "command": "r.test",
+        "enablement": "!r.webExtension"
       },
       {
         "title": "Generate C/C++ Configuration",
         "category": "R Package",
-        "command": "r.generateCCppProperties"
+        "command": "r.generateCCppProperties",
+        "enablement": "!r.webExtension"
       },
       {
         "title": "Activate R Session",
         "category": "R",
-        "command": "r.activateRSession"
+        "command": "r.activateRSession",
+        "enablement": "!r.webExtension"
       },
       {
         "title": "Attach External R Session (Copy command)",
         "category": "R",
-        "command": "r.connectToSession"
+        "command": "r.connectToSession",
+        "enablement": "!r.webExtension"
       },
       {
         "title": "Run Command With Selection or Word in Terminal",
         "category": "R",
-        "command": "r.runCommandWithSelectionOrWord"
+        "command": "r.runCommandWithSelectionOrWord",
+        "enablement": "!r.webExtension"
       },
       {
         "title": "Run Command With Editor Path in Terminal",
         "category": "R",
-        "command": "r.runCommandWithEditorPath"
+        "command": "r.runCommandWithEditorPath",
+        "enablement": "!r.webExtension"
       },
       {
         "title": "Run Command in Terminal",
@@ -446,12 +483,14 @@
       {
         "title": "Run from Beginning to Line",
         "category": "R",
-        "command": "r.runFromBeginningToLine"
+        "command": "r.runFromBeginningToLine",
+        "enablement": "!r.webExtension"
       },
       {
         "title": "Run from Line to End",
         "category": "R",
-        "command": "r.runFromLineToEnd"
+        "command": "r.runFromLineToEnd",
+        "enablement": "!r.webExtension"
       },
       {
         "title": "Run Selection/Line (Retain Cursor)",
@@ -516,13 +555,15 @@
       {
         "title": "New Draft",
         "category": "R Markdown",
-        "command": "r.rmarkdown.newDraft"
+        "command": "r.rmarkdown.newDraft",
+        "enablement": "!r.webExtension"
       },
       {
         "title": "R Markdown (rmd)",
         "category": "R Markdown",
         "when": false,
-        "command": "r.rmarkdown.newFileDraft"
+        "command": "r.rmarkdown.newFileDraft",
+        "enablement": "!r.webExtension"
       },
       {
         "title": "R Document (r)",
@@ -534,60 +575,70 @@
         "command": "r.rmarkdown.setKnitDirectory",
         "title": "Set Knit directory",
         "icon": "$(zap)",
-        "category": "R Markdown"
+        "category": "R Markdown",
+        "enablement": "!r.webExtension"
       },
       {
         "command": "r.rmarkdown.showPreviewToSide",
         "title": "Open Preview to the Side",
         "icon": "$(open-preview)",
-        "category": "R Markdown"
+        "category": "R Markdown",
+        "enablement": "!r.webExtension"
       },
       {
         "command": "r.rmarkdown.showPreview",
         "title": "Open Preview",
         "icon": "$(open-preview)",
-        "category": "R Markdown"
+        "category": "R Markdown",
+        "enablement": "!r.webExtension"
       },
       {
         "command": "r.rmarkdown.preview.refresh",
         "title": "Refresh Preview",
         "icon": "$(refresh)",
-        "category": "R Markdown"
+        "category": "R Markdown",
+        "enablement": "!r.webExtension"
       },
       {
         "command": "r.rmarkdown.preview.openExternal",
         "title": "Open in External Browser",
         "icon": "$(link-external)",
-        "category": "R Markdown"
+        "category": "R Markdown",
+        "enablement": "!r.webExtension"
       },
       {
         "command": "r.rmarkdown.preview.showSource",
         "title": "Show Source",
         "icon": "$(go-to-file)",
-        "category": "R Markdown"
+        "category": "R Markdown",
+        "enablement": "!r.webExtension"
       },
       {
         "title": "Toggle Style",
         "category": "R Markdown",
         "command": "r.rmarkdown.preview.toggleStyle",
-        "icon": "$(symbol-color)"
+        "icon": "$(symbol-color)",
+        "enablement": "!r.webExtension"
       },
       {
         "title": "Enable Auto Refresh",
         "category": "R Markdown",
         "command": "r.rmarkdown.preview.enableAutoRefresh",
-        "icon": "$(sync)"
+        "icon": "$(sync)",
+        "enablement": "!r.webExtension"
       },
       {
         "title": "Disable Auto Refresh",
         "category": "R Markdown",
         "command": "r.rmarkdown.preview.disableAutoRefresh",
-        "icon": "$(sync-ignored)"
+        "icon": "$(sync-ignored)",
+        "enablement": "!r.webExtension"
       },
       {
         "title": "Launch RStudio Addin",
         "category": "R",
-        "command": "r.launchAddinPicker"
+        "command": "r.launchAddinPicker",
+        "enablement": "!r.webExtension"
       },
       {
         "command": "r.helpPanel.back",
@@ -614,143 +665,167 @@
         "title": "Search Package Topics",
         "category": "R Help Panel",
         "command": "r.helpPanel.searchPackage",
-        "icon": "$(search)"
+        "icon": "$(search)",
+        "enablement": "!r.webExtension"
       },
       {
         "title": "Open Topic in new Panel",
         "category": "R Help Panel",
         "command": "r.helpPanel.openInNewPanel",
-        "icon": "$(add)"
+        "icon": "$(add)",
+        "enablement": "!r.webExtension"
       },
       {
         "title": "Clear Cached Files",
         "category": "R Help Panel",
         "command": "r.helpPanel.clearCache",
-        "icon": "$(refresh)"
+        "icon": "$(refresh)",
+        "enablement": "!r.webExtension"
       },
       {
         "title": "Filter Packages",
         "category": "R Help Panel",
         "command": "r.helpPanel.filterPackages",
-        "icon": "$(filter)"
+        "icon": "$(filter)",
+        "enablement": "!r.webExtension"
       },
       {
         "title": "Remove from favorites",
         "category": "R Help Panel",
         "command": "r.helpPanel.removeFromFavorites",
-        "icon": "$(star-full)"
+        "icon": "$(star-full)",
+        "enablement": "!r.webExtension"
       },
       {
         "title": "Add to favorites",
         "category": "R Help Panel",
         "command": "r.helpPanel.addToFavorites",
-        "icon": "$(star-empty)"
+        "icon": "$(star-empty)",
+        "enablement": "!r.webExtension"
       },
       {
         "title": "Show all packages",
         "category": "R Help Panel",
         "command": "r.helpPanel.showAllPackages",
-        "icon": "$(star-full)"
+        "icon": "$(star-full)",
+        "enablement": "!r.webExtension"
       },
       {
         "title": "Show only favorites",
         "category": "R Help Panel",
         "command": "r.helpPanel.showOnlyFavorites",
-        "icon": "$(star-empty)"
+        "icon": "$(star-empty)",
+        "enablement": "!r.webExtension"
       },
       {
         "title": "Remove Package",
         "category": "R Help Panel",
         "command": "r.helpPanel.removePackage",
-        "icon": "$(trash)"
+        "icon": "$(trash)",
+        "enablement": "!r.webExtension"
       },
       {
         "title": "Update Installed Packages",
         "category": "R Help Panel",
         "command": "r.helpPanel.updateInstalledPackages",
-        "icon": "$(clone)"
+        "icon": "$(clone)",
+        "enablement": "!r.webExtension"
       },
       {
         "title": "Update/reinstall Package",
         "category": "R Help Panel",
         "command": "r.helpPanel.updatePackage",
-        "icon": "$(cloud-download)"
+        "icon": "$(cloud-download)",
+        "enablement": "!r.webExtension"
       },
       {
         "title": "Install multiple packages",
         "category": "R Help Panel",
         "command": "r.helpPanel.installPackages",
-        "icon": "$(expand-all)"
+        "icon": "$(expand-all)",
+        "enablement": "!r.webExtension"
       },
       {
         "title": "Show QuickPick",
         "category": "R Help Panel",
         "command": "r.helpPanel.showQuickPick",
-        "icon": "$(zap)"
+        "icon": "$(zap)",
+        "enablement": "!r.webExtension"
       },
       {
         "title": "Summarize Identical Topics",
         "category": "R Help Panel",
         "command": "r.helpPanel.summarizeTopics",
-        "icon": "$(fold)"
+        "icon": "$(fold)",
+        "enablement": "!r.webExtension"
       },
       {
         "title": "Don't Summarize Identical Topics",
         "category": "R Help Panel",
         "command": "r.helpPanel.unsummarizeTopics",
-        "icon": "$(unfold)"
+        "icon": "$(unfold)",
+        "enablement": "!r.webExtension"
       },
       {
         "title": "Open help for selection",
         "category": "R Help Panel",
-        "command": "r.helpPanel.openForSelection"
+        "command": "r.helpPanel.openForSelection",
+        "enablement": "!r.webExtension"
       },
       {
         "title": "Open help for path",
         "category": "R Help Panel",
-        "command": "r.helpPanel.openForPath"
+        "command": "r.helpPanel.openForPath",
+        "enablement": "!r.webExtension"
       },
       {
         "title": "Toggle Style",
         "category": "R Plot",
         "command": "r.plot.toggleStyle",
-        "icon": "$(symbol-color)"
+        "icon": "$(symbol-color)",
+        "enablement": "!r.webExtension"
       },
       {
         "title": "Toggle Full Window Mode",
         "category": "R Plot",
         "command": "r.plot.toggleFullWindow",
-        "icon": "$(screen-full)"
+        "icon": "$(screen-full)",
+        "enablement": "!r.webExtension"
       },
       {
         "title": "Toggle Preview Plot Layout",
         "category": "R Plot",
         "command": "r.plot.togglePreviewPlots",
-        "icon": "$(list-flat)"
+        "icon": "$(list-flat)",
+        "enablement": "!r.webExtension"
       },
       {
         "title": "Export Plot",
         "category": "R Plot",
         "command": "r.plot.exportPlot",
-        "icon": "$(clone)"
+        "icon": "$(clone)",
+        "enablement": "!r.webExtension"
       },
       {
         "title": "Close Plot",
         "category": "R Plot",
         "command": "r.plot.closePlot",
-        "icon": "$(trash)"
+        "icon": "$(trash)",
+        "enablement": "!r.webExtension"
       },
       {
         "title": "Hide Plot",
         "category": "R Plot",
         "command": "r.plot.hidePlot",
-        "icon": "$(close)"
+        "icon": "$(close)",
+        "enablement": "!r.webExtension"
       },
       {
         "title": "Restore Plots",
         "category": "R Plot",
         "command": "r.plot.resetPlots",
-        "icon": "$(discard)"
+        "icon": "$(discard)",
+        "enablement": "!r.webExtension"
       },
       {
         "title": "Previous Plot",
@@ -784,35 +859,40 @@
         "title": "Zoom In",
         "category": "R Plot",
         "command": "r.plot.zoomIn",
-        "icon": "$(zoom-in)"
+        "icon": "$(zoom-in)",
+        "enablement": "!r.webExtension"
       },
       {
         "title": "Zoom Out",
         "category": "R Plot",
         "command": "r.plot.zoomOut",
-        "icon": "$(zoom-out)"
+        "icon": "$(zoom-out)",
+        "enablement": "!r.webExtension"
       },
       {
         "title": "Show Viewers",
         "category": "R Plot",
         "command": "r.plot.showViewers",
-        "icon": "$(versions)"
+        "icon": "$(versions)",
+        "enablement": "!r.webExtension"
       },
       {
         "title": "Open Httpgd Url",
         "category": "R Plot",
         "command": "r.plot.openUrl",
-        "icon": "$(link)"
+        "icon": "$(link)",
+        "enablement": "!r.webExtension"
       },
       {
         "title": "Open in External Browser",
         "category": "R Plot",
         "command": "r.plot.openExternal",
-        "icon": "$(link-external)"
+        "icon": "$(link-external)",
+        "enablement": "!r.webExtension"
       },
       {
         "command": "r.interactive.new",
-        "title": "New Persistent Interactive Session",
+        "title": "New Interactive Session",
         "category": "R",
         "icon": "$(add)"
       },
@@ -820,7 +900,8 @@
         "command": "r.interactive.connect",
         "title": "Connect Interactive to Session",
         "category": "R",
-        "icon": "$(plug)"
+        "icon": "$(plug)",
+        "enablement": "!r.webExtension"
       },
       {
         "command": "r.interactive.open",
@@ -831,7 +912,8 @@
         "command": "r.interactive.refresh",
         "title": "Refresh Interactive Sessions",
         "category": "R",
-        "icon": "$(refresh)"
+        "icon": "$(refresh)",
+        "enablement": "!r.webExtension"
       },
       {
         "command": "r.interactive.interrupt",
@@ -843,13 +925,15 @@
         "command": "r.interactive.input",
         "title": "Reply to Interactive Input",
         "category": "R",
-        "icon": "$(comment)"
+        "icon": "$(comment)",
+        "enablement": "!r.webExtension"
       },
       {
         "command": "r.interactive.detach",
         "title": "Detach Interactive Session",
         "category": "R",
-        "icon": "$(debug-disconnect)"
+        "icon": "$(debug-disconnect)",
+        "enablement": "!r.webExtension"
       },
       {
         "command": "r.interactive.stop",
@@ -862,7 +946,8 @@
         "title": "Stop Selected Interactive Sessions…",
         "category": "R",
         "icon": "$(debug-stop)",
-        "shortTitle": "Stop Selected…"
+        "shortTitle": "Stop Selected…",
+        "enablement": "!r.webExtension"
       },
       {
         "command": "r.interactive.stopAll",
@@ -882,85 +967,99 @@
         "command": "r.interactive.takeControl",
         "title": "Take Control of Interactive Session",
         "category": "R",
-        "icon": "$(key)"
+        "icon": "$(key)",
+        "enablement": "!r.webExtension"
       },
       {
         "command": "r.interactive.useTerminal",
         "title": "Use Terminal for R Execution",
-        "category": "R"
+        "category": "R",
+        "enablement": "!r.webExtension"
       },
       {
         "command": "r.interactive.bindDocument",
         "title": "Bind Document to Interactive Session",
-        "category": "R"
+        "category": "R",
+        "enablement": "!r.webExtension"
       },
       {
         "command": "r.interactive.export",
         "title": "Export Interactive History",
         "category": "R",
-        "icon": "$(export)"
+        "icon": "$(export)",
+        "enablement": "!r.webExtension"
       },
       {
         "command": "r.interactive.clear",
         "title": "Clear Completed Interactive Cells",
         "category": "R",
         "icon": "$(clear-all)",
-        "shortTitle": "Clear Completed"
+        "shortTitle": "Clear Completed",
+        "enablement": "!r.webExtension"
       },
       {
         "command": "r.interactive.rename",
         "category": "R",
         "title": "Rename Interactive Session",
-        "icon": "$(edit)"
+        "icon": "$(edit)",
+        "enablement": "!r.webExtension"
       },
       {
         "command": "r.interactive.history",
         "category": "R",
         "title": "Search Interactive History",
         "icon": "$(history)",
-        "shortTitle": "History"
+        "shortTitle": "History",
+        "enablement": "!r.webExtension"
       },
       {
         "command": "r.interactive.plots",
         "category": "R",
         "title": "Browse Interactive Plots",
-        "icon": "$(graph)"
+        "icon": "$(graph)",
+        "enablement": "!r.webExtension"
       },
       {
         "command": "r.interactive.cancelQueued",
         "category": "R",
         "title": "Cancel Queued Interactive Cells",
-        "icon": "$(close-all)"
+        "icon": "$(close-all)",
+        "enablement": "!r.webExtension"
       },
       {
         "command": "r.interactive.info",
         "category": "R",
         "title": "Show Interactive Session Details",
-        "icon": "$(info)"
+        "icon": "$(info)",
+        "enablement": "!r.webExtension"
       },
       {
         "command": "r.interactive.cleanAssets",
         "category": "R",
         "title": "Clean Up Interactive Assets",
-        "icon": "$(discard)"
+        "icon": "$(discard)",
+        "enablement": "!r.webExtension"
       },
       {
         "command": "r.interactive.reuseCell",
         "category": "R",
         "title": "Insert Cell Code into Interactive Input",
-        "icon": "$(insert)"
+        "icon": "$(insert)",
+        "enablement": "!r.webExtension"
       },
       {
         "command": "r.interactive.copyCell",
         "category": "R",
         "title": "Copy Cell Code",
-        "icon": "$(copy)"
+        "icon": "$(copy)",
+        "enablement": "!r.webExtension"
       },
       {
         "command": "r.interactive.source",
         "category": "R",
         "title": "Go to Interactive Cell Source",
-        "icon": "$(go-to-file)"
+        "icon": "$(go-to-file)",
+        "enablement": "!r.webExtension"
       },
       {
         "command": "r.interactive.sessionActions",
@@ -968,6 +1067,18 @@
         "shortTitle": "Session…",
         "category": "R",
         "icon": "$(settings-gear)"
+      },
+      {
+        "command": "r.webR.importFiles",
+        "title": "Import Files into webR…",
+        "category": "R",
+        "enablement": "r.webExtension"
+      },
+      {
+        "command": "r.webR.exportFile",
+        "title": "Export File from webR…",
+        "category": "R",
+        "enablement": "r.webExtension"
       }
     ],
     "keybindings": [
@@ -1015,7 +1126,9 @@
       },
       {
         "command": "r.runSourcewithEcho",
-        "args": { "runChunkAtCursor": true },
+        "args": {
+          "runChunkAtCursor": true
+        },
         "key": "shift+Ctrl+enter",
         "mac": "shift+cmd+enter",
         "when": "editorTextFocus && editorLangId == 'r'"
@@ -1228,6 +1341,14 @@
         {
           "command": "r.interactive.source",
           "when": "false"
+        },
+        {
+          "command": "r.webR.importFiles",
+          "when": "r.webExtension"
+        },
+        {
+          "command": "r.webR.exportFile",
+          "when": "r.webExtension"
         }
       ],
       "editor/title/run": [
@@ -1236,7 +1357,7 @@
           "command": "r.runSource"
         },
         {
-          "when": "editorLangId == rmd && editorFocus",
+          "when": "!r.webExtension && editorLangId == rmd && editorFocus",
           "command": "r.knitRmd",
           "group": "navigation"
         }
@@ -1264,32 +1385,32 @@
         },
         {
           "command": "r.rmarkdown.preview.openExternal",
-          "when": "resourceScheme =~ /webview/ && r.rmarkdown.preview.active",
+          "when": "!r.webExtension && resourceScheme =~ /webview/ && r.rmarkdown.preview.active",
           "group": "navigation@1"
         },
         {
           "command": "r.rmarkdown.preview.showSource",
-          "when": "resourceScheme =~ /webview/ && r.rmarkdown.preview.active",
+          "when": "!r.webExtension && resourceScheme =~ /webview/ && r.rmarkdown.preview.active",
           "group": "navigation@2"
         },
         {
           "command": "r.rmarkdown.preview.toggleStyle",
-          "when": "resourceScheme =~ /webview/ && r.rmarkdown.preview.active",
+          "when": "!r.webExtension && resourceScheme =~ /webview/ && r.rmarkdown.preview.active",
           "group": "navigation@3"
         },
         {
           "command": "r.rmarkdown.preview.refresh",
-          "when": "resourceScheme =~ /webview/ && r.rmarkdown.preview.active",
+          "when": "!r.webExtension && resourceScheme =~ /webview/ && r.rmarkdown.preview.active",
           "group": "navigation@4"
         },
         {
           "command": "r.rmarkdown.preview.enableAutoRefresh",
-          "when": "resourceScheme =~ /webview/ && r.rmarkdown.preview.active && !r.rmarkdown.preview.autoRefresh",
+          "when": "!r.webExtension && resourceScheme =~ /webview/ && r.rmarkdown.preview.active && !r.rmarkdown.preview.autoRefresh",
           "group": "navigation@5"
         },
         {
           "command": "r.rmarkdown.preview.disableAutoRefresh",
-          "when": "resourceScheme =~ /webview/ && r.rmarkdown.preview.active && r.rmarkdown.preview.autoRefresh",
+          "when": "!r.webExtension && resourceScheme =~ /webview/ && r.rmarkdown.preview.active && r.rmarkdown.preview.autoRefresh",
           "group": "navigation@5"
         },
         {
@@ -1309,7 +1430,7 @@
         },
         {
           "command": "r.webview.find",
-          "when": "resourceScheme =~ /webview/ && r.helpPanel.active",
+          "when": "!r.webExtension && resourceScheme =~ /webview/ && r.helpPanel.active",
           "group": "navigation"
         },
         {
@@ -1395,28 +1516,28 @@
         {
           "command": "r.rmarkdown.showPreviewToSide",
           "alt": "r.rmarkdown.showPreview",
-          "when": "editorLangId == rmd && editorFocus",
+          "when": "!r.webExtension && editorLangId == rmd && editorFocus",
           "group": "navigation"
         },
         {
           "submenu": "r.knitCommands",
-          "when": "editorLangId == rmd && editorFocus",
+          "when": "!r.webExtension && editorLangId == rmd && editorFocus",
           "group": "@1"
         },
         {
           "command": "r.rmarkdown.setKnitDirectory",
-          "when": "editorLangId == rmd && editorFocus",
+          "when": "!r.webExtension && editorLangId == rmd && editorFocus",
           "group": "@1"
         }
       ],
       "editor/context": [
         {
           "command": "r.helpPanel.openForSelection",
-          "when": "resourceLangId == r"
+          "when": "!r.webExtension && resourceLangId == r"
         },
         {
           "command": "r.helpPanel.openForSelection",
-          "when": "resourceLangId == rmd"
+          "when": "!r.webExtension && resourceLangId == rmd"
         }
       ],
       "view/item/context": [
@@ -1626,7 +1747,7 @@
       "explorer/context": [
         {
           "command": "r.rmarkdown.showPreview",
-          "when": "resourceLangId == rmd",
+          "when": "!r.webExtension && resourceLangId == rmd",
           "group": "navigation"
         }
       ],
@@ -1647,7 +1768,8 @@
       "file/newFile": [
         {
           "group": "R",
-          "command": "r.rmarkdown.newFileDraft"
+          "command": "r.rmarkdown.newFileDraft",
+          "when": "!r.webExtension"
         },
         {
           "group": "R",
@@ -1667,29 +1789,29 @@
         },
         {
           "command": "r.interactive.history",
-          "when": "notebookType == r-interactive && notebookKernel =~ /^REditorSupport[.]r\\/r-/i",
+          "when": "!r.webExtension && notebookType == r-interactive && notebookKernel =~ /^REditorSupport[.]r\\/r-/i",
           "group": "navigation/transcript@1"
         },
         {
           "command": "r.interactive.clear",
-          "when": "notebookType == r-interactive && notebookKernel =~ /^REditorSupport[.]r\\/r-/i",
+          "when": "!r.webExtension && notebookType == r-interactive && notebookKernel =~ /^REditorSupport[.]r\\/r-/i",
           "group": "navigation/transcript@2"
         }
       ],
       "notebook/cell/title": [
         {
           "command": "r.interactive.reuseCell",
-          "when": "notebookType == r-interactive && notebookKernel =~ /^REditorSupport[.]r\\/r-/i && notebookCellType == code",
+          "when": "!r.webExtension && notebookType == r-interactive && notebookKernel =~ /^REditorSupport[.]r\\/r-/i && notebookCellType == code",
           "group": "inline/rInteractive@0"
         },
         {
           "command": "r.interactive.copyCell",
-          "when": "notebookType == r-interactive && notebookKernel =~ /^REditorSupport[.]r\\/r-/i && notebookCellType == code",
+          "when": "!r.webExtension && notebookType == r-interactive && notebookKernel =~ /^REditorSupport[.]r\\/r-/i && notebookCellType == code",
           "group": "inline/rInteractive@1"
         },
         {
           "command": "r.interactive.source",
-          "when": "notebookType == r-interactive && notebookKernel =~ /^REditorSupport[.]r\\/r-/i && notebookCellType == code",
+          "when": "!r.webExtension && notebookType == r-interactive && notebookKernel =~ /^REditorSupport[.]r\\/r-/i && notebookCellType == code",
           "group": "inline/rInteractive@2"
         }
       ],
@@ -1706,29 +1828,29 @@
         },
         {
           "command": "r.interactive.history",
-          "when": "notebookType == interactive && notebookKernel =~ /^REditorSupport[.]r\\/r-/i",
+          "when": "!r.webExtension && notebookType == interactive && notebookKernel =~ /^REditorSupport[.]r\\/r-/i",
           "group": "navigation/transcript@1"
         },
         {
           "command": "r.interactive.clear",
-          "when": "notebookType == interactive && notebookKernel =~ /^REditorSupport[.]r\\/r-/i",
+          "when": "!r.webExtension && notebookType == interactive && notebookKernel =~ /^REditorSupport[.]r\\/r-/i",
           "group": "navigation/transcript@2"
         }
       ],
       "interactive/cell/title": [
         {
           "command": "r.interactive.reuseCell",
-          "when": "notebookType == interactive && notebookKernel =~ /^REditorSupport[.]r\\/r-/i",
+          "when": "!r.webExtension && notebookType == interactive && notebookKernel =~ /^REditorSupport[.]r\\/r-/i",
           "group": "inline/rInteractive@0"
         },
         {
           "command": "r.interactive.copyCell",
-          "when": "notebookType == interactive && notebookKernel =~ /^REditorSupport[.]r\\/r-/i",
+          "when": "!r.webExtension && notebookType == interactive && notebookKernel =~ /^REditorSupport[.]r\\/r-/i",
           "group": "inline/rInteractive@1"
         },
         {
           "command": "r.interactive.source",
-          "when": "notebookType == interactive && notebookKernel =~ /^REditorSupport[.]r\\/r-/i",
+          "when": "!r.webExtension && notebookType == interactive && notebookKernel =~ /^REditorSupport[.]r\\/r-/i",
           "group": "inline/rInteractive@2"
         }
       ]
@@ -2395,7 +2517,9 @@
           "markdownDescription": "Path to a custom CSS file to be used when `#r.plot.defaults.colorTheme#` is `vscode`. Replaces the default CSS overwrites!"
         },
         "r.interactive.executionTarget": {
-          "tags": ["experimental"],
+          "tags": [
+            "experimental"
+          ],
           "type": "string",
           "enum": [
             "auto",
@@ -2406,7 +2530,9 @@
           "description": "Execution target for R source commands. Auto uses the selected Interactive session or R terminal and offers a target chooser when none is available. Use Terminal for R Execution switches back to terminal routing."
         },
         "r.interactive.supervision": {
-          "tags": ["experimental"],
+          "tags": [
+            "experimental"
+          ],
           "type": "string",
           "ignoreSync": true,
           "enum": [
@@ -2419,14 +2545,18 @@
           "description": "Independent session supervision. Auto prefers tmux on Linux when available, otherwise uses a detached process; macOS and Windows use a detached process. Explicit tmux/systemd selections require their executables on the R host. Detached processes survive editor reload/exit, but host logout policies may stop them. Changes apply to new or restarted sessions."
         },
         "r.interactive.nodePath": {
-          "tags": ["experimental"],
+          "tags": [
+            "experimental"
+          ],
           "type": "string",
           "ignoreSync": true,
           "default": "",
           "description": "Optional standalone Node.js 18+ executable on the R host for persistent session agents. Empty uses VS Code's runtime automatically (VS Code Server on remote hosts). Set an executable name on PATH or a path if the automatic runtime is unavailable in a compatible IDE; supports ~ and ${userHome}/${workspaceFolder}. Changes apply to new or restarted sessions."
         },
         "r.interactive.arfPath": {
-          "tags": ["experimental"],
+          "tags": [
+            "experimental"
+          ],
           "type": "string",
           "scope": "machine-overridable",
           "ignoreSync": true,
@@ -2434,14 +2564,18 @@
           "description": "arf executable required for managed headless Interactive sessions and for listing running arf sessions to connect to, resolved on the R host. Listing uses the extension host's environment: if arf runs with a custom ARF_IPC_SESSIONS_DIR, set the same absolute path for the extension host. On a remote host, set this in the remote or folder settings; local user settings do not apply there. Use an executable name on PATH or a path (supports ~ and ${userHome}/${workspaceFolder}). The executable must be arf itself or a script that replaces itself with arf using exec; a launcher that starts arf as another process is not supported, and managed sessions refuse it. Ordinary R terminals do not require arf; if unavailable, the Interactive provider picker offers configuration."
         },
         "r.interactive.storagePath": {
-          "tags": ["experimental"],
+          "tags": [
+            "experimental"
+          ],
           "type": "string",
           "ignoreSync": true,
           "default": "",
           "description": "Absolute, writable path on the R host for persistent Interactive sessions. Empty uses $XDG_STATE_HOME/vscode-r/interactive when set, otherwise ~/Library/Application Support/vscode-r/interactive on macOS or ~/.local/state/vscode-r/interactive on Linux. Windows uses %LOCALAPPDATA%/vscode-r/interactive and inherits its existing ACL. Securing a custom or shared storage location is your responsibility. Existing macOS registries at the Linux-style path are reused. Reload VS Code after changing this setting."
         },
         "r.interactive.plotBackend": {
-          "tags": ["experimental"],
+          "tags": [
+            "experimental"
+          ],
           "type": "string",
           "ignoreSync": true,
           "enum": [
@@ -2453,21 +2587,33 @@
           "description": "Interactive graphics provider. The jgd backend uses a separate R process with systemfonts to measure text while the editor is disconnected."
         },
         "r.interactive.tableView": {
-          "tags": ["experimental"],
+          "tags": [
+            "experimental"
+          ],
           "type": "string",
-          "enum": ["table", "text"],
-          "enumDescriptions": ["Show a paged table preview.", "Show the table's ordinary R printout."],
+          "enum": [
+            "table",
+            "text"
+          ],
+          "enumDescriptions": [
+            "Show a paged table preview.",
+            "Show the table's ordinary R printout."
+          ],
           "default": "table",
           "description": "Default presentation for Interactive table outputs. Each output can switch between table and printed views without rerunning R. Printed snapshots require a session started with the current extension build."
         },
         "r.interactive.restore": {
-          "tags": ["experimental"],
+          "tags": [
+            "experimental"
+          ],
           "type": "boolean",
           "default": true,
           "description": "Automatically reconnect the workspace’s Interactive sessions when R features are used."
         },
         "r.interactive.historyLimit": {
-          "tags": ["experimental"],
+          "tags": [
+            "experimental"
+          ],
           "type": "integer",
           "minimum": 1,
           "maximum": 1000,
@@ -2475,7 +2621,9 @@
           "description": "Recent executions and plots restored in an Interactive window."
         },
         "r.interactive.maxOutputSizeMiB": {
-          "tags": ["experimental"],
+          "tags": [
+            "experimental"
+          ],
           "type": "number",
           "ignoreSync": true,
           "minimum": 0.0625,
@@ -2484,7 +2632,9 @@
           "description": "Maximum retained console text output per execution, in MiB (1 MiB = 1,048,576 bytes). Excess output is drained and reported as truncated. Rich outputs have separate limits. Changes apply to new or restarted sessions."
         },
         "r.interactive.maxJournalSizeMiB": {
-          "tags": ["experimental"],
+          "tags": [
+            "experimental"
+          ],
           "type": "number",
           "ignoreSync": true,
           "minimum": 8,
@@ -2493,7 +2643,9 @@
           "description": "Approximate retained output journal limit per R generation, in MiB (1 MiB = 1,048,576 bytes). Old output is removed when journal segments rotate, roughly every 4 MiB. Earlier generations and execution records are retained separately. Changes apply to new or restarted sessions."
         },
         "r.interactive.maxAssetSizeMiB": {
-          "tags": ["experimental"],
+          "tags": [
+            "experimental"
+          ],
           "type": "number",
           "ignoreSync": true,
           "default": 1024,
@@ -2610,6 +2762,7 @@
     "test": "pnpm run test:node && pnpm run test:extension",
     "test:node": "mocha \"out/test/node/**/*.test.js\" --config .mocharc.interactive.cjs",
     "test:extension": "vscode-test",
+    "test:web": "pnpm run compile && pnpm --allow-build=@playwright/browser-chromium dlx @vscode/test-web@0.0.81 --browser chromium --headless --coi --quality stable --extensionId REditorSupport.r-syntax --extensionDevelopmentPath=. --extensionTestsPath=src/test/web/webR.cjs",
     "test:activation": "node --test scripts/activation-environment.test.cjs && node scripts/test-activation.cjs",
     "lint": "oxlint src",
     "format": "oxfmt .",
@@ -2680,6 +2833,10 @@
         "r.interactive.arfPath",
         "r.interactive.storagePath"
       ]
+    },
+    "virtualWorkspaces": {
+      "supported": "limited",
+      "description": "webR supports editing open R documents and running code in a browser session. Native R tools require a workspace extension host."
     }
   }
 }

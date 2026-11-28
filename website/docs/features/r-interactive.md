@@ -259,3 +259,13 @@ Cleanup preserves distinct historical plots. Compression savings depend on the o
 ## Contributing
 
 The [architecture and backend contract](https://github.com/REditorSupport/vscode-R/blob/main/src/interactive/README.md), [test instructions](https://github.com/REditorSupport/vscode-R/blob/main/CONTRIBUTING.md#testing-r-interactive), and [analysis fixtures](https://github.com/REditorSupport/vscode-R/blob/main/src/test/examples/README.md) live with the source.
+
+## VS Code for the Web
+
+In a trusted browser workspace, **R: New Interactive Session** opens a notebook backed by webR. Use **Run Selection**, **Run Source**, or **Run Current Chunk** from an R or R Markdown editor. Each notebook has its own R environment. Text, warnings, errors, and PNG plots appear below the corresponding cell. The first run downloads the pinned webR runtime. Packages installed in a session need compatible WebAssembly builds.
+
+Use **R: Import Files into webR…** to copy scripts and data from the workspace into the session. Paths relative to their workspace folder are retained, so importing `helpers/fit.R` and `data/measurements.csv` allows `source("helpers/fit.R")` and `read.csv("data/measurements.csv")` in the notebook. In a multi-root workspace the folder name prefixes each imported path. Files created by R live in the session directory. **R: Export File from webR…** copies a selected result to a writable destination. Virtual workspaces backed by a read-only provider can still supply input files.
+
+Save an Interactive notebook as an `.rnb` file to keep its cells and outputs. Its live R objects and imported files belong to the browser worker and are released when the notebook closes, the page reloads, or the session restarts. On a cross-origin isolated host, **R: Interrupt Interactive Session** keeps the R environment. Console prompts such as `readline()` use the notebook input dialog. The PostMessage channel has limited input support and offers to restart the worker when interrupting a calculation.
+
+The browser language server runs in a separate worker and can serve open documents while code is running. [Browser language features](./language-service.md#vs-code-for-the-web)

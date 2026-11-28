@@ -1,5 +1,21 @@
 import * as vscode from 'vscode';
 
+const encoder = new TextEncoder();
+const decoder = new TextDecoder('utf-8', { ignoreBOM: true });
+
+function decodeBase64(encoded: string): Uint8Array {
+    return Uint8Array.from(atob(encoded), (character) => character.charCodeAt(0));
+}
+
+function encodeBase64(bytes: Uint8Array): string {
+    // Spread in chunks so a large plot does not exceed the JS argument limit.
+    const parts: string[] = [];
+    for (let i = 0; i < bytes.length; i += 32768) {
+        parts.push(String.fromCharCode(...bytes.subarray(i, i + 32768)));
+    }
+    return btoa(parts.join(''));
+}
+
 interface SavedCell {
     kind: vscode.NotebookCellKind;
     value: string;
@@ -69,7 +85,7 @@ export class InteractiveSerializer implements vscode.NotebookSerializer {
                                   {
                                       output_type: 'stream',
                                       name: stream.mime.endsWith('stderr') ? 'stderr' : 'stdout',
-                                      text: Buffer.from(stream.data).toString(),
+                                      text: decoder.decode(stream.data),
                                   },
                               ];
                           }
@@ -77,7 +93,7 @@ export class InteractiveSerializer implements vscode.NotebookSerializer {
                               (item) => item.mime === 'application/vnd.code.notebook.error',
                           );
                           if (error) {
-                              const value = JSON.parse(Buffer.from(error.data).toString()) as {
+                              const value = JSON.parse(decoder.decode(error.data)) as {
                                   name: string;
                                   message: string;
                                   stack?: string;
@@ -94,7 +110,7 @@ export class InteractiveSerializer implements vscode.NotebookSerializer {
                           const custom = output.items.find((item) => item.mime === DISPLAY_MIME);
                           const display =
                               custom &&
-                              (JSON.parse(Buffer.from(custom.data).toString()) as
+                              (JSON.parse(decoder.decode(custom.data)) as
                                   | Record<string, unknown>
                                   | undefined);
                           if (display?.kind === 'plot' && Array.isArray(display.pages)) {
@@ -104,19 +120,16 @@ export class InteractiveSerializer implements vscode.NotebookSerializer {
                                           'text/plain': `R plot ${index + 1} of ${(display.pages as unknown[]).length}`,
                                       };
                                       if (typeof page.svgData === 'string') {
-                                          mime['image/svg+xml'] = Buffer.from(
-                                              page.svgData,
-                                              'base64',
-                                          ).toString('utf8');
+                                          mime['image/svg+xml'] = decoder.decode(
+                                              decodeBase64(page.svgData),
+                                          );
                                       } else if (
                                           typeof page.imageData === 'string' &&
                                           typeof page.mime === 'string'
                                       ) {
                                           mime[page.mime] =
                                               page.mime === 'image/svg+xml'
-                                                  ? Buffer.from(page.imageData, 'base64').toString(
-                                                        'utf8',
-                                                    )
+                                                  ? decoder.decode(decodeBase64(page.imageData))
                                                   : page.imageData;
                                       }
                                       return {
@@ -132,16 +145,16 @@ export class InteractiveSerializer implements vscode.NotebookSerializer {
                               if (item.mime === DISPLAY_MIME) {
                                   continue;
                               }
-                              mime[item.mime] = Buffer.from(item.data).toString(
-                                  /^image\/(png|jpeg|gif)$/.test(item.mime) ? 'base64' : 'utf8',
-                              );
+                              mime[item.mime] = /^image\/(png|jpeg|gif)$/.test(item.mime)
+                                  ? encodeBase64(item.data)
+                                  : decoder.decode(item.data);
                           }
                           return [{ output_type: 'display_data', data: mime, metadata: {} }];
                       }),
                   }
                 : {}),
         }));
-        return Buffer.from(
+        return encoder.encode(
             JSON.stringify(
                 {
                     nbformat: 4,
@@ -162,7 +175,7 @@ export class InteractiveSerializer implements vscode.NotebookSerializer {
         if (!content.length) {
             return new vscode.NotebookData([]);
         }
-        const saved = JSON.parse(Buffer.from(content).toString('utf8')) as {
+        const saved = JSON.parse(decoder.decode(content)) as {
             version: number;
             metadata: Record<string, unknown>;
             cells: SavedCell[];
@@ -180,7 +193,7 @@ export class InteractiveSerializer implements vscode.NotebookSerializer {
                         output.items.map(
                             (item) =>
                                 new vscode.NotebookCellOutputItem(
-                                    Buffer.from(item.data, 'base64'),
+                                    decodeBase64(item.data),
                                     item.mime,
                                 ),
                         ),
@@ -206,7 +219,7 @@ export class InteractiveSerializer implements vscode.NotebookSerializer {
                 items: output.items.map((item) => {
                     let bytes = item.data;
                     if (item.mime === DISPLAY_MIME) {
-                        const display = JSON.parse(Buffer.from(bytes).toString('utf8')) as Record<
+                        const display = JSON.parse(decoder.decode(bytes)) as Record<
                             string,
                             unknown
                         >;
@@ -220,13 +233,13 @@ export class InteractiveSerializer implements vscode.NotebookSerializer {
                             delete page.url;
                             page.connected = false;
                         }
-                        bytes = Buffer.from(JSON.stringify(display));
+                        bytes = encoder.encode(JSON.stringify(display));
                     }
-                    return { mime: item.mime, data: Buffer.from(bytes).toString('base64') };
+                    return { mime: item.mime, data: encodeBase64(bytes) };
                 }),
             })),
         }));
-        return Buffer.from(
+        return encoder.encode(
             JSON.stringify({ version: 1, metadata: data.metadata ?? {}, cells }, null, 2),
         );
     }
