@@ -41,6 +41,7 @@ import { connectTcpLanguageServer } from './languageServerTransport';
 import { CancellableLanguageClient } from './languageServerClient';
 import { withRpcCancellation } from './nativeRpc';
 import { prepareNodeWebR } from './webr/nodeRuntime';
+import { resolveExecutable } from './interactive/executable';
 import { cachedWebRAssets } from './webr/assetCache';
 import { createWebRLanguageSession } from './webr/languageSession';
 import { createWebRMessageTransports } from './webr/messageTransports';
@@ -53,6 +54,7 @@ export class LanguageService implements Disposable {
     private readonly sessionSignatures = new SessionSignatureHelpProvider();
     private readonly clientUpdates = new Map<string, Promise<void>>();
     private readonly listeners: Disposable[] = [];
+    private documentListenersStarted = false;
     private startup: Promise<void>;
     private readonly startupCancellation = new AbortController();
     private readonly startingClients = new Set<CancellableLanguageClient>();
@@ -77,7 +79,10 @@ export class LanguageService implements Disposable {
                 return;
             }
             const nextDocument = workspace.onDidOpenTextDocument((doc) => {
-                if (doc.languageId === 'r' || doc.languageId === 'rmd') {
+                if (
+                    (doc.uri.scheme === 'file' || doc.uri.scheme === 'untitled') &&
+                    (doc.languageId === 'r' || doc.languageId === 'rmd')
+                ) {
                     nextDocument.dispose();
                     this.startup = this.startWithRetry();
                 }
@@ -184,20 +189,29 @@ export class LanguageService implements Disposable {
         const resourceConfig = config(resource);
         const debug = this.config.get<boolean>('lsp.debug');
         const useRenvLibPath = this.config.get<boolean>('useRenvLibPath') ?? false;
-        const policy = resourceConfig.get<string>('lsp.runtime', 'auto');
-        // Interactive input/cell clients follow their bound runtime in auto mode.
-        // Ordinary source files keep their shared workspace language server.
-        const rPath =
-            policy === 'webR' || (policy === 'auto' && target?.interactiveProvider === 'webr')
-                ? ''
-                : target?.rPath ||
-                  (await withRpcCancellation(
-                      () => getRpath(false, resource, policy === 'native'),
-                      this.startupCancellation.signal,
-                  )) ||
-                  '';
-        if (!rPath && policy === 'native') {
-            throw new Error('Native R is required by r.lsp.runtime.');
+        const provider = virtualOnly ? target?.interactiveProvider : undefined;
+        const policy = provider
+            ? provider === 'webr'
+                ? 'webR'
+                : 'native'
+            : resourceConfig.get<string>('lsp.runtime', 'auto');
+        let rPath = '';
+        if (policy !== 'webR') {
+            rPath =
+                (provider && target?.rPath
+                    ? resolveExecutable(target.rPath, cwd)
+                    : await withRpcCancellation(
+                          () => getRpath(false, resource, policy === 'native' && !provider),
+                          this.startupCancellation.signal,
+                      )) ?? '';
+            if (!rPath && policy === 'native') {
+                if (provider) {
+                    throw new Error(
+                        `Cannot start the R language server for the ${provider} Interactive session: native R executable ${target?.rPath ?? 'not found'}.`,
+                    );
+                }
+                throw new Error('Native R is required by r.lsp.runtime.');
+            }
         }
         if (this.disposed) {
             throw new Error('The R language service is shutting down.');
@@ -210,7 +224,8 @@ export class LanguageService implements Disposable {
         env.VSCR_LSP_DEBUG = debug ? 'TRUE' : 'FALSE';
         env.VSCR_LSP_VIRTUAL_DOCUMENTS = virtualOnly ? 'TRUE' : 'FALSE';
         env.VSCR_LSP_SYNTHETIC_WORKSPACE = syntheticWorkspace ? 'TRUE' : 'FALSE';
-        env.VSCR_LIB_PATHS = target?.libraryPaths?.join('\n') ?? getRLibPaths();
+        env.VSCR_LIB_PATHS = target?.libraryPaths ? '' : getRLibPaths();
+        env.VSCR_LSP_SESSION_LIB_PATHS = target?.libraryPaths?.join('\n') ?? '';
         env.VSCR_USE_RENV_LIB_PATH = useRenvLibPath ? 'TRUE' : 'FALSE';
 
         const lang = this.config.get<string>('lsp.lang');
@@ -466,7 +481,13 @@ export class LanguageService implements Disposable {
     }
 
     private startMultiLanguageService(virtualOnly = false): void {
-        const clientTargets = new Map<string, Session | undefined>();
+        if (this.documentListenersStarted) {
+            return;
+        }
+        this.documentListenersStarted = true;
+        // Record the owner used to start each virtual client. A queued ordinary
+        // open may reuse that client after the document has acquired a new owner.
+        const clientTargets = new Map<string, { session: Session; revision: number }>();
         const didOpenTextDocument = async (document: TextDocument) => {
             if (
                 virtualOnly &&
@@ -486,7 +507,15 @@ export class LanguageService implements Disposable {
                 return;
             }
 
-            const target = boundSessionForDocument(document.uri);
+            const target =
+                document.uri.scheme === 'vscode-interactive-input' ||
+                document.uri.scheme === 'vscode-notebook-cell'
+                    ? boundSessionForDocument(document.uri)
+                    : undefined;
+            const owner = target && {
+                session: target,
+                revision: target.languageEnvironmentRevision,
+            };
             const folder = workspace.getWorkspaceFolder(
                 target ? Uri.file(target.workingDir) : document.uri,
             );
@@ -511,6 +540,9 @@ export class LanguageService implements Disposable {
                         target,
                     );
                     this.clients.set(key, client);
+                    if (owner) {
+                        clientTargets.set(key, owner);
+                    }
                     this.initSet.delete(key);
                 }
                 return;
@@ -537,6 +569,9 @@ export class LanguageService implements Disposable {
                         target,
                     );
                     this.clients.set(key, client);
+                    if (owner) {
+                        clientTargets.set(key, owner);
+                    }
                     this.initSet.delete(key);
                 }
                 return;
@@ -677,18 +712,21 @@ export class LanguageService implements Disposable {
                     const target = boundSessionForDocument(document.uri);
                     // Rebinding retained cells can report the same notebook owner
                     // repeatedly. Restart its shared server only once per owner.
-                    if (restart && clientTargets.get(key) !== target) {
+                    const owner = clientTargets.get(key);
+                    if (
+                        restart &&
+                        (owner?.session !== target ||
+                            owner?.revision !== target?.languageEnvironmentRevision)
+                    ) {
                         const client = this.clients.get(key);
                         this.clients.delete(key);
+                        clientTargets.delete(key);
                         this.initSet.delete(key);
                         if (client) {
                             await this.stopClient(client);
                         }
                     }
                     await didOpenTextDocument(document);
-                    if (this.clients.has(key)) {
-                        clientTargets.set(key, target);
-                    }
                 } catch (error) {
                     this.initSet.delete(key);
                     this.outputChannel.appendLine(
@@ -744,6 +782,9 @@ export class LanguageService implements Disposable {
         if (useMultiServer) {
             this.startMultiLanguageService();
         } else {
+            // A workspace runtime can be unavailable or take time to download.
+            // Bound Interactive clients already know which runtime they need.
+            this.startMultiLanguageService(true);
             const documentSelector: DocumentFilter[] = [
                 { scheme: 'file', language: 'r' },
                 { scheme: 'file', language: 'rmd' },
@@ -765,7 +806,6 @@ export class LanguageService implements Disposable {
                 return;
             }
             this.clients.set('global', client);
-            this.startMultiLanguageService(true);
         }
     }
 

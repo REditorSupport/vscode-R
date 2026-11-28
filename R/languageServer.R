@@ -7,6 +7,13 @@ if (nzchar(add_lib_paths)) {
   .libPaths(.paths)
 }
 
+# A native Interactive session's package resolution order precedes the
+# language-server process defaults, including a different default user library.
+session_lib_paths <- Sys.getenv("VSCR_LSP_SESSION_LIB_PATHS")
+if (nzchar(session_lib_paths)) {
+  .paths <- c(strsplit(session_lib_paths, "\n", fixed = TRUE)[[1L]], .paths)
+}
+
 use_renv_lib_path <- Sys.getenv("VSCR_USE_RENV_LIB_PATH")
 use_renv_lib_path <- if (nzchar(use_renv_lib_path)) as.logical(use_renv_lib_path) else FALSE
 if (use_renv_lib_path) {

@@ -1963,7 +1963,7 @@
           "enum": ["auto", "native", "webR"],
           "default": "auto",
           "scope": "resource",
-          "description": "Language server runtime. Auto uses native R when available and webR otherwise. webR downloads a pinned runtime and package library on first use and analyzes open documents."
+          "description": "Language server runtime for source editors. Auto uses native R when available and webR otherwise. R Interactive inputs and cells follow their session provider. webR downloads a pinned runtime and package library on first use."
         },
         "r.lsp.enabled": {
           "type": "boolean",
