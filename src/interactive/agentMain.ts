@@ -1,4 +1,5 @@
 import * as fs from 'fs';
+import * as path from 'path';
 import { AgentConfig } from './protocol';
 import { SessionAgent as Agent } from './agent';
 import { createBackend } from './backendRegistry';
@@ -15,6 +16,14 @@ if (require.main === module) {
     // other Electron applications (including the editor's CLI).
     delete process.env.ELECTRON_RUN_AS_NODE;
     const config = JSON.parse(fs.readFileSync(process.argv[2], 'utf8')) as AgentConfig;
+    if (config.backend?.kind === 'webr') {
+        // webR's Node HTTP client creates scratch files in the process cwd. A
+        // graphical editor can start its detached agent in an unwritable root.
+        // launchAgent has already created this private session directory.
+        config.storage = path.resolve(config.storage);
+        config.directory = path.resolve(config.directory);
+        process.chdir(config.storage);
+    }
     const agent = new SessionAgent(config);
     let exiting = false;
     let exitCode = 0;

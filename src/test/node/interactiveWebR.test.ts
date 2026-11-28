@@ -1,10 +1,13 @@
 import * as assert from 'node:assert/strict';
+import { spawn, type ChildProcess } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
+import { once } from 'node:events';
 import * as fs from 'node:fs';
+import { createServer } from 'node:http';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
-import { SessionAgent } from '../../interactive/agentMain';
+import { readSessionManifest } from '../../interactive/launcher';
 import { prepareNodeWebR } from '../../webr/nodeRuntime';
 import { AgentClient } from '../../interactive/client';
 import type { AgentConfig, SessionEvent, SessionManifest } from '../../interactive/protocol';
@@ -13,7 +16,9 @@ suite('R Interactive webR provider', function () {
     this.timeout(60000);
     let root: string;
     let project: string;
-    let agent: SessionAgent;
+    let launchDirectory: string;
+    let agent: ChildProcess;
+    let closed: Promise<unknown>;
     let client: AgentClient;
     let manifest: SessionManifest;
     let events: SessionEvent[];
@@ -42,14 +47,40 @@ suite('R Interactive webR provider', function () {
                 options: { baseUrl },
             },
         };
-        agent = new SessionAgent(config);
-        manifest = await agent.start();
-        await connect();
+        // Exercise the same process entry point as a managed Interactive agent.
+        launchDirectory = path.join(root, 'launcher');
+        fs.mkdirSync(launchDirectory);
+        fs.mkdirSync(config.storage, { mode: 0o700 });
+        const configFile = path.join(config.storage, 'config.json');
+        fs.writeFileSync(configFile, JSON.stringify(config));
+        agent = spawn(
+            process.execPath,
+            [require.resolve('../../interactive/agentMain'), configFile],
+            {
+                cwd: launchDirectory,
+                stdio: 'inherit',
+            },
+        );
+        closed = once(agent, 'close');
+        for (let i = 0; i < 500; i++) {
+            const ready = readSessionManifest(config.storage, config.id, config.generation);
+            if (ready?.status === 'idle') {
+                manifest = ready;
+                await connect();
+                return;
+            }
+            if (ready?.startupError || agent.exitCode !== null || agent.signalCode !== null) {
+                throw new Error(ready?.startupError ?? 'webR agent exited during startup');
+            }
+            await delay(20);
+        }
+        throw new Error('webR agent did not become ready');
     });
 
     teardown(async () => {
         client?.close();
-        await agent?.close();
+        agent?.kill();
+        await closed;
         fs.rmSync(root, { recursive: true, force: true });
     });
 
@@ -81,6 +112,33 @@ suite('R Interactive webR provider', function () {
             .map((e) => e.data.text)
             .join('');
     }
+
+    test('downloads a repository index with private host scratch files and the R project as its working directory', async () => {
+        // This makes the upstream synchronous HTTP bridge fail in the launcher
+        // directory even when a privileged runner could write to a read-only folder.
+        fs.mkdirSync(path.join(launchDirectory, '.node-xmlhttprequest-sync-' + manifest.agentPid));
+        const index = 'Package: fixture\nVersion: 1.0.0\n';
+        const http = createServer((_request, response) => response.end(index));
+        try {
+            http.listen(0, '127.0.0.1');
+            await once(http, 'listening');
+            const address = http.address();
+            assert.ok(address && typeof address === 'object');
+            const id = await submit(
+                [
+                    'stopifnot(getwd() == "/project")',
+                    'writeLines(webr::eval_js("process.cwd()"), "host-cwd.txt")',
+                    `download.file("http://127.0.0.1:${address.port}/PACKAGES", "PACKAGES", quiet = TRUE)`,
+                ].join('\n'),
+            );
+            assert.equal((await wait(id, 'finished')).data.state, 'success', output(id));
+            assert.equal(fs.readFileSync(path.join(project, 'PACKAGES'), 'utf8'), index);
+            const hostCwd = fs.readFileSync(path.join(project, 'host-cwd.txt'), 'utf8').trimEnd();
+            assert.equal(fs.realpathSync(hostCwd), fs.realpathSync(path.join(root, 'session')));
+        } finally {
+            http.close();
+        }
+    });
 
     test('mounts a project and retains R objects, files and PNG output across an editor reconnect', async () => {
         assert.equal(manifest.backend, 'webr');
