@@ -67,8 +67,8 @@ importers:
         specifier: ^4.1.1
         version: 4.1.1(supports-color@8.1.1)
       arity-cli:
-        specifier: 0.29.0
-        version: 0.29.0
+        specifier: 0.31.0
+        version: 0.31.0
       esbuild:
         specifier: ^0.28.1
         version: 0.28.2
@@ -99,54 +99,54 @@ importers:
 
 packages:
 
-  '@arity-cli/darwin-arm64@0.29.0':
-    resolution: {integrity: sha512-0OV9CpFsrrcWmBZjPi3qAUy03lFhEpN73e9/eqqDzq3+qFrMqV3HtGJdiMkZpKToN59RHIMtHQLf3QidHUjRrg==}
+  '@arity-cli/darwin-arm64@0.31.0':
+    resolution: {integrity: sha512-SBY7mczI4Cm74LK48JT/TznZkg8wGEbNx7fVSH2afVAEg2L+XGOognJPfcGX/1Ao8znKtZmHnDewDUy10Da5WQ==}
     engines: {node: '>=20'}
     cpu: [arm64]
     os: [darwin]
 
-  '@arity-cli/darwin-x64@0.29.0':
-    resolution: {integrity: sha512-sFcALesMOnCSTVCzIvoYUkAolXlXZ7S5fJk+vLEmmayfUqtE6kcpm42L7dkAedRygdS3b4Pf8xPBRFc2Hs1ucw==}
+  '@arity-cli/darwin-x64@0.31.0':
+    resolution: {integrity: sha512-chxn19LI8sTSxyPjqFVlGERFb1TJNW3/8QwJS0/C8r5ki/m7//f65VxmBcuQSFRbaPkKxg+VOOde0dotPvfp7Q==}
     engines: {node: '>=20'}
     cpu: [x64]
     os: [darwin]
 
-  '@arity-cli/linux-arm64-gnu@0.29.0':
-    resolution: {integrity: sha512-UFFXYocWS52d5lFbd3ZmmnkawJbzyB64M4oSQjbmQVsZGcYuWTzgUTZ5KhkCLrGRMv9gAiNDnQJOfmK7UZXzmQ==}
+  '@arity-cli/linux-arm64-gnu@0.31.0':
+    resolution: {integrity: sha512-4WliIYPIZyYX2Y37cbJhzvKBObgkljLJKhWSEA8SvhYgvMgMLoX2N0RMpdVhRHIkSqFQ/QwDkOYeF4UqfPlMXg==}
     engines: {node: '>=20'}
     cpu: [arm64]
     os: [linux]
     libc: [glibc]
 
-  '@arity-cli/linux-arm64-musl@0.29.0':
-    resolution: {integrity: sha512-dP1ZDobRuywgVyId2C/xZgcqfdBSNa+AwXtnrSmo+jkx1TmrFvGWCloCMYDSkM+uA0FUc0v37jbj+qZ5V6pN7Q==}
+  '@arity-cli/linux-arm64-musl@0.31.0':
+    resolution: {integrity: sha512-X2aJSjeNddupnbtdw1g9XSt9qwt2GzPZpLRBH9dgiWf+MxbvlkzMUOMjndMPoOE/a7ULR1YqBXS3lxdNXLIrew==}
     engines: {node: '>=20'}
     cpu: [arm64]
     os: [linux]
     libc: [musl]
 
-  '@arity-cli/linux-x64-gnu@0.29.0':
-    resolution: {integrity: sha512-KaotYKGfl0tM/Ko7HifoAcYK8H9dB56EQw6i6yLwLTjFx9IMNeAb/hCIIV8k3TTZryGa8Tkb/3Fkd71SJdbz2w==}
+  '@arity-cli/linux-x64-gnu@0.31.0':
+    resolution: {integrity: sha512-mYBBHnqahAPQwTOIlRoBy8viIMmOwnYdVE2WKcV+9R6BdGhykNc/PtBUd8LG6mSTviSLCHk0sD6VOh/X2qzLFw==}
     engines: {node: '>=20'}
     cpu: [x64]
     os: [linux]
     libc: [glibc]
 
-  '@arity-cli/linux-x64-musl@0.29.0':
-    resolution: {integrity: sha512-FyggDNp4BLLzW2O7F3QPnhaNACuO6uZTLqkOo5lRvHAKaf8K55whMw9M0v6DjUZVA5g0VVWudIDEFZD++xKCjA==}
+  '@arity-cli/linux-x64-musl@0.31.0':
+    resolution: {integrity: sha512-osiNzve97Oqe3SQrakKOSQhBWFSwlAMWI4fU7+mZAUcOsP0H2VBCe9MFaaknc+ltsfgnE0fh3/rH3xvlAuj53w==}
     engines: {node: '>=20'}
     cpu: [x64]
     os: [linux]
     libc: [musl]
 
-  '@arity-cli/win32-arm64@0.29.0':
-    resolution: {integrity: sha512-B98IszHLUzozi7HHORnsXI3Q89FQPXk2ug4A/Th/1irjPFJs1Oo2rv46/JteTNczAg9n5/uEQW929QgClhzi6g==}
+  '@arity-cli/win32-arm64@0.31.0':
+    resolution: {integrity: sha512-AcTtNMKxadyVIvwMFmZyE1ruBXtRysqKWCuxmqdX883Iu/s/uSwFhIb/YaT4MA5qOHhygL49HxpkB3D+uZJ/ZA==}
     engines: {node: '>=20'}
     cpu: [arm64]
     os: [win32]
 
-  '@arity-cli/win32-x64@0.29.0':
-    resolution: {integrity: sha512-KYwTtDi9aQO0g29ODE3JCb3EF52eVS6woVvNxVbXUQBoHlDdlqwxbAOIrkNW6pFylYltxZYNiAaGypXEIFxP1w==}
+  '@arity-cli/win32-x64@0.31.0':
+    resolution: {integrity: sha512-cz1KurSdp+A5/gKIP/Q0/8UphJs3uP7UyLtXb/WjmQsjJ8E3s8WRxeT5YtALUZsVIvd0DU+9TJGQVdWfjPIRpg==}
     engines: {node: '>=20'}
     cpu: [x64]
     os: [win32]
@@ -1395,8 +1395,8 @@ packages:
   argparse@3.0.3:
     resolution: {integrity: sha512-Sn98ftV3KfsO8xfLPHG6oT8y+b0yvbrLgZjgPDXsharNY15tTAjqIsIju4S32nl6/iEUNNE4v+yL2Zhm8ooP3w==}
 
-  arity-cli@0.29.0:
-    resolution: {integrity: sha512-mjoNW1FRi0lyGq2fmvgXxma6qsl+dYjPY82EXW/RDxAEPNIUFOgozjp8NZDj0uLDkXs0GKU+fymD2cTQKH5PWQ==}
+  arity-cli@0.31.0:
+    resolution: {integrity: sha512-NKNzU2CdIhQbhV3MNSI1m7Ybr2S1wBzJm0R5oSZkt2FkH2ho7Waoh/0nvtpnRrcmMeQ3I1nbqX/6H0rGYBcizg==}
     engines: {node: '>=20'}
     hasBin: true
 
@@ -2560,28 +2560,28 @@ packages:
 
 snapshots:
 
-  '@arity-cli/darwin-arm64@0.29.0':
+  '@arity-cli/darwin-arm64@0.31.0':
     optional: true
 
-  '@arity-cli/darwin-x64@0.29.0':
+  '@arity-cli/darwin-x64@0.31.0':
     optional: true
 
-  '@arity-cli/linux-arm64-gnu@0.29.0':
+  '@arity-cli/linux-arm64-gnu@0.31.0':
     optional: true
 
-  '@arity-cli/linux-arm64-musl@0.29.0':
+  '@arity-cli/linux-arm64-musl@0.31.0':
     optional: true
 
-  '@arity-cli/linux-x64-gnu@0.29.0':
+  '@arity-cli/linux-x64-gnu@0.31.0':
     optional: true
 
-  '@arity-cli/linux-x64-musl@0.29.0':
+  '@arity-cli/linux-x64-musl@0.31.0':
     optional: true
 
-  '@arity-cli/win32-arm64@0.29.0':
+  '@arity-cli/win32-arm64@0.31.0':
     optional: true
 
-  '@arity-cli/win32-x64@0.29.0':
+  '@arity-cli/win32-x64@0.31.0':
     optional: true
 
   '@azure/abort-controller@2.2.0':
@@ -3478,16 +3478,16 @@ snapshots:
 
   argparse@3.0.3: {}
 
-  arity-cli@0.29.0:
+  arity-cli@0.31.0:
     optionalDependencies:
-      '@arity-cli/darwin-arm64': 0.29.0
-      '@arity-cli/darwin-x64': 0.29.0
-      '@arity-cli/linux-arm64-gnu': 0.29.0
-      '@arity-cli/linux-arm64-musl': 0.29.0
-      '@arity-cli/linux-x64-gnu': 0.29.0
-      '@arity-cli/linux-x64-musl': 0.29.0
-      '@arity-cli/win32-arm64': 0.29.0
-      '@arity-cli/win32-x64': 0.29.0
+      '@arity-cli/darwin-arm64': 0.31.0
+      '@arity-cli/darwin-x64': 0.31.0
+      '@arity-cli/linux-arm64-gnu': 0.31.0
+      '@arity-cli/linux-arm64-musl': 0.31.0
+      '@arity-cli/linux-x64-gnu': 0.31.0
+      '@arity-cli/linux-x64-musl': 0.31.0
+      '@arity-cli/win32-arm64': 0.31.0
+      '@arity-cli/win32-x64': 0.31.0
 
   azure-devops-node-api@12.5.0:
     dependencies:

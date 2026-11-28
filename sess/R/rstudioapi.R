@@ -12,7 +12,9 @@ verifyAvailable <- function(version_needed = NULL) {
   getVersion() >= numeric_version(version_needed)
 }
 
-isAvailable <- function(version_needed = NULL, child_ok = FALSE) verifyAvailable(version_needed)
+isAvailable <- function(version_needed = NULL, child_ok = FALSE) {
+  verifyAvailable(version_needed)
+}
 
 insertText <- function(location, text, id = NULL) {
   if (missing(text) && is.character(location) && length(location) == 1) {
@@ -50,7 +52,9 @@ insertText <- function(location, text, id = NULL) {
 
 modifyRange <- insertText
 
-readPreference <- function(name, default) default
+readPreference <- function(name, default) {
+  default
+}
 readRStudioPreference <- readPreference
 
 .sess_rstudioapi_env <- environment()
@@ -122,8 +126,12 @@ document_context <- function(id = NULL) {
   make_rs_document_context(editor_context)
 }
 
-documentId <- function(allowConsole = TRUE) document_context()$id
-documentPath <- function(id = NULL) document_context(id)$path
+documentId <- function(allowConsole = TRUE) {
+  document_context()$id
+}
+documentPath <- function(id = NULL) {
+  document_context(id)$path
+}
 
 documentSaveAll <- function() {
   invisible(request_client("rstudioapi/document_save_all", args = list()))
@@ -159,7 +167,9 @@ restartSession <- function(command = "", clean = FALSE) {
   invisible(notify_client("restart_r", params = list(command = command, clean = clean)))
 }
 
-viewer <- function(url, height = NULL) notify_client("webview", list(url = url, title = "Viewer"))
+viewer <- function(url, height = NULL) {
+  notify_client("webview", list(url = url, title = "Viewer"))
+}
 
 page_viewer <- function(url, title = NULL) {
   notify_client(
@@ -168,7 +178,9 @@ page_viewer <- function(url, title = NULL) {
   )
 }
 
-getVersion <- function() numeric_version("0")
+getVersion <- function() {
+  numeric_version("0")
+}
 
 versionInfo <- function() {
   list(
@@ -219,10 +231,9 @@ make_rs_range <- function(sess_selection) {
 
 extract_document_ranges <- function(sess_selections) {
   if (is.data.frame(sess_selections)) {
-    lapply(
-      seq_len(nrow(sess_selections)),
-      function(i) make_rs_range(as.list(sess_selections[i, , drop = FALSE]))
-    )
+    lapply(seq_len(nrow(sess_selections)), function(i) {
+      make_rs_range(as.list(sess_selections[i, , drop = FALSE]))
+    })
   } else {
     lapply(sess_selections, make_rs_range)
   }
@@ -303,8 +314,12 @@ make_rs_document_context <- function(editor_context) {
   )
 }
 
-is_positionable <- function(p) is.numeric(p) && length(p) == 2
-is_rangable <- function(r) is.numeric(r) && length(r) == 4
+is_positionable <- function(p) {
+  is.numeric(p) && length(p) == 2
+}
+is_rangable <- function(r) {
+  is.numeric(r) && length(r) == 4
+}
 
 normalise_pos_or_range_arg <- function(location) {
   if (rstudioapi::is.document_position(location)) {
@@ -344,7 +359,9 @@ normalise_text_arg <- function(text, location_length) {
   }
 }
 
-serialize_pos <- function(pos) as.numeric(c(pos[["row"]], pos[["column"]]))
+serialize_pos <- function(pos) {
+  as.numeric(c(pos[["row"]], pos[["column"]]))
+}
 
 serialize_range <- function(range) {
   list(start = serialize_pos(range$start), end = serialize_pos(range$end))

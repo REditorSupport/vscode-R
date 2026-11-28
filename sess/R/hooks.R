@@ -214,7 +214,9 @@ runtime_start <- function(
     function(url, ...) {
       if (!is.character(url)) {
         real_url <- NULL
-        temp_viewer <- function(url, ...) real_url <<- url
+        temp_viewer <- function(url, ...) {
+          real_url <<- url
+        }
         op <- options(viewer = temp_viewer, page_viewer = temp_viewer, browser = temp_viewer)
         on.exit(options(op))
         print(url)
@@ -511,7 +513,9 @@ runtime_start <- function(
   # 5. rstudioapi hooks
   .sess_env$runtime_start_phase <- "rstudioapi"
   if (use_rstudioapi) {
-    rstudioapi_hook <- function(...) patch_rstudioapi()
+    rstudioapi_hook <- function(...) {
+      patch_rstudioapi()
+    }
     .runtime_set_hook(packageEvent("rstudioapi", "onLoad"), rstudioapi_hook, action = "append")
 
     if ("rstudioapi" %in% loadedNamespaces()) {

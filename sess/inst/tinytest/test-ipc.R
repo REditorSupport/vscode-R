@@ -63,7 +63,9 @@ local({
       auto_unbox = TRUE
     )))
   }
-  response <- function() jsonlite::fromJSON(processx::conn_read_chars(pipe[[1L]]))
+  response <- function() {
+    jsonlite::fromJSON(processx::conn_read_chars(pipe[[1L]]))
+  }
 
   expect_warning(request("dataview_page", "missing"), "Unknown dataview id")
   failed <- response()
@@ -340,8 +342,12 @@ local({
   original_view <- get("View", utils_ns, inherits = FALSE)
   binding_was_locked <- bindingIsLocked("View", utils_ns)
   original_viewer <- getOption("viewer")
-  user_view <- function(...) "user view"
-  user_viewer <- function(...) "user viewer"
+  user_view <- function(...) {
+    "user view"
+  }
+  user_viewer <- function(...) {
+    "user viewer"
+  }
   on.exit(
     {
       sess:::runtime_stop()

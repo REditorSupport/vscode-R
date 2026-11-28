@@ -35,7 +35,9 @@ local({
   env <- new.env(parent = asNamespace("sess"))
   env$runtime_start <- sess:::runtime_start
   environment(env$runtime_start) <- env
-  env$.runtime_add_task_callback <- function(fun, name) task_callbacks[[name]] <<- fun
+  env$.runtime_add_task_callback <- function(fun, name) {
+    task_callbacks[[name]] <<- fun
+  }
   env$.defer_runtime_notification <- function(method) {
     sess:::.defer_runtime_notification(method, schedule = scheduler)
   }

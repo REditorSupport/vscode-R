@@ -9,7 +9,9 @@ local({
   })
   snapshot <- sess:::.interactive_table_snapshot
   register <- sess:::dataview_register
-  page <- function(id, ...) sess:::handle_dataview_page(list(view_id = id, ...))
+  page <- function(id, ...) {
+    sess:::handle_dataview_page(list(view_id = id, ...))
+  }
 
   # Match the reported dimensions without allocating a dense 153 GB dataset.
   n <- 832976871L

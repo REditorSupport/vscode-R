@@ -5,7 +5,9 @@ local({
   dir.create(root)
   root <- normalizePath(root, winslash = "/", mustWork = TRUE)
   on.exit(unlink(root, recursive = TRUE), add = TRUE)
-  r_literal <- function(value) paste0("\"", gsub("\\\"", "\\\\\\\"", value), "\"")
+  r_literal <- function(value) {
+    paste0("\"", gsub("\\\"", "\\\\\\\"", value), "\"")
+  }
   r_binary <- file.path(R.home("bin"), "R")
   minimum_version <- "0.4.0"
   ambient_library <- file.path(root, "ambient-user-library")
@@ -153,12 +155,9 @@ local({
   read_child_logs <- function(logs, timeout_seconds = 10) {
     deadline <- Sys.time() + timeout_seconds
     repeat {
-      output <- lapply(
-        logs,
-        function(path) {
-          suppressWarnings(tryCatch(readLines(path, warn = FALSE), error = function(error) error))
-        }
-      )
+      output <- lapply(logs, function(path) {
+        suppressWarnings(tryCatch(readLines(path, warn = FALSE), error = function(error) error))
+      })
       failed <- vapply(output, inherits, FALSE, "error")
       if (!any(failed)) {
         return(unlist(output))
@@ -236,7 +235,9 @@ local({
       messages = grep("^vscode-R|incompatible", output, value = TRUE)
     )
   }
-  request_summary <- function(request) request[c(4L, 6L, 7L)]
+  request_summary <- function(request) {
+    request[c(4L, 6L, 7L)]
+  }
 
   approved <- run_mode("approved", list(rstudioapi = "approve"))
   tool_package <- file.path(approved$values[[8L]], "rstudioapi")

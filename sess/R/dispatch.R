@@ -110,4 +110,6 @@ notify_client <- function(method, params = list()) {
 #' @param action String of the action name
 #' @param args List of arguments
 #' @export
-request_client <- function(action, args = list()) rpc_send(action, args, request = TRUE)
+request_client <- function(action, args = list()) {
+  rpc_send(action, args, request = TRUE)
+}

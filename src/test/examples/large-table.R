@@ -50,10 +50,9 @@ for (n in c(100000L, 2000000L)) {
   output <- measure(sprintf("Complete bounded preview (%s x 23)", n), function() preview(dt))
   stopifnot(nchar(output, type = "bytes") < 350000L)
   full <- sess:::dataview_register(dt, live = TRUE)$view_id
-  page <- measure(
-    sprintf("Full table last page (%s x 23)", n),
-    function() sess:::handle_dataview_page(list(view_id = full, startRow = n - 20L, endRow = n))
-  )
+  page <- measure(sprintf("Full table last page (%s x 23)", n), function() {
+    sess:::handle_dataview_page(list(view_id = full, startRow = n - 20L, endRow = n))
+  })
   stopifnot(nrow(page$rows) == 20L)
   env$dataviews <- list()
   rm(dt)
@@ -68,8 +67,7 @@ huge <- structure(
 output <- measure("Complete bounded preview (832976871 x 23, ALTREP)", function() preview(huge))
 stopifnot(nchar(output, type = "bytes") < 350000L)
 full <- sess:::dataview_register(huge, live = TRUE)$view_id
-page <- measure(
-  "Full table last page (832976871 x 23, ALTREP)",
-  function() sess:::handle_dataview_page(list(view_id = full, startRow = n - 20L, endRow = n))
-)
+page <- measure("Full table last page (832976871 x 23, ALTREP)", function() {
+  sess:::handle_dataview_page(list(view_id = full, startRow = n - 20L, endRow = n))
+})
 stopifnot(tail(page$rows[["23"]], 1L) == n)

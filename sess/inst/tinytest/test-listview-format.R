@@ -14,7 +14,9 @@ local({
     runtime$dataviews$format_test <- sess:::listview_state(object, "x", "x")
     sess:::get_workspace_children(view_id = "format_test", path = path, start = start)
   }
-  text <- function(page) vapply(page$children, `[[`, "", "str")
+  text <- function(page) {
+    vapply(page$children, `[[`, "", "str")
+  }
 
   numbers <- c(
     1.23456789012345,
@@ -83,16 +85,12 @@ local({
   )
   expect_equal(text(page(c("001", NA_character_))), c('"001"', "NA"))
 
-  registerS3method(
-    "[",
-    "listview_number",
-    function(x, ...) structure(NextMethod(), class = class(x), unit = attr(x, "unit"))
-  )
-  registerS3method(
-    "format",
-    "listview_number",
-    function(x, ...) paste0(attr(x, "unit"), ":", sprintf("%.9f", as.numeric(x)))
-  )
+  registerS3method("[", "listview_number", function(x, ...) {
+    structure(NextMethod(), class = class(x), unit = attr(x, "unit"))
+  })
+  registerS3method("format", "listview_number", function(x, ...) {
+    paste0(attr(x, "unit"), ":", sprintf("%.9f", as.numeric(x)))
+  })
   registerS3method(
     "[",
     "listview_label",
@@ -107,11 +105,9 @@ local({
     function(x, i, j, ..., drop = TRUE) methods::new("listview_s4_number", as.numeric(x)[i]),
     where = class_env
   )
-  registerS3method(
-    "format",
-    "listview_s4_number",
-    function(x, ...) paste0("S4:", sprintf("%.9f", as.numeric(x)))
-  )
+  registerS3method("format", "listview_s4_number", function(x, ...) {
+    paste0("S4:", sprintf("%.9f", as.numeric(x)))
+  })
   on.exit(
     {
       methods::removeMethod("[", "listview_s4_number", where = class_env)

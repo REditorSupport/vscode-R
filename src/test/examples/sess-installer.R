@@ -136,7 +136,9 @@ local({
     install_arguments <<- list(packages = packages, library = library, repos = repos)
     stop("dependency install sentinel")
   }
-  installer$sess_install_command <- function(...) stop("Bundled sess installation must not run")
+  installer$sess_install_command <- function(...) {
+    stop("Bundled sess installation must not run")
+  }
   dependency_error <- fail(
     installer$sess_install(dependency_package, target, "https://configured.example"),
     "dependency install sentinel"
@@ -151,8 +153,12 @@ local({
 
   # A non-zero R CMD INSTALL result stops immediately and does not attempt
   # another sess source.
-  installer$sess_install_dependencies <- function(...) stop("Dependencies are already available")
-  installer$sess_install_command <- function(...) FALSE
+  installer$sess_install_dependencies <- function(...) {
+    stop("Dependencies are already available")
+  }
+  installer$sess_install_command <- function(...) {
+    FALSE
+  }
   fail(
     installer$sess_install(package, target, "https://unused.invalid"),
     "Could not install bundled sess"

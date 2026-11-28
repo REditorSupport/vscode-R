@@ -14,7 +14,9 @@ local({
     rm(list = intersect(masked, ls(.GlobalEnv, all.names = TRUE)), envir = .GlobalEnv)
     list2env(saved, envir = .GlobalEnv)
   })
-  global <- function(name, value) assign(paste0(prefix, name), value, envir = .GlobalEnv)
+  global <- function(name, value) {
+    assign(paste0(prefix, name), value, envir = .GlobalEnv)
+  }
 
   global("df", data.frame(x = 1:3, y = letters[1:3]))
   global("list", list(a = list(b = "leaf"), c = 1))
@@ -31,7 +33,9 @@ local({
   global("s4", methods::new("sess_hover_s4", items = list(a = 1), label = "s4"))
 
   # These requests previously went through eval(); the results are unchanged.
-  previous <- function(expr) eval(parse(text = expr, keep.source = FALSE)[[1L]], .GlobalEnv)
+  previous <- function(expr) {
+    eval(parse(text = expr, keep.source = FALSE)[[1L]], .GlobalEnv)
+  }
   same <- function(expr, trigger = NULL) {
     expect_identical(hover(expr), list(str = capture_str(previous(expr))), info = expr)
     if (!is.null(trigger)) {

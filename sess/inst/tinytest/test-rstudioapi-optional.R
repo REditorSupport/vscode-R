@@ -8,7 +8,9 @@ local({
   root <- tempfile("sess-rstudioapi-")
   dir.create(root)
   on.exit(unlink(root, recursive = TRUE), add = TRUE)
-  r_command <- function(program) file.path(R.home("bin"), program)
+  r_command <- function(program) {
+    file.path(R.home("bin"), program)
+  }
 
   # A directory without a valid installation shadows any real rstudioapi.
   absent_library <- file.path(root, "absent-library")

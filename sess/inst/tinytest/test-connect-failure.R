@@ -44,7 +44,9 @@ local({
     add = TRUE
   )
 
-  listen <- function() server <<- processx::conn_create_unix_socket(endpoint, encoding = "")
+  listen <- function() {
+    server <<- processx::conn_create_unix_socket(endpoint, encoding = "")
+  }
   # Accept while the client is open, including on Windows named pipes. Drive
   # subsequent retries explicitly instead of starting background poll timers.
   env$poll_connection <- function(...) {
@@ -78,7 +80,9 @@ local({
   expect_clean()
 
   callbacks <- list()
-  schedule <- function(callback, delay) callbacks[[length(callbacks) + 1L]] <<- callback
+  schedule <- function(callback, delay) {
+    callbacks[[length(callbacks) + 1L]] <<- callback
+  }
   tick <- function() {
     callback <- callbacks[[1L]]
     callbacks <<- callbacks[-1L]

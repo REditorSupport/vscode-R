@@ -102,7 +102,9 @@ local({
       library = library
     )
   }
-  prepare_environment$tool_library_plan <- function(...) if (ready) NULL else plan
+  prepare_environment$tool_library_plan <- function(...) {
+    if (ready) NULL else plan
+  }
   prepare_environment$.tool_request_consent <- function(
     received,
     policy,

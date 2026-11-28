@@ -1,6 +1,8 @@
 # Base-R regression tests; no external packages or editor binary are needed.
 source("R/sess_source.R")
-normalized_paths <- function(paths) normalizePath(paths, winslash = "/", mustWork = TRUE)
+normalized_paths <- function(paths) {
+  normalizePath(paths, winslash = "/", mustWork = TRUE)
+}
 
 field <- "Config/vscode-R/source-revision"
 stable <- paste0("git-tree:", strrep("a", 40))
